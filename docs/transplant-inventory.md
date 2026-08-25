@@ -31,7 +31,7 @@ Measured against upstream as of 2026-08-25 (main @ 257fc11).
 | Screen capture (`→ PerryCapture/PerryScreenCapture.swift`) | Done. Telemetry usage-log calls removed; PRD §7 enforced at capture layer: blocked windows on screen refuse capture (pure function, unit-tested). |
 | Control bridge (`→ PerryOverlay/ExternalControlBridge.swift`) | Done. Inference proxy removed per PRD §8 no-middleman rule; Gmail stub surface removed (out of scope v1); drawing/display tools always advertised; auth via `PERRY_BRIDGE_TOKEN` with constant-time compare; live loopback auth test green. |
 | Process spawn (`CodexProcessManager.swift` patterns) | Done as pattern source only: `CLIRuntime.runProcess` implements spawn + locked pipe buffers + timeout kill; locator probes standard Claude Code install paths with `PERRY_CLAUDE_CODE_PATH` override. |
-| Permission probes | Not yet started — fresh `PerryPermissionProbe` remains M2 work alongside Guide mode. |
+| Permission probes | Done as fresh code per plan (`PerryCapture/PerryPermissionProbe.swift`): AXIsProcessTrusted, CGPreflightScreenCaptureAccess, AVCaptureDevice microphone status + snapshot aggregation; unit-tested without triggering TCC prompts. |
 
 ## Platform drift found during surgery
 
