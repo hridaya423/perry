@@ -7,8 +7,17 @@ let package = Package(
     products: [
         .library(name: "PerryCapture", targets: ["PerryCapture"]),
     ],
+    dependencies: [
+        .package(path: "../PerryCore"),
+    ],
     targets: [
-        .target(name: "PerryCapture", path: "Sources/PerryCapture"),
+        .target(
+            name: "PerryCapture",
+            dependencies: [
+                .product(name: "PerryCore", package: "PerryCore"),
+            ],
+            path: "Sources/PerryCapture"
+        ),
         .testTarget(name: "PerryCaptureTests", dependencies: ["PerryCapture"], path: "Tests/PerryCaptureTests"),
     ]
 )
