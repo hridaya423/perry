@@ -13,41 +13,116 @@ struct DemoConfirmer: Confirmer {
 @main
 struct PerryDemo {
     static func main() async {
-        let workDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("perry-demo-\(ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: ""))")
-        try! FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
+        await runScriptedDemo()
+        print()
+        await runCLIDemo()
+    }
+
+    /// Scripted runtime: plan is deterministic, execution touches disk.
+    private static func runScriptedDemo() async {
+        let workDirectory = makeWorkspace(named: "scripted")
         defer { try? FileManager.default.removeItem(at: workDirectory) }
 
         print("Perry demo — scripted Finder task")
         print("workspace: \(workDirectory.path)")
 
         let runtime = ScriptedFinderRuntime(baseURL: workDirectory)
-        let activityLog = ActivityLog()
-        let supervisor = DoSupervisor(activityLog: activityLog, confirmer: DemoConfirmer())
+        let outcome = await execute(goal: "create three notes and rename them", runtime: runtime, workDirectory: workDirectory)
+        report(outcome)
+    }
 
-        let started = Date()
-        let outcome = await supervisor.run(
-            goal: "create three notes and rename them",
+    /// CLI adapter path: planning goes through a real spawned process
+    /// (a fake claude-like responder via PERRY_CLAUDE_CODE_PATH override),
+    /// proving the process pipeline end to end without network or auth.
+    private static func runCLIDemo() async {
+        guard let fakeCLI = installFakeCLI() else {
+            print("\nPerry demo — CLI adapter path skipped (could not stage fake CLI)")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: fakeCLI.directory) }
+
+        let workDirectory = makeWorkspace(named: "cli")
+        defer { try? FileManager.default.removeItem(at: workDirectory) }
+
+        print("\nPerry demo — CLI adapter task")
+        print("workspace: \(workDirectory.path)")
+        print("fake CLI at: \(fakeCLI.executable.path)")
+
+        let runtime = CLIRuntime(executableLocator: { fakeCLI.executable }, timeout: 15)
+        let outcome = await execute(
+            goal: "tidy the perry demo folder",
             runtime: runtime,
-            context: ScreenContext(frontAppBundleID: "com.apple.finder", frontWindowTitle: "Desktop"),
+            workDirectory: workDirectory,
+            context: ScreenContext(frontAppBundleID: "com.apple.finder", frontWindowTitle: "Desktop")
+        )
+        report(outcome)
+
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: workDirectory.path).sorted()) ?? []
+        print("final workspace: \(contents.joined(separator: ", "))")
+    }
+
+    private static func execute(
+        goal: String,
+        runtime: any AgentRuntime,
+        workDirectory: URL,
+        context: ScreenContext = .empty
+    ) async -> DoOutcome {
+        let activityLog = ActivityLog(storageDirectory: workDirectory)
+        let supervisor = DoSupervisor(activityLog: activityLog, confirmer: DemoConfirmer())
+        let outcome = await supervisor.run(
+            goal: goal,
+            runtime: runtime,
+            context: context,
             targetWindow: WindowContext(appBundleID: "com.apple.finder", title: "Desktop")
         )
-        let elapsed = Date().timeIntervalSince(started)
-
-        switch outcome {
-        case .completed(let stepsRun):
-            print("outcome: completed \(stepsRun) steps in \(String(format: "%.2f", elapsed))s")
-        case .blocked(let reason):
-            print("outcome: blocked — \(reason)")
-        case .failed(let stepSummary, let reason):
-            print("outcome: failed at \"\(stepSummary)\" — \(reason)")
-        }
 
         let entries = await activityLog.snapshot()
         print("activity log:")
         for entry in entries {
             let bundle = entry.targetAppBundleID ?? "—"
             print("  [\(entry.tier.rawValue)] \(entry.outcome.rawValue) · \(entry.actionSummary) · \(bundle)")
+        }
+        return outcome
+    }
+
+    private static func report(_ outcome: DoOutcome) {
+        switch outcome {
+        case .completed(let stepsRun):
+            print("outcome: completed \(stepsRun) steps")
+        case .blocked(let reason):
+            print("outcome: blocked — \(reason)")
+        case .failed(let stepSummary, let reason):
+            print("outcome: failed at \"\(stepSummary)\" — \(reason)")
+        }
+    }
+
+    private static func makeWorkspace(named name: String) -> URL {
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-demo-\(name)-\(stamp)")
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// Stages an executable that mimics `claude -p <prompt>` output so the
+    /// adapter's plan() parses numbered steps from a real subprocess.
+    private static func installFakeCLI() -> (executable: URL, directory: URL)? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-fake-cli-\(UUID().uuidString)")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let executable = directory.appendingPathComponent("claude")
+            let script = """
+            #!/bin/sh
+            cat > /dev/null
+            echo "1. create three perry-cli notes in the folder"
+            echo "2. rename each note by appending -renamed"
+            """
+            try script.write(to: executable, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+            return (executable, directory)
+        } catch {
+            return nil
         }
     }
 }
