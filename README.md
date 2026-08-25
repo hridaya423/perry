@@ -2,7 +2,13 @@
 
 A screen-aware companion that teaches you any app by pointing and drawing on your screen, and can take the whole task off your hands. Product spec lives in [PRD.md](PRD.md).
 
-Status: Milestone 1 (Skeleton) in progress. Demo gate: orchestrator state machine tested, overlay + capture transplants building against new code only, one scripted Finder task driven end-to-end by a CLI runtime adapter.
+Status: Milestone 1 (Skeleton) complete. Session orchestrator state machine, trust tiers, activity log, runtime adapters, overlay/capture/bridge transplants all building and tested — 52 tests green across four packages. Demo gate met: scripted Finder task runs end-to-end through plan → guard → execute → log.
+
+```bash
+cd Packages/PerryRuntimes && swift run perry-demo
+```
+
+Try the real CLI adapter by setting `PERRY_CLAUDE_CODE_PATH` to a Claude Code binary; tests never require it.
 
 ## Development
 

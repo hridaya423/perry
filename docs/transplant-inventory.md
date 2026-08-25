@@ -21,3 +21,18 @@ Measured against upstream as of 2026-08-25 (main @ 257fc11).
 - OverlayWindow's companion touchpoints concentrate in bubble/avatar sizing paths; the Perry buddy sprite replaces those views, so expect deletion more than wrapping.
 - Capture utility returns CGImage-shaped results; Perry keeps frames memory-only per PRD section 8, so any disk-write path found during surgery gets removed.
 - Bridge server is `@unchecked Sendable`; re-audit its isolation when transplanted under Swift 6 strict concurrency.
+
+## Transplant status (updated 2026-08-25, M1 complete)
+
+| Organ | Status |
+|---|---|
+| Overlay engine (`OverlayWindow.swift` → `PerryOverlay/OverlayWindow.swift`) | Done. 3234 → ~2200 lines; dock stack, dock manager, voice waveform/spinner UI, Codex pet sprites cut; all CompanionManager touchpoints rerouted to Perry-owned `PerryCursorState`; builds against new code only. |
+| Guidance models (`→ GuidanceModels.swift`) | Done verbatim + publicized; donor's own tests ported and passing (with one documented macOS 26 CGRect-standardization drift fix). |
+| Screen capture (`→ PerryCapture/PerryScreenCapture.swift`) | Done. Telemetry usage-log calls removed; PRD §7 enforced at capture layer: blocked windows on screen refuse capture (pure function, unit-tested). |
+| Control bridge (`→ PerryOverlay/ExternalControlBridge.swift`) | Done. Inference proxy removed per PRD §8 no-middleman rule; Gmail stub surface removed (out of scope v1); drawing/display tools always advertised; auth via `PERRY_BRIDGE_TOKEN` with constant-time compare; live loopback auth test green. |
+| Process spawn (`CodexProcessManager.swift` patterns) | Done as pattern source only: `CLIRuntime.runProcess` implements spawn + locked pipe buffers + timeout kill; locator probes standard Claude Code install paths with `PERRY_CLAUDE_CODE_PATH` override. |
+| Permission probes | Not yet started — fresh `PerryPermissionProbe` remains M2 work alongside Guide mode. |
+
+## Platform drift found during surgery
+
+Since the macOS 26 SDK, CGRect standardization no longer repositions the origin for negative width/height: `(120, 90, -80×60)` normalizes to `(120, 90, 80×60)`, not the older `(40, 90, …)` that upstream's test asserted. The ported guidance test documents this and asserts current behavior. This validates the PRD's OS-compat-matrix risk; overlay coordinates derived from AX frames should never be constructed with negative extents.
