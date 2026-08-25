@@ -1,0 +1,36 @@
+name: Perry
+options:
+  bundleIdPrefix: dev.perry
+  deploymentTarget:
+    macOS: "14.0"
+packages:
+  PerryCore:
+    path: Packages/PerryCore
+  PerryRuntimes:
+    path: Packages/PerryRuntimes
+  PerryOverlay:
+    path: Packages/PerryOverlay
+  PerryCapture:
+    path: Packages/PerryCapture
+targets:
+  Perry:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    dependencies:
+      - package: PerryCore
+      - package: PerryRuntimes
+      - package: PerryOverlay
+      - package: PerryCapture
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Perry
+schemes:
+  Perry:
+    build:
+      targets:
+        Perry: all
+    run:
+      config: Debug
