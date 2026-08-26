@@ -265,7 +265,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             hidePanel()
             overlayState.animation = .running
             let runtime = makeRuntime()
-            _ = await backgroundRunner.run(
+            let confirmer = InteractiveConfirmer(controller: self)
+            let supervisor = DoSupervisor(activityLog: activityLog, confirmer: confirmer)
+            _ = await supervisor.run(
                 goal: goal,
                 runtime: runtime,
                 context: ScreenContext(frontAppBundleID: nil, frontWindowTitle: nil),
@@ -308,6 +310,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private lazy var dictation = DictationController { [weak self] transcript in
         self?.handleTranscript(transcript)
     }
+    private let wakeWordGate = WakeWordGate(enabled: UserDefaults.standard.object(forKey: "perry.wakeWord.enabled") as? Bool ?? false)
 
     func beginDictation() {
         Task {
@@ -332,6 +335,19 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func handleTranscript(_ text: String) {
+        if let command = wakeWordGate.match(inTranscript: text) {
+            speak("Wake word heard.")
+            dispatch(commandText: command.isEmpty ? nil : command)
+            return
+        }
+        dispatch(commandText: text)
+    }
+
+    private func dispatch(commandText: String?) {
+        guard let text = commandText, !text.isEmpty else {
+            showPanel()
+            return
+        }
         switch GuideIntentParser.parse(text) {
         case .guide(let goal):
             startGuiding(goal: goal)
