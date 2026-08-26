@@ -12,6 +12,8 @@ packages:
     path: Packages/PerryOverlay
   PerryCapture:
     path: Packages/PerryCapture
+  PerryGuide:
+    path: Packages/PerryGuide
 targets:
   Perry:
     type: application
@@ -23,6 +25,7 @@ targets:
       - package: PerryRuntimes
       - package: PerryOverlay
       - package: PerryCapture
+      - package: PerryGuide
     info:
       path: App/Info.plist
       properties:
