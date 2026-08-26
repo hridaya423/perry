@@ -1,28 +1,46 @@
 import SwiftUI
 import PerryGuide
+import PerryOverlay
 
 /// The wake panel: type a request or hit the mic and talk.
+/// Ink-on-glass: one material surface, charcoal ink, single mint accent,
+/// the buddy himself answering the "who am I talking to" question.
 struct SessionPanelView: View {
     weak var controller: AppController?
 
     @State private var text = ""
     @FocusState private var fieldFocused: Bool
 
+    private static let accent = Color(red: 0.204, green: 0.827, blue: 0.600)
+
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "waveform")
-                    .foregroundStyle(.mint)
-                Text("Perry is listening")
-                    .font(.system(size: 13, weight: .semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                PerrySpriteView(animation: .idle, size: 36)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Perry")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                    Text("here. what are we doing?")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("Done") { controller?.dismiss() }
-                    .buttonStyle(.link)
-                    .font(.system(size: 11))
+                Button {
+                    controller?.dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .background(.quaternary, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
             }
 
-            TextField("Show me… / Do… / anything", text: $text)
+            TextField("show me… or do it for me", text: $text)
                 .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
                 .focused($fieldFocused)
                 .onSubmit { submit() }
 
@@ -31,16 +49,30 @@ struct SessionPanelView: View {
                     controller?.beginDictation()
                 } label: {
                     Image(systemName: "mic.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Self.accent, in: Circle())
                 }
+                .buttonStyle(.plain)
+                .help("Talk instead")
+
+                Spacer()
+
                 Button("Everything") { submit(kind: .everything) }
-                Button("Do it for me") { submit(kind: .do_) }
                 Button("Teach me") { submit(kind: .guide) }
+                Button("Do it") { submit(kind: .do_) }
                     .buttonStyle(.borderedProminent)
+                    .tint(Self.accent)
             }
             .controlSize(.small)
+            .font(.system(size: 11, weight: .medium))
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .padding(16)
+        .frame(width: 340)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+        .tint(Self.accent)
         .onAppear { fieldFocused = true }
     }
 
@@ -50,6 +82,7 @@ struct SessionPanelView: View {
         let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
         text = ""
+        SoundPlayer.play(.send)
 
         switch kind {
         case .guide:

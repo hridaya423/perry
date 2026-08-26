@@ -191,7 +191,7 @@ enum PerryAvatarStyle: Equatable {
     case pet(id: String)
 
     static let userDefaultsKey = "openclicky.cursorAvatarStyle"
-    static let `default`: PerryAvatarStyle = .triangleFilled
+    static let `default`: PerryAvatarStyle = .pet(id: "perry")
 
     /// Storage representation. `.pet(id)` is encoded as `"pet:<id>"`.
     var storageValue: String {
@@ -261,7 +261,7 @@ private struct PerryAvatarView: View {
         case .triangleOutline:
             PerryTriangleCursorView(accentColor: accentColor, style: .outline)
         case .pet:
-            PerryTriangleCursorView(accentColor: accentColor, style: .filled)
+            PerrySpriteView(animation: animationState)
         }
     }
 }

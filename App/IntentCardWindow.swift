@@ -60,7 +60,7 @@ struct IntentCardView: View {
             }
 
             if card.tier >= .red {
-                Text("Type \"confirm\" to allow. Voice can't approve this.")
+                Text("This one needs real attention. Type \"confirm\"; I won't take a voice yes for this.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 TextField("confirm", text: $typedConfirmation)
