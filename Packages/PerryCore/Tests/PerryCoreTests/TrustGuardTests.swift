@@ -82,4 +82,12 @@ final class TrustGuardTests: XCTestCase {
         )
         XCTAssertEqual(decision, .deny(reason: "target window is on the blocked list"))
     }
+
+    func testBlocklistMatchingIsCaseInsensitiveOnBothSides() {
+        let decision = guard_.decide(
+            action: ActionDescriptor(kind: .readWindow, summary: "peek"),
+            targetWindow: WindowContext(appBundleID: "COM.LASTPASS.LASTPASS", title: "Vault")
+        )
+        XCTAssertEqual(decision, .deny(reason: "target window is on the blocked list"))
+    }
 }

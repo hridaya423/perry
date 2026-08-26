@@ -103,8 +103,8 @@ public struct TrustGuard: Sendable {
         blockedBundleIDs: Set<String> = TrustGuard.defaultBlockedBundleIDs,
         sensitiveTitleKeywords: Set<String> = TrustGuard.defaultSensitiveTitleKeywords
     ) {
-        self.blockedBundleIDs = blockedBundleIDs
-        self.sensitiveTitleKeywords = sensitiveTitleKeywords
+        self.blockedBundleIDs = Set(blockedBundleIDs.map { $0.lowercased() })
+        self.sensitiveTitleKeywords = Set(sensitiveTitleKeywords.map { $0.lowercased() })
     }
 
     public func classify(_ action: ActionDescriptor) -> TrustTier {
