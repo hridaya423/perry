@@ -10,6 +10,11 @@ public protocol AgentRuntime: Sendable {
 
 public struct CLIUnavailableError: Error, CustomStringConvertible {
     public let searchedPaths: [String]
+
+    public init(searchedPaths: [String]) {
+        self.searchedPaths = searchedPaths
+    }
+
     public var description: String {
         "no coding-agent CLI found. Searched:\n" + searchedPaths.map { "  \($0)" }.joined(separator: "\n")
     }
