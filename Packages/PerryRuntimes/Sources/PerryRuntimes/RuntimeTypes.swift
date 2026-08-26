@@ -111,6 +111,10 @@ public struct StepResult: Sendable, Equatable {
 public struct PlanError: Error, CustomStringConvertible {
     public let message: String
     public var description: String { "plan error: \(message)" }
+
+    public init(message: String) {
+        self.message = message
+    }
 }
 
 public struct ExecutionError: Error, CustomStringConvertible {
