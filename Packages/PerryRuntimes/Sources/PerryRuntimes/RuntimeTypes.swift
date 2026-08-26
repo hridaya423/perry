@@ -116,6 +116,10 @@ public struct PlanError: Error, CustomStringConvertible {
 public struct ExecutionError: Error, CustomStringConvertible {
     public let message: String
     public var description: String { "execution error: \(message)" }
+
+    public init(message: String) {
+        self.message = message
+    }
 }
 
 public enum StepActionMapper {

@@ -11,6 +11,7 @@ let package = Package(
         .package(path: "../PerryCore"),
         .package(path: "../PerryOverlay"),
         .package(path: "../PerryCapture"),
+        .package(path: "../PerryRuntimes"),
     ],
     targets: [
         .target(
@@ -19,6 +20,7 @@ let package = Package(
                 .product(name: "PerryCore", package: "PerryCore"),
                 .product(name: "PerryOverlay", package: "PerryOverlay"),
                 .product(name: "PerryCapture", package: "PerryCapture"),
+                .product(name: "PerryRuntimes", package: "PerryRuntimes"),
             ],
             path: "Sources/PerryGuide"
         ),
