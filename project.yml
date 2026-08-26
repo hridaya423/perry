@@ -20,6 +20,20 @@ targets:
     platform: macOS
     sources:
       - App
+      - path: App/Resources/Sounds
+        type: folder
+        buildPhase: resources
+    dependencies:
+    dependencies:
+      - package: PerryCore
+      - package: PerryRuntimes
+      - package: PerryOverlay
+      - package: PerryCapture
+      - package: PerryGuide
+    preBuildScripts:
+      - path: scripts/fetch-codex-runtime.sh
+        name: FetchCodexRuntime
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: PerryCore
       - package: PerryRuntimes

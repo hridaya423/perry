@@ -27,6 +27,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let notifier = SystemNotifier()
     private lazy var backgroundRunner = BackgroundTaskRunner(notifier: notifier)
     private var onboardingFlow: OnboardingFlow?
+    private var memoryMenuItem: NSMenuItem?
 
     enum Mode: String {
         case idle, listening, guiding, doing
@@ -44,6 +45,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         installStatusItem()
         installHotkey()
         runOnboardingIfNeeded()
+        SoundPlayer.warmUp()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWipeDataRequested),
+            name: .perryWipeDataRequested,
+            object: nil
+        )
+    }
+
+    @objc private func handleWipeDataRequested() {
+        Task { await wipeDataAction() }
     }
 
     private func ensureSupportDirectory() {
@@ -71,6 +83,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         mode = .listening
         overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
         showPanel()
+        SoundPlayer.play(.wake)
         speak("Perry here.")
     }
 
@@ -87,6 +100,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "🦫"
         item.menu = buildMenu()
+        item.menu?.delegate = self
         statusItem = item
     }
 
@@ -99,8 +113,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Do a task…", action: #selector(doPromptAction), keyEquivalent: "").target = self
         menu.addItem(.separator())
 
-        let memoryItem = NSMenuItem(title: "Memory: on", action: #selector(toggleMemoryAction), keyEquivalent: "")
+        let memoryItem = NSMenuItem(title: "Memory:…", action: #selector(toggleMemoryAction), keyEquivalent: "")
         memoryItem.target = self
+        memoryMenuItem = memoryItem
         menu.addItem(memoryItem)
 
         let wipeItem = NSMenuItem(title: "Wipe memory & logs", action: #selector(wipeDataAction), keyEquivalent: "")
@@ -114,9 +129,14 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func wakeAction() { wake() }
     @objc private func quitAction() { NSApp.terminate(nil) }
 
+    private func refreshMemoryMenuTitle() async {
+        let current = await memoryStore.currentConfiguration()
+        memoryMenuItem?.title = "Memory: \(current.enabled ? "on" : "off")"
+    }
+
     @objc private func guidePromptAction() {
         wake()
-        speak("What should I teach you? Type it or press the mic.")
+        speak("What should I teach you?")
     }
 
     @objc private func everythingAction() {
@@ -125,22 +145,21 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc private func doPromptAction() {
         wake()
-        speak("Tell me what to take off your hands.")
+        speak("What are we taking off your hands?")
     }
 
     @objc private func toggleMemoryAction() {
         Task {
             let current = await memoryStore.currentConfiguration()
             await memoryStore.setConfiguration(MemoryConfiguration(enabled: !current.enabled))
+            await refreshMemoryMenuTitle()
         }
     }
 
-    @objc private func wipeDataAction() {
-        Task {
-            await memoryStore.wipe()
-            await activityLog.wipe()
-            speak("Memory and logs wiped.")
-        }
+    @objc private func wipeDataAction() async {
+        await memoryStore.wipe()
+        await activityLog.wipe()
+        speak("Memory and logs wiped.")
     }
 
     // MARK: Panel (the type/talk surface)
@@ -149,21 +168,24 @@ final class AppController: NSObject, NSApplicationDelegate {
         if panel == nil {
             let host = NSHostingView(rootView: SessionPanelView(controller: self))
             let p = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 380, height: 120),
-                styleMask: [.titled, .nonactivatingPanel, .utilityWindow],
+                contentRect: NSRect(x: 0, y: 0, width: 340, height: 168),
+                styleMask: [.titled, .nonactivatingPanel, .utilityWindow, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
             p.contentView = host
             p.isFloatingPanel = true
             p.hidesOnDeactivate = false
+            p.isOpaque = false
+            p.backgroundColor = .clear
+            p.titlebarAppearsTransparent = true
             p.level = .floating
             panel = p
         }
         if let screen = NSScreen.main {
             let frame = screen.visibleFrame
             panel?.setFrameOrigin(
-                NSPoint(x: frame.maxX - 400, y: frame.minY + 140)
+                NSPoint(x: frame.maxX - 360, y: frame.minY + 140)
             )
         }
         panel?.orderFrontRegardless()
@@ -203,7 +225,8 @@ final class AppController: NSObject, NSApplicationDelegate {
                 present(step: step)
                 speak(step.instruction)
             case .finished:
-                speak("That's the whole flow. Nice.")
+                SoundPlayer.play(.done)
+                speak("That's the whole flow.")
                 dismiss()
             case .stillWaiting:
                 break
@@ -242,15 +265,19 @@ final class AppController: NSObject, NSApplicationDelegate {
                 accentHex: "#34D399",
                 lineWidth: 6,
                 caption: "\(marker.number). \(marker.caption)",
-                duration: 20
+                duration: Self.everythingPaintDuration
             )
         }
         overlayState.visualGuidanceOverlays.append(contentsOf: overlays)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
-            self?.overlayState.visualGuidanceOverlays.removeAll()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.everythingPaintDuration) { [weak self] in
+            guard let self else { return }
+            let paintedIDs = Set(overlays.map(\.id))
+            self.overlayState.visualGuidanceOverlays.removeAll { paintedIDs.contains($0.id) }
         }
     }
+
+    private static let everythingPaintDuration: TimeInterval = 20
 
     private func present(step: GuideStep) {
         overlayState.taskBubbleText = step.instruction
@@ -263,6 +290,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             mode = .doing
             hidePanel()
+            SoundPlayer.play(.send)
             overlayState.animation = .running
             let runtime = makeRuntime()
             let confirmer = InteractiveConfirmer(controller: self)
@@ -279,17 +307,36 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func makeRuntime() -> any AgentRuntime {
-        CLIRuntime()
+        let codex = CodexRuntime()
+        do {
+            _ = try CodexRuntime.bundledLocator()
+            return codex
+        } catch {
+            return CLIRuntime()
+        }
     }
 
     // MARK: Voice out
 
     private let synthesizer = AVSpeechSynthesizer()
 
+    /// Prefer a downloaded enhanced/premium voice (free in System Settings >
+    /// Accessibility > Spoken Content); fall back to whatever en-US exists.
+    static let speakingVoice: AVSpeechSynthesisVoice? = {
+        let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
+        return english.first { $0.quality == .premium }
+            ?? english.first { $0.quality == .enhanced }
+            ?? AVSpeechSynthesisVoice(language: "en-US")
+    }()
+
+    static func speakingVoiceDisplayName() -> String? {
+        speakingVoice?.name
+    }
+
     func speak(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = 0.5
+        utterance.voice = Self.speakingVoice
+        utterance.rate = 0.52
         synthesizer.speak(utterance)
     }
 
@@ -385,16 +432,23 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 }
 
+extension AppController: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        Task { await refreshMemoryMenuTitle() }
+    }
+}
+
 struct InteractiveConfirmer: Confirmer {
     weak var controller: AppController?
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
         guard let controller = await MainActor.run(body: { controller }) else { return false }
         let card = IntentCard(
-            title: request.actionSummary,
+            title: "About to \(request.actionSummary)",
             tier: request.tier,
             targetSummary: request.reason
         )
+        SoundPlayer.play(.receive)
         return await controller.requestIntentApproval(card: card)
     }
 }

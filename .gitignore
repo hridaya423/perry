@@ -6,3 +6,5 @@ xcuserdata/
 .build/
 vendor/
 .swiftpm/
+App/Resources/CodexRuntime/
+.swiftpm/
