@@ -149,7 +149,7 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
 }
 
 extension PerryGuidanceOverlay {
-    static func scribble(
+    public static func scribble(
         points: [CGPoint],
         accentHex: String? = nil,
         lineWidth: Double = 5,

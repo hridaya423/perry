@@ -30,6 +30,10 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Perry
+        LSUIElement: true
+        NSMicrophoneUsageDescription: "Perry uses the microphone only while you hold a session open, for on-device speech recognition."
+        NSSpeechRecognitionUsageDescription: "Perry transcribes your requests on device via Apple Speech."
+        NSAppleEventsUsageDescription: "Perry drives apps you ask it to drive."
 schemes:
   Perry:
     build:

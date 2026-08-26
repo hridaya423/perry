@@ -50,6 +50,8 @@ public enum PerryVoicePhase: Equatable {
 }
 
 public final class PerryCursorState: ObservableObject {
+    @Published public var animation: PerryBuddyAnimationState = .idle
+    @Published public var taskBubbleText: String?
     @Published public var voiceState: PerryVoicePhase = .idle
     @Published public var currentAudioPowerLevel: CGFloat = 0
     @Published public var detectedElementScreenLocation: CGPoint?

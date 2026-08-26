@@ -2059,14 +2059,14 @@ private final class ClickyAgentDockLayoutState: ObservableObject {
     }
 }
 
-class OverlayWindowManager {
+public class OverlayWindowManager {
     private var overlayWindows: [OverlayWindow] = []
     private var supervisorState: PerryCursorState?
     private var displayConfigurationObserver: NSObjectProtocol?
     private var interactivityTimer: Timer?
     var hasShownOverlayBefore = false
 
-    init() {
+    public init() {
         displayConfigurationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -2087,7 +2087,7 @@ class OverlayWindowManager {
         }
     }
 
-    func showOverlay(onScreens screens: [NSScreen], state: PerryCursorState) {
+    public func showOverlay(onScreens screens: [NSScreen], state: PerryCursorState) {
         // Hide any existing overlays
         hideOverlay(clearSupervisorState: false)
         self.supervisorState = state
@@ -2118,7 +2118,7 @@ class OverlayWindowManager {
         startInteractivityTracking()
     }
 
-    func hideOverlay() {
+    public func hideOverlay() {
         hideOverlay(clearSupervisorState: true)
     }
 
@@ -2157,7 +2157,7 @@ class OverlayWindowManager {
     }
 
     /// Fades out overlay windows over `duration` seconds, then removes them.
-    func fadeOutAndHideOverlay(duration: TimeInterval = 0.4) {
+    public func fadeOutAndHideOverlay(duration: TimeInterval = 0.4) {
         stopInteractivityTracking()
         let windowsToFade = overlayWindows
         overlayWindows.removeAll()
@@ -2176,7 +2176,7 @@ class OverlayWindowManager {
         })
     }
 
-    func isShowingOverlay() -> Bool {
+    public func isShowingOverlay() -> Bool {
         return !overlayWindows.isEmpty
     }
 

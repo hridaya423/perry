@@ -1,5 +1,6 @@
 import Foundation
 import PerryCore
+import CoreGraphics
 
 public struct AXElementFrame: Codable, Equatable, Sendable {
     public let x: Double
@@ -128,5 +129,33 @@ public struct ScreenChangeDetector: Sendable {
 
     static func fingerprint(_ element: AXElement) -> String {
         "\(element.stableID)|\(element.role.rawValue)|\(element.label ?? "")"
+    }
+}
+
+/// Accessibility reports geometry in global coordinates with a top-left
+/// origin; AppKit screens use bottom-left. Convert once, here, everywhere.
+public enum AXCoordinateConverter {
+    public static func appKitRect(
+        axX: Double,
+        axY: Double,
+        width: Double,
+        height: Double,
+        primaryScreenMaxY: Double
+    ) -> CGRect {
+        CGRect(
+            x: axX,
+            y: primaryScreenMaxY - axY - height,
+            width: width,
+            height: height
+        )
+    }
+
+    public static func appKitPoint(
+        axX: Double,
+        axY: Double,
+        primaryScreenMaxY: Double,
+        elementHeight: Double
+    ) -> CGPoint {
+        CGPoint(x: axX, y: primaryScreenMaxY - axY - elementHeight / 2)
     }
 }
