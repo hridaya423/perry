@@ -268,7 +268,7 @@ public struct AXGuidePlanner: GuidePlanner {
                 waitForUserAction: false
             )
         }
-        return nil
+        throw GuidePlannerError.blocked("No matching control is visible. Goal completion has not been verified.")
     }
 
     public func visiblePath(

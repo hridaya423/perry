@@ -13,7 +13,12 @@ private actor StubObserver: GuideObserving {
     }
 
     init(snapshots: [AXSnapshot], failureAtRead: Int? = nil) {
-        self.init(observations: snapshots.map { GuideObservation(snapshot: $0) }, failureAtRead: failureAtRead)
+        self.init(
+            observations: snapshots.map {
+                GuideObservation(snapshot: $0, processID: 42, windowID: 7, connectionGeneration: 1)
+            },
+            failureAtRead: failureAtRead
+        )
     }
 
     func observe() async throws -> GuideObservation {
@@ -68,6 +73,22 @@ final class GuideEngineTests: XCTestCase {
 
     private func snapshot(_ elements: [AXElement], bundleID: String = "com.apple.finder", title: String = "Desktop") -> AXSnapshot {
         AXSnapshot(appBundleID: bundleID, windowTitle: title, elements: elements)
+    }
+
+    private func observation(
+        _ elements: [AXElement],
+        bundleID: String = "com.apple.finder",
+        title: String = "Desktop",
+        processID: Int32? = 42,
+        windowID: Int64? = 7,
+        generation: UInt64? = 1
+    ) -> GuideObservation {
+        GuideObservation(
+            snapshot: snapshot(elements, bundleID: bundleID, title: title),
+            processID: processID,
+            windowID: windowID,
+            connectionGeneration: generation
+        )
     }
 
     // MARK: - Dynamic replanning (the Phase 4 gate)
@@ -270,7 +291,9 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         let result = await engine.userActed()
-        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        guard case .blocked = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
         let progress = await engine.progress
         XCTAssertTrue(progress.completedInstructions.isEmpty)
         let phase = await engine.phase
@@ -294,6 +317,185 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(result, .finished)
         let progress = await engine.progress
         XCTAssertEqual(progress.completedInstructions, [step.instruction])
+    }
+
+    private func postconditionEngine(before: GuideObservation, after: GuideObservation) -> GuideEngine {
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        return GuideEngine(
+            planner: QueueGuidePlanner(steps: [step]),
+            observer: StubObserver(observations: [before, after])
+        )
+    }
+
+    private func assertBlockedWithoutProgress(
+        _ result: AdvanceResult,
+        engine: GuideEngine,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        guard case .blocked = result else {
+            return XCTFail("expected blocked, got \(result)", file: file, line: line)
+        }
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty, file: file, line: line)
+    }
+
+    func testVerificationBlocksWhenProcessChanges() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                processID: 43
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    func testVerificationBlocksWhenWindowChanges() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                windowID: 8
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.userActed()
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    func testVerificationBlocksWhenGenerationChanges() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                generation: 2
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    func testVerificationBlocksWhenIdentityMetadataIsLost() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                processID: nil, windowID: nil, generation: nil
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    func testVerificationBlocksWhenBaselineIdentityIsUnavailable() async throws {
+        let engine = postconditionEngine(
+            before: observation(
+                [button("target", label: "Open")],
+                processID: nil, windowID: nil, generation: nil
+            ),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                processID: nil, windowID: nil, generation: nil
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.userActed()
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    func testMatchingIdentityWithSatisfiedPostconditionAdvances() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation([button("target", label: "Open"), button("done", label: "Done")])
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .finished)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.completedInstructions, ["open it"])
+    }
+
+    func testRefreshRejectsChangedWindowIdentity() async throws {
+        let initial = observation([button("target", label: "Open")])
+        let otherWindow = observation(
+            [AXElement(
+                stableID: "target",
+                role: .button,
+                label: "Open",
+                frame: AXElementFrame(x: 200, y: 20, width: 90, height: 30),
+                isActionable: true
+            )],
+            windowID: 8
+        )
+        let observer = StubObserver(observations: [initial, otherWindow])
+        let planner = QueueGuidePlanner(steps: [
+            GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+        ])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        do {
+            _ = try await engine.refreshPresentation()
+            XCTFail("expected blocked")
+        } catch GuidePlannerError.blocked {}
+
+        let presentation = await engine.currentPresentation()
+        XCTAssertEqual(presentation?.target?.stableID, "target")
+        XCTAssertEqual(presentation?.target?.frame.x, 10)
+    }
+
+    func testSkipBlocksAcrossChangedIdentity() async throws {
+        let initial = observation([button("a", label: "A")])
+        let otherWindow = observation([button("a", label: "A"), button("b", label: "B")], windowID: 8)
+        let observer = StubObserver(observations: [initial, otherWindow])
+        let planner = QueueGuidePlanner(steps: [
+            GuideStep(instruction: "first", target: .axElement(stableID: "a")),
+            GuideStep(instruction: "second", target: .axElement(stableID: "b")),
+        ])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.skip()
+        guard case .blocked = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
+        let progress = await engine.progress
+        XCTAssertEqual(progress.presentedCount, 1, "no new step may be presented after a blocked skip")
+    }
+
+    func testRefreshRejectsMissingTargetAndKeepsOriginalPresentation() async throws {
+        let initial = observation([button("target", label: "Open")])
+        let missingTarget = observation([button("other", label: "Other")])
+        let observer = StubObserver(observations: [initial, missingTarget])
+        let planner = QueueGuidePlanner(steps: [
+            GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+        ])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        do {
+            _ = try await engine.refreshPresentation()
+            XCTFail("expected invalidTarget")
+        } catch GuidePlannerError.invalidTarget {}
+
+        let presentation = await engine.currentPresentation()
+        XCTAssertEqual(presentation?.target?.stableID, "target")
+        XCTAssertEqual(presentation?.target?.frame.x, 10)
     }
 
     // MARK: - Target validation
@@ -346,6 +548,20 @@ final class GuideEngineTests: XCTestCase {
             _ = try await engine.start(goal: "g")
             XCTFail("expected invalidTarget")
         } catch GuidePlannerError.invalidTarget {}
+    }
+
+    func testStartRejectsUnavailableSelectedStep() async throws {
+        let selected = observation([button("a")])
+        let steps = [GuideStep(instruction: "one", target: .axElement(stableID: "a"))]
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: []),
+            observer: StubObserver(observations: [selected])
+        )
+
+        do {
+            _ = try await engine.start(goal: "g", observation: selected, steps: steps, selectedIndex: 5)
+            XCTFail("expected malformedResponse")
+        } catch GuidePlannerError.malformedResponse {}
     }
 
     func testProtectedWindowRefusesToGuide() async throws {
@@ -411,15 +627,19 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
-    func testFallbackPlannerFinishesWhenNothingMatchesAnymore() async throws {
+    func testFallbackPlannerBlocksWhenNothingMatchesAnymore() async throws {
         let planner = AXGuidePlanner()
         let observation = GuideObservation(snapshot: snapshot([button("b1", label: "Unrelated")]))
         var progress = GuideProgress()
         progress.recordPresented()
         progress.recordCompleted(GuideStep(instruction: "x", target: .axElement(stableID: "b0")))
 
-        let step = try await planner.nextStep(goal: "compose a symphony", observation: observation, progress: progress, context: .empty)
-        XCTAssertNil(step)
+        do {
+            _ = try await planner.nextStep(goal: "compose a symphony", observation: observation, progress: progress, context: .empty)
+            XCTFail("expected blocked")
+        } catch GuidePlannerError.blocked(let reason) {
+            XCTAssertTrue(reason.contains("No matching control"))
+        }
     }
 
     func testVisiblePathOnlyPaintsGroundedControls() async throws {
@@ -478,7 +698,10 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "g", maximumSteps: 1)
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .finished)
+        guard case .blocked(let reason) = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("step limit"))
     }
 
     func testTimeoutRepointsOnlyOnce() async throws {

@@ -22,7 +22,7 @@ public actor GuideEngine {
     private(set) public var progress = GuideProgress()
     private var currentStep: GuideStep?
     private var presentationObservation: GuideObservation?
-    private var actionBaseline: AXSnapshot?
+    private var actionBaseline: GuideObservation?
     private var hasRepointed = false
     private var goal = ""
     private var context: GuideContext = .empty
@@ -67,8 +67,7 @@ public actor GuideEngine {
     ) throws -> GuideStep? {
         reset(goal: goal, context: context, maximumSteps: maximumSteps)
         guard steps.indices.contains(selectedIndex) else {
-            phase = .finished
-            return nil
+            throw GuidePlannerError.malformedResponse("selected guide step is unavailable")
         }
         try GuideTargetValidator.requireUnprotected(observation)
         for prior in steps[..<selectedIndex] {
@@ -98,13 +97,15 @@ public actor GuideEngine {
     /// explicit user Re-point request; the automatic quiet-minute repoint
     /// stays one-shot.
     public func refreshPresentation(force: Bool = false) async throws -> GuidePresentation? {
-        guard currentStep != nil else { return nil }
+        guard let step = currentStep, let baseline = presentationObservation else { return nil }
         guard !hasRepointed || force else { return currentPresentation() }
         hasRepointed = true
         let observation = try await observer.observe()
         try GuideTargetValidator.requireUnprotected(observation)
+        try requireSameTarget(observation, as: baseline)
+        try GuideTargetValidator.validated(step, in: observation)
         presentationObservation = observation
-        actionBaseline = observation.snapshot
+        actionBaseline = observation
         return currentPresentation()
     }
 
@@ -162,6 +163,7 @@ public actor GuideEngine {
     }
 
     private func reset(goal: String, context: GuideContext, maximumSteps: Int?) {
+        phase = .idle
         self.goal = goal
         self.context = context
         self.maximumSteps = maximumSteps
@@ -179,18 +181,20 @@ public actor GuideEngine {
         }
     }
 
-    private func verifyAndAdvance(step: GuideStep, baseline: AXSnapshot, stepIndex: Int) async -> AdvanceResult {
+    private func verifyAndAdvance(step: GuideStep, baseline: GuideObservation, stepIndex: Int) async -> AdvanceResult {
         let after: GuideObservation
         do {
             try await Task.sleep(nanoseconds: 250_000_000)
             after = try await observer.observe()
+            try GuideTargetValidator.requireUnprotected(after)
+            try requireSameTarget(after, as: baseline)
         } catch is CancellationError {
             return .notPresenting
         } catch {
             phase = .waitingForUser(stepIndex: stepIndex)
             return .blocked(reason: "Cua could not verify that step: \(error.localizedDescription)")
         }
-        guard isVerified(step: step, before: baseline, after: after.snapshot) else {
+        guard isVerified(step: step, before: baseline.snapshot, after: after.snapshot) else {
             phase = .waitingForUser(stepIndex: stepIndex)
             return .stillWaiting(stepIndex: stepIndex)
         }
@@ -221,9 +225,12 @@ public actor GuideEngine {
     /// Planner call wrapped in the trust boundary: protected observations and
     /// targets that don't validate against the live window both throw.
     private func nextValidStep(observation: GuideObservation) async throws -> GuideStep? {
-        if let maximumSteps, progress.presentedCount >= maximumSteps { return nil }
-        try Task.checkCancellation()
         try GuideTargetValidator.requireUnprotected(observation)
+        if let baseline = presentationObservation { try requireSameTarget(observation, as: baseline) }
+        if let maximumSteps, progress.presentedCount >= maximumSteps {
+            throw GuidePlannerError.blocked("The guide reached its step limit. Goal completion has not been verified.")
+        }
+        try Task.checkCancellation()
         guard let step = try await planner.nextStep(
             goal: goal,
             observation: observation,
@@ -236,9 +243,21 @@ public actor GuideEngine {
     private func present(_ step: GuideStep, observation: GuideObservation) {
         currentStep = step
         presentationObservation = observation
-        actionBaseline = observation.snapshot
+        actionBaseline = observation
         progress.recordPresented()
         phase = .presenting(stepIndex: progress.presentedCount - 1)
+    }
+
+    private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation) throws {
+        guard let processID = baseline.processID,
+              let windowID = baseline.windowID,
+              let generation = baseline.connectionGeneration,
+              observation.snapshot.appBundleID == baseline.snapshot.appBundleID,
+              observation.processID == processID,
+              observation.windowID == windowID,
+              observation.connectionGeneration == generation else {
+            throw GuidePlannerError.blocked("The target window changed or its identity is unavailable. Start a new guide.")
+        }
     }
 
     private func isVerified(step: GuideStep, before: AXSnapshot, after: AXSnapshot) -> Bool {
