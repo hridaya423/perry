@@ -13,6 +13,7 @@ final class RoutineLibraryController {
     private let setStatus: (String) -> Void
     private let speak: (String) -> Void
     private let runRoutine: (LearnedRoutine) -> Void
+    private let onRecordingChanged: (Bool) -> Void
 
     private var recorder: DemonstrationRecorder?
     private var pendingRoutine: LearnedRoutine?
@@ -25,7 +26,8 @@ final class RoutineLibraryController {
         context: GuideSessionContext?,
         setStatus: @escaping (String) -> Void,
         speak: @escaping (String) -> Void,
-        runRoutine: @escaping (LearnedRoutine) -> Void
+        runRoutine: @escaping (LearnedRoutine) -> Void,
+        onRecordingChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.store = store
         self.workers = workers
@@ -33,6 +35,7 @@ final class RoutineLibraryController {
         self.setStatus = setStatus
         self.speak = speak
         self.runRoutine = runRoutine
+        self.onRecordingChanged = onRecordingChanged
     }
 
     var isRecording: Bool { recorder?.isRecording ?? false }
@@ -73,6 +76,7 @@ final class RoutineLibraryController {
         reviewState.beginRecording()
         showReviewWindow()
         recorder.start()
+        onRecordingChanged(true)
         setStatus("Recording a demonstration — show me the workflow, then Stop & review.")
         speak("Recording. Show me the workflow, then stop and review.")
     }
@@ -81,6 +85,7 @@ final class RoutineLibraryController {
         guard let recorder else { return }
         let demonstration = await recorder.stop()
         self.recorder = nil
+        onRecordingChanged(false)
         guard let demonstration else {
             closeReview()
             setStatus("Nothing was recorded, so there is no routine to review.")
@@ -112,7 +117,10 @@ final class RoutineLibraryController {
     private func discardPendingReview() {
         pendingRoutine = nil
         Task { _ = await recorder?.stop() }
-        recorder = nil
+        if recorder != nil {
+            recorder = nil
+            onRecordingChanged(false)
+        }
         closeReview()
     }
 

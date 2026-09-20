@@ -119,7 +119,7 @@ final class RoutineReviewWindow: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         ignoresMouseEvents = false
-        contentView = NSHostingView(
+        let hostingView = NSHostingView(
             rootView: RoutineReviewView(
                 state: state,
                 onStopRecording: onStopRecording,
@@ -127,6 +127,11 @@ final class RoutineReviewWindow: NSPanel {
                 onSave: onSave
             )
         )
+        // sizeToFit manages the frame explicitly — keep the hosting view out
+        // of window extrema negotiation or repeated published updates can
+        // re-invalidate constraints every pass (AppKit throws).
+        hostingView.sizingOptions = []
+        contentView = hostingView
         sizeObserver = state.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.sizeToFit() }
         }

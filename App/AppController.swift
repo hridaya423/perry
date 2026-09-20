@@ -286,13 +286,18 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         notifier: notifier,
         activityLog: activityLog
     )
+    private lazy var notchStatus = NotchStatusController()
+    private var lastBackgroundCount = 0
     private lazy var routineLibrary = RoutineLibraryController(
         store: RoutineStore(storageDirectory: storageDirectory),
         workers: workers,
         context: self,
         setStatus: { [weak self] status in self?.sessionStatus = status },
         speak: { [weak self] text in self?.voice.speak(text) },
-        runRoutine: { [weak self] routine in self?.foreground.startRoutine(routine) }
+        runRoutine: { [weak self] routine in self?.foreground.startRoutine(routine) },
+        onRecordingChanged: { [weak self] recording in
+            self?.notchStatus.update(isRecording: recording, backgroundCount: self?.lastBackgroundCount ?? 0)
+        }
     )
     private lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: storageDirectory)
     lazy var backgroundTasks: BackgroundTaskController = {
@@ -302,6 +307,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             recordCountChanged: { [weak self] count in
                 self?.backgroundTasksMenuItem?.title = "Background Tasks (\(count))"
+                self?.lastBackgroundCount = count
+                self?.notchStatus.update(isRecording: self?.routineLibrary.isRecording ?? false, backgroundCount: count)
             }
         )
 #if DEBUG
@@ -350,6 +357,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private var onboardingFlow: OnboardingFlow?
     private var memoryMenuItem: NSMenuItem?
+    private var notchStatusMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
     private var recordDemoMenuItem: NSMenuItem?
     private var watchLearnMenu: NSMenu?
@@ -892,6 +900,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         memoryMenuItem = memoryItem
         menu.addItem(memoryItem)
 
+        let notchItem = NSMenuItem(title: "Notch status", action: #selector(toggleNotchStatusAction(_:)), keyEquivalent: "")
+        notchItem.target = self
+        notchItem.state = notchStatus.isEnabled ? .on : .off
+        notchStatusMenuItem = notchItem
+        menu.addItem(notchItem)
+
         let wipeItem = NSMenuItem(title: "Erase all Perry data…", action: #selector(wipeDataAction), keyEquivalent: "")
         wipeItem.target = self
         menu.addItem(wipeItem)
@@ -921,6 +935,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     @objc private func recordDemoAction() {
         routineLibrary.toggleRecording()
+    }
+
+    @objc private func toggleNotchStatusAction(_ sender: NSMenuItem) {
+        let enabled = !notchStatus.isEnabled
+        notchStatus.setEnabled(enabled)
+        sender.state = enabled ? .on : .off
+        if enabled {
+            notchStatus.update(isRecording: routineLibrary.isRecording, backgroundCount: lastBackgroundCount)
+        }
     }
 
     @objc private func runRoutineAction(_ sender: NSMenuItem) {
@@ -1189,6 +1212,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func prepareForTermination() async throws {
         backgroundTasks.closeControls()
         askController.cancel()
+        notchStatus.hide()
         routineLibrary.stop()
         guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
@@ -1211,6 +1235,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func stopWorkForErasure() async {
         demoDirector.cancel()
         askController.cancel()
+        notchStatus.hide()
         routineLibrary.stop()
         await guideCoordinator.stopForErasure()
         spatialMonitor.stop()
