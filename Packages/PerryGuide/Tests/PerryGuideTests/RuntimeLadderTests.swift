@@ -249,6 +249,11 @@ final class RuntimeGuidePlannerTests: XCTestCase {
             "```json\n{\"step\":{\"instruction\":\"x\",\"target\":\"b1\"}}\n```",
             #"{"done":true} {"step":{"instruction":"x","target":"b1"}}"#,
             #"{"done":false}"#,
+            #"{"done":false,"done":true}"#,
+            #"{"done":true,}"#,
+            #"{"needs_input":{"prompt":"Which?","choices":["a",]}}"#,
+            #"{"step":{"instruction":"x","target":"b1","target":"s1"}}"#,
+            #"{"step":{"instruction":"x","target":"b1","\u0074arget":"s1"}}"#,
             #"{"done":1}"#,
             #"{"done":true,"step":{"instruction":"x","target":"b1"}}"#,
             #"{"step":{"instruction":"x","target":"b1"},"extra":1}"#,
@@ -350,6 +355,12 @@ final class RuntimeGuidePlannerTests: XCTestCase {
             observation: observation()
         )
         XCTAssertEqual(decision, .blocked(reason: "no matching control is visible"))
+    }
+
+    func testJSONKeysAreScopedToTheirOwnObjectAndStringsStayOpaque() throws {
+        let object = try RuntimeGuidePlanner.strictJSONObject(#"{"items":[{"key":"escaped quote: \" and colon: : and braces: {}"},{"key":"backslash: \\"}]}"#)
+        XCTAssertEqual((object["items"] as? [[String: String]])?.count, 2)
+        XCTAssertThrowsError(try RuntimeGuidePlanner.strictJSONObject(String(repeating: " ", count: 65_537) + #"{"done":true}"#))
     }
 
     func testNeedsInputSchemaIsAccepted() throws {

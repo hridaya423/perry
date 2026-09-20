@@ -140,9 +140,47 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         return number.doubleValue
     }
 
-    private static func strictJSONObject(_ text: String) throws -> [String: Any] {
-        guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
-            throw GuidePlannerError.malformedResponse("response was not a JSON object")
+    static func strictJSONObject(_ text: String) throws -> [String: Any] {
+        guard text.utf8.count <= 65_536,
+              let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
+            throw GuidePlannerError.malformedResponse("response must be a JSON object of at most 64 KiB")
+        }
+        let bytes = Array(text.utf8)
+        var objects: [Set<String>?] = []
+        var index = 0
+        while index < bytes.count {
+            switch bytes[index] {
+            case 123:
+                objects.append([])
+            case 91:
+                objects.append(nil)
+            case 125, 93:
+                objects.removeLast()
+            case 44:
+                var next = index + 1
+                while next < bytes.count, [9, 10, 13, 32].contains(bytes[next]) { next += 1 }
+                guard next < bytes.count, bytes[next] != 125, bytes[next] != 93 else {
+                    throw GuidePlannerError.malformedResponse("trailing JSON comma")
+                }
+            case 34:
+                let start = index
+                index += 1
+                while index < bytes.count, bytes[index] != 34 {
+                    index += bytes[index] == 92 ? 2 : 1
+                }
+                var next = index + 1
+                while next < bytes.count, [9, 10, 13, 32].contains(bytes[next]) { next += 1 }
+                if next < bytes.count, bytes[next] == 58 {
+                    let key = try JSONDecoder().decode(String.self, from: Data(bytes[start...index]))
+                    guard !objects.isEmpty,
+                          objects[objects.count - 1]?.insert(key).inserted == true else {
+                        throw GuidePlannerError.malformedResponse("duplicate JSON key")
+                    }
+                }
+            default:
+                break
+            }
+            index += 1
         }
         return object
     }
