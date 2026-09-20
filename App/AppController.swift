@@ -294,7 +294,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         context: self,
         setStatus: { [weak self] status in self?.sessionStatus = status },
         speak: { [weak self] text in self?.voice.speak(text) },
-        runRoutine: { [weak self] routine in self?.foreground.startRoutine(routine) },
+        runRoutine: { [weak self] routine, parameters in self?.foreground.startRoutine(routine, parameters: parameters) },
         onRecordingChanged: { [weak self] recording in
             self?.notchStatus.update(isRecording: recording, backgroundCount: self?.lastBackgroundCount ?? 0)
         }

@@ -135,6 +135,17 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertTrue(plan.actions.allSatisfy { $0.approvalRequirement == .plan })
     }
 
+    func testRequiredParametersEnumeratesOnlyParameterSlots() throws {
+        let routine = try LearnedRoutine(name: "Fill", bundleID: "com.example.app", steps: [
+            RoutineStep(summary: "Click Search", target: fieldTarget, action: .click),
+            RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "query", prompt: "Search for what?"))),
+            RoutineStep(summary: "Type fixed", target: fieldTarget, action: .typeText(.literal("fixed"))),
+            RoutineStep(summary: "Type more", target: fieldTarget, action: .typeText(.parameter(name: "extra", prompt: "Extra text?")))
+        ])
+        XCTAssertEqual(routine.requiredParameters.map(\.name), ["query", "extra"])
+        XCTAssertEqual(routine.requiredParameters.map(\.prompt), ["Search for what?", "Extra text?"])
+    }
+
     func testReplayFillsParametersAndDropsWaitSteps() throws {
         let routine = try LearnedRoutine(name: "Fill", bundleID: "com.example.app", steps: [
             RoutineStep(summary: "Wait", action: .wait(milliseconds: 400)),

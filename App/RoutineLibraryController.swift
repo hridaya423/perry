@@ -12,11 +12,12 @@ final class RoutineLibraryController {
     private let context: GuideSessionContext?
     private let setStatus: (String) -> Void
     private let speak: (String) -> Void
-    private let runRoutine: (LearnedRoutine) -> Void
+    private let runRoutine: (LearnedRoutine, [String: String]) -> Void
     private let onRecordingChanged: (Bool) -> Void
 
     private var recorder: DemonstrationRecorder?
     private var pendingRoutine: LearnedRoutine?
+    private var pendingRun: LearnedRoutine?
     private var reviewWindow: RoutineReviewWindow?
     private let reviewState = RoutineReviewState()
 
@@ -26,7 +27,7 @@ final class RoutineLibraryController {
         context: GuideSessionContext?,
         setStatus: @escaping (String) -> Void,
         speak: @escaping (String) -> Void,
-        runRoutine: @escaping (LearnedRoutine) -> Void,
+        runRoutine: @escaping (LearnedRoutine, [String: String]) -> Void,
         onRecordingChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.store = store
@@ -43,7 +44,21 @@ final class RoutineLibraryController {
     func routines() -> [LearnedRoutine] { store.all() }
 
     func run(_ routine: LearnedRoutine) {
-        runRoutine(routine)
+        let required = routine.requiredParameters
+        guard !required.isEmpty else {
+            runRoutine(routine, [:])
+            return
+        }
+        pendingRun = routine
+        reviewState.beginFillParameters(routineName: routine.name, parameters: required)
+        showReviewWindow()
+    }
+
+    private func runPendingRoutine() {
+        guard let routine = pendingRun else { return }
+        pendingRun = nil
+        closeReview()
+        runRoutine(routine, reviewState.parameterValues)
     }
 
     func remove(_ routine: LearnedRoutine) {
@@ -104,6 +119,15 @@ final class RoutineLibraryController {
     private func savePendingRoutine() {
         guard var routine = pendingRoutine else { return }
         routine.name = reviewState.name
+        for index in reviewState.parameterizedSteps {
+            guard routine.steps.indices.contains(index),
+                  case .typeText(.literal) = routine.steps[index].action else { continue }
+            let field = routine.steps[index].target?.label ?? "this field"
+            routine.steps[index].action = .typeText(
+                .parameter(name: "text-\(index)", prompt: "Text for \(field)")
+            )
+            routine.steps[index].summary = "Type text I'll give you into \(field)"
+        }
         do {
             try store.save(routine)
             setStatus("Saved routine \"\(routine.name)\" — run it from the menu.")
@@ -116,6 +140,7 @@ final class RoutineLibraryController {
 
     private func discardPendingReview() {
         pendingRoutine = nil
+        pendingRun = nil
         Task { _ = await recorder?.stop() }
         if recorder != nil {
             recorder = nil
@@ -135,7 +160,8 @@ final class RoutineLibraryController {
                 state: reviewState,
                 onStopRecording: { [weak self] in Task { await self?.stopRecordingForReview() } },
                 onDiscard: { [weak self] in self?.discardPendingReview() },
-                onSave: { [weak self] in self?.savePendingRoutine() }
+                onSave: { [weak self] in self?.savePendingRoutine() },
+                onRun: { [weak self] in self?.runPendingRoutine() }
             )
         }
         reviewWindow?.show(on: NSScreen.main)

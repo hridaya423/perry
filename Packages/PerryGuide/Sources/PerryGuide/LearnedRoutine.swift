@@ -44,6 +44,15 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         self.steps = steps
         self.createdAt = createdAt
     }
+
+    /// Parameter slots the routine asks the user to fill at run time, in step
+    /// order. Empty means the routine runs as recorded with nothing to prompt.
+    public var requiredParameters: [(name: String, prompt: String)] {
+        steps.compactMap { step in
+            if case .typeText(.parameter(let name, let prompt)) = step.action { return (name, prompt) }
+            return nil
+        }
+    }
 }
 
 public enum RoutineError: Error, Equatable {

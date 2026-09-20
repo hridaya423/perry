@@ -8,23 +8,45 @@ import SwiftUI
 /// review — the inferred steps, a name field, and Save/Discard. Nothing is
 /// saved until the user reviews it.
 final class RoutineReviewState: ObservableObject {
-    enum Phase { case recording, review }
+    enum Phase { case recording, review, fillParameters }
 
     @Published var phase: Phase = .recording
     @Published var eventCount = 0
     @Published var name = ""
     @Published var steps: [RoutineStep] = []
+    @Published var parameterizedSteps: Set<Int> = []
+    @Published var parameterPrompts: [(name: String, prompt: String)] = []
+    @Published var parameterValues: [String: String] = [:]
 
     func beginRecording() {
         phase = .recording
         eventCount = 0
         name = ""
         steps = []
+        parameterizedSteps = []
+        parameterPrompts = []
+        parameterValues = [:]
     }
 
     func presentReview(steps: [RoutineStep]) {
         phase = .review
         self.steps = steps
+        parameterizedSteps = []
+    }
+
+    func toggleParameter(_ index: Int) {
+        if parameterizedSteps.contains(index) {
+            parameterizedSteps.remove(index)
+        } else {
+            parameterizedSteps.insert(index)
+        }
+    }
+
+    func beginFillParameters(routineName: String, parameters: [(name: String, prompt: String)]) {
+        phase = .fillParameters
+        name = routineName
+        parameterPrompts = parameters
+        parameterValues = [:]
     }
 }
 
@@ -33,12 +55,14 @@ struct RoutineReviewView: View {
     let onStopRecording: () -> Void
     let onDiscard: () -> Void
     let onSave: () -> Void
+    let onRun: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
             switch state.phase {
             case .recording: recordingContent
             case .review: reviewContent
+            case .fillParameters: fillParametersContent
             }
         }
         .padding(.horizontal, PerryTheme.Spacing.section)
@@ -73,9 +97,23 @@ struct RoutineReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(state.steps.enumerated()), id: \.offset) { index, step in
-                        Text("\(index + 1). \(step.summary)")
-                            .font(.callout)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(index + 1). \(step.summary)")
+                                .font(.callout)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if case .typeText = step.action {
+                                Toggle(
+                                    "Ask for this text each run",
+                                    isOn: Binding(
+                                        get: { state.parameterizedSteps.contains(index) },
+                                        set: { _ in state.toggleParameter(index) }
+                                    )
+                                )
+                                .toggleStyle(.checkbox)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }
@@ -92,6 +130,29 @@ struct RoutineReviewView: View {
             }
         }
     }
+
+    private var fillParametersContent: some View {
+        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
+            Text("Run \"\(state.name)\"")
+                .font(.headline)
+            ForEach(Array(state.parameterPrompts.enumerated()), id: \.offset) { index, parameter in
+                TextField(
+                    parameter.prompt,
+                    text: Binding(
+                        get: { state.parameterValues[parameter.name] ?? "" },
+                        set: { state.parameterValues[parameter.name] = $0 }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Button("Cancel") { onDiscard() }
+                Spacer(minLength: 0)
+                Button("Run") { onRun() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+    }
 }
 
 final class RoutineReviewWindow: NSPanel {
@@ -102,7 +163,8 @@ final class RoutineReviewWindow: NSPanel {
         state: RoutineReviewState,
         onStopRecording: @escaping () -> Void,
         onDiscard: @escaping () -> Void,
-        onSave: @escaping () -> Void
+        onSave: @escaping () -> Void,
+        onRun: @escaping () -> Void
     ) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 340, height: 120),
@@ -124,7 +186,8 @@ final class RoutineReviewWindow: NSPanel {
                 state: state,
                 onStopRecording: onStopRecording,
                 onDiscard: onDiscard,
-                onSave: onSave
+                onSave: onSave,
+                onRun: onRun
             )
         )
         // sizeToFit manages the frame explicitly — keep the hosting view out
