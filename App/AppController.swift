@@ -286,6 +286,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         notifier: notifier,
         activityLog: activityLog
     )
+    private lazy var routineLibrary = RoutineLibraryController(
+        store: RoutineStore(storageDirectory: storageDirectory),
+        workers: workers,
+        context: self,
+        setStatus: { [weak self] status in self?.sessionStatus = status },
+        speak: { [weak self] text in self?.voice.speak(text) },
+        runRoutine: { [weak self] routine in self?.foreground.startRoutine(routine) }
+    )
     private lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: storageDirectory)
     lazy var backgroundTasks: BackgroundTaskController = {
         let hooks = BackgroundTaskController.Hooks(
@@ -343,6 +351,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var onboardingFlow: OnboardingFlow?
     private var memoryMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
+    private var recordDemoMenuItem: NSMenuItem?
+    private var watchLearnMenu: NSMenu?
     private var activeSpatialSelection: SpatialSelection?
     private var backgroundPromptTask: Task<Void, Never>?
     private var terminationPrepared = false
@@ -831,6 +841,17 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         backgroundTasksMenuItem = backgroundTasksItem
         menu.addItem(backgroundTasksItem)
         menu.addItem(withTitle: "Retry last task", action: #selector(retryAction), keyEquivalent: "").target = self
+        let watchItem = NSMenuItem(title: "Watch & Learn", action: nil, keyEquivalent: "")
+        let watchMenu = NSMenu()
+        watchMenu.delegate = self
+        let recordItem = NSMenuItem(title: "Record a demonstration…", action: #selector(recordDemoAction), keyEquivalent: "")
+        recordItem.target = self
+        recordDemoMenuItem = recordItem
+        watchMenu.addItem(recordItem)
+        watchMenu.addItem(.separator())
+        watchItem.submenu = watchMenu
+        watchLearnMenu = watchMenu
+        menu.addItem(watchItem)
 #if DEBUG
         menu.addItem(withTitle: "Run live Perry demo", action: #selector(demoAction), keyEquivalent: "").target = self
         let drills = NSMenuItem(title: "Failure drills", action: nil, keyEquivalent: "")
@@ -896,6 +917,35 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     @objc private func guidePromptAction() {
         wake()
         voice.speak("What should I teach you?")
+    }
+
+    @objc private func recordDemoAction() {
+        routineLibrary.toggleRecording()
+    }
+
+    @objc private func runRoutineAction(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let id = UUID(uuidString: raw),
+              let routine = routineLibrary.routines().first(where: { $0.id == id }) else { return }
+        routineLibrary.run(routine)
+    }
+
+    private func refreshWatchLearnMenu(_ menu: NSMenu) {
+        recordDemoMenuItem?.title = routineLibrary.isRecording ? "Stop recording & review" : "Record a demonstration…"
+        while menu.items.count > 2 { menu.removeItem(at: menu.items.count - 1) }
+        let routines = routineLibrary.routines()
+        guard !routines.isEmpty else {
+            let empty = NSMenuItem(title: "No routines yet", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+            return
+        }
+        for routine in routines {
+            let item = NSMenuItem(title: "Run \"\(routine.name)\"", action: #selector(runRoutineAction(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = routine.id.uuidString
+            menu.addItem(item)
+        }
     }
 
     @objc private func everythingAction() {
@@ -1139,6 +1189,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func prepareForTermination() async throws {
         backgroundTasks.closeControls()
         askController.cancel()
+        routineLibrary.stop()
         guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
         voice.cancelInput()
@@ -1160,6 +1211,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func stopWorkForErasure() async {
         demoDirector.cancel()
         askController.cancel()
+        routineLibrary.stop()
         await guideCoordinator.stopForErasure()
         spatialMonitor.stop()
         foreground.cancelStartTask()
@@ -1847,6 +1899,10 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
 
 extension AppController: NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === watchLearnMenu {
+            refreshWatchLearnMenu(menu)
+            return
+        }
         Task { await refreshMemoryMenuTitle() }
     }
 }

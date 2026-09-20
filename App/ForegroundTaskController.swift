@@ -215,24 +215,7 @@ final class ForegroundTaskController: ObservableObject {
             voice.speak("I’m already working on a task. Stop or pause that one first.")
             return nil
         }
-        guard taskStartIsCurrent(attemptID) else { return nil }
-        let permissions = await probe.permissionSnapshot()
-        guard taskStartIsCurrent(attemptID) else { return nil }
-        guard permissions.requiredPermissionsGranted else {
-            guard taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus("Accessibility and Screen Recording are required for a grounded task.")
-            voice.speak("I need Accessibility and Screen Recording permission before I can safely take that on.")
-            hooks.requestOnboarding()
-            return nil
-        }
-        let cuaHealth = await probe.cuaHealth()
-        guard taskStartIsCurrent(attemptID) else { return nil }
-        guard cuaHealth.ready else {
-            guard taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus(cuaHealth.summary)
-            voice.speak(cuaHealth.summary)
-            return nil
-        }
+        guard await preflight(attemptID: attemptID) else { return nil }
         do {
             return try await workers.withWorker(scope: .foreground, resources: []) { worker in
                 try await self.runForegroundOperation(
@@ -248,6 +231,130 @@ final class ForegroundTaskController: ObservableObject {
             voice.speak("Perry could not complete the task safely: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    /// Permission and driver-health gates every foreground flow shares —
+    /// goal planning, routine replay, anything that will touch the screen.
+    private func preflight(attemptID: UUID) async -> Bool {
+        guard taskStartIsCurrent(attemptID) else { return false }
+        let permissions = await probe.permissionSnapshot()
+        guard taskStartIsCurrent(attemptID) else { return false }
+        guard permissions.requiredPermissionsGranted else {
+            guard taskStartIsCurrent(attemptID) else { return false }
+            hooks.setStatus("Accessibility and Screen Recording are required for a grounded task.")
+            voice.speak("I need Accessibility and Screen Recording permission before I can safely take that on.")
+            hooks.requestOnboarding()
+            return false
+        }
+        let cuaHealth = await probe.cuaHealth()
+        guard taskStartIsCurrent(attemptID) else { return false }
+        guard cuaHealth.ready else {
+            guard taskStartIsCurrent(attemptID) else { return false }
+            hooks.setStatus(cuaHealth.summary)
+            voice.speak(cuaHealth.summary)
+            return false
+        }
+        return true
+    }
+
+    // MARK: Routine replay
+
+    /// Runs a reviewed learned routine. The typed plan is rebuilt from a
+    /// fresh observation of the routine's own app window — recorded
+    /// coordinates are never replayed — then it flows through the same
+    /// rehearsal, approval, and verification gates as a planned task.
+    func startRoutine(_ routine: LearnedRoutine, parameters: [String: String] = [:]) {
+        guard !hooks.isErasureInProgress() else {
+            voice.speak("I’m finishing a data erase before starting anything new.")
+            return
+        }
+        guard activeSupervisor == nil, !startIsInFlight else {
+            voice.speak("I’m already working on a task. Stop or pause that one first.")
+            return
+        }
+        let attemptID = UUID()
+        guard beginInvokingIfNeeded(attemptID: attemptID) else { return }
+        doStartTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.cancelInvocationIfCurrent(attemptID)
+                self.doStartTask = nil
+            }
+            _ = await self.beginRoutine(routine, parameters: parameters, attemptID: attemptID)
+        }
+    }
+
+    private func beginRoutine(
+        _ routine: LearnedRoutine,
+        parameters: [String: String],
+        attemptID: UUID
+    ) async -> DoOutcome? {
+        guard activeSupervisor == nil else {
+            guard taskStartIsCurrent(attemptID) else { return nil }
+            voice.speak("I’m already working on a task. Stop or pause that one first.")
+            return nil
+        }
+        guard await preflight(attemptID: attemptID) else { return nil }
+        do {
+            return try await workers.withWorker(scope: .foreground, resources: []) { worker in
+                try await self.runRoutineOperation(
+                    routine: routine,
+                    parameters: parameters,
+                    attemptID: attemptID,
+                    worker: worker
+                )
+            }
+        } catch {
+            guard !(error is CancellationError), taskStartIsCurrent(attemptID) else { return nil }
+            hooks.setStatus("Perry could not run the routine: \(error.localizedDescription)")
+            voice.speak("Perry could not run the routine: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func runRoutineOperation(
+        routine: LearnedRoutine,
+        parameters: [String: String],
+        attemptID: UUID,
+        worker: CuaWorkerHandle
+    ) async throws -> DoOutcome? {
+        guard taskStartIsCurrent(attemptID) else { return nil }
+        let workspace = try Self.makeTaskWorkspace()
+        try await worker.claimResources([.workspace(workspace.standardizedFileURL.path)])
+        let captured = await probe.captureScreenContext(worker: worker)
+        guard taskStartIsCurrent(attemptID) else { return nil }
+        guard EnvironmentProbe.captureIsUsable(captured.context) else {
+            hooks.setStatus("Cua could not capture the target window, so Perry stopped before replaying.")
+            voice.speak("Cua could not capture the target window, so Perry stopped before replaying.")
+            return nil
+        }
+        // Fresh observation of the routine's own app window; the plan binds
+        // to whatever that window is right now.
+        let targetStore = CuaGuideTargetStore()
+        await targetStore.set(CuaTargetHint(bundleID: routine.bundleID, processID: nil, windowTitle: nil))
+        let observation = try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe()
+        let plan = try RoutineReplay.plan(
+            routine: routine,
+            observation: observation,
+            taskID: TaskID(UUID().uuidString),
+            parameters: parameters
+        )
+        let title = observation.snapshot.windowTitle
+        let targetWindow = WindowContext(
+            appBundleID: routine.bundleID,
+            title: title.isEmpty ? "Routine target" : title
+        )
+        return try await executePreparedPlan(
+            plan: plan,
+            goal: routine.name,
+            attemptID: attemptID,
+            captured: captured,
+            targetWindow: targetWindow,
+            worker: worker,
+            workspace: workspace,
+            sandboxLabel: "the learned routine",
+            initialWarnings: []
+        )
     }
 
     private func runForegroundOperation(
@@ -294,6 +401,37 @@ final class ForegroundTaskController: ObservableObject {
             context: .screen(captured.context)
         )
         let plan = try await runtimeSelection.provider.plan(request)
+        return try await executePreparedPlan(
+            plan: plan,
+            goal: goal,
+            attemptID: attemptID,
+            captured: captured,
+            targetWindow: targetWindow,
+            worker: worker,
+            workspace: workspace,
+            sandboxLabel: runtimes.name(for: runtimeSelection.providerID.rawValue),
+            initialWarnings: runtimeSelection.explanation.fallbackReason.map { [$0] } ?? []
+        )
+    }
+
+    /// The post-plan half of every foreground task: publication gate,
+    /// resource claims, session start, activity strip, supervisor. Shared by
+    /// the planner path and by routine replay, which arrives with its typed
+    /// plan already built from a fresh observation.
+    private func executePreparedPlan(
+        plan: ExecutionPlan,
+        goal: String,
+        attemptID: UUID,
+        captured: (context: ScreenContext, target: CuaWindowTarget?),
+        targetWindow: WindowContext?,
+        worker: CuaWorkerHandle,
+        workspace: URL,
+        sandboxLabel: String,
+        initialWarnings: [String]
+    ) async throws -> DoOutcome? {
+        // The execution session keeps the plan's own task ID so history,
+        // grants, and transcripts describe one task end to end.
+        let taskUUID = UUID(uuidString: plan.taskID.rawValue) ?? UUID()
         let typedExecutor = typedActionRouter(worker: worker, workspace: workspace)
         // Publication gate: nothing reaches the supervisor unless every action
         // is supported by this executor surface, bound to this workspace, and
@@ -316,12 +454,12 @@ final class ForegroundTaskController: ObservableObject {
             appBundleID: targetWindow?.appBundleID,
             workspace: workspace,
             lifecycle: .starting,
-            initialWarnings: runtimeSelection.explanation.fallbackReason.map { [$0] } ?? []
+            initialWarnings: initialWarnings
         )
         guard beginInvokingIfNeeded(attemptID: attemptID), transitionSession({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
             return nil
         }
-        hooks.setStatus("Perry is preparing a safe sandbox with \(runtimes.name(for: runtimeSelection.providerID.rawValue)).")
+        hooks.setStatus("Perry is preparing a safe sandbox with \(sandboxLabel).")
         hooks.setTranscriptPreview(goal)
         activityStripWindow?.setExpanded(false, animate: false)
         hooks.stopSpatialMonitoring()

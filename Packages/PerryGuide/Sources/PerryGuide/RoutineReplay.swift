@@ -13,6 +13,20 @@ public enum RoutineReplayError: Error, Equatable {
     case noExecutableSteps
 }
 
+extension RoutineReplayError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .wrongApplication: return "this routine belongs to a different app than the observed window"
+        case .windowIdentityUnavailable: return "the routine's window could not be identified"
+        case .targetNotFound(let step): return "step \(step + 1)'s control is no longer on screen"
+        case .ambiguousTarget(let step): return "step \(step + 1)'s control matches more than one element"
+        case .missingParameter(let name): return "the routine needs a value for \"\(name)\""
+        case .missingVisualBaseline(let step): return "step \(step + 1) could not capture a visual baseline"
+        case .noExecutableSteps: return "the routine has no executable steps"
+        }
+    }
+}
+
 /// Turns a reviewed routine back into a typed execution plan. Every target
 /// is re-resolved against a fresh observation — recorded coordinates are
 /// never replayed — and every step declares the observable postcondition the
