@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-30T08:44:17Z",
+  "build": {
+    "configuration": "Debug",
+    "architecture": "arm64",
+    "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+    "git_dirty": true,
+    "xcode": "26.6 (17F113)"
+  },
+  "host": {
+    "model": "Mac16,7",
+    "macos": "26.5.1 (25F80)",
+    "appearance": "dark",
+    "keyboard_navigation_enabled": true
+  },
+  "fixture": {
+    "surfaces": [
+      "settings",
+      "onboarding"
+    ],
+    "text_scale": "SwiftUI DynamicTypeSize.accessibility3",
+    "permissions": "deterministic denied fixture"
+  },
+  "checks": [
+    {
+      "name": "settings focus traversal",
+      "passed": true,
+      "observed": [
+        "Tab traversed the wake switch, Wake shortcut picker, Push to talk picker, and toolbar overflow control",
+        "The captured Wake shortcut picker displayed a visible focus ring"
+      ]
+    },
+    {
+      "name": "settings category navigation without pointer input",
+      "passed": true,
+      "observed": [
+        "Space opened the toolbar overflow menu",
+        "Arrow keys and Return opened Memory & Privacy",
+        "Focus remained on the category control after navigation"
+      ]
+    },
+    {
+      "name": "onboarding focus traversal",
+      "passed": true,
+      "observed": [
+        "Tab focused Continue and Return advanced to the permission step",
+        "Tab traversed Back, Grant in System Settings, and Retry",
+        "The disabled Continue control was skipped"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/release-readiness/ui/settings-keyboard-focus-2026-08-30.jpeg",
+      "sha256": "b701250a2832332d07cee698b9bcd9754927f3c1c13cdc6d342008793641827e"
+    },
+    {
+      "path": "docs/release-readiness/ui/onboarding-keyboard-focus-2026-08-30.jpeg",
+      "sha256": "ac18f56d146a9f713142419db2c2fdc0818e6f44730aad9f5dc45d0afa58876a"
+    }
+  ],
+  "limitations": [
+    "The host's Full Keyboard Access preference was enabled for this run and restored to its prior unset state afterward.",
+    "This dirty Debug run sampled Settings and the first two onboarding steps; it does not prove every customer journey is keyboard-complete.",
+    "VoiceOver, light appearance, a clean build, and exact 200 percent text scaling remain untested in this capture."
+  ]
+}

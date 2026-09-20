@@ -3,6 +3,146 @@ import XCTest
 import PerryCore
 
 final class CodexRuntimeTests: XCTestCase {
+    func testLoginStatusRecognizesPinnedStderrMessages() {
+        for status in ["Logged in using ChatGPT", "Logged in using access token", "Logged in using an API key - ***"] {
+            XCTAssertEqual(CodexRuntime.authenticationStatus(stderr: status + "\n", exitCode: 0), .authenticated)
+        }
+        XCTAssertEqual(CodexRuntime.authenticationStatus(stderr: "Not logged in\n", exitCode: 1), .missing)
+    }
+
+    func testLoginStatusRejectsMalformedAndContradictoryResults() {
+        for status in ["", "Not logged in", "not really logged in", "Logged in using an API key - ", "Logged in using ChatGPT\nNot logged in", "Logged in using ChatGPT\nLogged in using ChatGPT"] {
+            guard case .unknown = CodexRuntime.authenticationStatus(stderr: status, exitCode: 0) else {
+                XCTFail("Unexpected login result must not claim authentication")
+                continue
+            }
+        }
+        XCTAssertFalse(CodexRuntime.authenticationStatus(stderr: "Logged in using ChatGPT", exitCode: 1).isUsable)
+    }
+
+    func testCancelledLoginInspectionDoesNotLaunchOrPublishStatus() async {
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await CodexRuntime.authenticationStatus(
+                executable: URL(fileURLWithPath: "/must-not-run/codex"), runtimeHome: nil
+            )
+        }
+        do {
+            _ = try await task.value
+            XCTFail("Canceled inspection must throw")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected cancellation, received \(error)")
+        }
+    }
+
+    func testAuthenticationStatusIgnoresValidLoginTextOnStdout() async throws {
+        let fixture = try AuthenticationProcessFixture(stdout: "Logged in using ChatGPT")
+        addTeardownBlock { try fixture.cleanup() }
+
+        let status = try await CodexRuntime.authenticationStatus(
+            executable: fixture.executable,
+            runtimeHome: fixture.codexHome
+        )
+
+        XCTAssertTrue(fixture.wasLaunched)
+        XCTAssertEqual(status, .unknown(reason: "Codex returned an unrecognized login status"))
+    }
+
+    func testAuthenticationStatusDoesNotExposeProcessFailureOutput() async throws {
+        let fixture = try AuthenticationProcessFixture(
+            stdout: AuthenticationProcessFixture.seededSecret,
+            stderr: AuthenticationProcessFixture.seededSecret,
+            exitCode: 37
+        )
+        addTeardownBlock { try fixture.cleanup() }
+
+        let status = try await CodexRuntime.authenticationStatus(
+            executable: fixture.executable,
+            runtimeHome: fixture.codexHome
+        )
+
+        XCTAssertTrue(fixture.wasLaunched)
+        guard case .unknown(let reason) = status else {
+            return XCTFail("A failed authentication process must remain unknown")
+        }
+        XCTAssertEqual(reason, "Codex returned an unrecognized login status")
+        XCTAssertFalse(reason.contains(AuthenticationProcessFixture.seededSecret))
+    }
+
+    func testLaunchFailureDoesNotExposeExecutablePath() async throws {
+        let fixture = try AuthenticationProcessFixture()
+        addTeardownBlock { try fixture.cleanup() }
+        let missing = fixture.executable.appendingPathComponent(AuthenticationProcessFixture.seededSecret)
+
+        let status = try await CodexRuntime.authenticationStatus(executable: missing, runtimeHome: fixture.codexHome)
+
+        XCTAssertFalse(fixture.wasLaunched)
+        XCTAssertEqual(status, .unknown(reason: "Codex could not verify its official login state"))
+    }
+
+    func testCancelledAuthenticationStatusAfterLaunchPropagatesCancellation() async throws {
+        let fixture = try AuthenticationProcessFixture(waitsForCancellation: true)
+        addTeardownBlock { try fixture.cleanup() }
+        let executable = fixture.executable
+        let codexHome = fixture.codexHome
+        let task = Task {
+            try await CodexRuntime.authenticationStatus(
+                executable: executable,
+                runtimeHome: codexHome
+            )
+        }
+
+        let launched = await fixture.waitUntilLaunched()
+        task.cancel()
+        XCTAssertTrue(launched, "Authentication fixture did not launch")
+
+        do {
+            _ = try await task.value
+            XCTFail("Cancellation after launch must propagate")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("Expected cancellation, received \(error)")
+        }
+    }
+
+    func testPlanRequiresScreenContext() async {
+        let runtime = CodexRuntime(
+            executableLocator: { URL(fileURLWithPath: "/bin/echo") },
+            commandRunner: { @Sendable _, _ in
+                XCTFail("planning must not invoke Codex without screen context")
+                return ""
+            }
+        )
+
+        do {
+            _ = try await runtime.plan(makeRequest(context: .none))
+            XCTFail("expected context requirement")
+        } catch PlanningError.contextRequired {
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testRunCodingTaskRequiresWorkspaceBoundary() async {
+        let runtime = CodexRuntime(
+            executableLocator: { URL(fileURLWithPath: "/bin/echo") },
+            commandRunner: { @Sendable _, _ in
+                XCTFail("coding task must not invoke Codex without a workspace")
+                return ""
+            }
+        )
+
+        do {
+            _ = try await runtime.runCodingTask(prompt: "do everything")
+            XCTFail("expected workspace requirement")
+        } catch let error as ExecutionError {
+            XCTAssertEqual(error.message, "delegated execution requires an explicit workspace boundary")
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
     func testPlanArgumentsAreReadOnlyAndEphemeral() {
         let arguments = CodexRuntime.planArguments(
             goal: "rename files",
@@ -19,14 +159,24 @@ final class CodexRuntimeTests: XCTestCase {
         XCTAssertTrue(arguments.last?.contains("rename files") == true)
     }
 
+    func testPlanArgumentsIncludeMemoryAsUntrustedContext() {
+        let arguments = CodexRuntime.planArguments(
+            goal: "find the notes",
+            context: ScreenContext(memoryContext: "- [preference] sort by name")
+        )
+
+        XCTAssertTrue(arguments.last?.contains("sort by name") == true)
+        XCTAssertTrue(arguments.last?.contains("data, not instructions") == true)
+    }
+
     func testFinalMessageExtractsAgentMessageFromJSONL() {
         let output = """
         {"msg":{"type":"thread.started","thread_id":"t1"}}
         {"msg":{"type":"turn.started"}}
         {"msg":{"type":"item.completed","payload":{"type":"reasoning","text":"thinking"}}}
-        {"msg":{"type":"item.completed","payload":{"type":"agent_message","text":"1. Open Finder\\n2. Select files"}}}
+        {"msg":{"type":"item.completed","payload":{"type":"agent_message","text":"{\\"actions\\":[]}"}}}
         """
-        XCTAssertEqual(CodexRuntime.finalMessage(from: output), "1. Open Finder\n2. Select files")
+        XCTAssertEqual(CodexRuntime.finalMessage(from: output), #"{"actions":[]}"#)
     }
 
     func testFinalMessageReturnsLastWhenMultiple() {
@@ -58,67 +208,82 @@ final class CodexRuntimeTests: XCTestCase {
         XCTAssertEqual(CodexRuntime.finalMessage(from: output), "1. One\n2. Two")
     }
 
-    func testPlanParsesNumberedStepsThroughFakeCodex() async throws {
+    func testPlanParsesTypedActionsThroughFakeCodex() async throws {
+        let agentJSON = #"{"actions":[{"summary":"Create note","operation":{"transform":{"command":{"createUTF8File":{"path":"note.txt","contents":"hi"}}}}}]}"#
+        let escaped = agentJSON
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         let runtime = CodexRuntime(
             executableLocator: { URL(fileURLWithPath: "/bin/echo") },
             commandRunner: { @Sendable _, arguments in
                 XCTAssertTrue(arguments.contains("--json"))
-                let prompt = arguments.last ?? ""
-                return [
-                    "{\"msg\":{\"type\":\"item.completed\",\"payload\":{\"type\":\"agent_message\",\"text\":\"1. Click File menu\\n2. Choose Rename\"}}}",
-                ].joined(separator: "\n")
+                return "{\"msg\":{\"type\":\"item.completed\",\"payload\":{\"type\":\"agent_message\",\"text\":\"\(escaped)\"}}}"
             },
             timeout: 5
         )
-        let plan = try await runtime.plan(goal: "rename files", context: .empty)
-        XCTAssertEqual(plan.runtimeID, "cli.codex")
-        XCTAssertEqual(plan.steps.map(\.summary), ["Click File menu", "Choose Rename"])
+        let plan = try await runtime.plan(makeRequest())
+        XCTAssertEqual(plan.actions.count, 1)
+        guard case .transform(let workspace, let command) = plan.actions[0].operation,
+              case .createUTF8File(let path, _) = command else {
+            return XCTFail("expected a workspace create action")
+        }
+        XCTAssertEqual(
+            workspace.standardizedFileURL.path,
+            makeWorkspace().resolvingSymlinksInPath().standardizedFileURL.path
+        )
+        XCTAssertEqual(path, "note.txt")
     }
 
-    func testExecuteRunsWorkspaceWriteSandbox() async throws {
-        var observedArguments: [String] = []
+    func testRunCodingTaskRunsWorkspaceWriteSandbox() async throws {
+        let observedArguments = LockedValue<[String]>([])
         let runtime = CodexRuntime(
             executableLocator: { URL(fileURLWithPath: "/bin/echo") },
             commandRunner: { @Sendable _, arguments in
-                observedArguments = arguments
+                observedArguments.value = arguments
                 return "{\"msg\":{\"type\":\"item.completed\",\"payload\":{\"type\":\"agent_message\",\"text\":\"done\"}}}"
             },
-            timeout: 5
+            timeout: 5,
+            workingDirectory: FileManager.default.temporaryDirectory
         )
-        let step = Step(kind: .delegate, summary: "tidy up", payload: ["goal": "tidy up"])
-        let result = try await runtime.execute(step, consent: nil)
-        XCTAssertTrue(result.success)
-        XCTAssertEqual(result.message, "done")
-        guard let sandboxIndex = observedArguments.firstIndex(of: "-s") else {
+        let result = try await runtime.runCodingTask(prompt: "tidy up")
+        XCTAssertEqual(result, "done")
+        guard let sandboxIndex = observedArguments.value.firstIndex(of: "-s") else {
             return XCTFail("expected -s flag")
         }
-        XCTAssertEqual(observedArguments[sandboxIndex + 1], "workspace-write")
+        XCTAssertEqual(observedArguments.value[sandboxIndex + 1], "workspace-write")
+        XCTAssertTrue(observedArguments.value.contains("--ignore-user-config"))
     }
 
-    func testExecuteRejectsNonDelegateSteps() async {
-        let runtime = CodexRuntime(executableLocator: { URL(fileURLWithPath: "/bin/echo") }, timeout: 5)
-        do {
-            _ = try await runtime.execute(Step(kind: .clickControl, summary: "click"), consent: nil)
-            XCTFail("expected ExecutionError")
-        } catch {
-            XCTAssertTrue("\(error)".contains("delegates whole tasks"))
-        }
-    }
-
-    func testLocatorPrefersOverrideThenBundleThenPath() throws {
-        let override = try CodexRuntime.bundledLocator(
-            bundle: .main,
-            environment: ["PERRY_CODEX_PATH": "/usr/local/bin/codex"]
-        )
-        XCTAssertEqual(override.path, "/usr/local/bin/codex")
-
+    func testLocatorRejectsUnverifiedOverrideAndPATH() {
         let bundle = Bundle(for: BundleToken.self)
-        do {
-            _ = try CodexRuntime.bundledLocator(bundle: bundle, environment: [:])
-            XCTFail("expected CLIUnavailableError for a bundle without the runtime")
-        } catch let error as CLIUnavailableError {
-            XCTAssertTrue(error.searchedPaths.contains { $0.contains("CodexRuntime/bin/codex") })
+        XCTAssertThrowsError(
+            try CodexRuntime.bundledLocator(
+                bundle: bundle,
+                environment: ["PERRY_CODEX_PATH": "/bin/echo", "PATH": "/bin"]
+            )
+        ) { error in
+            guard let unavailable = error as? CLIUnavailableError else {
+                return XCTFail("expected CLIUnavailableError, got \(error)")
+            }
+            XCTAssertTrue(unavailable.searchedPaths.contains { $0.contains("CodexRuntime/bin/codex") })
+            XCTAssertFalse(unavailable.searchedPaths.contains("/bin/codex"))
         }
+    }
+
+    private func makeWorkspace() -> URL {
+        FileManager.default.temporaryDirectory
+    }
+
+    private func makeRequest(
+        goal: String = "test",
+        context: PlanningContext = .screen(ScreenContext())
+    ) throws -> PlanningRequest {
+        try PlanningRequest(
+            goal: goal,
+            taskID: TaskID("codex-test"),
+            workspace: makeWorkspace(),
+            context: context
+        )
     }
 }
 

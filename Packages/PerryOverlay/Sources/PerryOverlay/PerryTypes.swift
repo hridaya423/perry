@@ -1,5 +1,30 @@
 import SwiftUI
 
+public enum PerryOverlayTheme {
+    public enum Colors {
+        public static let accent = Color(red: 0.204, green: 0.827, blue: 0.600)
+        public static let ink = Color(white: 0.16)
+        public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
+        public static let labelForeground = Color.white
+        public static let labelBackground = Color.black.opacity(0.72)
+        public static let eyeHighlight = Color.white
+        public static let captionSurface = Color.white
+        public static let captionText = Color.black
+        public static let shadow = Color.black.opacity(0.22)
+    }
+
+    /// Motion budgets: feedback ≤150ms, entrances ≤300ms with a strong
+    /// ease-out, spatial travel uses the house spring. Reduced motion keeps
+    /// opacity/color feedback and removes travel and bounce.
+    public enum Motion {
+        public static let feedback = Animation.easeOut(duration: 0.14)
+        public static let entrance = Animation.easeOut(duration: 0.24)
+        public static let travel = Animation.spring(response: 0.2, dampingFraction: 0.6)
+        public static let travelFast = Animation.spring(response: 0.16, dampingFraction: 0.72)
+        public static let ambientPulse = Animation.easeInOut(duration: 0.82)
+    }
+}
+
 public extension Color {
     /// Failable initializer for dynamic hex values (model output, external
     /// cursor state). Returns nil on parse failure so callers can fall back
@@ -42,6 +67,57 @@ public enum PerryBuddyAnimationState: Equatable {
     case review
 }
 
+/// Canonical buddy states. Animation is never the only signal: each state has
+/// a static label and icon, and surfaces show text status alongside the pose.
+public enum PerryBuddyState: String, Equatable, Sendable {
+    case idle
+    case listening
+    case thinking
+    case guiding
+    case acting
+    case awaitingApproval
+    case success
+    case blocked
+
+    public var pose: PerryBuddyAnimationState {
+        switch self {
+        case .idle: return .idle
+        case .listening, .awaitingApproval: return .waiting
+        case .thinking: return .review
+        case .guiding: return .waving
+        case .acting: return .running
+        case .success: return .jumping
+        case .blocked: return .failed
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .idle: return "Ready"
+        case .listening: return "Listening"
+        case .thinking: return "Thinking"
+        case .guiding: return "Guiding"
+        case .acting: return "Acting"
+        case .awaitingApproval: return "Waiting for approval"
+        case .success: return "Done"
+        case .blocked: return "Blocked"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .idle: return "face.smiling"
+        case .listening: return "ear"
+        case .thinking: return "ellipsis.bubble"
+        case .guiding: return "hand.point.up.left"
+        case .acting: return "figure.run"
+        case .awaitingApproval: return "hand.raised"
+        case .success: return "checkmark.circle"
+        case .blocked: return "exclamationmark.triangle"
+        }
+    }
+}
+
 public enum PerryVoicePhase: Equatable {
     case idle
     case listening
@@ -50,6 +126,12 @@ public enum PerryVoicePhase: Equatable {
 }
 
 public final class PerryCursorState: ObservableObject {
+    /// Semantic buddy state; setting it drives the sprite pose. Transient
+    /// poses (e.g. waving while speaking, running during travel) still write
+    /// `animation` directly after any `buddyState` write.
+    @Published public var buddyState: PerryBuddyState = .idle {
+        didSet { animation = buddyState.pose }
+    }
     @Published public var animation: PerryBuddyAnimationState = .idle
     @Published public var taskBubbleText: String?
     @Published public var voiceState: PerryVoicePhase = .idle
@@ -93,6 +175,46 @@ public struct PerryExternalCursor: Identifiable, Equatable {
     }
 }
 
+/// Lightweight frame-interval probe for the overlay's cursor-tracking tick.
+/// Only collects while the overlay reports samples (env-gated downstream);
+/// drained at hide so each "visual wave" yields its own interval stats.
+public final class OverlayPerfProbe {
+    public static let shared = OverlayPerfProbe()
+    public var isEnabled = false
+    private var lastTick: CFAbsoluteTime = 0
+    private var intervals: [Double] = []
+    private let lock = NSLock()
+
+    private init() {}
+
+    public func tick() {
+        guard isEnabled else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        lock.lock()
+        if lastTick > 0 {
+            intervals.append((now - lastTick) * 1000)
+        }
+        lastTick = now
+        lock.unlock()
+    }
+
+    public func reset() {
+        lock.lock()
+        lastTick = 0
+        intervals.removeAll()
+        lock.unlock()
+    }
+
+    public func drain() -> [Double] {
+        lock.lock()
+        defer { lock.unlock() }
+        let drained = intervals
+        intervals.removeAll()
+        lastTick = 0
+        return drained
+    }
+}
+
 public enum PerryWindowLevels {
     private static let interactiveCeiling = CGWindowLevelForKey(.draggingWindow)
 
@@ -114,32 +236,7 @@ public enum PerryWindowLevels {
     }
 }
 
-public enum PerryAccentTheme: String, CaseIterable {
-    case mint
-    case amber
-    case sky
-
-    public var accentColor: Color {
-        switch self {
-        case .mint: return Color(red: 0.20, green: 0.86, blue: 0.60)
-        case .amber: return Color(red: 1.00, green: 0.72, blue: 0.25)
-        case .sky: return Color(red: 0.30, green: 0.68, blue: 1.00)
-        }
-    }
-
-    public var cursorColor: Color { accentColor }
-
-    public static let userDefaultsKey = "perry.accentTheme"
-    public static let mintRawValue = PerryAccentTheme.mint.rawValue
-
-    public static func from(optionalHex hex: String?) -> PerryAccentTheme {
-        guard let hex else { return .mint }
-        return PerryAccentTheme(rawValue: hex.lowercased()) ?? .mint
-    }
-}
-
 public enum PerryBundleConfig {
-    public static let userVoiceResponseCaptionFontDefaultsKey = "perry.captionFont.default"
     public static let userVoiceResponseCaptionOpacityDefaultsKey = "perry.captionOpacity.default"
     public static var defaultVoiceResponseCaptionOpacity: Double { 0.9 }
 }

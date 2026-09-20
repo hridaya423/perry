@@ -20,12 +20,12 @@ final class GuideSupportTests: XCTestCase {
             windowTitle: "Desktop",
             elements: [button("a", x: 0, label: "First"), button("b", x: 200, label: "Second")]
         )
-        let plan = GuidePlan(goal: "tag a file", steps: [
+        let steps = [
             GuideStep(instruction: "this one First", target: .axElement(stableID: "a")),
             GuideStep(instruction: "next one Second", target: .axElement(stableID: "b")),
-        ])
+        ]
 
-        let viewPlan = EverythingViewBuilder.build(plan: plan, snapshot: snapshot)
+        let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot, goal: "tag a file")
 
         XCTAssertNotNil(viewPlan)
         XCTAssertEqual(viewPlan?.markers.map(\.number), [1, 2])
@@ -40,21 +40,21 @@ final class GuideSupportTests: XCTestCase {
             windowTitle: "W",
             elements: [button("exists", x: 10, label: nil)]
         )
-        let plan = GuidePlan(goal: "g", steps: [
+        let steps = [
             GuideStep(instruction: "gone", target: .axElement(stableID: "missing")),
             GuideStep(instruction: "just words", target: .verbalOnly),
             GuideStep(instruction: "real one", target: .axElement(stableID: "exists")),
-        ])
+        ]
 
-        let viewPlan = EverythingViewBuilder.build(plan: plan, snapshot: snapshot)
+        let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot)
         XCTAssertEqual(viewPlan?.markers.count, 1)
         XCTAssertEqual(viewPlan?.connectors.count, 0)
     }
 
     func testEverythingViewNilWhenNothingDrawable() {
         let snapshot = AXSnapshot(appBundleID: "x", windowTitle: "W", elements: [])
-        let plan = GuidePlan(goal: "g", steps: [GuideStep(instruction: "words", target: .verbalOnly)])
-        XCTAssertNil(EverythingViewBuilder.build(plan: plan, snapshot: snapshot))
+        let steps = [GuideStep(instruction: "words", target: .verbalOnly)]
+        XCTAssertNil(EverythingViewBuilder.build(steps: steps, snapshot: snapshot))
     }
 }
 

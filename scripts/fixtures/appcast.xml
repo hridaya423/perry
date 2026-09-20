@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <title>Perry Updates</title>
+    <item>
+      <title>Perry @VERSION@</title>
+      <sparkle:version>@BUILD@</sparkle:version>
+      <sparkle:shortVersionString>@VERSION@</sparkle:shortVersionString>
+      <enclosure url="https://updates.example.test/@DMG@" length="@LENGTH@" type="application/octet-stream" sparkle:edSignature="test-signature" />
+    </item>
+  </channel>
+</rss>

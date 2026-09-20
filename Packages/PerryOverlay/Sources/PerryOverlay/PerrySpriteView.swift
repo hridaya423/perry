@@ -1,13 +1,9 @@
 import SwiftUI
 
-/// Perry the platypus, drawn in code: flat geometric shapes, charcoal ink
-/// outlines, one mint accent. Reads as a character at 32 pt, stays crisp at
-/// any scale, and animates by pose parameters rather than frame swaps.
 public struct PerrySpriteView: View {
     var animation: PerryBuddyAnimationState = .idle
     var size: CGFloat = 64
 
-    @State private var phase: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(animation: PerryBuddyAnimationState = .idle, size: CGFloat = 64) {
@@ -57,8 +53,6 @@ public struct PerrySpriteView: View {
         }
     }
 
-    /// Pets face their travel direction; the container flips the sprite
-    /// horizontally for runningLeft instead of rotating it.
     private var facesLeft: Bool {
         animation == .runningLeft
     }
@@ -68,10 +62,8 @@ public struct PerrySpriteView: View {
         return max(0, sin(t * 3.4))
     }
 
-    // MARK: parts (unit space: body spans roughly [-0.35, +0.35] of size)
-
-    private let ink = Color(white: 0.16)
-    private let accent = Color(red: 0.204, green: 0.827, blue: 0.600) // #34D399
+    private let ink = PerryOverlayTheme.Colors.ink
+    private let accent = PerryOverlayTheme.Colors.accent
 
     private func drawBody(_ context: GraphicsContext, size s: CGFloat) {
         let bodyRect = CGRect(x: -0.32 * s, y: -0.26 * s, width: 0.64 * s, height: 0.52 * s)
@@ -101,7 +93,7 @@ public struct PerrySpriteView: View {
         let eye = Path(ellipseIn: CGRect(x: eyeCenter.x - 0.045 * s, y: eyeCenter.y - 0.045 * s, width: 0.09 * s, height: 0.09 * s))
         context.fill(eye, with: .color(ink))
         let glint = Path(ellipseIn: CGRect(x: eyeCenter.x + 0.004 * s, y: eyeCenter.y - 0.032 * s, width: 0.022 * s, height: 0.022 * s))
-        context.fill(glint, with: .color(.white))
+        context.fill(glint, with: .color(PerryOverlayTheme.Colors.eyeHighlight))
     }
 
     private func drawTail(_ context: GraphicsContext, size s: CGFloat) {

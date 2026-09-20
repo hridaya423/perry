@@ -64,4 +64,43 @@ struct PerryGuidanceOverlayTests {
         #expect(Color(optionalHex: "not-a-color") == nil)
         #expect(Color(optionalHex: nil) == nil)
     }
+
+    @Test func semanticThemeColorsResolveInLightAndDarkAppearances() {
+        let colors = [
+            PerryOverlayTheme.Colors.accent,
+            PerryOverlayTheme.Colors.ink,
+            PerryOverlayTheme.Colors.selection,
+            PerryOverlayTheme.Colors.labelForeground,
+            PerryOverlayTheme.Colors.labelBackground,
+            PerryOverlayTheme.Colors.eyeHighlight,
+            PerryOverlayTheme.Colors.captionSurface,
+            PerryOverlayTheme.Colors.captionText,
+            PerryOverlayTheme.Colors.shadow,
+        ]
+        let appearances = [NSAppearance(named: .aqua), NSAppearance(named: .darkAqua)].compactMap { $0 }
+
+        for appearance in appearances {
+            for color in colors {
+                let resolved = resolved(color, in: appearance)
+                #expect(resolved.alphaComponent > 0)
+            }
+        }
+    }
+
+    @Test func canonicalAccentResolvesToProductMint() {
+        let appearance = NSAppearance(named: .aqua)!
+        let accent = resolved(PerryOverlayTheme.Colors.accent, in: appearance)
+
+        #expect(abs(accent.redComponent - 0.204) < 0.001)
+        #expect(abs(accent.greenComponent - 0.827) < 0.001)
+        #expect(abs(accent.blueComponent - 0.600) < 0.001)
+    }
+
+    private func resolved(_ color: Color, in appearance: NSAppearance) -> NSColor {
+        var resolved = NSColor.clear
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = NSColor(color).usingColorSpace(.deviceRGB)!
+        }
+        return resolved
+    }
 }

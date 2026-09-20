@@ -1,69 +1,109 @@
 import Foundation
 
-public enum SessionState: Equatable, Sendable {
+public enum SupervisorExecutionState: Hashable, Sendable {
+    case running
+    case paused
+    case awaitingApproval
+}
+
+public enum SupervisorState: Hashable, Sendable {
     case idle
     case listening
+    case starting
     case guiding
-    case doing
-    case confirming
+    case executing(SupervisorExecutionState)
     case reporting
+    case failed
     case stopped
 }
 
-public enum SessionEvent: Equatable, Sendable {
+public enum SupervisorEvent: Hashable, Sendable {
     case wake
     case dismiss
     case startGuiding
     case startDoing
+    case startTask
+    case cancelWindowElapsed
+    case cancel
+    case pause
+    case resume
+    case steer
     case requestConfirmation
     case approveAction
     case denyAction
     case taskFinished
+    case taskFailed
+    case retry
 }
 
-public struct IllegalTransitionError: Error, CustomStringConvertible {
-    public let from: SessionState
-    public let event: SessionEvent
+public struct IllegalSupervisorTransitionError: Error, CustomStringConvertible {
+    public let from: SupervisorState
+    public let event: SupervisorEvent
 
     public var description: String {
         "illegal transition: \(event) is not valid from \(from)"
     }
 }
 
-public struct SessionOrchestrator: Sendable {
-    private static let transitions: [SessionState: [SessionEvent: SessionState]] = [
+public struct SupervisorStateMachine: Sendable {
+    private static let transitions: [SupervisorState: [SupervisorEvent: SupervisorState]] = [
         .idle: [.wake: .listening],
         .listening: [
             .startGuiding: .guiding,
-            .startDoing: .doing,
+            .startDoing: .executing(.running),
+            .startTask: .starting,
             .dismiss: .idle,
+        ],
+        .starting: [
+            .cancelWindowElapsed: .executing(.running),
+            .cancel: .stopped,
+            .dismiss: .stopped,
+            .taskFailed: .failed,
         ],
         .guiding: [
             .taskFinished: .listening,
             .dismiss: .idle,
         ],
-        .doing: [
-            .requestConfirmation: .confirming,
+        .executing(.running): [
+            .pause: .executing(.paused),
+            .steer: .executing(.running),
+            .requestConfirmation: .executing(.awaitingApproval),
             .taskFinished: .reporting,
+            .taskFailed: .failed,
+            .cancel: .stopped,
             .dismiss: .stopped,
         ],
-        .confirming: [
-            .approveAction: .doing,
+        .executing(.paused): [
+            .resume: .executing(.running),
+            .steer: .executing(.paused),
+            .requestConfirmation: .executing(.awaitingApproval),
+            .taskFailed: .failed,
+            .cancel: .stopped,
+            .dismiss: .stopped,
+        ],
+        .executing(.awaitingApproval): [
+            .approveAction: .executing(.running),
             .denyAction: .stopped,
+            .dismiss: .stopped,
         ],
         .reporting: [.dismiss: .idle],
+        .failed: [
+            .retry: .starting,
+            .dismiss: .idle,
+            .cancel: .stopped,
+        ],
         .stopped: [.dismiss: .idle],
     ]
 
-    public private(set) var state: SessionState
+    public private(set) var state: SupervisorState
 
-    public init(initial: SessionState = .idle) {
+    public init(initial: SupervisorState = .idle) {
         state = initial
     }
 
-    public mutating func send(_ event: SessionEvent) throws -> SessionState {
+    public mutating func send(_ event: SupervisorEvent) throws -> SupervisorState {
         guard let next = Self.transitions[state]?[event] else {
-            throw IllegalTransitionError(from: state, event: event)
+            throw IllegalSupervisorTransitionError(from: state, event: event)
         }
         state = next
         return state
@@ -74,16 +114,16 @@ public struct SessionOrchestrator: Sendable {
     }
 }
 
-public actor AsyncSessionOrchestrator {
-    private var machine: SessionOrchestrator
+public actor AsyncSupervisorStateMachine {
+    private var machine: SupervisorStateMachine
 
-    public init(initial: SessionState = .idle) {
-        machine = SessionOrchestrator(initial: initial)
+    public init(initial: SupervisorState = .idle) {
+        machine = SupervisorStateMachine(initial: initial)
     }
 
-    public var state: SessionState { machine.state }
+    public var state: SupervisorState { machine.state }
 
-    public func send(_ event: SessionEvent) throws -> SessionState {
+    public func send(_ event: SupervisorEvent) throws -> SupervisorState {
         try machine.send(event)
     }
 

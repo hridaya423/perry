@@ -1,18 +1,6 @@
-//
-//  OverlayWindow.swift
-//  cursor-buddy
-//
-//  System-wide transparent overlay window for the OpenClicky cursor companion.
-//  One OverlayWindow is created per screen so the cursor buddy
-//  seamlessly follows the cursor across multiple monitors.
-//
-
 import AppKit
 import Combine
 import SwiftUI
-import UniformTypeIdentifiers
-
-// MARK: - AgentParkingPosition
 
 /// Where the agent dock parks itself on the active screen. Eight anchor
 /// points: four corners, four mid-edges. Default is top-right because
@@ -32,8 +20,8 @@ nonisolated enum AgentParkingPosition: String, CaseIterable, Identifiable {
     case bottomRight = "bottomRight"
 
     static let `default`: AgentParkingPosition = .topRight
-    static let userDefaultsKey = "openclicky.agentParkingPosition"
-    private static let calibrationDefaultsPrefix = "openclicky.agentParkingCalibration"
+    static let userDefaultsKey = "perry.agentParkingPosition"
+    private static let calibrationDefaultsPrefix = "perry.agentParkingCalibration"
 
     var id: String { rawValue }
 
@@ -84,19 +72,6 @@ nonisolated enum AgentParkingPosition: String, CaseIterable, Identifiable {
         )
     }
 
-    /// Anchor in [0,1]x[0,1] for the preview picker. (0,0) = the
-    /// true top-left of the represented screen in SwiftUI drawing
-    /// coordinates, so the parking indicator matches real display
-    /// corners instead of an inset approximation.
-    var opensAgentPanelsToRight: Bool {
-        switch self {
-        case .topLeft, .middleLeft, .bottomLeft:
-            return true
-        case .topCenter, .topRight, .middleRight, .bottomCenter, .bottomRight:
-            return false
-        }
-    }
-
     var normalizedAnchor: CGPoint {
         switch self {
         case .topLeft:      return CGPoint(x: 0.0, y: 0.0)
@@ -135,7 +110,6 @@ nonisolated enum AgentParkingPosition: String, CaseIterable, Identifiable {
 
 class OverlayWindow: NSWindow {
     init(screen: NSScreen) {
-        // Create window covering entire screen
         super.init(
             contentRect: screen.frame,
             styleMask: .borderless,
@@ -154,13 +128,10 @@ class OverlayWindow: NSWindow {
         self.isReleasedWhenClosed = false
         self.hasShadow = false
 
-        // Important: Allow the window to appear even when app is not active
         self.hidesOnDeactivate = false
 
-        // Cover the entire screen
         self.setFrame(screen.frame, display: true)
 
-        // Make sure it's on the right screen
         if let screenForWindow = NSScreen.screens.first(where: { $0.frame == screen.frame }) {
             self.setFrameOrigin(screenForWindow.frame.origin)
         }
@@ -173,138 +144,6 @@ class OverlayWindow: NSWindow {
 
     override var canBecomeMain: Bool {
         return false
-    }
-}
-
-/// Cursor avatar styles.
-///
-/// Stored as a `String` (with embedded payload for `.pet`) so it round-trips
-/// through `@AppStorage` and `UserDefaults` cleanly.
-///
-/// Legacy values:
-///   - `"triangle"` (pre-fork single triangle) ➝ treated as `.triangleFilled`.
-///   - `"paperclip"` (removed; was hardcoded clippy) ➝ falls back to default.
-///   - `"customAsset"` (single static template image) ➝ falls back to default.
-enum PerryAvatarStyle: Equatable {
-    case triangleFilled
-    case triangleOutline
-    case pet(id: String)
-
-    static let userDefaultsKey = "openclicky.cursorAvatarStyle"
-    static let `default`: PerryAvatarStyle = .pet(id: "perry")
-
-    /// Storage representation. `.pet(id)` is encoded as `"pet:<id>"`.
-    var storageValue: String {
-        switch self {
-        case .triangleFilled:    return "triangleFilled"
-        case .triangleOutline:   return "triangleOutline"
-        case .pet(let id):       return "pet:\(id)"
-        }
-    }
-
-    init(storageValue raw: String) {
-        switch raw {
-        case "triangleFilled", "triangle", "":
-            self = .triangleFilled
-        case "triangleOutline":
-            self = .triangleOutline
-        // Legacy values we no longer support — fall back to default.
-        case "paperclip", "customAsset":
-            self = .triangleFilled
-        default:
-            if raw.hasPrefix("pet:") {
-                let id = String(raw.dropFirst("pet:".count))
-                if !id.isEmpty {
-                    self = .pet(id: id)
-                    return
-                }
-            }
-            self = .triangleFilled
-        }
-    }
-
-    /// Whether the parent view should apply rotation to this avatar.
-    /// Triangles point in a direction; pets always face up and use their
-    /// own running-left/running-right rows for direction.
-    var honorsParentRotation: Bool {
-        switch self {
-        case .triangleFilled, .triangleOutline: return true
-        case .pet:                              return false
-        }
-    }
-}
-
-enum PerryAvatarSizePreference {
-    static let userDefaultsKey = "openclicky.cursorAvatarSizeScale"
-    static let defaultScale: Double = 1.0
-    static let minScale: Double = 0.65
-    static let maxScale: Double = 1.85
-}
-
-private struct PerryAvatarView: View {
-    let accentColor: Color
-    var showsEyes: Bool = true
-    /// High-level animation state used when rendering a pet. Ignored for
-    /// triangle styles. Default is `.idle` so the existing call sites that
-    /// don't have a state machine still render cleanly.
-    var animationState: PerryBuddyAnimationState = .idle
-    @AppStorage(PerryAvatarStyle.userDefaultsKey) private var avatarStyleRawValue = PerryAvatarStyle.default.storageValue
-
-    private var avatarStyle: PerryAvatarStyle {
-        PerryAvatarStyle(storageValue: avatarStyleRawValue)
-    }
-
-    var body: some View {
-        switch avatarStyle {
-        case .triangleFilled:
-            PerryTriangleCursorView(accentColor: accentColor, style: .filled)
-        case .triangleOutline:
-            PerryTriangleCursorView(accentColor: accentColor, style: .outline)
-        case .pet:
-            PerrySpriteView(animation: animationState)
-        }
-    }
-}
-
-private struct PerryTriangleCursorView: View {
-    enum Style { case filled, outline }
-    let accentColor: Color
-    let style: Style
-
-    var body: some View {
-        ZStack {
-            switch style {
-            case .filled:
-                PerryTriangleShape()
-                    .fill(accentColor)
-                    .shadow(color: accentColor.opacity(0.45), radius: 4)
-            case .outline:
-                PerryTriangleShape()
-                    .stroke(accentColor.opacity(0.34), style: StrokeStyle(lineWidth: 8.0, lineJoin: .round))
-                    .blur(radius: 1.8)
-                PerryTriangleShape()
-                    .stroke(accentColor, style: StrokeStyle(lineWidth: 3.2, lineJoin: .round))
-            }
-        }
-        .aspectRatio(0.86, contentMode: .fit)
-    }
-}
-
-private struct PerryTriangleShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let size = min(rect.width, rect.height) * 0.82
-        let height = size * sqrt(3.0) / 2.0
-        let top = CGPoint(x: center.x, y: center.y + height * 0.56)
-        let bottomLeft = CGPoint(x: center.x - size / 2.0, y: center.y - height * 0.44)
-        let bottomRight = CGPoint(x: center.x + size / 2.0, y: center.y - height * 0.44)
-
-        path.move(to: top)
-        path.addLine(to: bottomLeft)
-        path.addLine(to: bottomRight)
-        path.closeSubpath()
-        return path
     }
 }
 
@@ -332,14 +171,13 @@ private struct PerryCalibrationBoxView: View {
             .scaleEffect(reduceMotion ? 1 : (pulse ? 1.04 : 0.98))
             .onAppear {
                 guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 0.82).repeatForever(autoreverses: true)) {
+                withAnimation(PerryOverlayTheme.Motion.ambientPulse.repeatCount(4, autoreverses: true)) {
                     pulse = true
                 }
             }
     }
 }
 
-// PreferenceKey for tracking bubble size
 struct SizePreferenceKey: PreferenceKey {
     static let defaultValue: CGSize = .zero
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
@@ -361,105 +199,8 @@ struct AgentTaskBubbleSizePreferenceKey: PreferenceKey {
     }
 }
 
-struct ExternalProxyBubbleSizePreferenceKey: PreferenceKey {
-    static let defaultValue: CGSize = .zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
-    }
-}
-
 /// The buddy's behavioral mode. Controls whether it follows the cursor,
 /// is flying toward a detected UI element, or is pointing at an element.
-
-nonisolated enum PerryCaptionFont: String, CaseIterable, Identifiable {
-    case systemRounded
-    case systemSerif
-    case systemMonospaced
-    case avenirRounded
-    case avenirNext
-    case helveticaNeue
-    case georgia
-    case baskerville
-    case palatino
-    case markerFelt
-    case chalkboard
-    case comicSans
-    case noteworthy
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .systemRounded: return "System Rounded"
-        case .systemSerif: return "System Serif"
-        case .systemMonospaced: return "System Mono"
-        case .avenirRounded: return "Avenir Rounded"
-        case .avenirNext: return "Avenir Next"
-        case .helveticaNeue: return "Helvetica Neue"
-        case .georgia: return "Georgia"
-        case .baskerville: return "Baskerville"
-        case .palatino: return "Palatino"
-        case .markerFelt: return "Marker Felt"
-        case .chalkboard: return "Chalkboard"
-        case .comicSans: return "Comic Sans"
-        case .noteworthy: return "Noteworthy"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .systemRounded: return "Clean default"
-        case .systemSerif: return "Bookish serif"
-        case .systemMonospaced: return "Code-like mono"
-        case .avenirRounded: return "Friendly rounded"
-        case .avenirNext: return "Modern sans"
-        case .helveticaNeue: return "Classic sans"
-        case .georgia: return "Readable serif"
-        case .baskerville: return "Elegant serif"
-        case .palatino: return "Warm serif"
-        case .markerFelt: return "Cartoon marker"
-        case .chalkboard: return "Comic board"
-        case .comicSans: return "Comic book"
-        case .noteworthy: return "Handwritten"
-        }
-    }
-
-    var fontName: String? {
-        switch self {
-        case .systemRounded, .systemSerif, .systemMonospaced: return nil
-        case .avenirRounded: return "Avenir Next Rounded"
-        case .avenirNext: return "Avenir Next"
-        case .helveticaNeue: return "Helvetica Neue"
-        case .georgia: return "Georgia"
-        case .baskerville: return "Baskerville"
-        case .palatino: return "Palatino"
-        case .markerFelt: return "Marker Felt"
-        case .chalkboard: return "Chalkboard SE"
-        case .comicSans: return "Comic Sans MS"
-        case .noteworthy: return "Noteworthy"
-        }
-    }
-
-    static var fallback: PerryCaptionFont { .systemRounded }
-
-    static func resolved(_ rawValue: String) -> PerryCaptionFont {
-        PerryCaptionFont(rawValue: rawValue) ?? .fallback
-    }
-
-    func swiftUIFont(size: CGFloat, weight: Font.Weight = .semibold) -> Font {
-        if let fontName {
-            return .custom(fontName, size: size).weight(weight)
-        }
-        switch self {
-        case .systemSerif:
-            return .system(size: size, weight: weight, design: .serif)
-        case .systemMonospaced:
-            return .system(size: size, weight: weight, design: .monospaced)
-        default:
-            return .system(size: size, weight: weight, design: .rounded)
-        }
-    }
-}
 
 enum BuddyNavigationMode {
     /// Default — buddy follows the mouse cursor with spring animation
@@ -470,34 +211,21 @@ enum BuddyNavigationMode {
     case pointingAtTarget
 }
 
-// SwiftUI view for the glowing cursor companion.
-// Each screen gets its own PerryBuddyView. The view checks whether
-// the cursor is currently on THIS screen and only shows the buddy
-// mascot when it is. During voice interaction, the mascot is
-// replaced by a waveform (listening), spinner (processing), or
-// streaming text bubble (responding).
 struct PerryBuddyView: View {
     let screenFrame: CGRect
-    let isFirstAppearance: Bool
     let supervisorState: PerryCursorState
     @ObservedObject var cursorState: PerryCursorState
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @AppStorage(PerryAccentTheme.userDefaultsKey) private var selectedAccentThemeID = PerryAccentTheme.mint.rawValue
-    @AppStorage(PerryAvatarSizePreference.userDefaultsKey) private var cursorAvatarSizeScale = PerryAvatarSizePreference.defaultScale
-    @AppStorage(PerryBundleConfig.userVoiceResponseCaptionFontDefaultsKey) private var voiceResponseCaptionFontRawValue = PerryCaptionFont.fallback.rawValue
     @AppStorage(PerryBundleConfig.userVoiceResponseCaptionOpacityDefaultsKey) private var voiceResponseCaptionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
 
     @State private var cursorPosition: CGPoint
     @State private var isCursorOnThisScreen: Bool
 
-    init(screenFrame: CGRect, isFirstAppearance: Bool, supervisorState: PerryCursorState) {
+    init(screenFrame: CGRect, supervisorState: PerryCursorState) {
         self.screenFrame = screenFrame
-        self.isFirstAppearance = isFirstAppearance
         self.supervisorState = supervisorState
         self.cursorState = supervisorState
 
-        // Seed the cursor position from the current mouse location so the
-        // buddy doesn't flash at (0,0) before onAppear fires.
         let mouseLocation = NSEvent.mouseLocation
         let localX = mouseLocation.x - screenFrame.origin.x
         let localY = screenFrame.height - (mouseLocation.y - screenFrame.origin.y)
@@ -519,79 +247,26 @@ struct PerryBuddyView: View {
     @State private var bubbleOpacity: Double = 1.0
     @State private var cursorOpacity: Double = 0.0
 
-    // MARK: - Buddy Navigation State
-
-    /// The buddy's current behavioral mode (following cursor, navigating, or pointing).
     @State private var buddyNavigationMode: BuddyNavigationMode = .followingCursor
 
-    /// Baseline clockwise tilt for triangle cursor avatars.
-    private let triangleBaseRotationDegrees: Double = 12.0
-
-    /// The rotation angle of the cursor companion in degrees.
-    /// Changes to face the direction of travel when navigating to a target.
-    @State private var buddyRotationDegrees: Double = 12.0
-
-    /// Speech bubble text shown when pointing at a detected element.
     @State private var navigationBubbleText: String = ""
     @State private var navigationBubbleOpacity: Double = 0.0
     @State private var navigationBubbleSize: CGSize = .zero
 
-    /// The cursor position at the moment navigation started, used to detect
-    /// if the user moves the cursor enough to cancel the navigation.
     @State private var cursorPositionWhenNavigationStarted: CGPoint = .zero
 
-    /// Timer driving the frame-by-frame bezier arc flight animation.
-    /// Invalidated when the flight completes, is canceled, or the view disappears.
     @State private var navigationAnimationTimer: Timer?
 
-    /// Scale factor applied to the buddy mascot during flight. Grows to ~1.3x
-    /// at the midpoint of the arc and shrinks back to 1.0x on landing, creating
-    /// an energetic "swooping" feel.
     @State private var buddyFlightScale: CGFloat = 1.0
 
-    /// Scale factor for the navigation speech bubble's pop-in entrance.
-    /// Starts at 0.5 and springs to 1.0 when the first character appears.
     @State private var navigationBubbleScale: CGFloat = 1.0
 
-    /// True when the buddy is flying BACK to the cursor after pointing.
-    /// Only during the return flight can cursor movement cancel the animation.
     @State private var isReturningToCursor: Bool = false
 
-    // MARK: - Pet animation state
-    //
-    // Only used when the user has picked a `.pet(...)` cursor avatar style.
-    // Triangle styles ignore these.
-
-    /// High-level animation state fed to `ClickyPetSpriteView`.
     @State private var petAnimationState: PerryBuddyAnimationState = .idle
 
-    /// Last horizontal cursor position used to estimate running direction.
     @State private var lastDirectionSampleX: CGFloat = 0
-    /// Wall-clock time of the last running-row update — drives a small dwell
-    /// hysteresis so tiny ↔ swap doesn't flip-flop the row every frame.
     @State private var lastRunningRowFlipAt: Date = .distantPast
-
-    @AppStorage(PerryAvatarStyle.userDefaultsKey)
-    private var avatarStyleRawValueForRotation = PerryAvatarStyle.default.storageValue
-
-    private var currentCursorAvatarStyle: PerryAvatarStyle {
-        PerryAvatarStyle(storageValue: avatarStyleRawValueForRotation)
-    }
-
-    /// True when the active avatar is rotation-aware (triangles).
-    private var avatarHonorsRotation: Bool {
-        currentCursorAvatarStyle.honorsParentRotation
-    }
-
-    /// Keep glow for triangle cursors only; pet sprites should not glow.
-    private var shouldShowCursorGlow: Bool {
-        switch currentCursorAvatarStyle {
-        case .triangleFilled, .triangleOutline:
-            return true
-        case .pet:
-            return false
-        }
-    }
 
     private var isCalibrationCursorBoxActive: Bool {
         visualGuidanceOverlaysOnThisScreen.contains { overlay in
@@ -605,32 +280,14 @@ struct PerryBuddyView: View {
         }
     }
 
-    /// Cursor samples already arrive at display cadence. Restarting a spring
-    /// on every sample looks playful on paper but creates visible lag and
-    /// extra SwiftUI work. Use a tiny linear interpolation while following the
-    /// real cursor, and disable implicit position animation during scripted
-    /// flights where the bezier timer owns each frame.
     private var cursorFollowAnimation: Animation? {
         buddyNavigationMode == .followingCursor ? .linear(duration: 1.0 / 120.0) : nil
     }
 
-    private var normalizedCursorAvatarSizeScale: CGFloat {
-        CGFloat(
-            min(
-                max(cursorAvatarSizeScale, PerryAvatarSizePreference.minScale),
-                PerryAvatarSizePreference.maxScale
-            )
-        )
-    }
-
-    private let fullWelcomeMessage = "hey! i'm clicky"
-    private var overlayCursorColor: Color {
-        (PerryAccentTheme(rawValue: selectedAccentThemeID) ?? .mint).cursorColor
-    }
-
-    private var captionBubbleBackgroundColor: Color { .white }
-    private var captionBubbleTextColor: Color { .black }
-    private var captionBubbleShadowColor: Color { Color.black.opacity(0.22) }
+    private let fullWelcomeMessage = "hey! i'm Perry"
+    private var captionBubbleBackgroundColor: Color { PerryOverlayTheme.Colors.captionSurface }
+    private var captionBubbleTextColor: Color { PerryOverlayTheme.Colors.captionText }
+    private var captionBubbleShadowColor: Color { PerryOverlayTheme.Colors.shadow }
     private var normalizedVoiceResponseCaptionOpacity: Double {
         min(max(voiceResponseCaptionOpacity, 0.55), 1.0)
     }
@@ -646,10 +303,8 @@ struct PerryBuddyView: View {
 
     var body: some View {
         ZStack {
-            // Nearly transparent background (helps with compositing)
             Color.black.opacity(0.001)
 
-            // Welcome speech bubble (first launch only)
             if isCursorOnThisScreen && showWelcome && !welcomeText.isEmpty {
                 Text(welcomeText)
                     .font(.system(size: 11, weight: .medium))
@@ -671,15 +326,12 @@ struct PerryBuddyView: View {
                     .opacity(bubbleOpacity)
                     .position(x: cursorPosition.x + 10 + (bubbleSize.width / 2), y: cursorPosition.y + 18)
                     .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.easeOut(duration: 0.5), value: bubbleOpacity)
+                    .animation(PerryOverlayTheme.Motion.entrance, value: bubbleOpacity)
                     .onPreferenceChange(SizePreferenceKey.self) { newSize in
                         bubbleSize = newSize
                     }
             }
 
-            // Navigation pointer bubble — shown when buddy arrives at a detected element.
-            // Pops in with a scale-bounce (0.5x → 1.0x spring) and a bright initial
-            // glow that settles, creating a "materializing" effect.
             if buddyNavigationMode == .pointingAtTarget && !navigationBubbleText.isEmpty {
                 Text(navigationBubbleText)
                     .font(.system(size: 11, weight: .medium))
@@ -706,8 +358,8 @@ struct PerryBuddyView: View {
                     .opacity(navigationBubbleOpacity)
                     .position(x: cursorPosition.x + 10 + (navigationBubbleSize.width / 2), y: cursorPosition.y + 18)
                     .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.6), value: navigationBubbleScale)
-                    .animation(.easeOut(duration: 0.5), value: navigationBubbleOpacity)
+                    .animation(PerryOverlayTheme.Motion.travel, value: navigationBubbleScale)
+                    .animation(PerryOverlayTheme.Motion.entrance, value: navigationBubbleOpacity)
                     .onPreferenceChange(NavigationBubbleSizePreferenceKey.self) { newSize in
                         navigationBubbleSize = newSize
                     }
@@ -752,7 +404,7 @@ struct PerryBuddyView: View {
             }
 
             if shouldShowAgentTaskBubble,
-               let agentTaskBubbleText = cursorState.agentTaskBubbleText?.trimmingCharacters(in: .whitespacesAndNewlines),
+               let agentTaskBubbleText = taskBubbleText,
                !agentTaskBubbleText.isEmpty {
                 let bubblePosition = anchoredBubblePosition(
                     for: cursorPosition,
@@ -784,66 +436,36 @@ struct PerryBuddyView: View {
                     .position(x: bubblePosition.x, y: bubblePosition.y)
                     .opacity(cursorOpacity)
                     .animation(cursorFollowAnimation, value: cursorPosition)
-                    .animation(.easeOut(duration: 0.16), value: cursorState.agentTaskBubbleText)
+                    .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: taskBubbleText)
                     .onPreferenceChange(AgentTaskBubbleSizePreferenceKey.self) { newSize in
                         agentTaskBubbleSize = newSize
                     }
             }
 
-            // Cursor companion — shown when idle or while TTS is playing (responding).
-            // All three states (mascot, waveform, spinner) stay in the view tree
-            // permanently and cross-fade via opacity so SwiftUI doesn't remove/re-insert
-            // them (which caused a visible cursor "pop").
-            //
-            // During cursor following: fast spring animation for snappy tracking.
-            // During navigation: NO implicit animation — the frame-by-frame bezier
-            // timer controls position directly at 60fps for a smooth arc flight.
-            //
-            // Rotation is applied conditionally: triangle styles point in their
-            // direction of travel via rotation; pet sprites face up and use
-            // their own running-left/running-right rows for direction instead.
             ZStack {
                 if isCalibrationCursorBoxActive {
                     PerryCalibrationBoxView(
-                        color: overlayCursorColor,
+                        color: PerryOverlayTheme.Colors.accent,
                         reduceMotion: accessibilityReduceMotion
                     )
                 } else {
-                    PerryAvatarView(
-                        accentColor: overlayCursorColor,
-                        animationState: petAnimationState
-                    )
+                    PerrySpriteView(animation: petAnimationState, size: 52)
                 }
             }
                 .frame(
-                    width: (isCalibrationCursorBoxActive ? 38 : (avatarHonorsRotation ? 25 : 48)) * normalizedCursorAvatarSizeScale,
-                    height: (isCalibrationCursorBoxActive ? 38 : (avatarHonorsRotation ? 33 : 52)) * normalizedCursorAvatarSizeScale
-                )
-                .rotationEffect(.degrees(!isCalibrationCursorBoxActive && avatarHonorsRotation ? buddyRotationDegrees : 0))
-                .shadow(
-                    color: (!isCalibrationCursorBoxActive && shouldShowCursorGlow) ? overlayCursorColor.opacity(0.86) : .clear,
-                    radius: (!isCalibrationCursorBoxActive && shouldShowCursorGlow) ? 8 + (buddyFlightScale - 1.0) * 20 : 0,
-                    x: 0,
-                    y: 0
+                    width: isCalibrationCursorBoxActive ? 38 : 48,
+                    height: isCalibrationCursorBoxActive ? 38 : 52
                 )
                 .scaleEffect(buddyFlightScale)
                 .opacity(buddyIsVisibleOnThisScreen && (cursorState.voiceState == .idle || cursorState.voiceState == .responding) ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(
                     buddyNavigationMode == .followingCursor
-                        ? .spring(response: 0.2, dampingFraction: 0.6, blendDuration: 0)
+                        ? PerryOverlayTheme.Motion.travel
                         : nil,
                     value: cursorPosition
                 )
-                .animation(.easeIn(duration: 0.25), value: cursorState.voiceState)
-                .animation(
-                    buddyNavigationMode == .navigatingToTarget ? nil : .easeInOut(duration: 0.3),
-                    value: buddyRotationDegrees
-                )
-                // Recompute pet row whenever ANY relevant input changes —
-                // covers navigation flights (cursorPosition is updated by
-                // the bezier timer, not the mouse tracker) and state-only
-                // transitions like processing or pointing.
+                .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
                 .onChange(of: cursorPosition) { _, newPos in
                     updatePetAnimationStateForCursorMotion(toX: newPos.x)
                 }
@@ -853,33 +475,33 @@ struct PerryBuddyView: View {
                 .onChange(of: cursorState.voiceState) { _, _ in
                     updatePetAnimationStateForCursorMotion(toX: cursorPosition.x)
                 }
+                .onChange(of: cursorState.animation) { _, animation in
+                    setPetAnimationState(animation)
+                }
 
-            // Blue waveform — replaces the mascot while listening
             PerryWaveformView(
                 audioPowerLevel: cursorState.currentAudioPowerLevel,
-                cursorColor: overlayCursorColor,
+                cursorColor: PerryOverlayTheme.Colors.accent,
                 isActive: buddyIsVisibleOnThisScreen && cursorState.voiceState == .listening
             )
                 .opacity(buddyIsVisibleOnThisScreen && cursorState.voiceState == .listening ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(cursorFollowAnimation, value: cursorPosition)
-                .animation(.easeIn(duration: 0.15), value: cursorState.voiceState)
+                .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
 
-            // Blue spinner — shown while the AI is processing (transcription + Claude + waiting for TTS)
             PerrySpinnerView(
-                cursorColor: overlayCursorColor,
+                cursorColor: PerryOverlayTheme.Colors.accent,
                 isActive: buddyIsVisibleOnThisScreen && cursorState.voiceState == .processing
             )
                 .opacity(buddyIsVisibleOnThisScreen && cursorState.voiceState == .processing ? cursorOpacity : 0)
                 .position(cursorPosition)
                 .animation(cursorFollowAnimation, value: cursorPosition)
-                .animation(.easeIn(duration: 0.15), value: cursorState.voiceState)
+                .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
 
         }
         .frame(width: screenFrame.width, height: screenFrame.height)
         .ignoresSafeArea()
         .onAppear {
-            // Set initial cursor position immediately before starting animation
             let mouseLocation = NSEvent.mouseLocation
             isCursorOnThisScreen = screenFrame.contains(mouseLocation)
 
@@ -900,13 +522,6 @@ struct PerryBuddyView: View {
             navigationAnimationTimer?.invalidate()
         }
         .onChange(of: cursorState.detectedElementScreenLocation) { _, newLocation in
-            // When a UI element location is detected, navigate the buddy to
-            // that position so it points at the element. When the manager
-            // clears the target (for example after the agent dock spawns),
-            // force the buddy back into cursor-following mode. Without this,
-            // the view could remain in pointing mode until its delayed bubble
-            // timers fired, leaving Clicky stuck in the top-right if the main
-            // actor was busy starting the agent.
             guard newLocation != nil else {
                 resetNavigationStateAndResumeFollowing()
                 return
@@ -921,9 +536,6 @@ struct PerryBuddyView: View {
             return
         }
 
-        // Only navigate if the target is on THIS screen. Use intersection as
-        // well as exact equality because NSScreen frame values can differ by
-        // tiny amounts across AppKit/SwiftUI conversions.
         guard displayFrame.intersects(screenFrame) || screenFrame.contains(screenLocation) else {
             return
         }
@@ -931,17 +543,9 @@ struct PerryBuddyView: View {
         startNavigatingToElement(screenLocation: screenLocation)
     }
 
-    /// Whether the buddy mascot should be visible on this screen.
-    /// True when cursor is on this screen during normal following, or
-    /// when navigating/pointing at a target on this screen. When another
-    /// screen is navigating (detectedElementScreenLocation is set but this
-    /// screen isn't the one animating), hide the cursor so only one buddy
-    /// is ever visible at a time.
     private var buddyIsVisibleOnThisScreen: Bool {
         switch buddyNavigationMode {
         case .followingCursor:
-            // If another screen's PerryBuddyView is navigating to an element,
-            // hide the cursor on this screen to prevent a duplicate buddy
             if cursorState.detectedElementScreenLocation != nil {
                 return false
             }
@@ -959,8 +563,14 @@ struct PerryBuddyView: View {
             && cursorState.voiceState != .processing
     }
 
+    private var taskBubbleText: String? {
+        let text = cursorState.agentTaskBubbleText ?? cursorState.taskBubbleText
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text
+    }
+
     private var externalPrimaryCaptionColor: Color {
-        colorFromHex(cursorState.externalPrimaryCaptionAccentHex) ?? overlayCursorColor
+        colorFromHex(cursorState.externalPrimaryCaptionAccentHex) ?? PerryOverlayTheme.Colors.accent
     }
 
     private var externalSecondaryCursorsOnThisScreen: [PerryExternalCursor] {
@@ -982,7 +592,7 @@ struct PerryBuddyView: View {
     private func circleSelectLiveTrail(_ localPoints: [CGPoint], dimmed: Bool) -> some View {
         PerryFadingTrailView(
             points: localPoints,
-            color: Color(red: 0.86, green: 0.28, blue: 0.24),
+            color: PerryOverlayTheme.Colors.selection,
             reduceMotion: accessibilityReduceMotion,
             overallOpacity: dimmed ? 0.35 : 1.0
         )
@@ -993,7 +603,7 @@ struct PerryBuddyView: View {
     @ViewBuilder
     private func circleSelectSnappedHighlight(_ screenRect: CGRect, label: String?) -> some View {
         let localRect = convertScreenRectToSwiftUICoordinates(screenRect)
-        let trailColor = Color(red: 0.86, green: 0.28, blue: 0.24)
+        let trailColor = PerryOverlayTheme.Colors.selection
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(trailColor.opacity(0.10))
@@ -1004,12 +614,12 @@ struct PerryBuddyView: View {
             if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
                 Text(label)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(PerryOverlayTheme.Colors.labelForeground)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(Color.black.opacity(0.72))
+                            .fill(PerryOverlayTheme.Colors.labelBackground)
                     )
                     .position(x: localRect.midX, y: max(14, localRect.minY - 14))
             }
@@ -1028,22 +638,29 @@ struct PerryBuddyView: View {
         }
     }
 
+    @ViewBuilder
     private func activeControlGlow(_ screenRect: CGRect) -> some View {
         let localRect = convertScreenRectToSwiftUICoordinates(screenRect)
-        return PerryControlGlowView(
-            color: overlayCursorColor,
-            reduceMotion: accessibilityReduceMotion
-        )
-        .frame(width: max(1, localRect.width), height: max(1, localRect.height))
-        .position(x: localRect.midX, y: localRect.midY)
+        ZStack {
+            PerryControlGlowView(
+                color: PerryOverlayTheme.Colors.accent,
+                reduceMotion: accessibilityReduceMotion
+            )
+            .frame(width: max(1, localRect.width), height: max(1, localRect.height))
+            .position(x: localRect.midX, y: localRect.midY)
+
+            if let label = cursorState.activeControlGlowLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !label.isEmpty {
+                externalCaption(label, at: CGPoint(x: localRect.midX, y: localRect.minY), color: PerryOverlayTheme.Colors.accent)
+            }
+        }
         .transition(.opacity)
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     @ViewBuilder
     private func visualGuidanceOverlay(_ overlay: PerryGuidanceOverlay) -> some View {
-        let color = colorFromHex(overlay.style.accentHex) ?? overlayCursorColor
+        let color = colorFromHex(overlay.style.accentHex) ?? PerryOverlayTheme.Colors.accent
         ZStack {
             switch overlay.kind {
             case .scribble:
@@ -1106,11 +723,9 @@ struct PerryBuddyView: View {
     private func externalSecondaryCursor(_ cursor: PerryExternalCursor) -> some View {
         let local = convertScreenPointToSwiftUICoordinates(cursor.screenLocation)
         let position = CGPoint(x: local.x + 35, y: local.y + 25)
-        let color = colorFromHex(cursor.accentHex) ?? overlayCursorColor
+        let color = colorFromHex(cursor.accentHex) ?? PerryOverlayTheme.Colors.accent
         ZStack {
-            PerryAvatarView(accentColor: color, showsEyes: false)
-                .frame(width: 23, height: 30)
-                .rotationEffect(.degrees(triangleBaseRotationDegrees))
+            PerrySpriteView(size: 30)
                 .shadow(color: color.opacity(0.90), radius: 10, x: 0, y: 0)
                 .position(position)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
@@ -1120,7 +735,7 @@ struct PerryBuddyView: View {
                 externalCaption(caption, at: position, color: color)
             }
         }
-        .animation(.spring(response: 0.16, dampingFraction: 0.72), value: cursor.screenLocation)
+        .animation(PerryOverlayTheme.Motion.travelFast, value: cursor.screenLocation)
     }
 
     @ViewBuilder
@@ -1134,7 +749,7 @@ struct PerryBuddyView: View {
 
         VStack(alignment: .leading, spacing: 3) {
             Text(caption)
-                .font(PerryCaptionFont.resolved(voiceResponseCaptionFontRawValue).swiftUIFont(size: 11, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundColor(captionBubbleTextColor)
                 .lineLimit(5)
                 .multilineTextAlignment(.leading)
@@ -1173,10 +788,6 @@ struct PerryBuddyView: View {
 
     private func colorFromHex(_ rawHex: String?) -> Color? {
         guard let hex = rawHex?.trimmingCharacters(in: .whitespacesAndNewlines), !hex.isEmpty else { return nil }
-        // H11: use the failable initializer so malformed/empty hex from model
-        // output or external cursor state returns nil, letting the caller's
-        // `?? overlayCursorColor` fallback actually engage (previously
-        // Color(hex:) silently returned black, making those fallbacks dead).
         return Color(optionalHex: hex)
     }
 
@@ -1210,14 +821,9 @@ struct PerryBuddyView: View {
     // MARK: - Cursor Tracking
 
     private func startTrackingCursor() {
-        // Sample `NSEvent.mouseLocation` (thread-safe) on a high-priority
-        // background queue so cursor tracking is independent of main-actor
-        // pressure. Keep the producer off main, but coalesce delivery so a
-        // busy SwiftUI/TTS/agent-start moment cannot build a backlog of stale
-        // 60Hz cursor updates that replay as visible jank.
         cursorTrackingTimer?.cancel()
 
-        let queue = DispatchQueue(label: "openclicky.cursor.tracker", qos: .userInteractive)
+        let queue = DispatchQueue(label: "dev.perry.perry.cursor.tracker", qos: .userInteractive)
         let dispatchTimer = DispatchSource.makeTimerSource(queue: queue)
         dispatchTimer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(3))
         var lastSampledPoint: CGPoint = .zero
@@ -1243,21 +849,11 @@ struct PerryBuddyView: View {
     }
 
     private func updateCursorTracking() {
-        // H9: skip the cursor-tracking work when the buddy is hidden on this
-        // screen, so a multi-display setup doesn't pay for per-frame state
-        // writes that produce no visible pixels. Checked here on the main
-        // thread (not in the background timer handler) because this struct's
-        // @State-backed `buddyIsVisibleOnThisScreen` must be read via SwiftUI's
-        // live indirection — capturing `self` in the background closure would
-        // snapshot stale state, and `[weak self]` is illegal on a value type.
+        OverlayPerfProbe.shared.tick()
         guard buddyIsVisibleOnThisScreen else { return }
         let mouseLocation = NSEvent.mouseLocation
         isCursorOnThisScreen = screenFrame.contains(mouseLocation)
 
-        // During forward flight or pointing, the buddy is NOT interrupted by
-        // mouse movement — it completes its full animation and return flight.
-        // Only during the RETURN flight do we allow cursor movement to cancel
-        // (so the buddy snaps to following if the user moves while it's flying back).
         if buddyNavigationMode == .navigatingToTarget && isReturningToCursor {
             let currentMouseInSwiftUI = convertScreenPointToSwiftUICoordinates(mouseLocation)
             let distanceFromNavigationStart = hypot(
@@ -1270,12 +866,10 @@ struct PerryBuddyView: View {
             return
         }
 
-        // During forward navigation or pointing, just skip cursor tracking
         if buddyNavigationMode != .followingCursor {
             return
         }
 
-        // Normal cursor following
         let swiftUIPosition = convertScreenPointToSwiftUICoordinates(mouseLocation)
         let buddyX = swiftUIPosition.x + 35
         let buddyY = swiftUIPosition.y + 25
@@ -1284,34 +878,24 @@ struct PerryBuddyView: View {
         updatePetAnimationStateForCursorMotion(toX: buddyX)
     }
 
-    // MARK: - Pet animation state derivation
-
-    /// Translates the buddy's full state (voice, navigation, cursor motion)
-    /// into the right atlas row for the pet sprite. Called on every cursor
-    /// position change AND on every navigation/voice state change so the
-    /// pet stays in sync regardless of who's driving the position update
-    /// (mouse tracker vs. bezier-flight timer).
     private func updatePetAnimationStateForCursorMotion(toX newX: CGFloat) {
-        // Skip work entirely when the active avatar isn't a pet — the
-        // triangle styles ignore animation state.
-        guard !avatarHonorsRotation else { return }
+        if cursorState.animation != .idle {
+            setPetAnimationState(cursorState.animation)
+            lastDirectionSampleX = newX
+            return
+        }
 
-        // Highest priority: thinking spinner shouldn't show running cycles.
         if cursorState.voiceState == .processing {
             setPetAnimationState(.review)
             lastDirectionSampleX = newX
             return
         }
-        // Pointing-at-target is a stationary pose — wave at the target.
         if buddyNavigationMode == .pointingAtTarget {
             setPetAnimationState(.waving)
             lastDirectionSampleX = newX
             return
         }
 
-        // Velocity drives direction whether we're following the cursor OR
-        // flying along a bezier arc — both update `cursorPosition`. During
-        // navigation the bezier timer ticks at 60fps so dx stays meaningful.
         let dx = newX - lastDirectionSampleX
         let now = Date()
         let deadZone: CGFloat = 1.5
@@ -1319,15 +903,11 @@ struct PerryBuddyView: View {
         let isFlying = buddyNavigationMode == .navigatingToTarget
 
         if abs(dx) < deadZone {
-            // Mid-flight with no horizontal component (vertical arc, or
-            // crest of the curve where dx briefly approaches 0) — fall back
-            // to the generic running row so the sprite keeps looking active.
             if isFlying {
                 if petAnimationState != .running {
                     setPetAnimationState(.running)
                 }
             } else if now.timeIntervalSince(lastRunningRowFlipAt) > 0.6 {
-                // Following cursor and cursor has been still for >0.6s.
                 setPetAnimationState(.idle)
             }
         } else {
@@ -1359,31 +939,23 @@ struct PerryBuddyView: View {
 
     /// Starts animating the buddy toward a detected UI element location.
     private func startNavigatingToElement(screenLocation: CGPoint) {
-        // Don't interrupt welcome animation
         guard !showWelcome || welcomeText.isEmpty else { return }
 
-        // Convert the AppKit screen location to SwiftUI coordinates for this screen
         let targetInSwiftUI = convertScreenPointToSwiftUICoordinates(screenLocation)
 
-        // Offset the target so the buddy sits beside the element rather than
-        // directly on top of it — 8px to the right, 12px below.
         let offsetTarget = CGPoint(
             x: targetInSwiftUI.x + 8,
             y: targetInSwiftUI.y + 12
         )
 
-        // Clamp target to screen bounds with padding
         let clampedTarget = CGPoint(
             x: max(20, min(offsetTarget.x, screenFrame.width - 20)),
             y: max(20, min(offsetTarget.y, screenFrame.height - 20))
         )
 
-        // Record the current cursor position so we can detect if the user
-        // moves the mouse enough to cancel the return flight
         let mouseLocation = NSEvent.mouseLocation
         cursorPositionWhenNavigationStarted = convertScreenPointToSwiftUICoordinates(mouseLocation)
 
-        // Enter navigation mode — stop cursor following
         buddyNavigationMode = .navigatingToTarget
         isReturningToCursor = false
 
@@ -1393,15 +965,17 @@ struct PerryBuddyView: View {
         }
     }
 
-    /// Animates the buddy along a quadratic bezier arc from its current position
-    /// to the specified destination. The mascot tilts toward its direction
-    /// of travel (tangent to the curve) each frame, scales up at the midpoint
-    /// for a "swooping" feel, and the glow intensifies during flight.
     private func animateBezierFlightArc(
         to destination: CGPoint,
         onComplete: @escaping () -> Void
     ) {
         navigationAnimationTimer?.invalidate()
+        if accessibilityReduceMotion {
+            cursorPosition = destination
+            buddyFlightScale = 1
+            onComplete()
+            return
+        }
 
         let startPosition = cursorPosition
         let endPosition = destination
@@ -1410,10 +984,6 @@ struct PerryBuddyView: View {
         let deltaY = endPosition.y - startPosition.y
         let distance = hypot(deltaX, deltaY)
 
-        // Flight duration scales with distance. Normal pointing flights stay
-        // a little theatrical; agent-start corner handoffs should still feel
-        // quick, but not so quick that the rendered buddy appears to turn back
-        // before it actually reaches the parked-agent area.
         let flightDurationSeconds: Double
         if cursorState.detectedElementReturnsImmediately {
             flightDurationSeconds = min(max(distance / 1800.0, 0.32), 0.58)
@@ -1424,8 +994,6 @@ struct PerryBuddyView: View {
         let totalFrames = Int(flightDurationSeconds / frameInterval)
         var currentFrame = 0
 
-        // Control point for the quadratic bezier arc. Offset the midpoint
-        // upward (negative Y in SwiftUI) so the buddy flies in a parabolic arc.
         let midPoint = CGPoint(
             x: (startPosition.x + endPosition.x) / 2.0,
             y: (startPosition.y + endPosition.y) / 2.0
@@ -1445,13 +1013,10 @@ struct PerryBuddyView: View {
                 return
             }
 
-            // Linear progress 0→1 over the flight duration
             let linearProgress = Double(currentFrame) / Double(totalFrames)
 
-            // Smoothstep easeInOut: 3t² - 2t³ (Hermite interpolation)
             let t = linearProgress * linearProgress * (3.0 - 2.0 * linearProgress)
 
-            // Quadratic bezier: B(t) = (1-t)²·P0 + 2(1-t)t·P1 + t²·P2
             let oneMinusT = 1.0 - t
             let bezierX = oneMinusT * oneMinusT * startPosition.x
                         + 2.0 * oneMinusT * t * controlPoint.x
@@ -1462,18 +1027,6 @@ struct PerryBuddyView: View {
 
             self.cursorPosition = CGPoint(x: bezierX, y: bezierY)
 
-            // Rotation: face the direction of travel by computing the tangent
-            // to the bezier curve. B'(t) = 2(1-t)(P1-P0) + 2t(P2-P1)
-            let tangentX = 2.0 * oneMinusT * (controlPoint.x - startPosition.x)
-                         + 2.0 * t * (endPosition.x - controlPoint.x)
-            let tangentY = 2.0 * oneMinusT * (controlPoint.y - startPosition.y)
-                         + 2.0 * t * (endPosition.y - controlPoint.y)
-            // A small offset makes the paperclip lean into rightward movement
-            // instead of standing straight up during flight.
-            self.buddyRotationDegrees = atan2(tangentY, tangentX) * (180.0 / .pi) + 28.0
-
-            // Scale pulse: sin curve peaks at midpoint of the flight.
-            // Buddy grows to ~1.3x at the apex, then shrinks back to 1.0x on landing.
             let scalePulse = sin(linearProgress * .pi)
             self.buddyFlightScale = 1.0 + scalePulse * 0.3
         }
@@ -1481,17 +1034,9 @@ struct PerryBuddyView: View {
         RunLoop.main.add(animationTimer, forMode: .common)
     }
 
-    /// Transitions to pointing mode — shows a speech bubble with a bouncy
-    /// scale-in entrance and variable-speed character streaming. Agent-start
-    /// handoffs skip the bubble, settle briefly at the dock point, then return
-    /// so OpenClicky visibly reaches the parking area before flying back.
     private func startPointingAtElement() {
         buddyNavigationMode = .pointingAtTarget
 
-        // Rotate back to default angle now that we've arrived
-        buddyRotationDegrees = triangleBaseRotationDegrees
-
-        // Reset navigation bubble state — start small for the scale-bounce entrance
         navigationBubbleText = ""
         navigationBubbleOpacity = 1.0
         navigationBubbleSize = .zero
@@ -1507,14 +1052,11 @@ struct PerryBuddyView: View {
             return
         }
 
-        // Use custom bubble text from the companion manager (e.g. onboarding demo)
-        // if available, otherwise fall back to a random pointer phrase
         let pointerPhrase = cursorState.detectedElementBubbleText
             ?? navigationPointerPhrases.randomElement()
             ?? "right here!"
 
         streamNavigationBubbleCharacter(phrase: pointerPhrase, characterIndex: 0) {
-            // All characters streamed — hold for 3 seconds, then fly back
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
                 guard self.buddyNavigationMode == .pointingAtTarget else { return }
                 self.navigationBubbleOpacity = 0.0
@@ -1526,14 +1068,17 @@ struct PerryBuddyView: View {
         }
     }
 
-    /// Streams the navigation bubble text one character at a time with variable
-    /// delays (30–60ms) for a natural "speaking" rhythm.
     private func streamNavigationBubbleCharacter(
         phrase: String,
         characterIndex: Int,
         onComplete: @escaping () -> Void
     ) {
         guard buddyNavigationMode == .pointingAtTarget else { return }
+        if accessibilityReduceMotion {
+            navigationBubbleText = phrase
+            onComplete()
+            return
+        }
         guard characterIndex < phrase.count else {
             onComplete()
             return
@@ -1542,7 +1087,6 @@ struct PerryBuddyView: View {
         let charIndex = phrase.index(phrase.startIndex, offsetBy: characterIndex)
         navigationBubbleText.append(phrase[charIndex])
 
-        // On the first character, trigger the scale-bounce entrance
         if characterIndex == 0 {
             navigationBubbleScale = 1.0
         }
@@ -1557,7 +1101,6 @@ struct PerryBuddyView: View {
         }
     }
 
-    /// Flies the buddy back to the current cursor position after pointing is done.
     private func startFlyingBackToCursor() {
         let mouseLocation = NSEvent.mouseLocation
         let cursorInSwiftUI = convertScreenPointToSwiftUICoordinates(mouseLocation)
@@ -1573,7 +1116,6 @@ struct PerryBuddyView: View {
         }
     }
 
-    /// Cancels an in-progress navigation because the user moved the cursor.
     private func cancelNavigationAndResumeFollowing() {
         navigationAnimationTimer?.invalidate()
         navigationAnimationTimer = nil
@@ -1584,7 +1126,6 @@ struct PerryBuddyView: View {
         finishNavigationAndResumeFollowing()
     }
 
-    /// Returns the buddy to normal cursor-following mode after navigation completes.
     private func finishNavigationAndResumeFollowing() {
         resetNavigationStateAndResumeFollowing()
         supervisorState.clearDetectedElementLocation()
@@ -1595,7 +1136,6 @@ struct PerryBuddyView: View {
         navigationAnimationTimer = nil
         buddyNavigationMode = .followingCursor
         isReturningToCursor = false
-        buddyRotationDegrees = 2.0
         buddyFlightScale = 1.0
         navigationBubbleText = ""
         navigationBubbleOpacity = 0.0
@@ -1606,22 +1146,15 @@ struct PerryBuddyView: View {
     // MARK: - Welcome Animation
 
     private func startWelcomeAnimation() {
-        withAnimation(.easeIn(duration: 0.4)) {
+        withAnimation(PerryOverlayTheme.Motion.entrance) {
             self.bubbleOpacity = 1.0
         }
 
         var currentIndex = 0
-        // H8: capture the timer into @State (`welcomeTypingTimer`) so onDisappear
-        // can invalidate it. Previously the timer was a local (its `timer` param
-        // shadowed the dead @State `timer`), so an overlay disappear mid-typing
-        // left it firing against recycled state. PerryBuddyView is a SwiftUI
-        // struct, so there is no retain cycle to guard against — capture `self`
-        // by value; @State writes go through SwiftUI's live backing storage.
         let typingTimer = Timer.scheduledTimer(withTimeInterval: 0.03, repeats: true) { timer in
             guard currentIndex < fullWelcomeMessage.count else {
                 timer.invalidate()
                 welcomeTypingTimer = nil
-                // Hold the text for 2 seconds, then fade it out
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     bubbleOpacity = 0.0
                 }
@@ -1669,7 +1202,7 @@ private struct PerryControlGlowView: View {
                 pulse = true
             }
             .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.75).repeatForever(autoreverses: true),
+                reduceMotion ? nil : PerryOverlayTheme.Motion.ambientPulse.repeatCount(4, autoreverses: true),
                 value: pulse
             )
         }
@@ -1714,9 +1247,7 @@ private struct PerryGuidanceScribbleView: View {
             if !reduceMotion,
                let cursorPoint = PerrySmoothScribblePath.point(on: points, progress: clampedProgress),
                clampedProgress < 0.995 {
-                PerryAvatarView(accentColor: color)
-                    .frame(width: 18, height: 24)
-                    .rotationEffect(.degrees(12))
+                PerrySpriteView(size: 24)
                     .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                     .position(cursorPoint)
             }
@@ -1903,9 +1434,7 @@ private struct PerryGuidanceRectangleView: View {
                     )
 
                 if !reduceMotion && clampedProgress < 0.995 {
-                    PerryAvatarView(accentColor: color)
-                        .frame(width: 18, height: 24)
-                        .rotationEffect(.degrees(12))
+                    PerrySpriteView(size: 24)
                         .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                         .position(
                             x: max(0, min(size.width, size.width * clampedProgress)),
@@ -1941,21 +1470,18 @@ private struct PerryTopLeftRectangleOutline: Shape {
     }
 }
 
-// MARK: - Blue Cursor Waveform
-
-/// A small blue waveform that replaces the cursor companion while
-/// the user is holding the push-to-talk shortcut and speaking.
 private struct PerryWaveformView: View {
     let audioPowerLevel: CGFloat
     let cursorColor: Color
     let isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let barCount = 5
     private let listeningBarProfile: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
 
     @ViewBuilder
     var body: some View {
-        if isActive {
+        if isActive && !reduceMotion {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timelineContext in
                 bars(timelineDate: timelineContext.date)
             }
@@ -1991,13 +1517,10 @@ private struct PerryWaveformView: View {
     }
 }
 
-// MARK: - Blue Cursor Spinner
-
-/// A small blue spinning indicator that replaces the cursor companion
-/// while the AI is processing a voice input.
 private struct PerrySpinnerView: View {
     let cursorColor: Color
     let isActive: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isSpinning = false
 
     var body: some View {
@@ -2022,10 +1545,13 @@ private struct PerrySpinnerView: View {
             .onChange(of: isActive) { _, _ in
                 updateSpinning()
             }
+            .onChange(of: reduceMotion) { _, _ in
+                updateSpinning()
+            }
     }
 
     private func updateSpinning() {
-        if isActive {
+        if isActive && !reduceMotion {
             isSpinning = false
             withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
                 isSpinning = true
@@ -2038,33 +1564,16 @@ private struct PerrySpinnerView: View {
     }
 }
 
-private final class ClickyAgentDockLayoutState: ObservableObject {
-    var opensPanelsToRight = false {
-        didSet { scheduleChangeNotification() }
-    }
-    var dockHeight: CGFloat = 540 {
-        didSet { scheduleChangeNotification() }
-    }
-
-    private var hasPendingChangeNotification = false
-
-    private func scheduleChangeNotification() {
-        guard !hasPendingChangeNotification else { return }
-        hasPendingChangeNotification = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.hasPendingChangeNotification = false
-            self.objectWillChange.send()
-        }
-    }
-}
-
 public class OverlayWindowManager {
     private var overlayWindows: [OverlayWindow] = []
     private var supervisorState: PerryCursorState?
     private var displayConfigurationObserver: NSObjectProtocol?
-    private var interactivityTimer: Timer?
-    var hasShownOverlayBefore = false
+
+    /// Optional sample sink — wired by the app to its env-gated performance
+    /// log. Arguments: metric id, unit, value.
+    public var onSample: ((_ metricID: String, _ unit: String, _ value: Double) -> Void)? {
+        didSet { OverlayPerfProbe.shared.isEnabled = onSample != nil }
+    }
 
     public init() {
         displayConfigurationObserver = NotificationCenter.default.addObserver(
@@ -2079,30 +1588,21 @@ public class OverlayWindowManager {
     }
 
     deinit {
-        // The calibration event tap / key monitors are @MainActor resources and
-        // cannot be touched from this nonisolated deinit. They are torn down in
-        // stopCalibrationKeyboardTracking() via every hideOverlay/fadeOut path.
         if let displayConfigurationObserver {
             NotificationCenter.default.removeObserver(displayConfigurationObserver)
         }
     }
 
     public func showOverlay(onScreens screens: [NSScreen], state: PerryCursorState) {
-        // Hide any existing overlays
+        let start = CFAbsoluteTimeGetCurrent()
         hideOverlay(clearSupervisorState: false)
         self.supervisorState = state
 
-        // Track if this is the first time showing overlay (welcome message)
-        let isFirstAppearance = !hasShownOverlayBefore
-        hasShownOverlayBefore = true
-
-        // Create one overlay window per screen
         for screen in screens {
             let window = OverlayWindow(screen: screen)
 
             let contentView = PerryBuddyView(
                 screenFrame: screen.frame,
-                isFirstAppearance: isFirstAppearance,
                 supervisorState: state
             )
 
@@ -2115,7 +1615,12 @@ public class OverlayWindowManager {
             window.orderFrontRegardless()
         }
 
-        startInteractivityTracking()
+        OverlayPerfProbe.shared.reset()
+        DispatchQueue.main.async { [weak self] in
+            // First presentation opportunity after ordering the windows.
+            self?.onSample?("overlay.first_frame_ms", "ms", (CFAbsoluteTimeGetCurrent() - start) * 1000)
+        }
+        emitStallSample()
     }
 
     public func hideOverlay() {
@@ -2123,7 +1628,7 @@ public class OverlayWindowManager {
     }
 
     private func hideOverlay(clearSupervisorState clear: Bool) {
-        stopInteractivityTracking()
+        let start = CFAbsoluteTimeGetCurrent()
         for window in overlayWindows {
             window.orderOut(nil)
             window.contentView = nil
@@ -2132,48 +1637,56 @@ public class OverlayWindowManager {
         if clear {
             supervisorState = nil
         }
-    }
-
-    // MARK: - Click-through overlay interactivity
-    //
-    // The overlay windows are full-screen and sit above OpenClicky's main
-    // dialog in the shared window-level stack. Keep them click-through
-    // (`ignoresMouseEvents = true`) so temporary visual guidance never
-    // swallows clicks in the app behind it.
-    private func startInteractivityTracking() {
-        stopInteractivityTracking()
-        updateOverlayInteractivity()
-    }
-
-    private func stopInteractivityTracking() {
-        interactivityTimer?.invalidate()
-        interactivityTimer = nil
-    }
-
-    private func updateOverlayInteractivity() {
-        for window in overlayWindows {
-            window.ignoresMouseEvents = true
-        }
+        emitFrameIntervalSamples()
+        emit("overlay.cleanup_ms", value: (CFAbsoluteTimeGetCurrent() - start) * 1000)
     }
 
     /// Fades out overlay windows over `duration` seconds, then removes them.
-    public func fadeOutAndHideOverlay(duration: TimeInterval = 0.4) {
-        stopInteractivityTracking()
+    public func fadeOutAndHideOverlay(duration: TimeInterval = 0.24) {
+        let start = CFAbsoluteTimeGetCurrent()
         let windowsToFade = overlayWindows
         overlayWindows.removeAll()
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = duration
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             for window in windowsToFade {
                 window.animator().alphaValue = 0
             }
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
             for window in windowsToFade {
                 window.orderOut(nil)
                 window.contentView = nil
             }
+            self?.emitFrameIntervalSamples()
+            self?.emit("overlay.fade_cleanup_ms", value: (CFAbsoluteTimeGetCurrent() - start) * 1000)
+            self?.emitStallSample()
         })
+    }
+
+    private func emit(_ metricID: String, value: Double) {
+        onSample?(metricID, "ms", value)
+    }
+
+    private func emitFrameIntervalSamples() {
+        let intervals = OverlayPerfProbe.shared.drain()
+        guard !intervals.isEmpty else { return }
+        emit("overlay.frame_interval_ms", value: intervals.reduce(0, +) / Double(intervals.count))
+        if let worst = intervals.max() {
+            emit("overlay.frame_interval_max_ms", value: worst)
+        }
+    }
+
+    /// Round-trip through a background queue onto main: the hop latency is a
+    /// cheap proxy for main-thread stalls while the overlay is up.
+    private func emitStallSample() {
+        guard onSample != nil else { return }
+        let queued = CFAbsoluteTimeGetCurrent()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            DispatchQueue.main.async {
+                self?.emit("overlay.main_thread_stall_ms", value: (CFAbsoluteTimeGetCurrent() - queued) * 1000)
+            }
+        }
     }
 
     public func isShowingOverlay() -> Bool {

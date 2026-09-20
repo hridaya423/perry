@@ -20,42 +20,46 @@ final class ScriptedFinderRuntimeTests: XCTestCase {
         super.tearDown()
     }
 
-    func testPlanProducesSevenSteps() async throws {
-        let runtime = ScriptedFinderRuntime(baseURL: workDirectory)
-        let plan = try await runtime.plan(goal: "demo rename", context: .empty)
-        XCTAssertEqual(plan.steps.count, 7)
-        XCTAssertEqual(plan.steps.first?.kind, .highlight)
-        XCTAssertEqual(plan.steps.filter { $0.kind == .createFile }.count, 3)
-        XCTAssertEqual(plan.steps.filter { $0.kind == .renameFile }.count, 3)
+    func testPlanProducesTypedWorkspaceCreatesBoundToRequest() async throws {
+        let runtime = ScriptedFinderRuntime()
+        let request = try PlanningRequest(
+            goal: "demo create",
+            taskID: TaskID("scripted"),
+            workspace: workDirectory,
+            context: .none
+        )
+        let plan = try await runtime.plan(request)
+        XCTAssertEqual(plan.taskID, request.taskID)
+        XCTAssertEqual(plan.goal, request.goal)
+        XCTAssertEqual(plan.actions.count, 3)
+        for action in plan.actions {
+            guard case .transform(let workspace, let command) = action.operation,
+                  case .createUTF8File = command else {
+                return XCTFail("expected workspace create actions, got \(action.operation)")
+            }
+            XCTAssertEqual(workspace.standardizedFileURL, request.workspace)
+            XCTAssertEqual(action.approvalRequirement, .action)
+        }
     }
 
-    func testFullExecutionRenamesAllFilesOnDisk() async throws {
-        let runtime = ScriptedFinderRuntime(baseURL: workDirectory)
-        let plan = try await runtime.plan(goal: "demo rename", context: .empty)
+    func testFullExecutionCreatesAllFilesOnDisk() async throws {
+        let runtime = ScriptedFinderRuntime()
+        let request = try PlanningRequest(
+            goal: "demo create",
+            taskID: TaskID("scripted"),
+            workspace: workDirectory,
+            context: .none
+        )
+        let plan = try await runtime.plan(request)
+        let executor = WorkspaceFileRuntime(baseURL: workDirectory)
 
-        var results: [StepResult] = []
-        for step in plan.steps {
-            results.append(try await runtime.execute(step, consent: nil))
+        for action in plan.actions {
+            let grant = try ExecutionApprovalGrant(plan: plan, scope: .action(action.id))
+            let approved = try ApprovedExecutableAction(plan: plan, actionID: action.id, grant: grant)
+            _ = try await executor.execute(approved)
         }
 
-        XCTAssertTrue(results.allSatisfy(\.success))
         let contents = try FileManager.default.contentsOfDirectory(atPath: workDirectory.path).sorted()
-        XCTAssertEqual(
-            contents,
-            [
-                "perry-demo-a-renamed.txt",
-                "perry-demo-b-renamed.txt",
-                "perry-demo-c-renamed.txt",
-            ]
-        )
-    }
-
-    func testCreateFailsGracefullyWhenFileExists() async throws {
-        let runtime = ScriptedFinderRuntime(baseURL: workDirectory)
-        let existing = Step(kind: .createFile, summary: "create dup", payload: ["name": "dup.txt", "contents": "one"])
-        _ = try await runtime.execute(existing, consent: nil)
-        let duplicate = try await runtime.execute(existing, consent: nil)
-        XCTAssertFalse(duplicate.success)
-        XCTAssertTrue(duplicate.message.contains("already exists"))
+        XCTAssertEqual(contents, ScriptedFinderRuntime.demoFileNames)
     }
 }

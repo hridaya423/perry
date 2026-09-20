@@ -7,7 +7,7 @@ Measured against upstream as of 2026-08-25 (main @ 257fc11).
 | Organ | Source file | Lines | Monolith refs | Imports | Verdict |
 |---|---|---|---|---|---|
 | Overlay engine | `cursor-buddy/OverlayWindow.swift` | 3234 | 12 | AppKit, Combine, SwiftUI, UniformTypeIdentifiers | Transplant into PerryOverlay; replace the 12 CompanionManager touchpoints with a narrow `OverlayControlling` protocol owned by PerryCore |
-| Screen capture | `cursor-buddy/CompanionScreenCaptureUtility.swift` | 465 | 0 | AppKit, ScreenCaptureKit | Near drop-in for PerryCapture; add blocked-window refusal at this layer |
+| Platform capture | `cursor-buddy/CompanionScreenCaptureUtility.swift` | 465 | 0 | AppKit native capture | Not used; Cua Driver is Perry's only live computer-use capture/action boundary |
 | Control bridge | `cursor-buddy/OpenClickyExternalControlBridge.swift` | 1280 | 0 | AppKit, Foundation, Network | Transplant last, kept internal (loopback only) per PRD |
 | Process spawn | `cursor-buddy/CodexProcessManager.swift` | 517 | 0 | Foundation | Pattern source for PerryRuntimes CLI adapter; port ideas, rename surface |
 | Permission probes | scattered (`AXIsProcessTrusted`, `CGPreflightScreenCaptureAccess` across ~10 files) | — | — | — | Do not transplant files; write a fresh `PerryPermissionProbe` in PerryCore calling the same stable APIs |
@@ -28,7 +28,7 @@ Measured against upstream as of 2026-08-25 (main @ 257fc11).
 |---|---|
 | Overlay engine (`OverlayWindow.swift` → `PerryOverlay/OverlayWindow.swift`) | Done. 3234 → ~2200 lines; dock stack, dock manager, voice waveform/spinner UI, Codex pet sprites cut; all CompanionManager touchpoints rerouted to Perry-owned `PerryCursorState`; builds against new code only. |
 | Guidance models (`→ GuidanceModels.swift`) | Done verbatim + publicized; donor's own tests ported and passing (with one documented macOS 26 CGRect-standardization drift fix). |
-| Screen capture (`→ PerryCapture/PerryScreenCapture.swift`) | Done. Telemetry usage-log calls removed; PRD §7 enforced at capture layer: blocked windows on screen refuse capture (pure function, unit-tested). |
+| Screen capture (`→ PerryCapture/PerryScreenshot.swift`) | Replaced. Perry no longer owns native window capture; the Cua Driver refuses protected target windows before inspection, and PerryCapture retains only image geometry plus Vision OCR helpers. |
 | Control bridge (`→ PerryOverlay/ExternalControlBridge.swift`) | Done. Inference proxy removed per PRD §8 no-middleman rule; Gmail stub surface removed (out of scope v1); drawing/display tools always advertised; auth via `PERRY_BRIDGE_TOKEN` with constant-time compare; live loopback auth test green. |
 | Process spawn (`CodexProcessManager.swift` patterns) | Done as pattern source only: `CLIRuntime.runProcess` implements spawn + locked pipe buffers + timeout kill; locator probes standard Claude Code install paths with `PERRY_CLAUDE_CODE_PATH` override. |
 | Permission probes | Done as fresh code per plan (`PerryCapture/PerryPermissionProbe.swift`): AXIsProcessTrusted, CGPreflightScreenCaptureAccess, AVCaptureDevice microphone status + snapshot aggregation; unit-tested without triggering TCC prompts. |

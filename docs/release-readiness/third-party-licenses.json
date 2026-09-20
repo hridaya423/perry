@@ -1,0 +1,66 @@
+{
+  "components": [
+    {
+      "artifact_sha256": "cb6fdbdc8884f15d62a616e79face92b08322410fd2d425edc6596ccbf4ba3b0",
+      "id": "framework.sparkle",
+      "license": "MIT",
+      "license_url": "https://github.com/sparkle-project/Sparkle/blob/b6496a74a087257ef5e6da1c5b29a447a60f5bd7/LICENSE",
+      "name": "Sparkle",
+      "source": "https://github.com/sparkle-project/Sparkle",
+      "source_revision": "b6496a74a087257ef5e6da1c5b29a447a60f5bd7",
+      "version": "2.9.4"
+    },
+    {
+      "archive_sha256": "73258e01c122941c21bb8afbb81daff2ffdd8d3e803754fd411340c24257fdce",
+      "binary_sha256": "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713",
+      "id": "runtime.codex",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/openai/codex/blob/rust-v0.132.0/LICENSE",
+      "name": "Codex",
+      "source": "https://github.com/openai/codex",
+      "target": "aarch64-apple-darwin",
+      "version": "0.132.0"
+    },
+    {
+      "archive_binary_sha256": "3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d",
+      "archive_sha256": "1ef80b48b0b4ccd3b2eadd72c3c66735a65e15306db92816fb04f963d202155d",
+      "binary_sha256": "c8343fb4ce61af8091bd3a08d8c6c812b5b45488f78a72d110685e5eb2b80cc9",
+      "id": "runtime.cua-driver",
+      "license": "MIT",
+      "license_url": "https://github.com/trycua/cua/blob/c60ef6ad2db8774fb342938843e2f17f26c68240/LICENSE",
+      "name": "Cua Driver",
+      "signing_identifier": "cua-driver",
+      "signing_team": "YCK386LBJ7",
+      "source": "https://github.com/trycua/cua",
+      "source_revision": "c60ef6ad2db8774fb342938843e2f17f26c68240",
+      "target": "aarch64-apple-darwin",
+      "version": "0.22.1"
+    },
+    {
+      "archive_sha256": "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806",
+      "archive_url": "https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip",
+      "binary_sha256": "8774da746668bc18fe74e54cbaf10f2631a1fb05947cd374179aa912f14f99db",
+      "id": "tool.xcodegen",
+      "license": "MIT",
+      "license_url": "https://github.com/yonaskolb/XcodeGen/blob/2.46.0/LICENSE",
+      "name": "XcodeGen",
+      "purl": "pkg:github/yonaskolb/XcodeGen@2.46.0",
+      "source": "https://github.com/yonaskolb/XcodeGen",
+      "version": "2.46.0"
+    }
+  ],
+  "schema_version": 1,
+  "source": {
+    "cua_driver_lock": "scripts/cua-driver.lock",
+    "runtime_lock": "scripts/codex-runtime.lock",
+    "sparkle_lock": "scripts/sparkle.lock",
+    "swift_package_graph": [
+      "Packages/PerryCapture",
+      "Packages/PerryCore",
+      "Packages/PerryGuide",
+      "Packages/PerryOverlay",
+      "Packages/PerryRuntimes"
+    ],
+    "xcodegen_lock": "scripts/xcodegen.lock"
+  }
+}

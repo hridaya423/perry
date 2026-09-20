@@ -7,28 +7,79 @@ import PerryCore
 /// JSONL event stream for the agent's final message. Execution re-runs the
 /// goal under `workspace-write` (PRD §7 sandbox default); tier enforcement
 /// stays in DoSupervisor's confirmer, which sits in front of this runtime.
-public struct CodexRuntime: AgentRuntime {
+public struct CodexRuntime: TaskPlanner {
     public let id = "cli.codex"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, latencyClass: .medium)
+    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
 
-    static let pinnedVersion = "0.132.0"
+    public static let pinnedVersion = "0.132.0"
+    public static let pinnedBinarySHA256 = "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713"
+
+    public static func authenticationStatus(executable: URL, runtimeHome: URL?) async throws -> RuntimeAuthenticationStatus {
+        try Task.checkCancellation()
+        guard let runtimeHome else {
+            return .unknown(reason: "Perry could not prepare its Codex runtime directory")
+        }
+        do {
+            let result = try await CLIRuntime.runProcess(
+                executable: executable,
+                arguments: ["login", "status"],
+                timeout: 3,
+                profile: .codex(runtimeHome: runtimeHome)
+            )
+            try Task.checkCancellation()
+            return authenticationStatus(stderr: result.stderr, exitCode: result.exitCode)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .unknown(reason: "Codex could not verify its official login state")
+        }
+    }
+
+    static func authenticationStatus(stderr: String, exitCode: Int32) -> RuntimeAuthenticationStatus {
+        let lines = stderr.split(whereSeparator: \.isNewline).map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let signedIn = lines.filter {
+            $0 == "Logged in using ChatGPT" || $0 == "Logged in using access token"
+                || ($0.hasPrefix("Logged in using an API key - ") && $0.count > "Logged in using an API key - ".count)
+        }
+        let signedOut = lines.filter { $0 == "Not logged in" }
+        if exitCode == 0, signedIn.count == 1, signedOut.isEmpty {
+            return .authenticated
+        }
+        if exitCode == 1, signedOut.count == 1, signedIn.isEmpty {
+            return .missing
+        }
+        return .unknown(reason: "Codex returned an unrecognized login status")
+    }
 
     private let locateExecutable: @Sendable () throws -> URL
     private let invokeCommand: @Sendable (URL, [String]) async throws -> String
     private let timeout: TimeInterval
+    private let workingDirectory: URL?
 
     public init(
         executableLocator: @escaping @Sendable () throws -> URL = { try CodexRuntime.bundledLocator() },
-        commandRunner: ((URL, [String]) async throws -> String)? = nil,
-        timeout: TimeInterval = 300
+        commandRunner: (@Sendable (URL, [String]) async throws -> String)? = nil,
+        timeout: TimeInterval = 300,
+        workingDirectory: URL? = nil,
+        runtimeHome: URL? = nil
     ) {
         self.locateExecutable = executableLocator
         self.timeout = timeout
+        self.workingDirectory = workingDirectory
         if let commandRunner {
             self.invokeCommand = commandRunner
         } else {
             self.invokeCommand = { @Sendable executable, arguments in
-                let result = try await CLIRuntime.runProcess(executable: executable, arguments: arguments, timeout: timeout)
+                let profile = runtimeHome.map(CLIRuntime.ProcessProfile.codex) ?? .standard
+                let result = try await CLIRuntime.runProcess(
+                    executable: executable,
+                    arguments: arguments,
+                    timeout: timeout,
+                    workingDirectory: workingDirectory,
+                    profile: profile
+                )
                 guard result.exitCode == 0 else {
                     throw ExecutionError(message: "codex exited \(result.exitCode): \(result.stderr)")
                 }
@@ -37,20 +88,28 @@ public struct CodexRuntime: AgentRuntime {
         }
     }
 
-    public func plan(goal: String, context: ScreenContext) async throws -> Plan {
-        let output = try await invoke(arguments: Self.planArguments(goal: goal, context: context))
-        return Plan(goal: goal, runtimeID: id, steps: CLIRuntime.parseNumberedSteps(Self.finalMessage(from: output) ?? output, goal: goal))
+    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
+        guard case .screen(let context) = request.context else {
+            throw PlanningError.contextRequired
+        }
+        let output = try await invoke(arguments: Self.planArguments(goal: request.goal, context: context))
+        return try TypedPlanParser.plan(
+            Self.finalMessage(from: output) ?? output,
+            request: request,
+            bindings: .init(request: request, context: context)
+        )
     }
 
-    public func execute(_ step: Step, consent: ConsentHandle?) async throws -> StepResult {
-        guard step.kind == .delegate else {
-            throw ExecutionError(message: "runtime \(id) delegates whole tasks, not individual \(step.kind.rawValue) steps")
+    /// Typed-path delegated task: runs the prompt inside the workspace-write
+    /// sandbox. The workspace boundary comes from init, never from the prompt.
+    public func runCodingTask(prompt: String) async throws -> String {
+        guard workingDirectory != nil else {
+            throw ExecutionError(message: "delegated execution requires an explicit workspace boundary")
         }
-        let goal = step.payload["goal"] ?? step.summary
         let output = try await invoke(
-            arguments: ["exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", "--ephemeral", goal]
+            arguments: ["exec", "--json", "--skip-git-repo-check", "-s", "workspace-write", "--ephemeral", "--ignore-user-config", prompt]
         )
-        return StepResult(stepID: step.id, success: true, message: Self.finalMessage(from: output) ?? output)
+        return Self.finalMessage(from: output) ?? output
     }
 
     func invoke(arguments: [String]) async throws -> String {
@@ -61,19 +120,10 @@ public struct CodexRuntime: AgentRuntime {
     /// Plan calls must never write. Read-only sandbox, user config ignored so
     /// a local ~/.codex/config.toml can't flip permissions behind our back.
     static func planArguments(goal: String, context: ScreenContext) -> [String] {
-        var screenNote = ""
-        if let title = context.frontWindowTitle, let bundleID = context.frontAppBundleID {
-            screenNote = "The frontmost window is \"\(title)\" (\(bundleID)). "
-        }
-        let prompt = """
-        \(screenNote)Break this goal into concrete macOS steps, one per line, \
-        numbered like "1. <step>": \(goal)
-        Respond with the numbered list only.
-        """
         return [
             "exec", "--json", "--skip-git-repo-check",
             "-s", "read-only", "--ephemeral", "--ignore-user-config",
-            prompt,
+            TypedPlanningPrompt.make(goal: goal, context: context),
         ]
     }
 
@@ -125,32 +175,18 @@ struct CodexJSONLEvent: Decodable {
 }
 
 extension CodexRuntime {
-    /// App-bundle runtime first (Resources/CodexRuntime/bin/codex), then a
-    /// user-installed codex on PATH as fallback.
     public static func bundledLocator(
         bundle: Bundle = .main,
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> URL {
-        var searched: [String] = []
-        if let override = environment["PERRY_CODEX_PATH"], !override.isEmpty {
-            return URL(fileURLWithPath: override)
-        }
+        let bundledPath = "\(bundle.bundlePath)/Contents/Resources/CodexRuntime/bin/codex"
+        let searched = [bundledPath]
         if let bundled = bundle.url(forResource: "codex", withExtension: nil, subdirectory: "CodexRuntime/bin") {
-            return bundled
-        } else {
-            searched.append("\(bundle.bundlePath)/Contents/Resources/CodexRuntime/bin/codex")
-        }
-        if let pathDirectories = environment["PATH"], !pathDirectories.isEmpty {
-            for directory in pathDirectories.split(separator: ":") {
-                let candidate = "\(directory)/codex"
-                searched.append(candidate)
-                if fileManager.isExecutableFile(atPath: candidate) {
-                    return URL(fileURLWithPath: candidate)
-                }
+            if fileManager.isExecutableFile(atPath: bundled.path) {
+                return bundled
             }
         }
         throw CLIUnavailableError(searchedPaths: searched)
     }
 }
-

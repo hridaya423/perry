@@ -3,7 +3,16 @@ options:
   bundleIdPrefix: dev.perry
   deploymentTarget:
     macOS: "14.0"
+settings:
+  base:
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: "NO"
+    CODE_SIGN_ENTITLEMENTS: App/Perry.entitlements
+    ENABLE_HARDENED_RUNTIME: "YES"
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    revision: b6496a74a087257ef5e6da1c5b29a447a60f5bd7
   PerryCore:
     path: Packages/PerryCore
   PerryRuntimes:
@@ -19,12 +28,22 @@ targets:
     type: application
     platform: macOS
     sources:
-      - App
+      - path: App
+        excludes:
+          - Resources/Sounds
       - path: App/Resources/Sounds
         type: folder
         buildPhase: resources
+      - path: App/Resources/CHANGELOG.md
+        buildPhase: resources
+      - path: App/Resources/CodexRuntime
+        type: folder
+        buildPhase: resources
+      - path: App/Resources/CuaDriver
+        type: folder
+        buildPhase: resources
     dependencies:
-    dependencies:
+      - package: Sparkle
       - package: PerryCore
       - package: PerryRuntimes
       - package: PerryOverlay
@@ -34,24 +53,72 @@ targets:
       - path: scripts/fetch-codex-runtime.sh
         name: FetchCodexRuntime
         basedOnDependencyAnalysis: false
-    dependencies:
-      - package: PerryCore
-      - package: PerryRuntimes
-      - package: PerryOverlay
-      - package: PerryCapture
-      - package: PerryGuide
+      - path: scripts/fetch-cua-driver.sh
+        name: FetchCuaDriver
+        basedOnDependencyAnalysis: false
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Perry
+        SUFeedURL: "$(PERRY_UPDATE_FEED_URL)"
+        SUPublicEDKey: "$(PERRY_SPARKLE_PUBLIC_KEY)"
+        PerryIssuesURL: "$(PERRY_ISSUES_URL)"
+        SUEnableAutomaticChecks: true
         LSUIElement: true
-        NSMicrophoneUsageDescription: "Perry uses the microphone only while you hold a session open, for on-device speech recognition."
-        NSSpeechRecognitionUsageDescription: "Perry transcribes your requests on device via Apple Speech."
+        NSMicrophoneUsageDescription: "Perry uses the microphone only while you hold a session open, for speech recognition and optional realtime voice."
+        NSSpeechRecognitionUsageDescription: "Perry uses Apple Speech to transcribe requests you speak."
         NSAppleEventsUsageDescription: "Perry drives apps you ask it to drive."
+        CFBundleURLTypes:
+          - CFBundleURLName: "dev.perry.oauth"
+            CFBundleURLSchemes:
+              - dev.perry.perry
+  PerryTests:
+    type: bundle.unit-test
+    platform: macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    sources:
+      - AppTests
+    dependencies:
+      - target: Perry
+  PerryUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Perry
+    sources:
+      - AppUITests
+    dependencies:
+      - target: Perry
 schemes:
   Perry:
     build:
       targets:
         Perry: all
+    test:
+      targets:
+        - PerryTests
     run:
       config: Debug
+  PerryCuaLive:
+    build:
+      targets:
+        Perry: all
+    test:
+      targets:
+        - name: PerryTests
+          selectedTests:
+            - CuaLiveTests
+      environmentVariables:
+        PERRY_LIVE_CUA: "1"
+  PerryUI:
+    build:
+      targets:
+        Perry: all
+        PerryUITests: [test]
+    test:
+      targets:
+        - PerryUITests

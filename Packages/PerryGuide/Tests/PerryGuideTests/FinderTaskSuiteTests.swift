@@ -24,9 +24,9 @@ final class FinderTaskSuiteTests: XCTestCase {
     func testRenameBatchScenarioGreen() async throws {
         let scenario = FinderTaskSuite.renameBatch
         try scenario.setup(workDirectory)
-        let plan = FinderTaskSuite.plan(for: scenario)
+        let plan = try FinderTaskSuite.plan(for: scenario, workspace: workDirectory)
 
-        let outcome = await runScenario(plan, executor: FinderTaskSuite.FileOpsRuntime(baseURL: workDirectory))
+        let outcome = await runScenario(plan)
         XCTAssertEqual(outcome, .completed(stepsRun: 3))
         XCTAssertTrue(try scenario.verify(workDirectory))
     }
@@ -34,76 +34,97 @@ final class FinderTaskSuiteTests: XCTestCase {
     func testOrganizeByExtensionScenarioGreen() async throws {
         let scenario = FinderTaskSuite.organizeByExtension
         try scenario.setup(workDirectory)
-        let plan = FinderTaskSuite.plan(for: scenario)
+        let plan = try FinderTaskSuite.plan(for: scenario, workspace: workDirectory)
 
-        let outcome = await runScenario(plan, executor: FinderTaskSuite.FileOpsRuntime(baseURL: workDirectory))
+        let outcome = await runScenario(plan)
         XCTAssertEqual(outcome, .completed(stepsRun: 2))
         XCTAssertTrue(try scenario.verify(workDirectory))
     }
 
-    func testCleanupOldExportsRunsOrangeStepsThroughConfirmation() async throws {
+    func testCleanupOldExportsRunsActionsThroughConfirmation() async throws {
         let scenario = FinderTaskSuite.cleanupOldExports
         try scenario.setup(workDirectory)
-        let plan = FinderTaskSuite.plan(for: scenario)
+        let plan = try FinderTaskSuite.plan(for: scenario, workspace: workDirectory)
 
-        let policy = IntentCardPolicy()
-        let confirmer = CardConfirmer(policy: policy, typedConfirmation: nil, voice: false)
+        let confirmer = RecordingConfirmer()
         let activityLog = ActivityLog()
-        let supervisor = DoSupervisor(activityLog: activityLog, confirmer: confirmer)
+        let trash = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-trash-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: trash) }
+        let supervisor = DoSupervisor(
+            activityLog: activityLog,
+            confirmer: confirmer,
+            typedVerifier: WorkspaceFileVerifier(baseURL: workDirectory, trashURL: trash)
+        )
 
-        let outcome = await supervisor.run(plan: plan, executor: FinderTaskSuite.FileOpsRuntime(baseURL: workDirectory))
+        let outcome = await supervisor.run(
+            plan: plan,
+            typedExecutor: WorkspaceFileRuntime(baseURL: workDirectory, trashURL: trash)
+        )
         guard case .completed(let steps) = outcome else {
             return XCTFail("expected completion, got \(outcome)")
         }
         XCTAssertEqual(steps, 3)
+        XCTAssertEqual(confirmer.requestCount, 3)
         XCTAssertTrue(try scenario.verify(workDirectory))
 
         let entries = await activityLog.snapshot()
-        XCTAssertTrue(entries.contains { $0.outcome == .confirmed && $0.tier == .orange })
+        XCTAssertTrue(entries.contains { $0.outcome == .confirmed })
     }
 
-    func testCleanupDeniesWithoutTypedConfirmationForRedEquivalent() async throws {
-        // Simulates a red-tier variant: same trash steps but the window is on
-        // the block list, so the guard denies outright regardless of consent.
+    func testCleanupDeniesWithoutConfirmation() async throws {
         let scenario = FinderTaskSuite.cleanupOldExports
         try scenario.setup(workDirectory)
-        let plan = FinderTaskSuite.plan(for: scenario)
+        let plan = try FinderTaskSuite.plan(for: scenario, workspace: workDirectory)
 
-        let supervisor = DoSupervisor(activityLog: ActivityLog(), confirmer: AlwaysYesConfirmer())
+        let trash = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-trash-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: trash) }
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: AlwaysNoConfirmer(),
+            typedVerifier: WorkspaceFileVerifier(baseURL: workDirectory, trashURL: trash)
+        )
         let outcome = await supervisor.run(
             plan: plan,
-            targetWindow: WindowContext(appBundleID: "com.bitwarden.desktop", title: "Bitwarden"),
-            executor: FinderTaskSuite.FileOpsRuntime(baseURL: workDirectory)
+            typedExecutor: WorkspaceFileRuntime(baseURL: workDirectory, trashURL: trash)
         )
 
-        XCTAssertEqual(outcome, .blocked(reason: "target window is on the blocked list"))
+        guard case .blocked = outcome else {
+            return XCTFail("expected a blocked outcome, got \(outcome)")
+        }
         let names = try FileManager.default.contentsOfDirectory(atPath: workDirectory.path)
         XCTAssertEqual(names.count, 3)
     }
-}
 
-private func runScenario(_ plan: Plan, executor: FinderTaskSuite.FileOpsRuntime) async -> DoOutcome {
-    let supervisor = DoSupervisor(activityLog: ActivityLog(), confirmer: AlwaysYesConfirmer())
-    return await supervisor.run(plan: plan, executor: executor)
+    private func runScenario(_ plan: PerryRuntimes.ExecutionPlan) async -> DoOutcome {
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: AlwaysYesConfirmer(),
+            typedVerifier: WorkspaceFileVerifier(baseURL: workDirectory)
+        )
+        return await supervisor.run(
+            plan: plan,
+            typedExecutor: WorkspaceFileRuntime(baseURL: workDirectory)
+        )
+    }
 }
 
 private struct AlwaysYesConfirmer: Confirmer {
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { true }
 }
 
-private final class CardConfirmer: Confirmer {
-    private let policy: IntentCardPolicy
-    private let typedConfirmation: String?
-    private let voice: Bool
+private struct AlwaysNoConfirmer: Confirmer {
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { false }
+}
 
-    init(policy: IntentCardPolicy, typedConfirmation: String?, voice: Bool) {
-        self.policy = policy
-        self.typedConfirmation = typedConfirmation
-        self.voice = voice
-    }
+private final class RecordingConfirmer: Confirmer, @unchecked Sendable {
+    private(set) var requestCount = 0
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
-        let card = IntentCard(title: request.actionSummary, tier: request.tier, targetSummary: "")
-        return policy.resolve(card, choice: .approve, typedConfirmation: typedConfirmation, sourceIsVoice: voice)
+        requestCount += 1
+        return true
     }
 }

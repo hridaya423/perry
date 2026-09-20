@@ -16,7 +16,7 @@ final class WakeWordGateTests: XCTestCase {
 
     func testBarePhraseMatchesWithNoCommand() {
         let gate = WakeWordGate(enabled: true)
-        XCTAssertNil(gate.match(inTranscript: "hey perry"))
+        XCTAssertEqual(gate.match(inTranscript: "hey perry"), "")
     }
 
     func testNonMatchingTranscriptsReturnNil() {

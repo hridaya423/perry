@@ -26,14 +26,18 @@ struct PerryDemo {
         print("Perry demo — scripted Finder task")
         print("workspace: \(workDirectory.path)")
 
-        let runtime = ScriptedFinderRuntime(baseURL: workDirectory)
-        let outcome = await execute(goal: "create three notes and rename them", runtime: runtime, workDirectory: workDirectory)
+        let runtime = ScriptedFinderRuntime()
+        let outcome = await execute(
+            goal: "create three notes",
+            planner: runtime,
+            workDirectory: workDirectory
+        )
         report(outcome)
     }
 
     /// CLI adapter path: planning goes through a real spawned process
-    /// (a fake claude-like responder via PERRY_CLAUDE_CODE_PATH override),
-    /// proving the process pipeline end to end without network or auth.
+    /// (a fake claude-like responder via a staged executable), proving the
+    /// typed plan pipeline end to end without network or auth.
     private static func runCLIDemo() async {
         guard let fakeCLI = installFakeCLI() else {
             print("\nPerry demo — CLI adapter path skipped (could not stage fake CLI)")
@@ -51,7 +55,7 @@ struct PerryDemo {
         let runtime = CLIRuntime(executableLocator: { fakeCLI.executable }, timeout: 15)
         let outcome = await execute(
             goal: "tidy the perry demo folder",
-            runtime: runtime,
+            planner: runtime,
             workDirectory: workDirectory,
             context: ScreenContext(frontAppBundleID: "com.apple.finder", frontWindowTitle: "Desktop")
         )
@@ -63,17 +67,25 @@ struct PerryDemo {
 
     private static func execute(
         goal: String,
-        runtime: any AgentRuntime,
+        planner: any TaskPlanner,
         workDirectory: URL,
         context: ScreenContext = .empty
     ) async -> DoOutcome {
         let activityLog = ActivityLog(storageDirectory: workDirectory)
         let supervisor = DoSupervisor(activityLog: activityLog, confirmer: DemoConfirmer())
-        let outcome = await supervisor.run(
+        guard let request = try? PlanningRequest(
             goal: goal,
-            runtime: runtime,
+            taskID: TaskID(UUID().uuidString),
+            workspace: workDirectory,
+            context: .screen(context)
+        ), let plan = try? await planner.plan(request) else {
+            return .failed(stepSummary: "plan", reason: "runtime could not create a plan")
+        }
+        let outcome = await supervisor.run(
+            plan: plan,
             context: context,
-            targetWindow: WindowContext(appBundleID: "com.apple.finder", title: "Desktop")
+            targetWindow: WindowContext(appBundleID: "com.apple.finder", title: "Desktop"),
+            typedExecutor: WorkspaceFileRuntime(baseURL: workDirectory)
         )
 
         let entries = await activityLog.snapshot()
@@ -105,7 +117,7 @@ struct PerryDemo {
     }
 
     /// Stages an executable that mimics `claude -p <prompt>` output so the
-    /// adapter's plan() parses numbered steps from a real subprocess.
+    /// adapter's plan() parses typed draft actions from a real subprocess.
     private static func installFakeCLI() -> (executable: URL, directory: URL)? {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-fake-cli-\(UUID().uuidString)")
@@ -115,8 +127,11 @@ struct PerryDemo {
             let script = """
             #!/bin/sh
             cat > /dev/null
-            echo "1. create three perry-cli notes in the folder"
-            echo "2. rename each note by appending -renamed"
+            echo '{"actions":['
+            echo '{"summary":"Create first note","operation":{"transform":{"command":{"createUTF8File":{"path":"note-1.txt","contents":"first note"}}}}},'
+            echo '{"summary":"Create second note","operation":{"transform":{"command":{"createUTF8File":{"path":"note-2.txt","contents":"second note"}}}}},'
+            echo '{"summary":"Create third note","operation":{"transform":{"command":{"createUTF8File":{"path":"note-3.txt","contents":"third note"}}}}}'
+            echo ']}'
             """
             try script.write(to: executable, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)

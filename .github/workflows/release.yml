@@ -1,0 +1,139 @@
+name: Signed release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Numeric dotted release version
+        required: true
+        type: string
+      build:
+        description: Positive release build number
+        required: true
+        type: number
+      previous_tag:
+        description: GitHub release tag containing the previous signed DMG and appcast
+        required: true
+        type: string
+      previous_version:
+        description: Numeric dotted previous version
+        required: true
+        type: string
+      previous_build:
+        description: Positive previous build number
+        required: true
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Fetch pinned build inputs
+        run: |
+          set -euo pipefail
+          ./scripts/fetch-xcodegen.sh --fetch
+          ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-cua-driver.sh --fetch
+
+      - name: Download previous signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PERRY_PREVIOUS_TAG: ${{ inputs.previous_tag }}
+          PERRY_PREVIOUS_VERSION: ${{ inputs.previous_version }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/previous-release
+          gh release download "$PERRY_PREVIOUS_TAG" \
+            --dir build/previous-release \
+            --pattern "Perry-${PERRY_PREVIOUS_VERSION}.dmg" \
+            --pattern 'appcast.xml'
+
+      - name: Install release credentials
+        env:
+          PERRY_CERTIFICATE_P12_BASE64: ${{ secrets.PERRY_CERTIFICATE_P12_BASE64 }}
+          PERRY_CERTIFICATE_PASSWORD: ${{ secrets.PERRY_CERTIFICATE_PASSWORD }}
+          PERRY_NOTARY_API_KEY_BASE64: ${{ secrets.PERRY_NOTARY_API_KEY_BASE64 }}
+          PERRY_NOTARY_KEY_ID: ${{ secrets.PERRY_NOTARY_KEY_ID }}
+          PERRY_NOTARY_ISSUER_ID: ${{ secrets.PERRY_NOTARY_ISSUER_ID }}
+          PERRY_SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.PERRY_SPARKLE_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          for name in \
+            PERRY_CERTIFICATE_P12_BASE64 \
+            PERRY_CERTIFICATE_PASSWORD \
+            PERRY_NOTARY_API_KEY_BASE64 \
+            PERRY_NOTARY_KEY_ID \
+            PERRY_NOTARY_ISSUER_ID \
+            PERRY_SPARKLE_PRIVATE_KEY_BASE64
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "missing release secret: $name" >&2
+              exit 1
+            fi
+          done
+          keychain="$RUNNER_TEMP/perry-release.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/perry-release.p12"
+          notary_key="$RUNNER_TEMP/AuthKey.p8"
+          sparkle_key="$RUNNER_TEMP/sparkle-eddsa-key"
+          printf '%s' "$PERRY_CERTIFICATE_P12_BASE64" | /usr/bin/base64 -D > "$certificate"
+          printf '%s' "$PERRY_NOTARY_API_KEY_BASE64" | /usr/bin/base64 -D > "$notary_key"
+          printf '%s' "$PERRY_SPARKLE_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$sparkle_key"
+          chmod 600 "$certificate" "$notary_key" "$sparkle_key"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$PERRY_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          xcrun notarytool store-credentials perry-release \
+            --key "$notary_key" \
+            --key-id "$PERRY_NOTARY_KEY_ID" \
+            --issuer "$PERRY_NOTARY_ISSUER_ID" \
+            --keychain "$keychain"
+          echo "PERRY_SPARKLE_PRIVATE_KEY_FILE=$sparkle_key" >> "$GITHUB_ENV"
+
+      - name: Package, notarize, and open internal ring
+        env:
+          PERRY_DEVELOPER_ID_APPLICATION: ${{ vars.PERRY_DEVELOPER_ID_APPLICATION }}
+          PERRY_DEVELOPMENT_TEAM: ${{ vars.PERRY_DEVELOPMENT_TEAM }}
+          PERRY_UPDATE_FEED_URL: ${{ vars.PERRY_UPDATE_FEED_URL }}
+          PERRY_UPDATE_DOWNLOAD_PREFIX: ${{ vars.PERRY_UPDATE_DOWNLOAD_PREFIX }}
+          PERRY_SPARKLE_PUBLIC_KEY: ${{ vars.PERRY_SPARKLE_PUBLIC_KEY }}
+          PERRY_RELEASE_VERSION: ${{ inputs.version }}
+          PERRY_RELEASE_BUILD: ${{ inputs.build }}
+          PERRY_PREVIOUS_RELEASE_VERSION: ${{ inputs.previous_version }}
+          PERRY_PREVIOUS_RELEASE_BUILD: ${{ inputs.previous_build }}
+          PERRY_PREVIOUS_RELEASE_DMG: build/previous-release/Perry-${{ inputs.previous_version }}.dmg
+          PERRY_PREVIOUS_RELEASE_APPCAST: build/previous-release/appcast.xml
+          PERRY_NOTARY_KEYCHAIN_PROFILE: perry-release
+        run: ./scripts/package-release.sh
+
+      - name: Upload signed release candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Perry-${{ inputs.version }}-${{ inputs.build }}-signed
+          path: |
+            build/distribution/Perry-${{ inputs.version }}.dmg
+            build/distribution/appcast/
+            build/distribution/rollout/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove release credentials
+        if: always()
+        run: |
+          set +e
+          if [ -f "$RUNNER_TEMP/perry-release.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/perry-release.keychain-db"
+          fi
+          find "$RUNNER_TEMP" -maxdepth 1 \
+            \( -name 'perry-release.p12' -o -name 'AuthKey.p8' -o -name 'sparkle-eddsa-key' \) \
+            -delete

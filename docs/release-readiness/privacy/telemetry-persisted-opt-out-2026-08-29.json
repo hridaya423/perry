@@ -1,0 +1,18 @@
+{
+  "app_path": "/Users/hridyaagrawal/Library/Developer/Xcode/DerivedData/Perry-dbedeyvgtejrpvaqzbsiwlrlfdhq/Build/Products/Debug/Perry.app",
+  "bundle_id": "dev.perry.Perry",
+  "captured_at": "2026-08-29T14:42:30.081047+00:00",
+  "executable_sha256": "ab50f64f6cdedf30e73a44128b3eb349318b2ca2178f71aa8423427382fb01c3",
+  "external_network_rows": 0,
+  "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+  "machine": "arm64",
+  "macos": "26.5.1",
+  "network_protocols": [
+    "tcp",
+    "udp"
+  ],
+  "passed": true,
+  "samples": 8,
+  "schema_version": 1,
+  "telemetry_preference": "0"
+}

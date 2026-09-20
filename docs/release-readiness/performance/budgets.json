@@ -1,0 +1,124 @@
+{
+  "schema_version": 2,
+  "kind": "perry.performance.budgets",
+  "source": "Perry 1.0 Release Technical Specification",
+  "percentile_method": "linear",
+  "regression_factor": 1.1,
+  "metrics": [
+    {
+      "id": "ui.input_feedback",
+      "name": "Input feedback",
+      "description": "Pointer or key input produces visible feedback.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 50}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "ui.hotkey_panel",
+      "name": "Hotkey to usable panel",
+      "description": "The global hotkey opens a panel that can accept input.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 100}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "overlay.first_frame",
+      "name": "Overlay first frame",
+      "description": "An overlay command reaches its first presented frame.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 200}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "animation.frame_interval",
+      "name": "Active animation frame interval",
+      "description": "An active 60 Hz animation presents frames on schedule.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 16.7}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "main_thread.stall",
+      "name": "Main-thread stall",
+      "description": "The longest observed main-thread stall stays within the release ceiling.",
+      "unit": "ms",
+      "constraints": [{"percentile": 100, "operator": "<=", "limit": 100}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "capture.window_1080p",
+      "name": "Warm exact-window capture at 1080p",
+      "description": "Cua returns a warm 1080p exact-window capture.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 250}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "capture.window_5k",
+      "name": "Warm exact-window capture at 5K",
+      "description": "Cua returns a warm 5K exact-window capture.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 400}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "cua.action_post_frame",
+      "name": "Cua action to post-action frame",
+      "description": "A deterministic Cua action reaches its post-action frame, excluding target-app response time.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 300}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "worker.cancellation",
+      "name": "Child-worker cancellation",
+      "description": "Cancellation reaches every child worker.",
+      "unit": "ms",
+      "constraints": [{"percentile": 100, "operator": "<=", "limit": 500}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "idle.cpu",
+      "name": "Idle CPU",
+      "description": "Perry remains idle with ambient wake disabled.",
+      "unit": "percent",
+      "constraints": [{"percentile": 95, "operator": "<", "limit": 1}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets"]
+    },
+    {
+      "id": "voice.session_memory_growth",
+      "name": "Voice-session memory growth",
+      "description": "Memory growth remains bounded after a 30-minute realtime voice session warm-up.",
+      "unit": "percent",
+      "constraints": [{"percentile": 100, "operator": "<=", "limit": 5}],
+      "source": ["Perry 1.0 Release Technical Specification: Performance budgets", "Perry 1.0 Release Technical Specification: M5"]
+    },
+    {
+      "id": "voice.barge_in_cancel",
+      "name": "Barge-in cancellation",
+      "description": "Push-to-talk stops assistant audio output.",
+      "unit": "ms",
+      "constraints": [{"percentile": 95, "operator": "<=", "limit": 150}],
+      "source": ["Perry 1.0 Release Technical Specification: M5"]
+    },
+    {
+      "id": "dictation.speech_end_to_insert",
+      "name": "Speech end to inserted dictation",
+      "description": "Final dictation is inserted into the target application after speech ends.",
+      "unit": "ms",
+      "constraints": [
+        {"percentile": 50, "operator": "<=", "limit": 450},
+        {"percentile": 95, "operator": "<=", "limit": 900}
+      ],
+      "source": ["Perry 1.0 Release Technical Specification: M5"]
+    },
+    {
+      "id": "voice.realtime_first_audio",
+      "name": "Realtime first audio",
+      "description": "The realtime provider produces the first assistant audio under the published network profile.",
+      "unit": "ms",
+      "constraints": [{"percentile": 50, "operator": "<=", "limit": 1200}],
+      "source": ["Perry 1.0 Release Technical Specification: M5"]
+    }
+  ]
+}

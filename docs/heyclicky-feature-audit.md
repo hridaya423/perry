@@ -163,55 +163,41 @@ not visible in strings; noted, not chased.
 
 ## 2. Perry gap analysis
 
-**Shipped:** hotkey wake, wake-word gate (off by default), type/talk panel, Guide engine (AX step-follows-you, show-me-everything), Do supervisor + trust tiers + intent cards (typed confirm at red), activity log, memory store + wipe, background runner + notifications, permission probes + onboarding flow, blocked-window capture refusal, CLI runtime probe, vendored codex runtime, Finder demo suite. 66 tests.
+Perry has automated coverage for hotkey and opt-in wake invocation, typed and spoken requests, push-to-talk, realtime voice boundaries, per-utterance routing, route fallback, spatial selection, click-advanced guides, supervised execution, confirmations, Cua/file actions, cancellation, verification, history, local memory, onboarding, notifications, runtime discovery, integrations, and diagnostics. The evidence registry records each capability separately; none of this wording upgrades an automated capability to live-tested or release-proven.
 
-**Partial:** dictation (bare STT; missing custom words, language picker, auto-detect), voice out (voice quality picker done; missing sound design entirely, no output warm-up), panel (restyled; no style preferences), buddy (sprite exists, **not wired into the live overlay**), onboarding (state machine solid; zero magic-moment media).
+The remaining feature-level partials require live evidence or external infrastructure rather than more UI wiring. Realtime voice, language routing, route recovery, background recovery, provider authentication, and integration writes still need their published device/account matrices and latency runs. The local skill catalog remains smaller than HeyClicky's, and background work remains on-device rather than surviving outside the app process.
 
-**Missing (candidate):** real Settings window (**Perry ships `Settings { EmptyView() }`**), push-to-talk hold-to-talk, agent cards/activity strip UI, concurrent threads + resume/steer, proactive suggestions, computer-use executor, integration/MCP layer, marketplace, history browser, diagnostics reporter, remote config.
+Remote integrations now include on-device OAuth for Google Workspace, Notion, Slack, and Linear, with provider-specific PKCE/secret and scope rules, Keychain credentials, refresh/retry, allowlisted reads, per-service write enablement that defaults off, orange confirmation for enabled writes, and redacted summaries. There is still no PowerUps marketplace backend or hosted connector service.
+
+Perry now has a pinned Sparkle updater and consent-gated Sentry/PostHog clients with local privacy evidence. The signed, notarized distribution and real hosted-credential run are still unproven. Remote feature flags, hosted accounts, a Perry OAuth broker, and provider-region routing remain outside the 1.0 contract.
 
 **Rejected by PRD §5 (stay rejected):** notch stack, widgets, team/cloud accounts, hosted inference, billing/paywall, Windows.
 
 ## 3. Polish deficit ranking (where we feel cheapest)
 
-1. **No settings surface at all** — every toggle lives in code or a bare menu.
-2. **Silence** — HeyClicky invests heavily in audio (warmer, topology, crafted wavs); Perry has none of it. First-run feels dead.
-3. **Buddy invisible** — sprite exists but the transplanted overlay never shows him; users see machinery, not a companion.
-4. **Copy drift** — remaining strings still generic; intent card doesn't follow confirmation format.
-5. **Onboarding ends in a wall of text**, no demo moment.
+1. The largest functional UX difference is voice: the optional realtime path now streams duplex audio with macOS voice processing and barge-in, while the local fallback remains the dependable private path.
+2. Vision is now attached to the Do path through Cua screenshots and local OCR, with an optional BYOK multimodal planner for direct image reasoning; the default Codex/CLI planners still consume the screenshot's OCR rather than image tokens, and they fail closed if Cua cannot supply the target window.
+3. Do mode is transparent and cancellable, and each background record has its own actor-supervised lifecycle, checkpoint, steering path, and Cua session target; it does not provide hosted workers that survive the app process.
+4. Five local skills are useful coverage, not marketplace scale; user-authored Markdown works locally, while discovery and sharing do not.
+5. Diagnostics are exportable and redacted. Crash and update clients are wired, but signed distribution and real hosted-credential evidence still gate release claims.
 
 ## 4. Punch list executed this pass (P0)
 
-1. Settings window: runtimes status, wake word, memory, dictation language placeholder, voice, data wipe — replaces EmptyView.
-2. Sound design: generated-in-repo chime set (wake, send, done, fail) synthesized to CAF assets, played through a tiny SoundPlayer; no third-party audio.
-3. Wire PerrySpriteView into AppController's overlay presence so the buddy actually appears during sessions.
-4. Intent-card copy per tone sheet ("About to … · Approve/Stop" shape, red-tier line verbatim).
-5. Copy pass on remaining spoken/menu strings.
-
-Deferred (P1+, needs own sessions): push-to-talk event tap, dictation custom words/languages, history tab, agent activity strip, BYOK/local runtime tiers (PRD M5), computer-use spike, onboarding demo video, diagnostics reporter. Marketplace/integrations/notch/paywall remain out per PRD.
+1. Replaced the empty Settings scene with runtime status, wake-word and shortcut controls, voice and dictation configuration, microphone selection/testing, local skill activation, memory category toggles, history export, data wipe, and redacted diagnostics export.
+2. Added a local sound set, voice previews, output warm-up, muted-output clipboard fallback, audio-route recovery, and built-in-microphone failover.
+3. Wired the Perry buddy and activity strip into live Guide and Do sessions, with pause, resume, steer, stop, retry, trust tiers, and verification state.
+4. Connected spatial selection, AX click observation, relevance-ranked guide targets, app skills, local memory injection, and click-advanced teaching to the planner and overlay.
+5. Added deterministic AX and workspace-file executors, stable target checks, cancellation-aware CLI process handling, and a local planner that completes supported tasks without an installed coding-agent CLI.
 
 ## 5. P1 punch list revised after changelog review
 
-The changelog reorders priorities. New items in bold:
+The remaining work is ordered by user-visible capability, not by surface area:
 
-1. **Failure-path choreography (biggest real gap):** mic failover + spoken
-   explanation, audio-route change survival, first-word pre-roll warm-up,
-   clipboard fallback when output is muted. Perry currently has none of this.
-2. **Latency posture:** pre-warm runtime/session paths at launch; stream
-   responses; route easy questions cheap. **Perry's router idea maps directly:
-   ScriptedFinder/CLIRuntime for demos, codex for depth.**
-3. **Dictation hardening:** custom dictionary, language auto-detect,
-   terminal-newline safety, paste layout safety.
-4. **Draw-on-screen teaching loop:** click-detection advances the step (we have
-   advanceGuide; wire it to AX click observation), per-app teaching skills,
-   hand-drawn stroke style (our scribble path already supports it).
-5. **Spatial context:** let the user draw on screen as part of the question
-   (overlay already renders user ink; pipe it into context).
-6. **Memory shape:** PROFILE.md + VOLATILE.md two-file model is better than our
-   category JSON for LLM injection; keep local-only.
-7. **Guided hands-on tutorial:** replace text cards with 2-minute do-things
-   flow (say hello aloud, watch a draw, try dictation).
-8. **"See what's new" after update** via Sparkle + changelog feed; release
-   notes crediting reporters; honest impact numbers once we have users.
+1. Add a first-class hosted Cua/sandbox worker only if Perry's PRD expands beyond local execution; the local Cua MCP adapter is implemented and is now the required computer-use path.
+2. Add a hosted agent-worker service only if background execution must survive app termination; the local scheduler already supports independent pause, steer, resume, checkpoint, and crash recovery.
+3. Add a production realtime voice relay and provider credential broker if Perry needs hosted key isolation and a managed speech service; the local-compatible duplex adapter and Apple fallback are implemented.
+4. Expand local skills and add a remote marketplace/integration service only if Perry's PRD is intentionally widened beyond its current local-first scope; the first four OAuth-backed integrations are implemented on-device.
+5. Run the existing Developer ID, notarization, Gatekeeper, Sparkle appcast, and hosted telemetry paths with release credentials and retain the resulting evidence.
 
 Still out of scope: notch, marketplace, teams, paywall, proactive anything
 (their own arc proves the point), cloud accounts.

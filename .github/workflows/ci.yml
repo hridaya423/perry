@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Validate release automation
+        run: |
+          set -euo pipefail
+          ./scripts/test-release-automation.sh
+
+      - name: Validate performance evidence gate
+        run: ./scripts/performance/self-test.sh
+
+      - name: Validate pinned runtime lock
+        run: |
+          ./scripts/fetch-codex-runtime.sh --check-lock
+          ./scripts/fetch-xcodegen.sh --check-lock
+          ./scripts/verify-sparkle-lock.sh
+
+      - name: Require Apple Silicon
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+
+      - name: Install pinned XcodeGen
+        run: |
+          ./scripts/fetch-xcodegen.sh --fetch
+          echo "$PWD/build/tools/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch pinned runtime
+        run: |
+          set -euo pipefail
+          ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-cua-driver.sh --fetch
+
+      - name: Verify reproducibility inputs
+        run: |
+          set -euo pipefail
+          ./scripts/generate-release-metadata.sh --check
+          ./scripts/verify-artifact-manifest.sh --check
+
+      - name: Run package tests
+        run: |
+          set -euo pipefail
+          for package in PerryCore PerryRuntimes PerryOverlay PerryCapture PerryGuide; do
+            swift test --package-path "Packages/${package}"
+          done
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Run app tests
+        run: |
+          xcodebuild test \
+            -project Perry.xcodeproj \
+            -scheme Perry \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -arch arm64 \
+            -derivedDataPath build/debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=- \
+            DEVELOPMENT_TEAM=
+
+      - name: Verify Release build
+        run: ./scripts/verify-release.sh
+
+  ui-accessibility:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Require Apple Silicon
+        run: |
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+
+      - name: Install pinned XcodeGen
+        run: |
+          ./scripts/fetch-xcodegen.sh --fetch
+          echo "$PWD/build/tools/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch pinned runtimes
+        run: |
+          set -euo pipefail
+          ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-cua-driver.sh --fetch
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project.yml
+
+      - name: Run accessibility UI tests
+        run: |
+          xcodebuild test \
+            -project Perry.xcodeproj \
+            -scheme PerryUI \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build/ui

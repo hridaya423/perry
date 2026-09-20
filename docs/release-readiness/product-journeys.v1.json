@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "journey_set_version": 1,
+  "description": "Perry-only release acceptance journeys. Derived from the retired M11 comparison fixture; participant, condition, and superiority framing removed. Each journey is a live acceptance drill Perry must pass before public beta.",
+  "journeys": [
+    {
+      "id": "perry.j01.onboarding-finder-rename",
+      "version": 1,
+      "title": "Complete onboarding and a verified Finder rename",
+      "goal": "Set up Perry, then rename the supplied Finder sample from Perry benchmark draft.txt to Perry benchmark ready.txt.",
+      "setup": "Use a fresh macOS test profile with equivalent starting permissions and runtime credentials. Create the harmless sample in an isolated acceptance folder. Do not pre-complete onboarding or substitute a debug demo.",
+      "assertions": [
+        {
+          "id": "onboarding_ready",
+          "description": "Onboarding completes and the selected runtime can be invoked without restarting setup."
+        },
+        {
+          "id": "finder_rename_verified",
+          "description": "Finder and an independent filesystem inspection show the requested new filename with unchanged sample contents and no changes outside the sample."
+        },
+        {
+          "id": "reported_success_after_verification",
+          "description": "Perry reports success only after checking the rename result."
+        },
+        {
+          "id": "observation_recorded",
+          "description": "Denied permissions, retries, and elapsed time are recorded, and the sample is restored only after timing stops and evidence is preserved."
+        }
+      ],
+      "start_event": "When Perry's first launch begins for the fresh profile.",
+      "stop_event": "After independent filesystem inspection confirms the renamed file and unchanged contents, before fixture restoration."
+    },
+    {
+      "id": "perry.j02.two-step-live-guide",
+      "version": 1,
+      "title": "Follow a two-step click-advanced live guide",
+      "goal": "Guide me through opening the acceptance folder in Finder and then opening the supplied text document. Let me perform both clicks.",
+      "setup": "Prepare a Finder window, folder, and text document in known geometry. Request a live guide rather than delegated execution. Include one prescribed click outside the highlighted target before the first correct click.",
+      "assertions": [
+        {
+          "id": "first_target_highlighted",
+          "description": "The first highlight identifies the actual folder in the target Finder window."
+        },
+        {
+          "id": "mismatch_does_not_advance",
+          "description": "The prescribed mismatch click does not advance the guide."
+        },
+        {
+          "id": "first_step_verified_and_second_target_highlighted",
+          "description": "The correct first click advances only after the folder opens, and the second highlight identifies the document in the changed window."
+        },
+        {
+          "id": "participant_completes_second_step",
+          "description": "The user opens the document and Perry verifies the second step without performing either click for them."
+        }
+      ],
+      "start_event": "When the live-guide invocation begins.",
+      "stop_event": "After the user opens the document and the second guide step is verified."
+    },
+    {
+      "id": "perry.j03.full-spatial-guide",
+      "version": 1,
+      "title": "Read and follow a full spatial guide",
+      "goal": "Show the full guide for using Finder's view controls to switch this acceptance folder to list view and sort it by name.",
+      "setup": "Use a Finder window containing seeded files, initially in icon view. Request Perry's full-guide surface. The user must use the rendered guide rather than an operator-provided walkthrough.",
+      "assertions": [
+        {
+          "id": "full_sequence_present",
+          "description": "The full guide displays numbered targets and an unambiguous sequence for the requested actions, rather than unlabelled marker dots."
+        },
+        {
+          "id": "spatial_marks_target_controls",
+          "description": "The spatial marks identify the correct controls in the actual Finder window without obscuring the controls needed for the task."
+        },
+        {
+          "id": "finder_view_and_sort_verified",
+          "description": "The user reaches list view sorted by name, confirmed by inspecting Finder's actual view and sort state."
+        },
+        {
+          "id": "guide_overlay_removed",
+          "description": "Closing the guide removes its overlays without changing the completed Finder state."
+        }
+      ],
+      "start_event": "When the full-guide invocation begins.",
+      "stop_event": "After the user closes the guide and an independent Finder inspection confirms list view and name sort."
+    },
+    {
+      "id": "perry.j04.multilingual-voice-invocation",
+      "version": 1,
+      "title": "Invoke two tasks with different spoken languages",
+      "goal": "Using the supplied utterance pair, ask Perry to open the acceptance folder, then ask it to open the sample document in a different language.",
+      "setup": "Before collecting observations, freeze a versioned utterance pair from the tested language compatibility matrix. Use English plus a tested non-English language with a fixed microphone/output route and network profile; do not silently replace an unsupported language with English. Preserve consented reference transcripts locally.",
+      "assertions": [
+        {
+          "id": "english_utterance_understood",
+          "description": "The English utterance is understood without manually changing the configured language."
+        },
+        {
+          "id": "non_english_utterance_understood",
+          "description": "The tested non-English utterance is understood without manually changing the configured language."
+        },
+        {
+          "id": "single_ordered_dispatch",
+          "description": "Each utterance dispatches exactly one requested task, and the requested folder and document open in order."
+        },
+        {
+          "id": "spoken_responses_safe",
+          "description": "Perry provides an intelligible spoken response for each invocation without executing transcript fragments or duplicate commands."
+        },
+        {
+          "id": "language_outcome_recorded",
+          "description": "Recognition corrections, routing failures, and fallback use are recorded, and unsupported language behavior remains a failed observation rather than a skipped one."
+        }
+      ],
+      "start_event": "When the first language-specific invocation begins.",
+      "stop_event": "After the second requested result is verified and its spoken response is complete."
+    },
+    {
+      "id": "perry.j05.confirmed-foreground-execution",
+      "version": 1,
+      "title": "Confirm and verify a foreground task",
+      "goal": "Move the two named acceptance files into the supplied destination folder, asking for my approval before changing either file.",
+      "setup": "Seed source files and an empty destination inside a dedicated acceptance workspace. Use no personal files. The user waits for the approval surface, inspects the scope, then approves once; retain a filesystem baseline for independent result checks.",
+      "assertions": [
+        {
+          "id": "approval_precedes_mutation",
+          "description": "No file changes occur before the user grants approval for the displayed source files and destination."
+        },
+        {
+          "id": "single_approval_resumes_task",
+          "description": "One approval continues the suspended task without repeating the plan or requesting an unrelated grant."
+        },
+        {
+          "id": "approved_files_moved_unchanged",
+          "description": "Both files reach the requested destination with unchanged contents, and no file outside the approved set changes."
+        },
+        {
+          "id": "verified_result_recorded",
+          "description": "Perry verifies the final filesystem state and reports the result accurately, with a corresponding history entry."
+        }
+      ],
+      "start_event": "When the foreground task invocation begins.",
+      "stop_event": "After an independent filesystem check confirms both files in the approved destination with unchanged contents and the history entry records verification."
+    },
+    {
+      "id": "perry.j06.concurrent-background-recovery",
+      "version": 1,
+      "title": "Recover two independent background tasks after relaunch",
+      "goal": "Run the two supplied file tasks in the background, pause the first one, and keep the second task running. After relaunch, resume the paused task.",
+      "setup": "Use two disjoint seeded workspace folders with versioned multi-step tasks. Each task copies its named sample to a new destination, then waits for approval before renaming that copy. Start both tasks before either finishes. Pause task A before its write, allow task B to reach its pending approval, then quit and relaunch Perry. Preserve actual receipts and filesystem state; do not emulate relaunch by replacing a view model.",
+      "assertions": [
+        {
+          "id": "tasks_overlap_independently",
+          "description": "Both tasks have distinct identities and observable overlapping lifetimes, and pausing task A does not pause or alter task B."
+        },
+        {
+          "id": "relaunch_restores_distinct_state",
+          "description": "After relaunch, task A remains paused and task B retains its exact pending approval and progress."
+        },
+        {
+          "id": "resume_and_approval_do_not_cross",
+          "description": "Resuming A and approving B continue the correct actions without replaying already completed copies or applying one task's approval to the other."
+        },
+        {
+          "id": "final_results_verified",
+          "description": "Both final files match their requested names and contents, no unauthorized files change, and each task has an accurate independent result and history entry."
+        },
+        {
+          "id": "uncertain_recovery_pauses",
+          "description": "If an action's outcome is uncertain on recovery, Perry pauses for inspection rather than replaying it, and operator recovery time is recorded."
+        }
+      ],
+      "start_event": "When the first background task invocation begins.",
+      "stop_event": "After both tasks' final filesystem states and independent history results are verified following relaunch and recovery."
+    }
+  ]
+}

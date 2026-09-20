@@ -5,6 +5,7 @@ public struct RuntimeCapabilities: Sendable {
     public var guiGrounding: Bool
     public var fileIO: Bool
     public var browser: Bool
+    public var remoteIntegrations: Bool
     public var latencyClass: LatencyClass
 
     public enum LatencyClass: String, Sendable {
@@ -17,31 +18,65 @@ public struct RuntimeCapabilities: Sendable {
         guiGrounding: Bool = false,
         fileIO: Bool = false,
         browser: Bool = false,
+        remoteIntegrations: Bool = false,
         latencyClass: LatencyClass = .medium
     ) {
         self.guiGrounding = guiGrounding
         self.fileIO = fileIO
         self.browser = browser
+        self.remoteIntegrations = remoteIntegrations
         self.latencyClass = latencyClass
     }
 }
 
 public struct ScreenContext: Sendable {
+    public enum ScreenshotCoordinateSpace: String, Sendable {
+        case screenPoints
+        case windowPixels
+    }
+
     public let frontAppBundleID: String?
     public let frontWindowTitle: String?
     public let accessibilitySnapshot: String?
     public let screenshotReferenceID: String?
+    public let screenshotJPEGData: Data?
+    public let screenshotMIMEType: String
+    public let screenshotCoordinateSpace: ScreenshotCoordinateSpace
+    public let visionTextContext: String?
+    public let spatialRegionDescription: String?
+    public let appSkillContext: String?
+    public let memoryContext: String?
+    public let remoteIntegrationContext: String?
+    public let targetWindow: ExecutableAction.WindowIdentity?
 
     public init(
         frontAppBundleID: String? = nil,
         frontWindowTitle: String? = nil,
         accessibilitySnapshot: String? = nil,
-        screenshotReferenceID: String? = nil
+        screenshotReferenceID: String? = nil,
+        screenshotJPEGData: Data? = nil,
+        screenshotMIMEType: String = "image/jpeg",
+        screenshotCoordinateSpace: ScreenshotCoordinateSpace = .screenPoints,
+        visionTextContext: String? = nil,
+        spatialRegionDescription: String? = nil,
+        appSkillContext: String? = nil,
+        memoryContext: String? = nil,
+        remoteIntegrationContext: String? = nil,
+        targetWindow: ExecutableAction.WindowIdentity? = nil
     ) {
         self.frontAppBundleID = frontAppBundleID
         self.frontWindowTitle = frontWindowTitle
         self.accessibilitySnapshot = accessibilitySnapshot
         self.screenshotReferenceID = screenshotReferenceID
+        self.screenshotJPEGData = screenshotJPEGData
+        self.screenshotMIMEType = screenshotMIMEType
+        self.screenshotCoordinateSpace = screenshotCoordinateSpace
+        self.visionTextContext = visionTextContext
+        self.spatialRegionDescription = spatialRegionDescription
+        self.appSkillContext = appSkillContext
+        self.memoryContext = memoryContext
+        self.remoteIntegrationContext = remoteIntegrationContext
+        self.targetWindow = targetWindow
     }
 
     public static let empty = ScreenContext()
@@ -53,10 +88,18 @@ public struct Step: Sendable, Equatable {
         case movePointer
         case typeText
         case clickControl
+        case rightClick
+        case doubleClick
+        case scroll
+        case pressKey
+        case hotkey
+        case drag
         case createFile
         case renameFile
         case moveToTrash
         case delegate
+        case remoteRead
+        case remoteWrite
     }
 
     public let id: String
@@ -84,18 +127,6 @@ public struct Plan: Sendable, Equatable {
     }
 }
 
-public struct ConsentHandle: Sendable, Equatable {
-    public let stepID: String
-    public let tier: TrustTier
-    public let issuedAt: Date
-
-    public init(stepID: String, tier: TrustTier, issuedAt: Date = Date()) {
-        self.stepID = stepID
-        self.tier = tier
-        self.issuedAt = issuedAt
-    }
-}
-
 public struct StepResult: Sendable, Equatable {
     public let stepID: String
     public let success: Bool
@@ -106,6 +137,42 @@ public struct StepResult: Sendable, Equatable {
         self.success = success
         self.message = message
     }
+}
+
+public enum VerificationStatus: Sendable, Equatable {
+    case notRequired
+    case verified(evidence: String)
+    case unverified(reason: String)
+}
+
+public protocol TypedActionVerifier: Sendable {
+    func verify(approvedAction: ApprovedExecutableAction, result: ActionExecutionResult, context: ScreenContext) async -> VerificationStatus
+}
+
+public struct NoOpTypedActionVerifier: TypedActionVerifier {
+    public init() {}
+    public func verify(approvedAction: ApprovedExecutableAction, result: ActionExecutionResult, context: ScreenContext) async -> VerificationStatus {
+        .notRequired
+    }
+}
+
+public enum TypedDoEvent: Sendable {
+    case actionStarted(index: Int, action: ExecutableAction, tier: TrustTier)
+    case verification(action: ExecutableAction, status: VerificationStatus)
+}
+
+public enum DoEvent: Sendable {
+    case starting(deadline: Date?)
+    case planned(steps: Int)
+    case started
+    case paused
+    case resumed
+    case steered(String)
+    case confirmationRequested(ConfirmationRequest)
+    case confirmationAccepted(UUID)
+    case completed(stepsRun: Int)
+    case stopped(reason: String)
+    case failed(stepSummary: String, reason: String)
 }
 
 public struct PlanError: Error, CustomStringConvertible {
@@ -123,26 +190,5 @@ public struct ExecutionError: Error, CustomStringConvertible {
 
     public init(message: String) {
         self.message = message
-    }
-}
-
-public enum StepActionMapper {
-    public static func descriptor(for step: Step, goal: String, targetAppBundleID: String?) -> ActionDescriptor {
-        switch step.kind {
-        case .highlight, .movePointer:
-            return ActionDescriptor(kind: .highlightElement, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .typeText:
-            return ActionDescriptor(kind: .typeText, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .clickControl:
-            return ActionDescriptor(kind: .clickControl, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .createFile:
-            return ActionDescriptor(kind: .createFile, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .renameFile:
-            return ActionDescriptor(kind: .renameFile, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .moveToTrash:
-            return ActionDescriptor(kind: .moveToTrash, targetAppBundleID: targetAppBundleID, summary: step.summary)
-        case .delegate:
-            return ActionDescriptor(kind: .runShellCommand, targetAppBundleID: targetAppBundleID, summary: "delegated task: \(goal)", pathInsideWorkspace: true)
-        }
     }
 }

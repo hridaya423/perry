@@ -22,7 +22,8 @@ let package = Package(
                 .product(name: "PerryCapture", package: "PerryCapture"),
                 .product(name: "PerryRuntimes", package: "PerryRuntimes"),
             ],
-            path: "Sources/PerryGuide"
+            path: "Sources/PerryGuide",
+            resources: [.process("Resources")]
         ),
         .testTarget(name: "PerryGuideTests", dependencies: ["PerryGuide"], path: "Tests/PerryGuideTests"),
     ]

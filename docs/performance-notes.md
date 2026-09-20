@@ -4,8 +4,8 @@ Budgets and measurements as of M6. Re-measure after any transplant refresh.
 
 ## Capture path
 
-- SCShareableContent enumeration costs 80–200ms cold. The donor's 3-second cache is preserved in `PerryScreenCaptureUtility`; keep it. Prewarm on session start, not key-down.
-- Screenshot downscale to 1280px max dimension happens inside the SCScreenshotManager configuration — do not capture full-res then resize.
+- The upstream Cua Driver owns window enumeration, screenshot capture, AX grounding, and background input. Perry keeps one direct MCP worker and task-scoped sessions so repeated steps reuse the driver’s target and snapshot lifecycle without a reusable daemon.
+- Cua returns the target-window image directly; Perry passes that image to OCR or the optional multimodal planner without writing it to disk or recapturing the desktop.
 
 ## Overlay choreography
 
@@ -22,5 +22,5 @@ Budgets and measurements as of M6. Re-measure after any transplant refresh.
 
 ## Memory & logs
 
-- Screenshots live only in memory during a session (PRD §8). The JPEG data in `PerryScreenCapture` must never gain a disk write without revisiting that promise.
+- Screenshots live only in memory during a session (PRD §8). Cua image data and the compatibility `PerryScreenCapture` geometry value must never gain a disk write without revisiting that promise.
 - Activity log persists JSON atomically after every entry; fine for interactive volumes. If Do mode ever batches thousands of steps, move to append-only NDJSON.

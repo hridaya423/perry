@@ -18,6 +18,17 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.perry.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dev.perry.perry</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSUIElement</key>
@@ -25,8 +36,16 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Perry drives apps you ask it to drive.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Perry uses the microphone only while you hold a session open, for on-device speech recognition.</string>
+	<string>Perry uses the microphone only while you hold a session open, for speech recognition and optional realtime voice.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Perry transcribes your requests on device via Apple Speech.</string>
+	<string>Perry uses Apple Speech to transcribe requests you speak.</string>
+	<key>PerryIssuesURL</key>
+	<string>$(PERRY_ISSUES_URL)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>$(PERRY_UPDATE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(PERRY_SPARKLE_PUBLIC_KEY)</string>
 </dict>
 </plist>

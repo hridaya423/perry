@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 import PerryCore
 
-public enum PerryPermissionStatus: String, Sendable {
+public enum PerryPermissionStatus: String, Equatable, Sendable {
     case granted
     case denied
     case notDetermined
@@ -54,11 +54,17 @@ public struct PerryPermissionSnapshot: Equatable, Sendable {
         accessibility && screenRecording.isUsable && microphone.isUsable
     }
 
-    public static func probe() -> PerryPermissionSnapshot {
-        PerryPermissionSnapshot(
-            accessibility: PerryPermissionProbe.checkAccessibility(),
-            screenRecording: PerryPermissionProbe.checkScreenRecording(),
-            microphone: PerryPermissionProbe.checkMicrophone()
-        )
+    public var requiredPermissionsGranted: Bool {
+        accessibility && screenRecording.isUsable
+    }
+
+    public static func probe() async -> PerryPermissionSnapshot {
+        await Task.detached(priority: .userInitiated) {
+            PerryPermissionSnapshot(
+                accessibility: PerryPermissionProbe.checkAccessibility(),
+                screenRecording: PerryPermissionProbe.checkScreenRecording(),
+                microphone: PerryPermissionProbe.checkMicrophone()
+            )
+        }.value
     }
 }

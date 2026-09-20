@@ -23,16 +23,31 @@ final class IntentCardTests: XCTestCase {
         XCTAssertFalse(policy.resolve(card(.red), choice: nil, typedConfirmation: "confirm", sourceIsVoice: false))
     }
 
-    func testRedRequiresTypedConfirmationEvenFromClick() {
+    func testRedRequiresExactDisplayedTarget() {
         let policy = IntentCardPolicy()
         XCTAssertFalse(policy.resolve(card(.red), choice: .approve, typedConfirmation: nil, sourceIsVoice: false))
-        XCTAssertTrue(policy.resolve(card(.red), choice: .approve, typedConfirmation: "move them", sourceIsVoice: false))
-        XCTAssertTrue(policy.resolve(card(.red), choice: .approve, typedConfirmation: "   ", sourceIsVoice: false) == false)
+        XCTAssertFalse(policy.resolve(card(.red), choice: .approve, typedConfirmation: "move them", sourceIsVoice: false))
+        XCTAssertFalse(policy.resolve(card(.red), choice: .approve, typedConfirmation: "confirm", sourceIsVoice: false))
+        XCTAssertTrue(policy.resolve(card(.red), choice: .approve, typedConfirmation: "Finder · Desktop", sourceIsVoice: false))
+        XCTAssertFalse(policy.resolve(card(.red), choice: .approve, typedConfirmation: "   ", sourceIsVoice: false))
     }
 
     func testRedRejectsVoiceOnlyApproval() {
         let policy = IntentCardPolicy()
         XCTAssertFalse(policy.resolve(card(.red), choice: .approve, typedConfirmation: "yes", sourceIsVoice: true))
+    }
+
+    func testRedCanRequireAnExactTargetPath() {
+        let card = IntentCard(
+            title: "About to run a command",
+            tier: .red,
+            targetSummary: "outside the workspace",
+            requiredPhrase: "/private/tmp/report.txt"
+        )
+        let policy = IntentCardPolicy()
+
+        XCTAssertFalse(policy.resolve(card, choice: .approve, typedConfirmation: "/private/tmp/report", sourceIsVoice: false))
+        XCTAssertTrue(policy.resolve(card, choice: .approve, typedConfirmation: "/private/tmp/report.txt", sourceIsVoice: false))
     }
 
     func testSpokenLineMatchesTier() {

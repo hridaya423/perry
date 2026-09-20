@@ -36,6 +36,12 @@ final class TrustGuardTests: XCTestCase {
         XCTAssertEqual(guard_.classify(outside), .red)
     }
 
+    func testShellCommandDefaultsOutsideWorkspace() {
+        let action = ActionDescriptor(kind: .runShellCommand, summary: "run command")
+
+        XCTAssertEqual(guard_.classify(action), .red)
+    }
+
     func testBankingBundleIDBlocksAnyAction() {
         let decision = guard_.decide(
             action: ActionDescriptor(kind: .readWindow, summary: "peek"),

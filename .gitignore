@@ -7,4 +7,6 @@ xcuserdata/
 vendor/
 .swiftpm/
 App/Resources/CodexRuntime/
+App/Resources/CuaDriver/*
+!App/Resources/CuaDriver/capabilities.yaml
 .swiftpm/

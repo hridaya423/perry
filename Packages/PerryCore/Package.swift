@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PerryCore",
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "PerryCore", targets: ["PerryCore"]),
     ],

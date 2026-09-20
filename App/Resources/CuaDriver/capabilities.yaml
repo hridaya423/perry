@@ -1,0 +1,51 @@
+version: 3
+expires_after: 8h
+idle_timeout: 30m
+
+allow:
+  tools:
+    - check_permissions
+    - start_session
+    - get_session_state
+    - end_session
+    - list_windows
+    - get_window_state
+    - click
+    - right_click
+    - double_click
+    - scroll
+    - type_text
+    - press_key
+    - hotkey
+    - drag
+    - verify_state
+
+resources:
+  apps:
+    - bundle_id: com.apple.finder
+      launch: false
+      windows: all
+      terminate: deny
+    - bundle_id: com.apple.Preview
+      launch: false
+      windows: all
+      terminate: deny
+    - bundle_id: com.apple.systempreferences
+      launch: false
+      windows: all
+      terminate: deny
+    - bundle_id: com.apple.TextEdit
+      launch: false
+      windows: all
+      terminate: deny
+    - bundle_id: com.microsoft.Excel
+      launch: false
+      windows: all
+      terminate: deny
+    - bundle_id: com.blackmagic-design.DaVinciResolve
+      launch: false
+      windows: all
+      terminate: deny
+
+  desktop:
+    display: false

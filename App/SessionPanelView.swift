@@ -1,113 +1,311 @@
+import AppKit
 import SwiftUI
 import PerryGuide
 import PerryOverlay
 
-/// The wake panel: type a request or hit the mic and talk.
-/// Ink-on-glass: one material surface, charcoal ink, single mint accent,
-/// the buddy himself answering the "who am I talking to" question.
 struct SessionPanelView: View {
-    weak var controller: AppController?
+    static let windowIdentifier = NSUserInterfaceItemIdentifier("perry.session")
+    @ObservedObject var controller: AppController
 
+    private enum InvocationMode: String, CaseIterable {
+        case guide
+        case do_
+
+        var prompt: String {
+            switch self {
+            case .guide: return "What should Perry show you?"
+            case .do_: return "What should Perry take off your hands?"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .guide: return "here. I point, you click."
+            case .do_: return "here. I work, you supervise."
+            }
+        }
+    }
+
+    @State private var mode = InvocationMode.guide
     @State private var text = ""
+    @State private var runInBackground = false
+    @State private var runtimeID = RuntimeChoice.automaticID
+    @State private var runtimeDisclosed = false
     @FocusState private var fieldFocused: Bool
-
-    private static let accent = Color(red: 0.204, green: 0.827, blue: 0.600)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        ScrollView {
+            panelContent
+                .padding(PerryTheme.Spacing.panelInset)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minWidth: PerryTheme.Sizing.panelWidth, minHeight: PerryTheme.Sizing.panelHeight)
+        .background(PerryTheme.Colors.surface)
+        .tint(PerryTheme.Colors.accent)
+        .foregroundStyle(PerryTheme.Colors.text)
+        .onAppear {
+            controller.runtimes.refreshChoices()
+        }
+        .task {
+            await Task.yield()
+            fieldFocused = NSApp.keyWindow?.identifier == Self.windowIdentifier
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            guard let window = notification.object as? NSWindow,
+                  window.identifier == Self.windowIdentifier else { return }
+            DispatchQueue.main.async {
+                guard NSApp.keyWindow?.identifier == Self.windowIdentifier else { return }
+                fieldFocused = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
+            guard let window = notification.object as? NSWindow,
+                  window.identifier == Self.windowIdentifier else { return }
+            fieldFocused = false
+        }
+        .onChange(of: controller.runtimes.choices) { _, choices in
+            if !choices.contains(where: { $0.id == runtimeID }) {
+                runtimeID = RuntimeChoice.automaticID
+            }
+        }
+        .onChange(of: text) { _, newValue in
+            switch GuideIntentParser.parse(newValue) {
+            case .doTask: mode = .do_
+            case .guide, .showEverything: mode = .guide
+            case .dismiss, .notAGuideRequest: break
+            }
+        }
+        .onChange(of: mode) { _, _ in
+            if NSApp.keyWindow?.identifier == Self.windowIdentifier {
+                fieldFocused = true
+            }
+        }
+    }
+
+    private var panelContent: some View {
+        VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
+            HStack(spacing: PerryTheme.Spacing.header) {
                 PerrySpriteView(animation: .idle, size: 36)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: PerryTheme.Spacing.label) {
                     Text("Perry")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                    Text("here. what are we doing?")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(PerryTheme.Typography.panelTitle)
+                    Text(mode.subtitle)
+                        .font(PerryTheme.Typography.panelSubtitle)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 Spacer()
                 Button {
-                    controller?.dismiss()
+                    controller.dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(6)
-                        .background(.quaternary, in: Circle())
+                        .font(PerryTheme.Typography.panelClose)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .frame(width: PerryTheme.Sizing.iconButton, height: PerryTheme.Sizing.iconButton)
+                        .background(PerryTheme.Colors.canvas, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Close session panel")
+                .accessibilityHint("Dismiss Perry's request panel")
             }
 
-            TextField("show me… or do it for me", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
-                .focused($fieldFocused)
-                .onSubmit { submit() }
+            Picker("Guide or Do", selection: $mode) {
+                Text("Guide").tag(InvocationMode.guide)
+                Text("Do").tag(InvocationMode.do_)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(controller.isTaskActive)
+            .accessibilityLabel("Guide or Do")
 
-            HStack(spacing: 8) {
+            HStack(spacing: PerryTheme.Spacing.control) {
+                TextField(mode.prompt, text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(PerryTheme.Typography.panelBody)
+                    .focused($fieldFocused)
+                    .onSubmit { submit() }
+                    .disabled(controller.isTaskActive)
+                    .accessibilityLabel("Task request")
+                    .accessibilityHint("Describe what you want Perry to show, explain, or take over")
+
                 Button {
-                    controller?.beginDictation()
+                    controller.voice.beginDictation()
                 } label: {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(Self.accent, in: Circle())
+                        .font(PerryTheme.Typography.panelIcon)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .frame(width: PerryTheme.Sizing.iconButton, height: PerryTheme.Sizing.iconButton)
+                        .background(PerryTheme.Colors.canvas, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Talk instead")
-
-                Spacer()
-
-                Button("Everything") { submit(kind: .everything) }
-                Button("Teach me") { submit(kind: .guide) }
-                Button("Do it") { submit(kind: .do_) }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Self.accent)
+                .help("Start dictation")
+                .accessibilityLabel("Start dictation")
+                .accessibilityHint("Speak the task request")
             }
-            .controlSize(.small)
-            .font(.system(size: 11, weight: .medium))
+
+            if mode == .do_ && !controller.isTaskActive {
+                HStack(spacing: PerryTheme.Spacing.inline) {
+                    Toggle("Run in background", isOn: $runInBackground)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .font(PerryTheme.Typography.panelMetadata)
+                    Spacer()
+                    Button {
+                        runtimeDisclosed.toggle()
+                    } label: {
+                        Text("Runtime: \(selectedRuntimeName)")
+                        Image(systemName: runtimeDisclosed ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.plain)
+                    .font(PerryTheme.Typography.panelMetadata)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .accessibilityLabel("Runtime options")
+                }
+
+                if runtimeDisclosed {
+                    Picker("Runtime", selection: $runtimeID) {
+                        ForEach(controller.runtimes.choices) { runtime in
+                            Text(runtime.name).tag(runtime.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .help("Automatic picks the best available runtime.")
+                }
+
+                if controller.runtimes.choices.count > 1 && !controller.runtimes.hasExecutionCapableChoice {
+                    HStack(spacing: PerryTheme.Spacing.control) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(PerryTheme.Colors.caution)
+                        Text("No runtime installed — Perry needs one to take over tasks.")
+                            .font(PerryTheme.Typography.panelMetadata)
+                            .foregroundStyle(PerryTheme.Colors.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Open Runtimes settings") {
+                            controller.openSettings(tab: .runtimes)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            HStack(spacing: PerryTheme.Spacing.control) {
+                Circle()
+                    .fill(controller.isTaskActive ? PerryTheme.Colors.accent : PerryTheme.Colors.textSecondary)
+                    .frame(width: PerryTheme.Sizing.statusDot, height: PerryTheme.Sizing.statusDot)
+                    .accessibilityHidden(true)
+                Text(controller.sessionStatus)
+                    .font(PerryTheme.Typography.panelMetadata)
+                    .foregroundStyle(PerryTheme.Colors.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Session status")
+                    .accessibilityValue(controller.sessionStatus)
+                Spacer()
+                if let progress = controller.taskProgress, controller.isTaskActive {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: PerryTheme.Sizing.progressWidth)
+                        .accessibilityLabel("Task progress")
+                        .accessibilityValue("\(Int(progress * 100)) percent")
+                }
+            }
+
+            if !controller.transcriptPreview.isEmpty {
+                Text(controller.transcriptPreview)
+                    .font(PerryTheme.Typography.panelSubtitle)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Latest transcript")
+                    .accessibilityValue(controller.transcriptPreview)
+            }
+
+            if controller.isTaskActive {
+                Text("Pause, steer, or stop from the status strip.")
+                    .font(PerryTheme.Typography.panelMetadata)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            } else {
+                if case .failed = controller.sessionState {
+                    HStack(spacing: PerryTheme.Spacing.control) {
+                        Button("Retry task") { controller.foreground.retry() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Spacer()
+                    }
+                }
+
+                Button { submit() } label: {
+                    Text(startTitle)
+                        .font(PerryTheme.Typography.action)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PerryTheme.Colors.accent)
+                .foregroundStyle(PerryTheme.Colors.onAccent)
+                .disabled(requestIsEmpty)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityHint("Submit the request to Perry")
+            }
         }
-        .padding(16)
-        .frame(width: 340)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
-        .tint(Self.accent)
-        .onAppear { fieldFocused = true }
+        .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: controller.isTaskActive)
+        .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: mode)
     }
 
-    private enum RequestKind { case guide, everything, do_ }
+    private var selectedRuntimeName: String {
+        controller.runtimes.choices.first(where: { $0.id == runtimeID })?.name ?? "Automatic"
+    }
 
-    private func submit(kind: RequestKind? = nil) {
+    private var startTitle: String {
+        switch mode {
+        case .guide: return "Start guiding"
+        case .do_: return runInBackground ? "Queue task" : "Start"
+        }
+    }
+
+    private var requestIsEmpty: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func submit() {
         let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
         text = ""
         SoundPlayer.play(.send)
 
-        switch kind {
-        case .guide:
-            controller?.startGuiding(goal: raw)
-        case .everything:
-            Task { await controller?.showEverything(goal: raw) }
-        case .do_:
-            controller?.startDoing(goal: raw)
-        case nil:
-            dispatchParsed(raw)
+        switch GuideIntentParser.parse(raw) {
+        case .dismiss:
+            controller.dismiss()
+        case .doTask(let goal):
+            dispatchDo(goal)
+        case .showEverything(let goal):
+            if mode == .do_ {
+                dispatchDo(raw)
+            } else {
+                Task { await controller.showEverything(goal: goal) }
+            }
+        case .guide(let goal):
+            if mode == .do_ {
+                dispatchDo(raw)
+            } else {
+                controller.startGuiding(goal: goal)
+            }
+        case .notAGuideRequest:
+            if mode == .do_ {
+                dispatchDo(raw)
+            } else {
+                controller.startGuiding(goal: raw)
+            }
         }
     }
 
-    private func dispatchParsed(_ raw: String) {
-        switch GuideIntentParser.parse(raw) {
-        case .guide(let goal):
-            controller?.startGuiding(goal: goal)
-        case .showEverything(let goal):
-            Task { await controller?.showEverything(goal: goal) }
-        case .doTask(let goal):
-            controller?.startDoing(goal: goal)
-        case .dismiss:
-            controller?.dismiss()
-        case .notAGuideRequest:
-            controller?.startGuiding(goal: raw)
+    private func dispatchDo(_ goal: String) {
+        if runInBackground {
+            controller.backgroundTasks.queue(goal: goal, preferredRuntimeID: runtimeID)
+        } else {
+            controller.foreground.start(goal: goal, preferredRuntimeID: runtimeID)
         }
     }
 }

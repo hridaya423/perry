@@ -1,15 +1,15 @@
-# Perry — PRD & Spec
+# Perry product contract
 
 **Date:** 2026-08-25
-**Status:** Approved draft
-**Platform:** macOS (v1)
+**Status:** Approved 1.0 contract
+**Platform:** Apple Silicon macOS 14+
 **Distribution:** Free open client, bring-your-own compute
 
 A screen-aware companion that teaches you any app by pointing and drawing on your screen, and can take the whole task off your hands.
 
-## 0. Why the name
+## 0. Product identity
 
-Perry the Platypus, from Phineas and Ferb (2007–2015 plus revivals): a family pet who is secretly a mission-running agent. The name encodes the product's two faces — the idle buddy who sits by your cursor, and the operative who takes whole tasks off your hands when dispatched. "Send Perry to do it" is dispatch language built into the name, and everyone aged roughly 18–35 already knows the reference without explanation. It's a common given name, so trademark exposure stays minimal.
+Perry is an original desktop companion with a spatial mint-and-ink identity. The product does not present itself as, or use artwork from, an existing entertainment character. The name still supports the product's two modes: Perry can guide you through a task or carry out a supervised task for you.
 
 ## 1. Why this exists
 
@@ -19,9 +19,7 @@ Three products define the space:
 - **HeyClicky** (macOS) proved demand: ~25k users, $0/$20/$100 tiers, voice-first, draws annotations on screen, spawns background agents. Its author open-sourced the original core ([farzaa/clicky](https://github.com/farzaa/clicky), MIT, 7.4k stars) then went closed on new features.
 - **[jasonkneen/openclicky](https://github.com/jasonkneen/openclicky)** (MIT, active) extended clicky into agent territory but grew into ~90k lines of Swift with a 16,341-line `CompanionManager.swift` holding 541 functions and ~2% test coverage.
 
-The gap: nothing combines consumer-grade charm, a serious trust model, and freedom from subscription lock-in. Perry takes heyclicky's warmth, Cursorly's safety posture, and openclicky's proven internals, rebuilt around a tested core.
-
-Build strategy: **organ donor**. Fork openclicky, transplant the proven internals (overlay engine, screen capture, permission flows, CLI process spawning), delete the monolith and its satellite features, rebuild orchestration and UX cleanly.
+The gap: nothing combines consumer-grade charm, a serious trust model, and freedom from subscription lock-in. Perry uses the audited competitor journeys as a minimum bar, but its production architecture is independently maintained and tested.
 
 ## 2. Who it's for
 
@@ -32,7 +30,7 @@ Design bar: a non-technical family member must survive onboarding unaided.
 ## 3. Product principles
 
 1. The buddy never lies about capability. If your Mac can't run something well, the product says so plainly.
-2. Nothing happens without the hotkey or an explicit opt-in wake word. No ambient watching, ever.
+2. Screen capture starts only for an explicit session. Ambient wake is a separate remembered microphone mode with a permanent visible indicator.
 3. Irreversible actions get exactly one clear confirmation. Everything else flows.
 4. Your keys, your machine, your data. Cloud is opt-in per provider; local is experimental and honest about quality.
 5. Playful when teaching, silent and precise when acting.
@@ -41,13 +39,13 @@ Design bar: a non-technical family member must survive onboarding unaided.
 
 ### Invocation
 
-Global hotkey wakes Perry near your cursor. Optional wake word ("hey Perry"), off by default, uses Apple Speech on-device recognition. Type or talk each session; both co-equal day one via free Apple frameworks (Speech.framework STT, AVSpeechSynthesizer TTS). Premium voices become BYOK upgrades later.
+The global hotkey wakes Perry near your cursor. Optional ambient wake is off by default and runs only when Apple Speech supports on-device recognition; otherwise Perry reports that it is unavailable. Typed input and push-to-talk remain available. Configured realtime speech-to-speech is the primary duplex path, with Apple transcription and synthesis as the local fallback.
 
 ### Guide mode (default resting state)
 
 - Step-follows-you teaching: point at control 1, wait while you act, detect the screen changed, point at control 2.
 - "Show me everything" paints the full annotated path at once (numbered markers + arrows on a transparent overlay).
-- Works from screenshots plus the accessibility tree where available. AX gives exact element frames and labels; vision fills gaps in canvas-style apps like FL Studio.
+- Uses exact-window images, accessibility data, and local OCR obtained through the embedded Cua boundary. Optional direct providers can reason over an image when the user starts a grounded task.
 - Screen reading happens only while a session runs.
 
 ### Do mode (hands-off autonomy)
@@ -58,18 +56,19 @@ Global hotkey wakes Perry near your cursor. Optional wake word ("hey Perry"), of
 
 ### Capability ladder (runtime adapters)
 
-One `AgentRuntime` interface, four implementations:
+Perry separates planning, execution, and verification capabilities. One typed registry records each provider's installation identity, authentication, confinement, supported operations, health, and measured latency.
 
-1. **Coding-agent CLI (default):** Claude Code SDK path from openclicky, plus Codex CLI and OpenCode adapters. User's installed CLI and auth; zero extra setup beyond granting permissions.
-2. **BYOK cloud:** Anthropic/OpenAI/OpenRouter/Gemini keys in Keychain, encrypted under the user's account. Computer-use against screenshots for GUI-heavy targets.
-3. **Local experimental:** quantized UI-TARS-class models via MLX/llama.cpp. Gated by hardware probe: enabled only where projected latency and accuracy pass our floor (target: ≥M-series with 16GB+ unified memory for 4–7B quantized). Optimization budget: MLX quantization, speculative decoding, KV-cache reuse, prompt caching, batched AX-tree context to shrink image tokens. Below the floor, the tier shows "This Mac can't run this well" with specifics, never a broken experience. Custom endpoints stay configurable for people who insist.
-4. **Custom:** any Anthropic-compatible or OpenAI-compatible base URL.
+1. **Bundled Codex (default):** pinned by version and checksum, with planning confined to read-only mode and execution confined to a selected workspace.
+2. **Installed CLIs:** Claude and OpenCode use official login flows. Planning is available only after Perry verifies the exact executable; delegated execution stays disabled until its isolation and receipt gates pass.
+3. **Direct providers:** OpenAI, Anthropic, Gemini, and OpenRouter credentials live in Keychain. These providers plan screenshot-grounded actions; Perry's supervised local executor performs them.
+4. **Custom endpoints:** OpenAI-compatible HTTPS endpoints, with plaintext allowed only on explicit loopback addresses.
+5. **Local experimental:** shown only when a model has an implemented adapter and the current Mac passes its disclosed hardware floor. An unavailable model is never presented as ready.
 
-Adapter selection per task type: CLI runtimes handle file/dev/browser tasks natively; GUI-grounding routes to vision-capable runtimes. Switching is one picker in settings; the ladder auto-recommends based on what's installed.
+Routing uses the task's required capabilities and the user's preference. Perry records the selected provider and explains every fallback.
 
-### Memory (opt-out, not opt-in)
+### Memory
 
-On by default because recall compounds value, fully configurable: per-category toggles (app workflows learned, preferences, past sessions), stored locally as an inspectable JSON file, one-click wipe, never synced. Off = goldfish mode, cold start every time.
+Memory starts only after explicit onboarding consent. App workflows, preferences, and past sessions have separate controls. Records stay in a locally inspectable store and can be erased by category or in full.
 
 ### Confirmation UX
 
@@ -89,31 +88,31 @@ First run: permission walkthrough (Accessibility, Screen Recording, Microphone) 
 
 ### Settings surface
 
-Runtimes & keys, memory toggles, wake word, guardrail list viewer (read-only, signed file), activity log export, voice packs, hotkey remap.
+General, Voice & Input, Runtimes, Integrations, Memory & Privacy, Appearance, and Safety & Advanced. Controls report unavailable or unverified states instead of presenting setup as success.
 
 ## 5. Explicitly out of scope (v1)
 
-Google Workspace/gogcli agents, notch UI, widgets, head gestures, Windows/Linux builds, team/cloud accounts, hosted inference, billing. Post-1.0 plugin territory.
+Notch UI, cloud accounts, billing, hosted inference, Windows/Linux, proactive cloud agents, hosted region routing, and a hosted skills marketplace. Slack, Notion, Linear, and Google Workspace are the direct-auth integration set for 1.0.
 
 ## 6. Architecture
 
 ```mermaid
 flowchart TD
     HK[Hotkey / wake word] --> Sess[Session Orchestrator]
-    Sess --> Voice[Voice pipeline\nApple STT/TTS]
-    Sess --> Guide[Guide engine\nAX tree + vision]
+    Sess --> Voice[Realtime voice\nApple fallback]
+    Sess --> Guide[Guide engine\nCua + OCR]
     Sess --> Doer[Do supervisor]
-    Guide --> OV[Overlay engine\nopenclicky transplant]
+    Guide --> OV[Overlay + companion]
     Doer --> Guard[Trust guard\nblocked lists + tiers]
     Guard --> RT{Runtime router}
-    RT --> CLI[Claude/Codex/OpenCode]
-    RT --> BYOK[Cloud APIs]
-    RT --> LOC[Local MLX models]
+    RT --> CLI[Codex/Claude/OpenCode]
+    RT --> BYOK[Direct providers]
+    Guide --> CUA[Embedded Cua host]
     Sess --> Mem[(Memory JSON\nlocal)]
     Sess --> Log[(Activity log\nlocal)]
 ```
 
-The Session Orchestrator is new code: a small, tested state machine replacing CompanionManager.
+`SessionController` owns the typed application session state. Application lifecycle code composes voice, guide, execution, integration, persistence, Cua, and overlay workers without owning their policy.
 
 ```mermaid
 stateDiagram-v2
@@ -129,22 +128,25 @@ stateDiagram-v2
     Reporting --> Idle
 ```
 
-**Transplants from openclicky (~15–20k lines):** OverlayWindow choreography, CompanionScreenCaptureUtility, ExternalControlBridge HTTP server (kept internal), permission probes, CodexProcessManager process-spawn patterns.
+The embedded Cua host is the sole production computer-control and operating-system capture boundary. Perry retains OCR, geometry, guide reasoning, overlays, and in-memory image transforms. It does not ship a competing ScreenCaptureKit control stack or an internal HTTP control bridge.
 
-**Deleted wholesale:** notch stack, widgets, gogcli integration, Nodex head gestures, reminder systems, onboarding music.
-
-Runtime adapter interface sketch:
+Runtime boundaries:
 
 ```swift
-protocol AgentRuntime {
-    var id: String { get }
-    var capabilities: RuntimeCapabilities { get } // guiGrounding, fileIO, browser, latencyClass
+protocol TaskPlanner {
     func plan(goal: String, context: ScreenContext) async throws -> Plan
+}
+
+protocol ActionExecutor {
     func execute(_ step: Step, consent: ConsentHandle) async throws -> StepResult
+}
+
+protocol ActionVerifier {
+    func verify(step: Step, result: StepResult, context: ScreenContext) async -> VerificationStatus
 }
 ```
 
-ScreenContext bundles AX snapshot (element roles, labels, frames) + screenshot reference id; the trust guard sits between plan and execute.
+External planner output is parsed once into supported actions and fails closed when an action name, target, parameter, scope, or verification requirement is missing. The trust guard sits between planning and execution.
 
 ## 7. Trust & safety
 
@@ -159,33 +161,28 @@ Tier model applied at execution time:
 
 Always-blocked regardless of tier: banking/password-manager/checkout windows (Cursorly's published list as starting set); screen capture of those windows refused at the capture layer.
 
-Prompt-injection defense carried over from openclicky's hardening passes: page/window content is untrusted input, never instructions; no arbitrary-JS eval tools; SSRF guards; sandbox defaults workspace-write.
+Page and window content is untrusted input, never instructions. Perry has no arbitrary JavaScript evaluation tool, rejects unsafe network endpoints, and confines bundled Codex execution to the selected workspace.
 
 ## 8. Privacy & data flow
 
-Screenshots exist in memory only during a running session; never written to disk unsanitized, never synced. Memory + activity logs are local JSON files, user-inspectable, wipeable. Keys in Keychain. No telemetry in v1 except explicit, opt-in crash reports. BYOK calls go device → provider directly; no proxy middleman (unlike clicky's Worker pattern).
+Screenshots exist in memory only during a running session and are not written to Perry's stores. Memory and activity data are local, inspectable, and erasable. Keys remain in Keychain. Direct-provider calls go from the Mac to the selected provider without a Perry proxy. Perry ships no third-party crash or product telemetry; diagnostics stay local and export is user-initiated.
 
 ## 9. Visual & interaction language
 
 Transparent ink-on-glass aesthetic inherited from the overlay engine: high-contrast marker strokes, soft shadows, one accent color. Motion: pointer glides with spring easing (existing choreography), annotations draw themselves in ~200ms, intent cards scale in at the target. Reduced-motion respected. Buddy sprite: simple geometric character, 3 idle animations, states readable at a glance (listening pulse, thinking shimmer, acting focus ring).
 
-## 10. Milestones (demo-gated, no calendar)
+## 10. Release evidence
 
-1. **Skeleton:** fork cleaned, orchestrator state machine with tests, overlay + capture transplants building, CLI runtime adapter driving one scripted Finder task end-to-end.
-2. **Guide:** step-follows-you working across 5 target apps (Finder, Preview, System Settings, Excel, DaVinci), voice loop on Apple STT/TTS, "show me everything".
-3. **Do supervised:** trust tiers enforced, intent-card confirmations, activity log, one real-world task suite green.
-4. **Hands-off:** background execution, completion notifications, wake word, memory on.
-5. **Ladder:** BYOK adapters, hardware probe, local tier behind Experimental flag on qualifying machines.
-6. **1.0 polish:** onboarding, tone-passed copy, performance pass, demo video that doesn't embarrass us. Launch license chosen by then (AGPL-3.0 recommended to keep future hosted options open; MIT acceptable).
+Capabilities progress through `absent → wired → unit-tested → live-tested → release-proven`. The machine-readable registry in `docs/release-readiness/features.json` is the source for customer-facing support status. A signed build is not generally available until clean-machine onboarding, live Cua and provider suites, privacy capture, notarization, update rollback, and the six Perry acceptance journeys (`docs/release-readiness/product-journeys.v1.json`) all pass.
 
 ## 11. Risks
 
-- **God-object gravity:** any transplant that drags CompanionManager dependencies in dies in review. The rule: transplants compile against new code only, never against the monolith.
+- **God-object gravity:** lifecycle code cannot absorb guide, runtime, voice, integration, or persistence policy.
 - **Local-model disappointment:** mitigated by the honest hardware gate rather than marketing promises.
-- **macOS API churn** (AX, ScreenCaptureKit across OS updates): pin to stable APIs, maintain an OS-compat test matrix.
-- **Upstream divergence:** we're organ donors, not trackers; no rebases planned.
-- **Name/legal:** Perry is a common English given name; the platypus association is referential, not claimed as a mark. Run a clearance check before launch anyway. Alternates recorded during naming research: Matilda, Colette, Shuri.
+- **macOS API churn** (AX and the upstream Cua Driver across OS updates): pin the driver contract, maintain an OS-compat test matrix, and fail closed when the driver is unavailable.
+- **Upstream divergence:** Cua is pinned to a tested revision, artifact hash, protocol version, and capability manifest.
+- **Name/legal:** run product-name and original-character clearance before launch.
 
 ## 12. Open decisions deferred deliberately
 
-License at launch, pricing/hosted tier (revisit with users), domain + social handles for Perry, wake-word phrase tuning, Windows port.
+Pricing/hosted tier (revisit with users), domain + social handles for Perry, wake-word phrase tuning, Windows port. License is settled: AGPL-3.0.

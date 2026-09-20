@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-31T06:16:21Z",
+  "build": {
+    "configuration": "Debug",
+    "architecture": "arm64",
+    "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+    "git_dirty": true,
+    "xcode": "26.6 (17F113)"
+  },
+  "host": {
+    "model": "Mac16,7",
+    "macos": "26.5.1 (25F80)",
+    "appearance": "dark launch override",
+    "keyboard_navigation_enabled": false
+  },
+  "fixture": {
+    "surface": "session panel",
+    "text_scale": "SwiftUI DynamicTypeSize.accessibility3",
+    "request": "Rename the sample Finder item",
+    "cua_permissions": "unavailable",
+    "launch_arguments": ["--perry-debug-surface", "session", "--perry-debug-text-scale", "accessibility3", "-AppleInterfaceStyle", "Dark", "-AppleIncreaseContrast", "YES", "-AppleReduceTransparency", "YES", "-AppleReduceMotion", "YES"]
+  },
+  "checks": [
+    {
+      "name": "initial request focus",
+      "passed": true,
+      "observed": [
+        "The request field held Accessibility focus after launch",
+        "Typing without a prior click or Tab populated the request field",
+        "The screenshot shows the request field focus ring",
+        "All four task actions became enabled after typing"
+      ]
+    },
+    {
+      "name": "idle panel layout",
+      "passed": true,
+      "observed": [
+        "Four task actions rendered in two nonoverlapping rows",
+        "The Cua permission error remained visible",
+        "The panel exposed a scroll area and a native zoom control",
+        "The dark launch rendered a solid dark panel surface"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/release-readiness/ui/session-panel-focus-2026-08-31.jpeg",
+      "sha256": "76f695269bb44209d99d3076e84e8dfc2507012b9ccabcea2da33319add91d28"
+    }
+  ],
+  "limitations": [
+    "Manual Sky inspection of a dirty Debug build does not satisfy clean-checkout or release-proof gates.",
+    "No task was submitted. Active-task steering, long transcripts, resize behavior, and scrolling overflow remain untested.",
+    "Full keyboard traversal, VoiceOver, light appearance, measured contrast, exact 200 percent scaling, and pseudo-localization remain untested.",
+    "This capture is independent of XCUITest; the host has not completed the session UI-test suite."
+  ]
+}

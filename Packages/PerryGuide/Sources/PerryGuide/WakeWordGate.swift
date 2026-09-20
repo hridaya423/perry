@@ -19,9 +19,8 @@ public struct WakeWordGate: Sendable {
     public func match(inTranscript transcript: String) -> String? {
         guard enabled else { return nil }
         let normalized = Self.normalized(transcript)
-        guard normalized.hasPrefix(phrase) else { return nil }
-        let remainder = normalized.dropFirst(phrase.count).trimmingCharacters(in: .whitespacesAndNewlines)
-        return remainder.isEmpty ? nil : remainder
+        guard normalized == phrase || normalized.hasPrefix(phrase + " ") else { return nil }
+        return normalized.dropFirst(phrase.count).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public static func normalized(_ text: String) -> String {

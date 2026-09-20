@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-30T08:29:20Z",
+  "build": {
+    "configuration": "Debug",
+    "architecture": "arm64",
+    "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+    "git_dirty": true,
+    "xcode": "26.6 (17F113)"
+  },
+  "host": {
+    "model": "Mac16,7",
+    "macos": "26.5.1 (25F80)",
+    "appearance": "dark",
+    "keyboard_navigation_enabled": false
+  },
+  "fixture": {
+    "surface": "onboarding",
+    "permissions": {
+      "accessibility": "denied",
+      "screen_recording": "denied",
+      "microphone": "denied"
+    },
+    "runtime": "available"
+  },
+  "checks": [
+    {
+      "name": "welcome accessibility tree",
+      "passed": true,
+      "observed": [
+        "Perry onboarding dialog",
+        "Onboarding progress: Step 1 of 9",
+        "Meet Perry heading",
+        "Continue button"
+      ]
+    },
+    {
+      "name": "denied permission recovery",
+      "passed": true,
+      "observed": [
+        "Onboarding progress: Step 2 of 9",
+        "See where things are heading",
+        "Back button",
+        "Grant in System Settings button",
+        "Retry button",
+        "Disabled Continue button"
+      ]
+    },
+    {
+      "name": "back navigation",
+      "passed": true,
+      "observed": [
+        "Returned to Step 1 of 9",
+        "Meet Perry heading restored"
+      ]
+    },
+    {
+      "name": "default text clipping",
+      "passed": true,
+      "observed": [
+        "Welcome heading and body fully visible",
+        "Continue button fully visible"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/release-readiness/ui/onboarding-welcome-2026-08-30.jpeg",
+      "sha256": "6e7553a9cb3c852d3414cd0a12bdac0061eebcefe8c03da0f0757ebf67d44287"
+    },
+    {
+      "path": "docs/release-readiness/ui/onboarding-permission-denied-2026-08-30.jpeg",
+      "sha256": "e02503c185e62e3f1070c853143a2a8ccac1d0838abc31a40c554faed780719d"
+    }
+  ],
+  "limitations": [
+    "The run used deterministic Debug fixtures rather than changing TCC permissions.",
+    "The host keyboard-navigation setting was disabled, so keyboard-only completion was not tested.",
+    "VoiceOver, 200% text, light appearance, reduced transparency, and a fresh-profile end-to-end completion remain untested in this capture."
+  ]
+}

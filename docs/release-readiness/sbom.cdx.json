@@ -1,0 +1,343 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "framework:sparkle",
+      "externalReferences": [
+        {
+          "type": "license",
+          "url": "https://github.com/sparkle-project/Sparkle/blob/b6496a74a087257ef5e6da1c5b29a447a60f5bd7/LICENSE"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/sparkle-project/Sparkle"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "Sparkle",
+      "properties": [
+        {
+          "name": "perry:source-revision",
+          "value": "b6496a74a087257ef5e6da1c5b29a447a60f5bd7"
+        },
+        {
+          "name": "perry:artifact-sha256",
+          "value": "cb6fdbdc8884f15d62a616e79face92b08322410fd2d425edc6596ccbf4ba3b0"
+        }
+      ],
+      "scope": "required",
+      "type": "framework",
+      "version": "2.9.4"
+    },
+    {
+      "bom-ref": "runtime:codex",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/openai/codex/releases/download/rust-v0.132.0/codex-aarch64-apple-darwin.tar.gz"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/openai/codex/blob/rust-v0.132.0/LICENSE"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/openai/codex"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "Codex",
+      "properties": [
+        {
+          "name": "perry:runtime-target",
+          "value": "aarch64-apple-darwin"
+        },
+        {
+          "name": "perry:archive-sha256",
+          "value": "73258e01c122941c21bb8afbb81daff2ffdd8d3e803754fd411340c24257fdce"
+        },
+        {
+          "name": "perry:binary-sha256",
+          "value": "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713"
+        }
+      ],
+      "publisher": "OpenAI",
+      "scope": "required",
+      "type": "application",
+      "version": "0.132.0"
+    },
+    {
+      "bom-ref": "runtime:cua-driver",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.22.1/cua-driver-rs-0.22.1-darwin-arm64.tar.gz"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/trycua/cua/blob/c60ef6ad2db8774fb342938843e2f17f26c68240/LICENSE"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/trycua/cua"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "Cua Driver",
+      "properties": [
+        {
+          "name": "perry:runtime-target",
+          "value": "aarch64-apple-darwin"
+        },
+        {
+          "name": "perry:source-revision",
+          "value": "c60ef6ad2db8774fb342938843e2f17f26c68240"
+        },
+        {
+          "name": "perry:archive-sha256",
+          "value": "1ef80b48b0b4ccd3b2eadd72c3c66735a65e15306db92816fb04f963d202155d"
+        },
+        {
+          "name": "perry:archive-binary-sha256",
+          "value": "3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d"
+        },
+        {
+          "name": "perry:binary-sha256",
+          "value": "c8343fb4ce61af8091bd3a08d8c6c812b5b45488f78a72d110685e5eb2b80cc9"
+        },
+        {
+          "name": "perry:signing-identifier",
+          "value": "cua-driver"
+        },
+        {
+          "name": "perry:signing-team",
+          "value": "YCK386LBJ7"
+        }
+      ],
+      "scope": "required",
+      "type": "application",
+      "version": "0.22.1"
+    },
+    {
+      "bom-ref": "swift:perrycapture@unspecified",
+      "name": "PerryCapture",
+      "properties": [
+        {
+          "name": "perry:identity",
+          "value": "perrycapture"
+        },
+        {
+          "name": "perry:package-location",
+          "value": "Packages/PerryCapture"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "unspecified"
+    },
+    {
+      "bom-ref": "swift:perrycore@unspecified",
+      "name": "PerryCore",
+      "properties": [
+        {
+          "name": "perry:identity",
+          "value": "perrycore"
+        },
+        {
+          "name": "perry:package-location",
+          "value": "Packages/PerryCore"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "unspecified"
+    },
+    {
+      "bom-ref": "swift:perryguide@unspecified",
+      "name": "PerryGuide",
+      "properties": [
+        {
+          "name": "perry:identity",
+          "value": "perryguide"
+        },
+        {
+          "name": "perry:package-location",
+          "value": "Packages/PerryGuide"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "unspecified"
+    },
+    {
+      "bom-ref": "swift:perryoverlay@unspecified",
+      "name": "PerryOverlay",
+      "properties": [
+        {
+          "name": "perry:identity",
+          "value": "perryoverlay"
+        },
+        {
+          "name": "perry:package-location",
+          "value": "Packages/PerryOverlay"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "unspecified"
+    },
+    {
+      "bom-ref": "swift:perryruntimes@unspecified",
+      "name": "PerryRuntimes",
+      "properties": [
+        {
+          "name": "perry:identity",
+          "value": "perryruntimes"
+        },
+        {
+          "name": "perry:package-location",
+          "value": "Packages/PerryRuntimes"
+        }
+      ],
+      "scope": "required",
+      "type": "library",
+      "version": "unspecified"
+    },
+    {
+      "bom-ref": "tool:xcodegen",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip"
+        },
+        {
+          "type": "license",
+          "url": "https://github.com/yonaskolb/XcodeGen/blob/2.46.0/LICENSE"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/yonaskolb/XcodeGen"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "XcodeGen",
+      "properties": [
+        {
+          "name": "perry:archive-sha256",
+          "value": "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
+        },
+        {
+          "name": "perry:binary-sha256",
+          "value": "8774da746668bc18fe74e54cbaf10f2631a1fb05947cd374179aa912f14f99db"
+        }
+      ],
+      "purl": "pkg:github/yonaskolb/XcodeGen@2.46.0",
+      "scope": "required",
+      "type": "application",
+      "version": "2.46.0"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "framework:sparkle",
+        "runtime:codex",
+        "runtime:cua-driver",
+        "swift:perrycapture@unspecified",
+        "swift:perrycore@unspecified",
+        "swift:perryguide@unspecified",
+        "swift:perryoverlay@unspecified",
+        "swift:perryruntimes@unspecified",
+        "tool:xcodegen"
+      ],
+      "ref": "application:perry"
+    },
+    {
+      "dependsOn": [
+        "swift:perrycore@unspecified"
+      ],
+      "ref": "swift:perrycapture@unspecified"
+    },
+    {
+      "dependsOn": [],
+      "ref": "swift:perrycore@unspecified"
+    },
+    {
+      "dependsOn": [
+        "swift:perrycapture@unspecified",
+        "swift:perrycore@unspecified",
+        "swift:perryoverlay@unspecified",
+        "swift:perryruntimes@unspecified"
+      ],
+      "ref": "swift:perryguide@unspecified"
+    },
+    {
+      "dependsOn": [
+        "swift:perrycapture@unspecified"
+      ],
+      "ref": "swift:perryoverlay@unspecified"
+    },
+    {
+      "dependsOn": [
+        "swift:perrycore@unspecified"
+      ],
+      "ref": "swift:perryruntimes@unspecified"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "application:perry",
+      "name": "Perry",
+      "type": "application",
+      "version": "working-tree"
+    },
+    "properties": [
+      {
+        "name": "perry:runtime-lock",
+        "value": "scripts/codex-runtime.lock"
+      },
+      {
+        "name": "perry:cua-driver-lock",
+        "value": "scripts/cua-driver.lock"
+      },
+      {
+        "name": "perry:sparkle-lock",
+        "value": "scripts/sparkle.lock"
+      },
+      {
+        "name": "perry:xcodegen-lock",
+        "value": "scripts/xcodegen.lock"
+      },
+      {
+        "name": "perry:swift-graph",
+        "value": "swift package show-dependencies --format json"
+      }
+    ]
+  },
+  "specVersion": "1.5",
+  "version": 1
+}

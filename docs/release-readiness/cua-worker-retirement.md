@@ -1,0 +1,15 @@
+# Cua worker retirement
+
+Owner: Perry computer-use runtime. Scope: the concrete CuaDriverClient process boundary, tested with controlled local subprocesses. Production callers still use the shared client and legacy shutdown path; this change does not establish independent background agents or complete M2/M3.
+
+On August 31, 2026, two regression tests failed because shutdown returned while a TERM-ignoring driver fixture remained alive. The evidence is in /tmp/perry-worker-retirement-before.log. One test also required another client's action to keep working.
+
+CuaDriverClient.retire closes the client to new work and shares one awaited retirement task across callers. It drains pending requests, cancels initialization, and closes the connection without waiting for an end_session RPC. Process ownership survives connection teardown. Retirement signals all owned processes, allows 200 ms for TERM, then escalates to KILL within one monotonic deadline. It checks the verified private process group as well as the parent. Unknown group ownership or unconfirmed exit keeps the ownership record and produces an error. Cancelling the caller does not cancel the retirement task, and reload cannot reopen a retired client.
+
+The process fixtures cover delayed actions, another client continuing, retirement during initialization, rejecting reuse after retirement, a cancelled retirement caller after legacy shutdown, and a child that survives its parent's exit. They use real process IDs and JSON-RPC traffic but fake target windows; they do not capture or control a real application.
+
+The first focused run passed all 34 CuaDriverClient tests in /tmp/perry-worker-retirement-tests.log. After adding the child fixture, the unsigned Apple Silicon Debug app suite passed 248 tests and skipped two live Cua tests in /tmp/perry-worker-retirement-app.log. The final revision, including the unknown-process-group correction, also passed 248 tests with two live Cua skips in /tmp/perry-worker-retirement-final-app.log. All runs used the dirty development checkout.
+
+Independent review identified unbounded test waits, early fixture-cleanup gaps, and a no-restart assertion that could be satisfied by missing configuration. The tests now bound retirement waits, register exact-PID cleanup before capture, and exercise the retired client before configuration reload. That reviewed test revision passed 248 app tests with two live Cua skips in /tmp/perry-worker-retirement-reviewed-app.log. Timing assertions include observed return and immediate process-liveness checks; they are fixture measurements, not a clean-machine release benchmark.
+
+The scoped worker service, production lifetime migration, bounded ownership across repeated legacy reconnects, resource claims, maintenance exclusion, clean-checkout reproduction, and live Cua termination measurements remain open. Process exit does not prove whether a dispatched external effect happened or undo that effect. Durable reconciliation records must still be retained.

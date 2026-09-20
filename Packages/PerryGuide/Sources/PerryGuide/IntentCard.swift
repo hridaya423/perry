@@ -15,6 +15,9 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
     public let detail: String?
     public let tier: TrustTier
     public let targetSummary: String
+    public let requiredPhrase: String?
+    public let approveLabel: String?
+    public let reversible: Bool?
     public let createdAt: Date
 
     public init(
@@ -23,6 +26,9 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
         detail: String? = nil,
         tier: TrustTier,
         targetSummary: String,
+        requiredPhrase: String? = nil,
+        approveLabel: String? = nil,
+        reversible: Bool? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -30,7 +36,16 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
         self.detail = detail
         self.tier = tier
         self.targetSummary = targetSummary
+        self.requiredPhrase = requiredPhrase
+        self.approveLabel = approveLabel
+        self.reversible = reversible
         self.createdAt = createdAt
+    }
+
+    /// The phrase a red-tier answer must match: the exact displayed target,
+    /// never a generic word like "confirm".
+    public var redPhrase: String {
+        requiredPhrase ?? targetSummary
     }
 
     /// Spoken line that accompanies the card (PRD: a spoken line accompanies
@@ -64,6 +79,7 @@ public struct IntentCardPolicy: Sendable {
             guard !sourceIsVoice else { return false }
             guard let typed = typedConfirmation?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !typed.isEmpty else { return false }
+            return typed == card.redPhrase
         }
         return true
     }

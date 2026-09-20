@@ -1,0 +1,2862 @@
+{
+ "schema_version": 3,
+ "milestone": "M0",
+ "source": "docs/heyclicky-feature-audit.md",
+ "statuses": [
+  "absent",
+  "wired",
+  "unit-tested",
+  "live-tested",
+  "release-proven"
+ ],
+ "status_definitions": {
+  "absent": "The capability is not shipped in Perry.",
+  "wired": "The capability is connected in the product, but this registry has no focused unit evidence.",
+  "unit-tested": "A focused repository test covers the capability; any recorded live evidence is incomplete or does not yet meet the live-tested gate.",
+  "live-tested": "A passing parsed structured actual-run artifact binds the capability to its feature, build, environment, and result; release proof is still absent.",
+  "release-proven": "Passing parsed structured live and release actual-run artifacts bind the capability to the verified build and environment, with a distinct release binary or bundle digest and identity."
+ },
+ "features": [
+  {
+   "id": "invocation.global-hotkey",
+   "name": "Global hotkey, user-recordable with modifier choice",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local macOS app",
+   "limitations": [
+    "The binding is present, but this registry has no app-target live test for global registration."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:82"
+    },
+    {
+     "kind": "source",
+     "reference": "App/HotkeyController.swift"
+    }
+   ]
+  },
+  {
+   "id": "invocation.wake-word",
+   "name": "Wake word",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Optional on-device wake word",
+   "limitations": [
+    "Wake word is off by default, onboarding requires an explicit choice, and the menu bar shows when ambient listening is enabled. This registry still has no microphone or long-running live-session test.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:83"
+    },
+    {
+     "kind": "source",
+     "reference": "App/WakeWordListener.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/OnboardingWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/WakeWordGate.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WakeWordGateTests.swift::func testDisabledByDefaultNeverMatches()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WakeWordGateTests.swift::func testEnabledGateExtractsCommandText()"
+    }
+   ]
+  },
+  {
+   "id": "invocation.global-push-to-talk",
+   "name": "Global push-to-talk via event tap",
+   "status": "wired",
+   "owner": "App",
+   "support": "Configurable local macOS push-to-talk",
+   "limitations": [
+    "The event-tap and fallback monitor paths are wired, but no hardware live test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:84"
+    },
+    {
+     "kind": "source",
+     "reference": "App/PushToTalkController.swift"
+    }
+   ]
+  },
+  {
+   "id": "invocation.caps-lock-trigger",
+   "name": "Caps Lock as a trigger",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry removed proactive behavior and keeps it out of scope, so this debug/proactive trigger is not shipped."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:85"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:202"
+    }
+   ]
+  },
+  {
+   "id": "invocation.dictation-language",
+   "name": "Dictation language selection and auto-detect",
+   "status": "wired",
+   "owner": "App",
+   "support": "Apple Speech dictation with fixed or automatic language mode",
+   "limitations": [
+    "Initial recognition and language rerouting require on-device Apple Speech support and reject unsupported recognizers. This registry has no live microphone-session or packet-capture proof for offline behavior or recognition quality."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:86"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DictationController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SpeechLanguageDetector.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testRecordedFinalThenCancellationCallbacksDispatchOnce()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testOnDeviceRequestCannotPermitServerRecognition()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testUnsupportedLocaleCannotCreateRecognitionRequest()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testQueuedTranscriptCannotClaimCancelledOrReplacementInvocation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testFinalizingInvocationAllowsTranscriptButNotFreshCapture()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testErrorAfterReleaseDoesNotSelectMicrophoneOrDispatchLateFinal()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DictationControllerTests.swift::func testReroutedFailureRejectsLateTranscript()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/SpeechLanguageDetectorTests.swift::func testMultilingualFixturesResolveToExactSupportedLocales()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/SpeechLanguageDetectorTests.swift::func testLanguageChangeCanRerouteOnlyOnce()"
+    }
+   ]
+  },
+  {
+   "id": "invocation.custom-dictionary",
+   "name": "Custom dictionary words for speech recognition",
+   "status": "unit-tested",
+   "owner": "PerryCore",
+   "support": "Local custom-word normalization and replacement",
+   "limitations": [
+    "The dictionary is local and this registry has no live speech-recognition evidence.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:87"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryCore/Sources/PerryCore/VoiceConfiguration.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/VoiceConfigurationTests.swift::func testDictionaryStoreRoundTripsAndCleansEntries()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/VoiceConfigurationTests.swift::func testDictionaryStoreRestoresValidBackupAfterPrimaryCorruption()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/VoiceConfigurationTests.swift::func testDictationPreferencesNormalizeCustomWords()"
+    }
+   ]
+  },
+  {
+   "id": "invocation.microphone-controls",
+   "name": "Microphone picker, test card, and live volume blocks",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local microphone selection and permission-aware controls",
+   "limitations": [
+    "Device controls are connected, but this registry has no live hardware test for volume or device failure."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:88"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DictationController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SettingsView.swift"
+    }
+   ]
+  },
+  {
+   "id": "voice.realtime-previews",
+   "name": "Realtime voice previews",
+   "status": "absent",
+   "owner": "App",
+   "support": "System voice previews only",
+   "limitations": [
+    "The audit names eight OpenAI realtime voice preview assets; Perry does not record an equivalent bundled preview surface."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:89"
+    }
+   ]
+  },
+  {
+   "id": "voice.audio-prewarm",
+   "name": "Pre-warmed audio output",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local sound cues are preloaded before playback",
+   "limitations": [
+    "The chime warmer is wired, but no measured first-play latency evidence is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:94"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SoundPlayer.swift"
+    }
+   ]
+  },
+  {
+   "id": "voice.audio-topology",
+   "name": "Audio topology monitor and format conversion",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local audio-route monitoring and microphone recovery",
+   "limitations": [
+    "Route and format handling is connected, but no live Bluetooth or sample-format test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:95"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AudioRouteMonitor.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DictationController.swift"
+    }
+   ]
+  },
+  {
+   "id": "voice.realtime-duplex",
+   "name": "Realtime duplex voice",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Optional realtime microphone streaming, response audio, interruption, and bounded per-utterance queues",
+   "limitations": [
+    "Synthetic tests cover bounded backpressure, saturated commit ordering, stale generations, fallback dispatch races, response tombstones, safe endpoints, first-audio timing, acoustic barge-in analysis, and the owned-worker endurance gate. The 30-minute live duplex run, device-route matrix, echo-cancellation behavior, and measured latency budgets remain unproven.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/RealtimeVoiceSession.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testAudioIngressKeepsOnlyTheNewestPacketsWithinCapacity"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testFinishingIngressDrainsBufferedAudioBeforeConsumerCompletes"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testAudioQueueHasABoundedCapacity"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testCommitQueuesBehindASaturatedAudioBufferWithoutDroppingAudio"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testFallbackAndLateRealtimeTranscriptsDispatchOnceAcrossTenThousandUtterances"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testResponseTombstonesStayBoundedDuringLongSessions"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RealtimeVoiceSessionTests.swift::testFirstAudioTimerEmitsOneSamplePerSpeechEnd"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/PerformanceSampleLogTests.swift::testAppendWritesIndependentJSONLines"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/performance/sample_process.py"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "scripts/performance/test_sample_process.py::test_release_durations_cannot_be_shortened"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/performance/acoustic_barge_in.py"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "scripts/performance/test_acoustic_barge_in.py::test_measures_from_marker_to_sustained_acoustic_silence"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/PerformanceSampleLogTests.swift::testMarkerUsesASeparateTimestampedSidecar"
+    }
+   ]
+  },
+  {
+   "id": "voice.ui-sounds",
+   "name": "Spatial and crafted UI sounds",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local wake, send, receive, done, and failure cues",
+   "limitations": [
+    "Perry ships a smaller local cue set than the audit's full HeyClicky sound inventory."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:96"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SoundPlayer.swift"
+    }
+   ]
+  },
+  {
+   "id": "voice.task-summaries",
+   "name": "Spoken task-finished summaries",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local spoken completion feedback with text fallback",
+   "limitations": [
+    "This registry has no live audio-output test for completion delivery."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:97"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AppController.swift"
+    }
+   ]
+  },
+  {
+   "id": "voice.settings",
+   "name": "Voice settings page",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Local voice, speed, dictation, and optional realtime settings",
+   "limitations": [
+    "Speech setting defaults, persistence, and voice-selection clearing are unit-tested, and the dark-appearance surface and accessibility tree were sampled live; error states, VoiceOver speech order, and alternate accessibility appearances remain unproven.",
+    "The 2026-08-27 and 2026-08-28 Markdown audits remain contextual evidence only; neither contains a parsed structured actual-run artifact, so this capability remains unit-tested."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:98"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SettingsView.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/VoiceSettingsPersistenceTests.swift::func testSpeechSettingsRoundTripAndClearVoiceSelection()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/VoiceSettingsPersistenceTests.swift::func testSpeechSettingsUseProductDefaultsWhenUnset()"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/live-ui-audit-2026-08-27.md"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/live-ui-audit-2026-08-28.md"
+    }
+   ]
+  },
+  {
+   "id": "guide.annotations",
+   "name": "Drawn annotations while teaching",
+   "status": "wired",
+   "owner": "PerryOverlay",
+   "support": "Local transparent teaching overlay with markers and strokes",
+   "limitations": [
+    "The overlay is wired for local guide sessions, but no live visual-rendering test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:103"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/GuideSupport.swift"
+    }
+   ]
+  },
+  {
+   "id": "guide.screen-context",
+   "name": "Screen-as-context questions from a screenshot",
+   "status": "unit-tested",
+   "owner": "PerryCapture",
+   "support": "Cua target-window screenshot and local OCR, with optional BYOK image planning",
+   "limitations": [
+    "Default Codex and CLI paths consume OCR context; direct image reasoning is optional and this registry has no provider live test.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:104"
+    },
+    {
+     "kind": "source",
+     "reference": "App/CuaDriverClient.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryCapture/Sources/PerryCapture/PerryVisionOCR.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testScreenContextReachesThePlannerRequest()"
+    }
+   ]
+  },
+  {
+   "id": "do.codex-supervision",
+   "name": "Bundled Codex runtime supervision",
+   "status": "unit-tested",
+   "owner": "PerryRuntimes",
+   "support": "Bundled Codex planning and workspace-scoped execution",
+   "limitations": [
+    "The package boundary is tested, but this registry has no packaged-app release test for the bundled binary.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:109"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/CodexRuntime.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/subprocess-lifetime.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CLIProcessLifetimeTests.swift::testInheritedOutputDescriptorCannotOutliveTheDeadline"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CLIProcessLifetimeTests.swift::testCancellationEscalatesWhenTheWorkerDescendantIgnoresTermination"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CLIProcessLifetimeTests.swift::testOutputOverflowOnEitherStreamFailsInsteadOfReturningPartialOutput"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testPlanParsesTypedActionsThroughFakeCodex()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testRunCodingTaskRunsWorkspaceWriteSandbox()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testLocatorRejectsUnverifiedOverrideAndPATH()"
+    }
+   ]
+  },
+  {
+   "id": "do.computer-use",
+   "name": "Computer use through the embedded Cua driver",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Window-scoped Cua screenshots, accessibility grounding, and GUI actions",
+   "limitations": [
+    "Grounded computer use requires Accessibility, Screen Recording, and a healthy local driver; no live app task is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:110"
+    },
+    {
+     "kind": "source",
+     "reference": "App/CuaDriverClient.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/ComputerAction.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/typed-computer-actions.md"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/cua-request-cancellation.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testLateResponseDoesNotReplayAction()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testPreCancelledActionDoesNotStartDriver()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testPlannerJSONReachesTypedComputerExecutionWithoutLosingParameters()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testMalformedComputerActionDoesNotReachTheDriver()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testComputerActionsPreserveTypedValuesAndExactWindowOnTheWire()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testUnknownElementCannotBecomeAnUntargetedKeyboardAction()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testConcurrentHealthCallsShareInitialization()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testStaleReaderCannotTearDownReplacementConnection()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::func testWindowTitleMustExistInsteadOfSelectingFallback()"
+    },
+    {
+     "kind": "source",
+     "reference": "AppTests/CuaLiveTests.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/cua-live-fixtures.md"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/test-cua-host-lifecycle.sh"
+    }
+   ]
+  },
+  {
+   "id": "do.runtime-selection",
+   "name": "Computer-use runtime selection UI",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Per-task selection across verified CLI, configured direct-provider, and local runtimes, with durable route evidence for background tasks",
+   "limitations": [
+    "Routing, fallback, and recovery identity are unit-tested, but runtime selection has no live UI or authenticated provider-lab result.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/opencode-authentication-2026-08-31.md"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:111"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SessionPanelView.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/BackgroundTaskContextStore.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/ProductionRuntimeSelector.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/RuntimeSettingsState.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/RuntimeInventory.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/runtime-inventory/synthesis.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeInventoryTests.swift::testInspectionResolvesOnceAndUsesTheSameExecutableForEveryStage"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeInventoryTests.swift::testOrdinaryProbeFailuresKeepOtherProvidersAndSanitizeErrors"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeInventoryTests.swift::testMissingPrivateCodexHomeRejectsCodexAndExplainsRecovery"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeSettingsStateTests.swift::testReplacementCancelsPreviousLoadAndRejectsItsLateResult"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/ProductionRuntimeSelectorTests.swift::testFallsBackToEligibleBoundedProviderWithReason"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testPersistedPlanRuntimeOverridesTheOriginalPreferenceDuringRecovery"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testLegacyPlanWithoutRuntimeUsesTheOriginalPreferenceDuringRecovery"
+    }
+   ]
+  },
+  {
+   "id": "do.local-root-executor",
+   "name": "Local-root tool executor",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local workspace and accessibility execution behind Perry's trust boundary",
+   "limitations": [
+    "The executor is local and gated, but this registry has no live app-target test for the power/development path."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:112"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/LocalTaskPlannerRuntime.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/WorkspaceFileRuntime.swift"
+    }
+   ]
+  },
+  {
+   "id": "do.concurrent-background-agents",
+   "name": "Multiple concurrent background agent threads",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Independent on-device background task records",
+   "limitations": [
+    "Concurrency is tested in-process. Production Cua sessions still share one worker; independent progress and process-level cancellation are not verified.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:113"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/ResumableTaskRunner.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskLaunchGateTests.swift::func testResourcesSerializeTheSameApplication()"
+    }
+   ]
+  },
+  {
+   "id": "do.resume-steer",
+   "name": "Resume older threads and steer active threads",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Local pause, resume, steer, checkpoint, backup restoration, and recovery controls",
+   "limitations": [
+    "Resumption is local to Perry's persisted task records and has no live relaunch drill. Non-running and pre-run cancellation now use uncertain-action retention, but their UI journeys and worker termination remain unverified.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:114"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/TaskCoordinator.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/BackgroundTaskContextStore.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/TaskCoordinatorTests.swift::func testApprovalSurvivesReloadAndPausedTaskStaysResumable()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/TaskCoordinatorTests.swift::func testCorruptPrimaryRestoresTheLastValidTaskBackup()"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/task-backup-recovery.md"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/cancelled-action-retention.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/TaskCoordinatorTests.swift::func testRecoverInterruptedRunMovesOnlyRunningRecordToPaused()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/TaskCoordinatorTests.swift::func testCancellationIntentSurvivesRecoveryAndCannotResume()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskRecoveryNoticeTests.swift::func testRestoredBackupTakesPrecedenceOverPreparedApprovalAndLiveFlag()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/TaskCoordinatorTests.swift::func testRestoredBackupRejectsExecutionUntilExplicitReconciliation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceTaskRunnerTests.swift::func testFirstActionSurvivesRelaunchAndSecondRequiresItsOwnApproval()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskLifecycleOrderingTests.swift::func testCancelledVerifiedReportPausesOnHistoryFailureWithoutRecreatingWorkspace()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testRestoresValidBackupAfterPrimaryFileIsCorrupted"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testQuarantinesInvalidPrimaryAndBackupWithoutOverwritingEither"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskLifecycleOrderingTests.swift::func testMultiActionTaskRetainsMetadataUntilSecondApprovalAndReport()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskLifecycleOrderingTests.swift::func testCancellationReportsPartialWorkWithoutRunningPreparedSecondAction()"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/multi-action-arena/synthesis.md"
+    }
+   ]
+  },
+  {
+   "id": "do.agent-cards",
+   "name": "Colorful agent cards and activity-strip labels",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local activity strip and background-task cards",
+   "limitations": [
+    "The Background Tasks panel is unit-tested as an activating, key-capable, resizable panel. The activity strip remains passive while collapsed and becomes key-capable when expanded; card state transitions still lack live UI evidence."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:115"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AgentActivityStrip.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/BackgroundTasksWindow.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testBackgroundTasksPanelCanActivateForKeyboardInput()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripActivatesOnlyWhenExpanded()"
+    }
+   ]
+  },
+  {
+   "id": "do.proactive-suggestions",
+   "name": "Proactive agent suggestions",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry deliberately removed proactive behavior and does not watch or suggest work between explicit sessions."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:116"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:202"
+    }
+   ]
+  },
+  {
+   "id": "do.auto-approve-extra-usage",
+   "name": "Auto-approve extra usage toggle",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry has no paid hosted usage path or auto-approval control; dangerous actions retain explicit trust gates."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:117"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:156"
+    }
+   ]
+  },
+  {
+   "id": "skills.bundled-workflows",
+   "name": "Bundled workflow and capability skills",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Five bundled local app skills plus user-authored local Markdown",
+   "limitations": [
+    "Perry's local catalog covers five live-guide apps, not HeyClicky's roughly 25 or 89-app catalog.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:122"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/AppSkillLibrary.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/AppSkillLibraryTests.swift::func testBundledSkillsCoverTheFiveLiveGuideApps()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/AppSkillLibraryTests.swift::func testSkillActivationControlsPromptInjection()"
+    }
+   ]
+  },
+  {
+   "id": "skills.remote-library",
+   "name": "Remote skill library backend",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted skill library in Perry M0",
+   "limitations": [
+    "Perry has a local skill library and client boundary, but no shipped hosted catalog service."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:123"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    }
+   ]
+  },
+  {
+   "id": "skills.marketplace",
+   "name": "UGC skill marketplace",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted marketplace in Perry M0",
+   "limitations": [
+    "Creators, review status, discovery, sharing, and activation sync require a backend that the audit says is not shipped."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:124"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    }
+   ]
+  },
+  {
+   "id": "integrations.composio-connectors",
+   "name": "Connector integrations",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "On-device OAuth actions for Google Workspace, Notion, Slack, and Linear",
+   "limitations": [
+    "Perry uses direct on-device provider actions rather than Composio, writes default off, and has no live provider round trip in this registry.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:125"
+    },
+    {
+     "kind": "source",
+     "reference": "App/RemoteIntegrations.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RemoteIntegrationPolicyTests.swift::func testReadOnlyRequestsCannotSmuggleMutationMethods()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RemoteIntegrationPolicyTests.swift::func testRemoteWritesStayDisabledUntilEnabledPerIntegration()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RemoteIntegrationClientTests.swift::func testCredentialQueryCannotReachProviderTransport()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RemoteIntegrationClientTests.swift::func testCredentialStoreKeepsBackendOffMainActor()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RemoteIntegrationClientTests.swift::func testMalformedCredentialFailsClosedBeforeProviderTransport()"
+    }
+   ]
+  },
+  {
+   "id": "integrations.upcoming-meetings",
+   "name": "Upcoming meetings on home",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable as a home surface in Perry M0",
+   "limitations": [
+    "Perry can perform bounded calendar actions through an integration, but it does not ship an upcoming-meetings home view."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:126"
+    }
+   ]
+  },
+  {
+   "id": "integrations.obsidian-path",
+   "name": "Obsidian vault path setting",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry has no Obsidian-specific vault path setting or integration surface."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:127"
+    }
+   ]
+  },
+  {
+   "id": "integrations.program-logo-registry",
+   "name": "Program logo registry",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry identifies target applications through local context, but does not ship a separate per-program logo registry."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:128"
+    }
+   ]
+  },
+  {
+   "id": "memory.markdown",
+   "name": "User memory as Markdown",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Local PROFILE.md and VOLATILE.md memory injected into voice and agent context",
+   "limitations": [
+    "Memory is disabled on fresh profiles, onboarding asks for explicit consent, and enabled memory stays on this Mac. The consent surface compiles and its sequence is unit-tested, but it still needs a live first-run test.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:133"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/MemoryStore.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/OnboardingWindow.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testSequenceWalksEveryStepInOrderWhenNothingGranted()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testOffByDefaultRequiresExplicitOptIn()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testMemoryWritesInspectableProfileAndVolatileMarkdown()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testCorruptPrimaryRestoresTheLastValidMemoryBackup()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testWipeClearsEverythingIncludingDisk()"
+    }
+   ]
+  },
+  {
+   "id": "history.response-store",
+   "name": "Response history store and tab",
+   "status": "unit-tested",
+   "owner": "PerryCore",
+   "support": "Local searchable transcript history with export",
+   "limitations": [
+    "History is local. The window is unit-tested as activating and key-capable, and distinguishes an empty history from an empty search, but selection and export still lack live UI evidence.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:134"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryCore/Sources/PerryCore/TranscriptStore.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/HistoryWindow.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testHistoryPanelCanActivateForSearchAndExport()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testAppendSurvivesReloadAndSearch()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testCorruptPrimaryRestoresTheLastValidTranscriptBackup()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testDeleteRemovesEntryFromIndexAndDayFile"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testDeleteRemovesDayFileWhenNoEntriesRemain"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testDeleteKeepsEntriesAndDayFilesFromOtherDays"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testDeleteUnknownIDsIsANoOp"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/TranscriptStoreTests.swift::func testDeleteFailureKeepsEntriesVisibleForRetry"
+    }
+   ]
+  },
+  {
+   "id": "memory.library-mode",
+   "name": "Library mode",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry has local memory and history, but no distinct library-mode surface."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:135"
+    }
+   ]
+  },
+  {
+   "id": "appearance.panel-style",
+   "name": "Panel style preferences",
+   "status": "wired",
+   "owner": "PerryOverlay",
+   "support": "Local panel background, transparency, visual effect, accent, and caption preferences",
+   "limitations": [
+    "Preferences are wired and an app-target UI suite now covers the Appearance entry point under accessibility preferences, but this host could not launch the UI-test worker and the suite does not yet cover every appearance setting."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:140"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SettingsView.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "AppUITests/SettingsAccessibilityUITests.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/live-ui-automation-2026-08-30.md"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/settings-accessibility3-2026-08-30.json"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/keyboard-navigation-2026-08-30.json"
+    }
+   ]
+  },
+  {
+   "id": "appearance.notch-home",
+   "name": "Notch home with tabs and pinned skills",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Out of scope for Perry v1",
+   "limitations": [
+    "Perry uses a menu-bar companion and explicitly rejects the notch stack."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:141"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:202"
+    }
+   ]
+  },
+  {
+   "id": "appearance.menu-bar-fallback",
+   "name": "Legacy menu-bar panel fallback",
+   "status": "wired",
+   "owner": "App",
+   "support": "Menu-bar companion panel as Perry's primary surface",
+   "limitations": [
+    "A dirty Debug run verifies the session panel's two-column action layout, accessible names, and disabled-to-enabled behavior. Task submission, active-task steering, measured contrast, and clean-build evidence remain missing; this is not a separate fallback-mode test."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:142"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AppController.swift"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/session-panel-accessibility3-2026-08-30.json"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/session-panel-focus-2026-08-31.json"
+    }
+   ]
+  },
+  {
+   "id": "appearance.identity-icon",
+   "name": "Identity icon shape picker",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable as a user-facing picker in Perry M0",
+   "limitations": [
+    "Perry has internal avatar styles, but no shipped settings control for the audit's identity-shape picker."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:143"
+    }
+   ]
+  },
+  {
+   "id": "appearance.active-integrations",
+   "name": "Active integrations shown on home",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable as a home surface in Perry M0",
+   "limitations": [
+    "Integrations are configured in settings and are not surfaced on a dedicated home view."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:144"
+    }
+   ]
+  },
+  {
+   "id": "platform.auth-oauth-return",
+   "name": "Supabase auth and hosted OAuth return schemes",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted account authentication in Perry M0",
+   "limitations": [
+    "Perry supports direct on-device provider OAuth, but not Supabase accounts or HeyClicky's hosted clicky:// and heyclicky:// return flow."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:149"
+    },
+    {
+     "kind": "source",
+     "reference": "App/Info.plist"
+    }
+   ]
+  },
+  {
+   "id": "platform.keychain",
+   "name": "Keychain credential store",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Local Keychain storage for provider credentials",
+   "limitations": [
+    "Keychain access is tested on the development target; no packaged-release credential migration test is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:150"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/HardwareAndKeys.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testKeychainRoundTrip()"
+    }
+   ]
+  },
+  {
+   "id": "platform.remote-config",
+   "name": "Remote config and feature flags",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted remote-config service in Perry M0",
+   "limitations": [
+    "Perry has local settings and gates, but the audit's hosted remote-config and feature-flag service is not shipped."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:151"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    }
+   ]
+  },
+  {
+   "id": "platform.diagnostics",
+   "name": "Diagnostics capture, report, document, and error reporting",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Local redacted diagnostics export",
+   "limitations": [
+    "Perry tests the local diagnostics payload against seeded sensitive values. Live release-credential evidence is still missing.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:152"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DiagnosticsReporter.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DiagnosticsReporterTests.swift::func testSeededSensitiveValuesNeverEnterDiagnosticsExport()"
+    }
+   ]
+  },
+  {
+   "id": "platform.updates",
+   "name": "Sparkle staged updates and rollback",
+   "status": "wired",
+   "owner": "Release operations",
+   "support": "Sparkle staged feed promotion with rollback enforcement and a pinned framework revision.",
+   "limitations": [
+    "Signed update evidence, rollback rehearsal, and notarized promotion remain open until signing credentials are available."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:153"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/sparkle.lock"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/verify-sparkle-lock.sh"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/sign-distribution.sh"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/verify-distribution-signatures.sh"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/manage-update-rollout.py"
+    },
+    {
+     "kind": "source",
+     "reference": "docs/release-readiness/update-rollout.md"
+    },
+    {
+     "kind": "source",
+     "reference": "docs/release-readiness/sbom.cdx.json"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/test-release-automation.sh"
+    }
+   ]
+  },
+  {
+   "id": "platform.crash-telemetry",
+   "name": "Third-party crash and product telemetry",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Perry ships no third-party crash or product telemetry by design. Diagnostics stay local; export is user-initiated.",
+   "limitations": [
+    "Crash and product analytics were intentionally removed rather than gated behind consent."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:153"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    }
+   ]
+  },
+  {
+   "id": "platform.hosted-videos",
+   "name": "Hosted onboarding and paywall videos with offline fallbacks",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry's onboarding is local and does not ship the hosted Mux video or paywall path."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:154"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:202"
+    }
+   ]
+  },
+  {
+   "id": "platform.discovery-survey",
+   "name": "Discovery-channel survey",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry does not collect or sync the audit's onboarding discovery-channel survey."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:155"
+    }
+   ]
+  },
+  {
+   "id": "platform.plans",
+   "name": "Plans, quotas, maker discount, and billing",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Out of scope for Perry v1",
+   "limitations": [
+    "Perry has no $0/$20/$100 plan, agent quota, UPI, yearly billing, or paywall implementation."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:156"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:202"
+    }
+   ]
+  },
+  {
+   "id": "platform.community",
+   "name": "Community surfaces",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry does not ship the audit's Canny, Reddit, WhatsApp, or prefilled-email community surfaces."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:157"
+    }
+   ]
+  },
+  {
+   "id": "runtime.model-routing",
+   "name": "Per-question model routing",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Task-aware routing between local, CLI, and optional BYOK runtimes",
+   "limitations": [
+    "Authenticated Claude planning passed a live smoke, but Perry has no complete live routing result across bundled Codex, OpenCode, and direct providers.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:18"
+    },
+    {
+     "kind": "source",
+     "reference": "App/RuntimeInventory.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/ProductionRuntimeSelector.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeInventoryTests.swift::testOfficialAndCustomProvidersUseTheSameInventoryForRoutingAndChoices()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RuntimeInventoryTests.swift::testRejectedInstallationHasNoAuthenticationCommandsOrPlanningChoice()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/ProductionRuntimeSelectorTests.swift::testFallsBackToEligibleBoundedProviderWithReason"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/RuntimeProviderRegistryTests.swift::testRoutingRejectsProviderThatHasNotProvedTheRequestedOperation"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/runtime-planning-smoke-2026-08-29.md"
+    }
+   ]
+  },
+  {
+   "id": "dictation.streaming",
+   "name": "Streamed dictation into another app",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Push-to-talk dictation inserts through Cua into an exact permitted target window and reports success only after Cua confirms the field value",
+   "limitations": [
+    "The Cua path is unit-tested against its protocol boundary, but Perry has no live cross-application typing run or measured p50/p95 latency evidence. Web controls that Cua marks unverifiable stop without a success claim.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:20"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DictationController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/CuaDriverClient.swift::insertText"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::testFocusedTextInsertionRequiresCuaReadBack"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CuaDriverClientTests.swift::testFocusedTextInsertionFailsClosedWhenCuaCannotVerify"
+    }
+   ]
+  },
+  {
+   "id": "dictation.hands-free",
+   "name": "Hands-free dictation shortcuts",
+   "status": "wired",
+   "owner": "App",
+   "support": "Hold-to-talk and Caps Lock double-tap local shortcuts",
+   "limitations": [
+    "Shortcut handling is wired, but no live keyboard or dictation session test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:20"
+    },
+    {
+     "kind": "source",
+     "reference": "App/PushToTalkController.swift"
+    }
+   ]
+  },
+  {
+   "id": "dictation.screen-aware",
+   "name": "Screen-aware dictation",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local dictation can pass target-window context to the planner",
+   "limitations": [
+    "The screenshot and memory context path is wired, but this registry has no live text-box insertion test."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:20"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AppController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/RuntimeTypes.swift"
+    }
+   ]
+  },
+  {
+   "id": "dictation.terminal-safety",
+   "name": "Terminal-safe newline collapsing",
+   "status": "unit-tested",
+   "owner": "PerryCore",
+   "support": "Local insertion policy collapses terminal newlines",
+   "limitations": [
+    "The insertion policy is unit-tested, but no live Terminal typing test is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:20"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryCore/Sources/PerryCore/VoiceConfiguration.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryCore/Tests/PerryCoreTests/VoiceConfigurationTests.swift::func testInsertionTextCollapsesTerminalNewlines()"
+    }
+   ]
+  },
+  {
+   "id": "guide.click-advance",
+   "name": "Teaching advances after the instructed click or screen change",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Accessibility-guided local teaching with target-aware advancement",
+   "limitations": [
+    "The advancement rules are tested with fixtures, but no live target application walkthrough is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:32"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/GuideEngine.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/GuideEngineTests.swift::func testSecondStepIsPlannedFromTheChangedUI()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/GuideEngineTests.swift::func testWrongClickDoesNotAdvance()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/GuideEngineTests.swift::func testCaptureFailureBlocksInsteadOfPretendingTheStepWasUnchanged()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/GuideEngineTests.swift::func testRepointCaptureFailureThrowsAndConsumesTheSingleRetry()"
+    },
+    {
+     "kind": "source",
+     "reference": "App/GuideControlsWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/GuideSessionCoordinator.swift"
+    }
+   ]
+  },
+  {
+   "id": "guide.skill-injection",
+   "name": "Foreground-app teaching skill injection",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Local app skill content is injected only when activated",
+   "limitations": [
+    "The local skill set is small and this registry has no live teaching run across every supported app.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:32"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/AppSkillLibrary.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/AppSkillLibraryTests.swift::func testSkillActivationControlsPromptInjection()"
+    }
+   ]
+  },
+  {
+   "id": "input.spatial-context",
+   "name": "Point, circle, or scribble spatial context",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Local drawn screen region passed into planner context",
+   "limitations": [
+    "The selection model and planner context are tested, but no live multi-display gesture test is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:35"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SpatialInputMonitor.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testScreenContextReachesThePlannerRequest()"
+    }
+   ]
+  },
+  {
+   "id": "onboarding.guided-tutorial",
+   "name": "Guided first-run tutorial",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Local permission walkthrough, runtime detection, and guided-demo offer",
+   "limitations": [
+    "The sequence, close recovery, runtime readiness, privacy choices, and failed-demo completion gate are tested. A live deterministic run verifies the welcome screen, denied-permission recovery, disabled continuation gate, and back navigation, but complete fresh-profile onboarding, real TCC recovery, keyboard-only and VoiceOver completion, 200% text, and timing evidence remain missing.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:45"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/OnboardingFlow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/OnboardingWindow.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testSequenceWalksEveryStepInOrderWhenNothingGranted()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testBackSkipsPermissionStepsThatAdvanceSkipped()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/OnboardingWindowTests.swift::testClosingWindowReleasesOnboardingOwnershipWithoutCompleting"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/OnboardingWindowTests.swift::testReadinessRequiresPermissionsAndAnAvailableRuntime"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemoDirectorTests.swift::testBlockedTaskFailsDemoAndDoesNotReportCompletion"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/onboarding-live-2026-08-30.json"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/onboarding-accessibility3-2026-08-30.json"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/ui/keyboard-navigation-2026-08-30.json"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DemoRecipe.swift"
+    }
+   ]
+  },
+  {
+   "id": "background.completion-notifications",
+   "name": "Background task completion notifications",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Local completion and stopped-task notifications",
+   "limitations": [
+    "Notification delivery is unit-tested, but no live notification-center presentation test is recorded.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:50"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SystemNotifier.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskLifecycleOrderingTests.swift::func testNotificationCannotApproveNewRevisionBehindStaleTaskList()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceTaskRunnerTests.swift::func testFirstActionSurvivesRelaunchAndSecondRequiresItsOwnApproval()"
+    }
+   ]
+  },
+  {
+   "id": "account.deletion",
+   "name": "Account deletion and analytics erasure",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Complete local erasure; Perry has no hosted account",
+   "limitations": [
+    "Perry requires explicit confirmation, erases every registered local category, enumerates every account under its owned Keychain services, then sweeps and re-inventories its exact owned storage roots. The fixture covers telemetry queues, anonymous analytics identity, its private Codex runtime home, and Keychain credentials. Events already accepted by Sentry or PostHog remain subject to the operators' retention and deletion controls, and the clean-machine live erasure run is still missing."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:179"
+    },
+    {
+     "kind": "source",
+     "reference": "App/PerryErasureErasers.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/CompleteErasurePrompt.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testCompleteErasureRequiresTheDestructiveButtonResponse()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testProductionKeychainInventoryOwnsEveryShippedSecretService()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testKeychainEraserInventoriesAndDeletesSecrets()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testKeychainErasureIncludesAccountsAddedAfterTheCatalogWasBuilt()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testKeychainDeletionFailureDoesNotSkipLaterSecretsOrClaimSuccess()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testKeychainEnumerationFailureDoesNotSkipLaterServicesOrClaimSuccess()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testCompleteProductionErasureLeavesSeededCleanProfileEmpty()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testCompleteErasureRemovesUnregisteredFilesFromOwnedRoots()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/CompleteErasureCoordinatorTests.swift::func testCategoryErasureDoesNotRunOwnedRootSweep()"
+    }
+   ]
+  },
+  {
+   "id": "operations.bug-reporter",
+   "name": "In-app bug reporter with logs",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted bug-report submission in Perry M0",
+   "limitations": [
+    "Perry exports redacted diagnostics locally and can open the configured GitHub issues page; there is no in-app submission flow and nothing is uploaded automatically."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DiagnosticsReporter.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SettingsView.swift"
+    },
+    {
+     "kind": "source",
+     "reference": ".github/ISSUE_TEMPLATE/bug-report.md"
+    }
+   ]
+  },
+  {
+   "id": "operations.update-notice",
+   "name": "Changelog link and post-update what-is-new notice",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Sparkle-backed update checks, local CHANGELOG view, and post-update notice",
+   "limitations": [
+    "Configuration and presentation are unit-tested, but no signed appcast upgrade or rollback has completed on a clean Mac.",
+    "The registry does not record a last successful run for this capability."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "source",
+     "reference": "App/UpdateNoticeController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/WhatsNewWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/package-release.sh"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/manage-update-rollout.py"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/xcodegen.lock"
+    },
+    {
+     "kind": "source",
+     "reference": ".github/workflows/ci.yml"
+    },
+    {
+     "kind": "source",
+     "reference": ".github/workflows/release.yml"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/verify-distribution-signatures.sh"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/verify-bundle-contents.sh"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/release-readiness/distributable-arm64-verification-2026-08-31.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/UpdateNoticeControllerTests.swift::testUpdaterConfigurationRequiresHTTPSAndAnEdDSAPublicKey"
+    },
+    {
+     "kind": "source",
+     "reference": "scripts/verify-release.sh"
+    }
+   ]
+  },
+  {
+   "id": "operations.region-rerouting",
+   "name": "Provider-region rerouting",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "No hosted operations or region routing in Perry v1; provider endpoints are user-configured directly.",
+   "limitations": [
+    "Hosted endpoint selection, health fallback, and regional failover required a hosted stack Perry does not ship."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    }
+   ]
+  },
+  {
+   "id": "operations.muted-speaker-fallback",
+   "name": "Muted-speaker clipboard fallback",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local reply copy fallback when audio output is muted or unavailable",
+   "limitations": [
+    "The fallback is connected, but no live muted-output test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AudioRouteMonitor.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AppController.swift"
+    }
+   ]
+  },
+  {
+   "id": "operations.microphone-failover",
+   "name": "Microphone failover to built-in input",
+   "status": "wired",
+   "owner": "App",
+   "support": "Local fallback from an unavailable selected input to the built-in microphone",
+   "limitations": [
+    "The fallback path is wired, but no live device-removal or route-change test is recorded."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "source",
+     "reference": "App/DictationController.swift"
+    }
+   ]
+  },
+  {
+   "id": "operations.managed-mac-policy",
+   "name": "Managed-Mac Codex policy adaptation",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable in Perry M0",
+   "limitations": [
+    "Perry has local runtime and permission checks, but no policy adaptation specifically for managed-Mac Codex environments."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    }
+   ]
+  },
+  {
+   "id": "operations.airpods-preroll",
+   "name": "AirPods profile-switch pre-roll fix",
+   "status": "absent",
+   "owner": "Product scope",
+   "support": "Unavailable as a dedicated fix in Perry M0",
+   "limitations": [
+    "Perry monitors audio routes, but the audit's specific AirPods profile-switch pre-roll fix is not separately shipped or evidenced."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "audit",
+     "reference": "docs/heyclicky-feature-audit.md:49"
+    }
+   ]
+  }
+ ]
+}

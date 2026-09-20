@@ -43,23 +43,26 @@ public struct ActionDescriptor: Sendable {
     public let summary: String
     public let shellExecutablePath: String?
     public let pathInsideWorkspace: Bool
+    public let targetPath: String?
 
     public init(
         kind: ActionKind,
         targetAppBundleID: String? = nil,
         summary: String,
         shellExecutablePath: String? = nil,
-        pathInsideWorkspace: Bool = true
+        pathInsideWorkspace: Bool = false,
+        targetPath: String? = nil
     ) {
         self.kind = kind
         self.targetAppBundleID = targetAppBundleID
         self.summary = summary
         self.shellExecutablePath = shellExecutablePath
         self.pathInsideWorkspace = pathInsideWorkspace
+        self.targetPath = targetPath
     }
 }
 
-public struct WindowContext: Sendable {
+public struct WindowContext: Equatable, Sendable {
     public let appBundleID: String
     public let title: String
 

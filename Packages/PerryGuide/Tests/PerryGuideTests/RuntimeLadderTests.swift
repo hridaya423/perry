@@ -1,20 +1,33 @@
 import XCTest
 @testable import PerryGuide
 import PerryCore
+import PerryRuntimes
+
+private actor RequestCapture {
+    private var request: URLRequest?
+
+    func record(_ request: URLRequest) {
+        self.request = request
+    }
+
+    func snapshot() -> URLRequest? {
+        request
+    }
+}
 
 final class HardwareAndKeysTests: XCTestCase {
     func testKeychainRoundTrip() throws {
         let store = KeychainStore(service: "dev.perry.tests")
-        defer { store.delete(account: "test-key") }
+        defer { try? store.deleteChecked(account: "test-key") }
 
         try store.save("secret-one", account: "test-key")
-        XCTAssertEqual(store.read(account: "test-key"), "secret-one")
+        XCTAssertEqual(try store.readChecked(account: "test-key"), "secret-one")
 
         try store.save("secret-two", account: "test-key")
-        XCTAssertEqual(store.read(account: "test-key"), "secret-two")
+        XCTAssertEqual(try store.readChecked(account: "test-key"), "secret-two")
 
-        store.delete(account: "test-key")
-        XCTAssertNil(store.read(account: "test-key"))
+        try store.deleteChecked(account: "test-key")
+        XCTAssertNil(try store.readChecked(account: "test-key"))
     }
 
     func testHardwareProbePassesOnQualifyingMachine() {
@@ -39,79 +52,166 @@ final class HardwareAndKeysTests: XCTestCase {
     }
 }
 
-final class BYOKPlannerTests: XCTestCase {
-    private func sampleSnapshot() -> AXSnapshot {
-        AXSnapshot(
-            appBundleID: "com.apple.finder",
-            windowTitle: "Desktop",
-            elements: [
-                AXElement(stableID: "b1", role: .button, label: "Tags", frame: AXElementFrame(x: 0, y: 0, width: 80, height: 24), isActionable: true),
-                AXElement(stableID: "s1", role: .slider, label: "Volume", frame: AXElementFrame(x: 0, y: 30, width: 120, height: 16), isActionable: true),
-            ]
+final class RuntimeGuidePlannerTests: XCTestCase {
+    private func button(_ id: String, label: String) -> AXElement {
+        AXElement(
+            stableID: id,
+            role: .button,
+            label: label,
+            frame: AXElementFrame(x: 0, y: 0, width: 80, height: 24),
+            isActionable: true
+        )
+    }
+
+    private func observation() -> GuideObservation {
+        GuideObservation(
+            snapshot: AXSnapshot(
+                appBundleID: "com.apple.finder",
+                windowTitle: "Desktop",
+                elements: [button("b1", label: "Tags"), button("s1", label: "Share")]
+            ),
+            windowBounds: AXElementFrame(x: 0, y: 0, width: 800, height: 600)
+        )
+    }
+
+    private func openAIBody(_ text: String) throws -> Data {
+        try JSONSerialization.data(withJSONObject: [
+            "choices": [["message": ["content": text]]],
+        ])
+    }
+
+    private func planner(
+        body: @escaping @Sendable () throws -> Data,
+        status: Int = 200,
+        capture: RequestCapture? = nil
+    ) -> RuntimeGuidePlanner {
+        RuntimeGuidePlanner(
+            configuration: DirectProviderConfiguration(provider: .openAI, model: "gpt-test"),
+            apiKeyProvider: { "sk-test" },
+            transport: { request in
+                if let capture { await capture.record(request) }
+                let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+                return (try body(), response)
+            }
         )
     }
 
     func testThrowsWithoutKeyBeforeAnyNetworkCall() async {
-        let planner = BYOKPlanner(endpoint: .openAI, apiKeyProvider: { nil })
+        let capture = RequestCapture()
+        let planner = RuntimeGuidePlanner(
+            configuration: DirectProviderConfiguration(provider: .openAI, model: "gpt-test"),
+            apiKeyProvider: { nil },
+            transport: { request in
+                await capture.record(request)
+                return (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+        )
         do {
-            _ = try await planner.plan(goal: "tag files", snapshot: sampleSnapshot())
-            XCTFail("expected PlanError")
+            _ = try await planner.nextStep(goal: "tag files", observation: observation(), context: .empty)
+            XCTFail("expected failure")
         } catch {
-            XCTAssertTrue("\(error)".contains("no API key"))
+            XCTAssertTrue("\(error)".contains("authentication is missing"))
+            let sent = await capture.snapshot()
+            XCTAssertNil(sent)
         }
     }
 
-    func testParsesStepsFromProviderPayload() async throws {
-        let providerBody: [String: Any] = [
-            "choices": [[
-                "message": [
-                    "content": """
-                    Sure! Here's my plan:
-                    {"steps":[{"id":"b1","instruction":"click Tags"},{"id":"null","instruction":"watch the highlight"}]}
-                    """
-                ]
-            ]]
-        ]
-        let providerData = try JSONSerialization.data(withJSONObject: providerBody)
-
-        var capturedRequest: URLRequest?
-        let planner = BYOKPlanner(
-            endpoint: .anthropic,
-            apiKeyProvider: { "sk-test" },
-            transport: { request in
-                capturedRequest = request
-                return (providerData, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-            }
+    func testParsesAStepAndSendsTheKey() async throws {
+        let capture = RequestCapture()
+        let planner = planner(
+            body: { try self.openAIBody(#"{"step":{"instruction":"click Tags","target":"b1"}}"#) },
+            capture: capture
         )
 
-        let plan = try await planner.plan(goal: "tag the file", snapshot: sampleSnapshot())
-        XCTAssertEqual(plan.steps.count, 2)
-        if case .axElement(let id) = plan.steps[0].target {
+        let step = try await planner.nextStep(goal: "tag the file", observation: observation(), context: .empty)
+
+        XCTAssertEqual(step?.instruction, "click Tags")
+        if case .axElement(let id)? = step?.target {
             XCTAssertEqual(id, "b1")
         } else {
             XCTFail("expected element target")
         }
-        if case .verbalOnly = plan.steps[1].target {} else {
-            XCTFail("expected verbal target for null id")
-        }
-
-        let sent = try XCTUnwrap(capturedRequest)
+        let request = await capture.snapshot()
+        let sent = try XCTUnwrap(request)
         XCTAssertEqual(sent.value(forHTTPHeaderField: "Authorization"), "Bearer sk-test")
     }
 
-    func testNon200SurfacesProviderStatus() async {
-        let planner = BYOKPlanner(
-            endpoint: .openRouter,
-            apiKeyProvider: { "sk-test" },
-            transport: { request in
-                (Data(), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
-            }
+    func testScreenContextReachesThePlannerRequest() async throws {
+        let capture = RequestCapture()
+        let planner = planner(
+            body: { try self.openAIBody(#"{"step":{"instruction":"click Tags","target":"b1"}}"#) },
+            capture: capture
         )
+        let context = GuideContext(
+            spatialRegionDescription: "the toolbar area",
+            memoryContext: "Prefers archive folders"
+        )
+
+        _ = try await planner.nextStep(goal: "tag the file", observation: observation(), context: context)
+
+        let captured = await capture.snapshot()
+        let request = try XCTUnwrap(captured)
+        let body = try XCTUnwrap(request.httpBody)
+        let sent = String(decoding: body, as: UTF8.self)
+        XCTAssertTrue(sent.contains("the toolbar area"), "spatial region missing from planner request")
+        XCTAssertTrue(sent.contains("Prefers archive folders"), "memory context missing from planner request")
+        XCTAssertTrue(sent.contains("com.apple.finder"), "app identity missing from planner request")
+        XCTAssertTrue(sent.contains("Tags"), "visible controls missing from planner request")
+    }
+
+    func testDoneSignalEndsTheSession() async throws {
+        let planner = planner(body: { try self.openAIBody(#"{"done":true}"#) })
+        let step = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+        XCTAssertNil(step)
+    }
+
+    func testInventedElementIDIsRejected() async throws {
+        let planner = planner(body: { try self.openAIBody(#"{"step":{"instruction":"ghost","target":"invented"}}"#) })
         do {
-            _ = try await planner.plan(goal: "g", snapshot: sampleSnapshot())
+            _ = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+            XCTFail("expected invalidTarget")
+        } catch GuidePlannerError.invalidTarget {}
+    }
+
+    func testOutOfWindowPointIsRejected() async throws {
+        let planner = planner(body: { try self.openAIBody(#"{"step":{"instruction":"far","target":[5000,5000]}}"#) })
+        do {
+            _ = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+            XCTFail("expected invalidTarget")
+        } catch GuidePlannerError.invalidTarget {}
+    }
+
+    func testMalformedResponseSurfacesHonestly() async throws {
+        let planner = planner(body: { try self.openAIBody("not json at all") })
+        do {
+            _ = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+            XCTFail("expected malformedResponse")
+        } catch GuidePlannerError.malformedResponse {}
+    }
+
+    func testNon200SurfacesProviderStatus() async throws {
+        let planner = planner(body: { Data() }, status: 401)
+        do {
+            _ = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
             XCTFail("expected failure")
         } catch {
             XCTAssertTrue("\(error)".contains("401"))
+        }
+    }
+
+    func testVisiblePathKeepsOnlyGroundedSteps() async throws {
+        let planner = planner(body: {
+            try self.openAIBody(#"{"steps":[{"instruction":"click Tags","target":"b1"},{"instruction":"ghost","target":"invented"},{"instruction":"click Share","target":"s1"}]}"#)
+        })
+
+        let steps = try await planner.visiblePath(goal: "tag a file", observation: observation(), context: .empty)
+
+        XCTAssertEqual(steps.count, 2)
+        for step in steps {
+            guard case .axElement(let id) = step.target else {
+                return XCTFail("visible path must only contain grounded targets")
+            }
+            XCTAssertNotNil(observation().snapshot.element(withStableID: id))
         }
     }
 }
@@ -140,5 +240,17 @@ final class RuntimeRouterTests: XCTestCase {
         XCTAssertFalse(offFloor.isLocalTierOffered())
         XCTAssertFalse(noFlag.isLocalTierOffered())
         XCTAssertTrue(offered.isLocalTierOffered())
+    }
+
+    func testLocalPlannerIsSelectedWhenExplicitlyEnabled() {
+        let router = RuntimeRouter(
+            cliAvailable: false,
+            byokAvailable: false,
+            localPassesFloor: true,
+            localExperimentalFlagOn: true
+        )
+
+        XCTAssertEqual(router.route(task: .fileOrDev).runtimeID, "local.task-planner")
+        XCTAssertEqual(router.route(task: .guiGrounding).runtimeID, "local.task-planner")
     }
 }

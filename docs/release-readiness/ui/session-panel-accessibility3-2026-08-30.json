@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-08-30T08:48:07Z",
+  "build": {
+    "configuration": "Debug",
+    "architecture": "arm64",
+    "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+    "git_dirty": true,
+    "xcode": "26.6 (17F113)"
+  },
+  "host": {
+    "model": "Mac16,7",
+    "macos": "26.5.1 (25F80)",
+    "appearance": "dark launch override",
+    "keyboard_navigation_enabled": false
+  },
+  "fixture": {
+    "surface": "session panel",
+    "text_scale": "SwiftUI DynamicTypeSize.accessibility3",
+    "request": "Rename the selected Finder item",
+    "cua_permissions": "unavailable"
+  },
+  "checks": [
+    {
+      "name": "session action layout",
+      "passed": true,
+      "observed": [
+        "Dictation remained adjacent to the request field",
+        "Show full plan, Queue task, Show steps, and Run task rendered as two rows without overlap",
+        "All four actions changed from disabled to enabled after request entry"
+      ]
+    },
+    {
+      "name": "session semantics",
+      "passed": true,
+      "observed": [
+        "The request field, dictation, runtime, status, close, and four task actions had accessible names",
+        "The Cua permission failure remained visible as a two-line status rather than clipping"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/release-readiness/ui/session-panel-accessibility3-2026-08-30.jpeg",
+      "sha256": "313e819cc601523f388f026a99cb3d5d33132c871a12105d1901ddbba2b92f87"
+    }
+  ],
+  "limitations": [
+    "This is a dirty Debug run with a synthetic accessibility3 text category, not proof of exact 200 percent scaling.",
+    "The launch-only dark appearance override did not prove the rendered material and text contrast of a system-wide dark appearance.",
+    "Task submission, keyboard-only traversal, VoiceOver, active-task steering, light appearance, and localized copy remain untested in this capture."
+  ]
+}

@@ -96,13 +96,6 @@ public struct AXSnapshot: Codable, Equatable, Sendable {
     }
 }
 
-/// Reads the accessibility tree of the frontmost application. The protocol
-/// exists so Guide logic is testable without a live AX tree; production
-/// binds to ApplicationServices. Vision fills canvas-app gaps per PRD §4.
-public protocol AXTreeReading: Sendable {
-    func readFrontmost() async throws -> AXSnapshot
-}
-
 /// Screen-change detection for step-follows-you: after pointing at control N,
 /// Perry waits while you act, then confirms the screen changed before moving on.
 public struct ScreenChangeDetector: Sendable {

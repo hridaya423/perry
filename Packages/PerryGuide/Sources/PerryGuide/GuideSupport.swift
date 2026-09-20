@@ -41,14 +41,13 @@ public struct EverythingViewPlan: Equatable, Sendable {
 }
 
 public enum EverythingViewBuilder {
-    /// Converts a GuidePlan plus the AX snapshot it was planned against into a
-    /// paintable overlay plan. Steps whose targets are missing or verbal are
-    /// skipped rather than drawn in the wrong place.
-    public static func build(plan: GuidePlan, snapshot: AXSnapshot) -> EverythingViewPlan? {
+    /// Converts the visible-path steps plus the AX snapshot they were grounded
+    /// in into a paintable overlay plan. Steps whose targets are missing or
+    /// verbal are skipped rather than drawn in the wrong place.
+    public static func build(steps: [GuideStep], snapshot: AXSnapshot, goal: String = "") -> EverythingViewPlan? {
         var markers: [EverythingViewPlan.Marker] = []
-        var stepIndexToMarker: [Int: Int] = [:]
 
-        for (index, step) in plan.steps.enumerated() {
+        for (index, step) in steps.enumerated() {
             guard case .axElement(let stableID) = step.target,
                   let element = snapshot.element(withStableID: stableID) else { continue }
             let center = element.center
@@ -60,16 +59,11 @@ public enum EverythingViewBuilder {
                     caption: element.label ?? step.instruction
                 )
             )
-            stepIndexToMarker[index] = markers.count - 1
         }
 
         guard !markers.isEmpty else { return nil }
 
-        let connectors: [EverythingViewPlan.Connector] = zip(stepIndexToMarker.values.dropFirst(), stepIndexToMarker.values).map { next, current in
-            EverythingViewPlan.Connector(from: current + 1, to: next + 1)
-        }
-
-        return EverythingViewPlan(goal: plan.goal, markers: markers, connectors: zip(markers.dropFirst(), markers).map { next, current in
+        return EverythingViewPlan(goal: goal, markers: markers, connectors: zip(markers.dropFirst(), markers).map { next, current in
             EverythingViewPlan.Connector(from: current.id, to: next.id)
         })
     }

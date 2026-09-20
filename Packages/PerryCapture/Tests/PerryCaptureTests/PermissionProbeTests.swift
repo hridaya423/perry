@@ -3,11 +3,16 @@ import XCTest
 import PerryCore
 
 final class PermissionProbeTests: XCTestCase {
-    func testProbeReturnsWithoutCrashingAndIsSelfConsistent() {
-        let snapshot = PerryPermissionSnapshot.probe()
-        XCTAssertEqual(snapshot.accessibility, PerryPermissionProbe.checkAccessibility())
-        XCTAssertEqual(snapshot.screenRecording, PerryPermissionProbe.checkScreenRecording())
-        XCTAssertEqual(snapshot.microphone, PerryPermissionProbe.checkMicrophone())
+    func testProbeReturnsWithoutCrashingAndIsSelfConsistent() async {
+        let snapshot = await PerryPermissionSnapshot.probe()
+        let direct = await Task.detached {
+            PerryPermissionSnapshot(
+                accessibility: PerryPermissionProbe.checkAccessibility(),
+                screenRecording: PerryPermissionProbe.checkScreenRecording(),
+                microphone: PerryPermissionProbe.checkMicrophone()
+            )
+        }.value
+        XCTAssertEqual(snapshot, direct)
     }
 
     func testStatusUsabilityMapping() {

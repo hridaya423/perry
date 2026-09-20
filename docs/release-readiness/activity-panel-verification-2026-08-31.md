@@ -1,0 +1,13 @@
+# Activity panel verification
+
+The DEBUG-only `--perry-debug-surface activity` fixture exercises `AgentActivityStripWindow` with four sample steps. Its callbacks change fixture state only; they do not execute a runtime or a Cua action. The app still uses normal startup, so this is not an isolated clean-account test.
+
+On arm64 macOS 26.5.1, the live panel expanded and focused the steering field. Typing without another click and pressing Return updated the fixture status and cleared the field. Pause changed the control to Resume; Resume restored the working state. Stop removed steering and exposed Retry, and Retry restored the working controls. Scrolling reached the later steps.
+
+The initial accessibility output exposed the expand control as a progress indicator and combined all step descriptions under the first step's label. Hiding the nested progress element and declaring the header as a button corrected its role while retaining the percentage in its value. Isolated numbered rows appeared separately until adding the static-text trait caused the inspection tool to combine them again. Per-row containment is under verification; this record does not establish whether the remaining merging comes from macOS accessibility or the inspection tool.
+
+The app suite passed 195 tests with no failures or skips in `Test-Perry-2026.08.31_08-39-07-+0100.xcresult`. That dirty-worktree run precedes the per-row containment adjustment. Unit tests do not prove VoiceOver navigation or these live accessibility roles.
+
+The per-row containment attempt also passed all 195 tests in `Test-Perry-2026.08.31_08-43-19-+0100.xcresult`, after correcting a missing closing brace found by the build. Live inspection still combined the static step text. The button role and initial steering focus remained correct. `ui/activity-fixture-row-containment-2026-08-31.jpeg` records this run. Further accessibility changes need evidence distinguishing the actual navigation behavior from the inspection tool's text normalization; the step issue remains unresolved.
+
+The initial screenshot is `ui/activity-fixture-before-ax-fix-2026-08-31.jpeg`, SHA256 `ce7d6cf11a9069c0c5189b2f6ee516087ff3bd52d48bef9cb0571a79dd3f3e00`. `ui/activity-fixture-static-text-2026-08-31.jpeg` records the later static-text attempt. Secondary text and colored status text need measured contrast checks against the translucent surface. Full keyboard-only operation, focus restoration to another app, reduced motion, increased contrast, text scaling, and VoiceOver remain unverified. No M7 completion or feature promotion follows from this fixture run.

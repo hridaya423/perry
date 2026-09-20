@@ -1,43 +1,107 @@
 import Foundation
+import Darwin
 import PerryCore
 
 final class PipeBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var data = Data()
+    private let limit: Int
+    private var reachedEOF = false
+    private var exceededLimit = false
+
+    init(limit: Int) {
+        self.limit = limit
+    }
 
     func append(_ chunk: Data) {
         lock.lock()
+        defer { lock.unlock() }
+        guard !chunk.isEmpty else {
+            reachedEOF = true
+            return
+        }
+        guard !exceededLimit, chunk.count <= limit - data.count else {
+            exceededLimit = true
+            return
+        }
         data.append(chunk)
-        lock.unlock()
     }
 
-    var string: String {
+    var state: (reachedEOF: Bool, exceededLimit: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        return String(data: data, encoding: .utf8) ?? ""
+        return (reachedEOF, exceededLimit)
+    }
+
+    func text() throws -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !exceededLimit else { throw ExecutionError(message: "CLI output exceeded its byte limit") }
+        guard reachedEOF else { throw ExecutionError(message: "CLI output is incomplete") }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ExecutionError(message: "CLI output was not valid UTF-8")
+        }
+        return text
     }
 }
 
-public struct CLIRuntime: AgentRuntime {
+public struct CLIRuntime: TaskPlanner {
+    public enum ProcessProfile: Sendable, Equatable {
+        case standard
+        case codex(runtimeHome: URL)
+        case openCodePlanning
+    }
+
     public let id = "cli.claude-code"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, latencyClass: .medium)
+    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
+
+    public static func authenticationStatus(executable: URL) async throws -> RuntimeAuthenticationStatus {
+        do {
+            try Task.checkCancellation()
+            let result = try await runProcess(executable: executable, arguments: ["auth", "status"], timeout: 3)
+            try Task.checkCancellation()
+            return authenticationStatus(stdout: result.stdout, exitCode: result.exitCode)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return .unknown(reason: "Claude Code could not verify its official login state")
+        }
+    }
+
+    static func authenticationStatus(stdout: String, exitCode: Int32) -> RuntimeAuthenticationStatus {
+        do {
+            let status = try JSONDecoder().decode(ClaudeLoginStatus.self, from: Data(stdout.utf8))
+            if exitCode == 0, status.loggedIn { return .authenticated }
+            if exitCode == 1, !status.loggedIn { return .missing }
+        } catch {
+            return .unknown(reason: "Claude Code returned an unrecognized login status")
+        }
+        return .unknown(reason: "Claude Code returned an inconsistent login status")
+    }
+
+    private struct ClaudeLoginStatus: Decodable {
+        let loggedIn: Bool
+    }
 
     private let locateExecutable: @Sendable () throws -> URL
     private let invokeCommand: @Sendable (URL, [String]) async throws -> String
     private let timeout: TimeInterval
+    private let workingDirectory: URL?
 
     public init(
         executableLocator: @escaping @Sendable () throws -> URL = CLIRuntime.standardLocator,
-        commandRunner: ((URL, [String]) async throws -> String)? = nil,
-        timeout: TimeInterval = 120
+        commandRunner: (@Sendable (URL, [String]) async throws -> String)? = nil,
+        timeout: TimeInterval = 120,
+        workingDirectory: URL? = nil
     ) {
         self.locateExecutable = executableLocator
         self.timeout = timeout
+        self.workingDirectory = workingDirectory
         if let commandRunner {
             self.invokeCommand = commandRunner
         } else {
             self.invokeCommand = { @Sendable executable, arguments in
-                let result = try await Self.runProcess(executable: executable, arguments: arguments, timeout: timeout)
+                let result = try await Self.runProcess(executable: executable, arguments: arguments, timeout: timeout, workingDirectory: workingDirectory)
                 guard result.exitCode == 0 else {
                     throw ExecutionError(message: "CLI exited \(result.exitCode): \(result.stderr)")
                 }
@@ -46,53 +110,27 @@ public struct CLIRuntime: AgentRuntime {
         }
     }
 
-    public func plan(goal: String, context: ScreenContext) async throws -> Plan {
-        let screenNote: String
-        if let title = context.frontWindowTitle, let bundleID = context.frontAppBundleID {
-            screenNote = "The frontmost window is \"\(title)\" (\(bundleID)). "
-        } else {
-            screenNote = ""
+    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
+        guard case .screen(let context) = request.context else {
+            throw PlanningError.contextRequired
         }
-        let prompt = """
-        \(screenNote)Break this goal into concrete macOS steps, one per line, \
-        numbered like "1. <step>": \(goal)
-        Respond with the numbered list only.
-        """
-        let output = try await invoke(["-p", prompt])
-        return Plan(goal: goal, runtimeID: id, steps: Self.parseNumberedSteps(output, goal: goal))
-    }
-
-    public func execute(_ step: Step, consent: ConsentHandle?) async throws -> StepResult {
-        guard step.kind == .delegate else {
-            throw ExecutionError(message: "runtime \(id) delegates whole tasks, not individual \(step.kind.rawValue) steps")
-        }
-        let goal = step.payload["goal"] ?? step.summary
-        let output = try await invoke(["-p", goal])
-        return StepResult(stepID: step.id, success: true, message: output)
+        let output = try await invoke([
+            TypedPlanningPrompt.make(goal: request.goal, context: context),
+            "-p",
+            "--permission-mode", "plan",
+            "--max-turns", "1",
+            "--tools", "",
+        ])
+        return try TypedPlanParser.plan(
+            output,
+            request: request,
+            bindings: .init(request: request, context: context)
+        )
     }
 
     func invoke(_ arguments: [String]) async throws -> String {
         let executable = try locateExecutable()
         return try await invokeCommand(executable, arguments)
-    }
-
-    static func parseNumberedSteps(_ text: String, goal: String) -> [Step] {
-        let lines = text
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let numbered = lines.compactMap { line -> String? in
-            guard let matchRange = line.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) else {
-                return nil
-            }
-            return String(line[matchRange.upperBound...])
-        }
-        guard !numbered.isEmpty else {
-            return [Step(kind: .delegate, summary: goal, payload: ["goal": goal])]
-        }
-        return numbered.map { line in
-            Step(kind: .delegate, summary: line, payload: ["goal": line])
-        }
     }
 
     public static let standardLocator: @Sendable () throws -> URL = {
@@ -112,9 +150,6 @@ public struct CLIRuntime: AgentRuntime {
         }
 
         var candidates: [URL] = []
-        if let override = environment["PERRY_CLAUDE_CODE_PATH"], !override.isEmpty {
-            candidates.append(candidate(override))
-        }
         candidates.append(contentsOf: [
             candidate("\(home)/.claude/local/claude"),
             candidate("/opt/homebrew/bin/claude"),
@@ -128,58 +163,146 @@ public struct CLIRuntime: AgentRuntime {
         throw CLIUnavailableError(searchedPaths: searched)
     }
 
-    static func runProcess(
+    public static func runProcess(
         executable: URL,
         arguments: [String],
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        workingDirectory: URL? = nil,
+        profile: ProcessProfile = .standard,
+        maximumOutputBytes: Int = 16 * 1_024 * 1_024
     ) async throws -> (exitCode: Int32, stdout: String, stderr: String) {
+        try Task.checkCancellation()
+        guard timeout.isFinite, timeout > 0, maximumOutputBytes > 0 else {
+            throw ExecutionError(message: "CLI timeout and output limit must be positive")
+        }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(timeout))
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         process.executableURL = executable
         process.arguments = arguments
+        process.currentDirectoryURL = workingDirectory
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-        process.environment = ProcessInfo.processInfo.environment
+        process.environment = processEnvironment(from: ProcessInfo.processInfo.environment, profile: profile)
 
-        let stdoutBuffer = PipeBuffer()
-        let stderrBuffer = PipeBuffer()
+        let stdoutBuffer = PipeBuffer(limit: maximumOutputBytes)
+        let stderrBuffer = PipeBuffer(limit: maximumOutputBytes)
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else {
-                handle.readabilityHandler = nil
-                return
-            }
             stdoutBuffer.append(chunk)
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+            }
         }
         stderrPipe.fileHandleForReading.readabilityHandler = { handle in
             let chunk = handle.availableData
-            guard !chunk.isEmpty else {
-                handle.readabilityHandler = nil
-                return
-            }
             stderrBuffer.append(chunk)
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+            }
         }
-
+        defer {
+            stdoutPipe.fileHandleForReading.readabilityHandler = nil
+            stderrPipe.fileHandleForReading.readabilityHandler = nil
+        }
+        try Task.checkCancellation()
         try process.run()
+        let processID = process.processIdentifier
+        let processGroup = getpgid(processID) == processID ? processID : nil
 
-        let finished = process.waitUntilExit(withTimeout: timeout)
-        if !finished {
+        do {
+            while true {
+                try Task.checkCancellation()
+                let stdout = stdoutBuffer.state
+                let stderr = stderrBuffer.state
+                guard !stdout.exceededLimit, !stderr.exceededLimit else {
+                    throw ExecutionError(message: "CLI output exceeded its byte limit")
+                }
+                if clock.now >= deadline {
+                    throw ExecutionError(message: process.isRunning
+                        ? "CLI execution exceeded its timeout"
+                        : "CLI output did not close before the timeout")
+                }
+                if !process.isRunning, stdout.reachedEOF, stderr.reachedEOF { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try Task.checkCancellation()
+            return (process.terminationStatus, try stdoutBuffer.text(), try stderrBuffer.text())
+        } catch {
+            try Self.stopProcess(process, group: processGroup)
+            throw error
+        }
+    }
+
+    static func processEnvironment(
+        from environment: [String: String],
+        profile: ProcessProfile = .standard
+    ) -> [String: String] {
+        let allowed = [
+            "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL",
+            "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+        ]
+        var filtered = allowed.reduce(into: [String: String]()) { filtered, key in
+            filtered[key] = environment[key]
+        }
+        filtered["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        filtered["SHELL"] = "/bin/zsh"
+        filtered["DISABLE_AUTOUPDATER"] = "1"
+        switch profile {
+        case .standard:
+            break
+        case .codex(let runtimeHome):
+            filtered["CODEX_HOME"] = runtimeHome.path
+        case .openCodePlanning:
+            filtered["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
+            filtered["OPENCODE_CONFIG_CONTENT"] = #"{"agent":{"perry":{"description":"Perry typed-plan adapter","mode":"primary","permission":{"read":"deny","edit":"deny","glob":"deny","grep":"deny","list":"deny","bash":"deny","task":"deny","external_directory":"deny","todowrite":"deny","question":"deny","webfetch":"deny","websearch":"deny","lsp":"deny","doom_loop":"deny","skill":"deny"}}}}"#
+        }
+        return filtered
+    }
+
+    static func stopProcess(
+        _ process: Process,
+        group: pid_t?,
+        sendSignal: (pid_t, Int32) -> Int32 = Darwin.kill
+    ) throws {
+        var failedTargets: Set<pid_t> = []
+        func groupIsRunning() -> Bool {
+            guard let group else { return false }
+            return kill(-group, 0) == 0 || errno != ESRCH
+        }
+        func signal(_ target: pid_t, _ value: Int32) {
+            if sendSignal(target, value) == 0 || errno == ESRCH {
+                failedTargets.remove(target)
+            } else {
+                failedTargets.insert(target)
+            }
+        }
+        guard process.isRunning || groupIsRunning() else { return }
+        if let group {
+            signal(-group, SIGTERM)
+        } else if process.isRunning {
             process.terminate()
         }
-        process.waitUntilExit()
-
-        return (process.terminationStatus, stdoutBuffer.string, stderrBuffer.string)
-    }
-}
-
-extension Process {
-    func waitUntilExit(withTimeout seconds: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(seconds)
-        while isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .milliseconds(250))
+        while (process.isRunning || groupIsRunning()) && clock.now < deadline {
+            Thread.sleep(forTimeInterval: 0.01)
         }
-        return !isRunning
+        if let group, groupIsRunning() {
+            signal(-group, SIGKILL)
+        }
+        if process.isRunning {
+            signal(process.processIdentifier, SIGKILL)
+        }
+        guard !failedTargets.contains(where: { kill($0, 0) == 0 || errno != ESRCH }) else {
+            throw ExecutionError(message: "Perry could not stop the CLI process")
+        }
+        if process.isRunning {
+            process.waitUntilExit()
+        }
     }
+
 }
