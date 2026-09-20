@@ -199,20 +199,166 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         }
     }
 
-    func testVisiblePathKeepsOnlyGroundedSteps() async throws {
+    func testVisiblePathRejectsAnyUngroundedStep() async throws {
         let planner = planner(body: {
             try self.openAIBody(#"{"steps":[{"instruction":"click Tags","target":"b1"},{"instruction":"ghost","target":"invented"},{"instruction":"click Share","target":"s1"}]}"#)
+        })
+
+        do {
+            _ = try await planner.visiblePath(goal: "tag a file", observation: observation(), context: .empty)
+            XCTFail("expected invalidTarget")
+        } catch GuidePlannerError.invalidTarget {}
+    }
+
+    func testVisiblePathReturnsGroundedSteps() async throws {
+        let planner = planner(body: {
+            try self.openAIBody(#"{"steps":[{"instruction":"click Tags","target":"b1"},{"instruction":"click Share","target":"s1"}]}"#)
         })
 
         let steps = try await planner.visiblePath(goal: "tag a file", observation: observation(), context: .empty)
 
         XCTAssertEqual(steps.count, 2)
+        XCTAssertEqual(steps.map(\.instruction), ["click Tags", "click Share"])
         for step in steps {
             guard case .axElement(let id) = step.target else {
                 return XCTFail("visible path must only contain grounded targets")
             }
             XCTAssertNotNil(observation().snapshot.element(withStableID: id))
         }
+    }
+
+    func testVisiblePathRejectsMoreThanEightSteps() async throws {
+        let list = (0..<9).map { #"{"instruction":"click \#($0)","target":"b1"}"# }.joined(separator: ",")
+        let planner = planner(body: {
+            try self.openAIBody("{\"steps\":[\(list)]}")
+        })
+
+        do {
+            _ = try await planner.visiblePath(goal: "tag a file", observation: observation(), context: .empty)
+            XCTFail("expected malformedResponse")
+        } catch GuidePlannerError.malformedResponse {}
+    }
+
+    func testParserRejectsMalformedResponses() {
+        let malformed: [String] = [
+            #"Here is your step: {"step":{"instruction":"x","target":"b1"}}"#,
+            #"{"step":{"instruction":"x","target":"b1"}} hope that helps"#,
+            "```json\n{\"step\":{\"instruction\":\"x\",\"target\":\"b1\"}}\n```",
+            #"{"done":true} {"step":{"instruction":"x","target":"b1"}}"#,
+            #"{"done":false}"#,
+            #"{"done":1}"#,
+            #"{"done":true,"step":{"instruction":"x","target":"b1"}}"#,
+            #"{"step":{"instruction":"x","target":"b1"},"extra":1}"#,
+            #"{"step":{"instruction":"x"}}"#,
+            #"{"step":{"instruction":"x","target":true}}"#,
+            #"{"step":{"instruction":"x","target":""}}"#,
+            #"{"step":{"instruction":"x","target":"null"}}"#,
+            #"{"step":{"instruction":"x","target":{}}}"#,
+            #"{"step":{"instruction":"x","target":{"x":1}}}"#,
+            #"{"step":{"instruction":"x","target":[1]}}"#,
+            #"{"step":{"instruction":"x","target":{"x":true,"y":2}}}"#,
+            #"{"step":{"instruction":"x","target":[true,2]}}"#,
+            #"{"step":{"instruction":"x","target":"b1","wait":1}}"#,
+            #"{"step":{"instruction":"x","target":"b1","wait":"yes"}}"#,
+            #"{"step":{"instruction":"x","target":"b1","wait":null}}"#,
+            #"{"step":{"instruction":"x","target":"b1","bogus":1}}"#,
+            #"{"blocked":""}"#,
+            #"{"blocked":"   "}"#,
+            #"{"blocked":null}"#,
+        ]
+        for body in malformed {
+            XCTAssertThrowsError(
+                try RuntimeGuidePlanner.parseNextStep(text: body, observation: observation()),
+                body
+            ) { error in
+                guard case .malformedResponse = error as? GuidePlannerError else {
+                    return XCTFail("\(body): expected malformedResponse, got \(error)")
+                }
+            }
+        }
+    }
+
+    func testParserAcceptsValidResponses() throws {
+        XCTAssertNil(try RuntimeGuidePlanner.parseNextStep(
+            text: "  \n {\"done\":true} \n",
+            observation: observation()
+        ))
+
+        let verbal = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"look at the toolbar","target":null,"wait":false}}"#,
+            observation: observation()
+        ))
+        XCTAssertEqual(verbal.target.isVerbal, true)
+        XCTAssertEqual(verbal.waitForUserAction, false)
+
+        let element = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click Tags","target":"b1"}}"#,
+            observation: observation()
+        ))
+        guard case .axElement(let id) = element.target else {
+            return XCTFail("expected element target")
+        }
+        XCTAssertEqual(id, "b1")
+        XCTAssertEqual(element.waitForUserAction, true)
+
+        let pair = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click there","target":[10,20]}}"#,
+            observation: observation()
+        ))
+        guard case .screenPoint(let p1) = pair.target else {
+            return XCTFail("expected point target")
+        }
+        XCTAssertEqual(p1.x, 10)
+        XCTAssertEqual(p1.y, 20)
+
+        let dict = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click there","target":{"x":10.5,"y":20.25}}}"#,
+            observation: observation()
+        ))
+        guard case .screenPoint(let p2) = dict.target else {
+            return XCTFail("expected point target")
+        }
+        XCTAssertEqual(p2.x, 10.5)
+        XCTAssertEqual(p2.y, 20.25)
+    }
+
+    func testBlockedOutcomeThrowsBlockedError() {
+        XCTAssertThrowsError(
+            try RuntimeGuidePlanner.parseNextStep(
+                text: #"{"blocked":"no matching control is visible"}"#,
+                observation: observation()
+            )
+        ) { error in
+            guard case .blocked(let reason) = error as? GuidePlannerError else {
+                return XCTFail("expected blocked, got \(error)")
+            }
+            XCTAssertEqual(reason, "no matching control is visible")
+        }
+    }
+
+    func testEngineSurfacesBlockedPlannerOutcome() async throws {
+        let planner = planner(body: {
+            try self.openAIBody(#"{"blocked":"nothing on screen advances this"}"#)
+        })
+        let observer = FixedObserver(observation: observation())
+        let engine = GuideEngine(planner: planner, observer: observer)
+
+        do {
+            _ = try await engine.start(goal: "g")
+            XCTFail("expected blocked")
+        } catch GuidePlannerError.blocked(let reason) {
+            XCTAssertEqual(reason, "nothing on screen advances this")
+        }
+        let phase = await engine.phase
+        XCTAssertNotEqual(phase, .finished)
+    }
+}
+
+private struct FixedObserver: GuideObserving {
+    let observation: GuideObservation
+
+    func observe() async throws -> GuideObservation {
+        observation
     }
 }
 

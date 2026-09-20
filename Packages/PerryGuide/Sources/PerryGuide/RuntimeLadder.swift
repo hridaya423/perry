@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import PerryCore
 import PerryRuntimes
@@ -46,6 +47,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             prompt: Self.nextStepPrompt(goal: goal, observation: observation, progress: progress, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
             screenshot: observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
         )
+        try Task.checkCancellation()
         return try Self.parseNextStep(text: text, observation: observation)
     }
 
@@ -59,6 +61,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             prompt: Self.visiblePathPrompt(goal: goal, observation: observation, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
             screenshot: observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
         )
+        try Task.checkCancellation()
         return try Self.parsePath(text: text, observation: observation)
     }
 
@@ -68,59 +71,67 @@ public struct RuntimeGuidePlanner: GuidePlanner {
     /// a target that survives observation validation.
     static func parseNextStep(text: String, observation: GuideObservation) throws -> GuideStep? {
         let payload = try strictJSONObject(text)
-        if payload["done"] as? Bool == true { return nil }
-        guard let step = payload["step"] as? [String: Any] else {
-            throw GuidePlannerError.malformedResponse("expected {\"step\":{…}} or {\"done\":true}")
+        guard payload.count == 1 else { throw GuidePlannerError.malformedResponse("expected exactly one outcome") }
+        if let done = payload["done"] {
+            guard let number = done as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID(), number.boolValue else {
+                throw GuidePlannerError.malformedResponse("done must be true")
+            }
+            return nil
         }
-        let parsed = try parseStep(step, observation: observation)
-        return try GuideTargetValidator.validated(parsed, in: observation)
+        if let reason = payload["blocked"] as? String, !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw GuidePlannerError.blocked(reason)
+        }
+        guard let step = payload["step"] as? [String: Any] else { throw GuidePlannerError.malformedResponse("expected step, done, or blocked") }
+        return try GuideTargetValidator.validated(parseStep(step, observation: observation), in: observation)
     }
 
     /// Every marker must ground in the live window; entries that do not are
     /// dropped rather than painted in the wrong place.
     static func parsePath(text: String, observation: GuideObservation) throws -> [GuideStep] {
         let payload = try strictJSONObject(text)
-        guard let list = payload["steps"] as? [[String: Any]] else {
-            throw GuidePlannerError.malformedResponse("expected {\"steps\":[…]}")
+        guard Set(payload.keys) == ["steps"], let list = payload["steps"] as? [[String: Any]], list.count <= 8 else {
+            throw GuidePlannerError.malformedResponse("expected at most eight steps")
         }
-        return list.prefix(8).compactMap { raw in
-            guard let step = try? parseStep(raw, observation: observation),
-                  let validated = try? GuideTargetValidator.validated(step, in: observation) else {
-                return nil
-            }
-            return validated
-        }
+        return try list.map { try GuideTargetValidator.validated(parseStep($0, observation: observation), in: observation) }
     }
 
     private static func parseStep(_ raw: [String: Any], observation: GuideObservation) throws -> GuideStep {
-        guard let instruction = raw["instruction"] as? String,
-              !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw GuidePlannerError.malformedResponse("step is missing an instruction")
+        guard Set(raw.keys).isSubset(of: ["instruction", "target", "wait"]),
+              let instruction = raw["instruction"] as? String,
+              !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let rawTarget = raw["target"] else {
+            throw GuidePlannerError.malformedResponse("step requires instruction and target")
         }
-        let wait = raw["wait"] as? Bool ?? true
-        let target: GuideStep.Target
-        switch raw["target"] {
-        case let id as String where !id.isEmpty && id != "null":
-            target = .axElement(stableID: id)
-        case let point as [String: Any] where point["x"] is Double && point["y"] is Double:
-            target = .screenPoint(CGPointShim(x: point["x"] as! Double, y: point["y"] as! Double))
-        case let pair as [Any] where pair.count == 2:
-            guard let x = (pair[0] as? Double) ?? (pair[0] as? Int).map(Double.init),
-                  let y = (pair[1] as? Double) ?? (pair[1] as? Int).map(Double.init) else {
-                throw GuidePlannerError.malformedResponse("unreadable target point")
+        let wait: Bool
+        if let value = raw["wait"] {
+            guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                throw GuidePlannerError.malformedResponse("wait must be a boolean")
             }
-            target = .screenPoint(CGPointShim(x: x, y: y))
-        default:
-            target = .verbalOnly
+            wait = number.boolValue
+        } else { wait = true }
+        let target: GuideStep.Target
+        switch rawTarget {
+        case is NSNull: target = .verbalOnly
+        case let id as String where !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && id != "null":
+            target = .axElement(stableID: id)
+        case let point as [String: Any] where Set(point.keys) == ["x", "y"]:
+            target = .screenPoint(CGPointShim(x: try coordinate(point["x"]), y: try coordinate(point["y"])))
+        case let pair as [Any] where pair.count == 2:
+            target = .screenPoint(CGPointShim(x: try coordinate(pair[0]), y: try coordinate(pair[1])))
+        default: throw GuidePlannerError.malformedResponse("invalid target")
         }
         return GuideStep(instruction: instruction, target: target, waitForUserAction: wait)
     }
 
+    private static func coordinate(_ value: Any?) throws -> Double {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(), number.doubleValue.isFinite else {
+            throw GuidePlannerError.malformedResponse("coordinate must be a finite number")
+        }
+        return number.doubleValue
+    }
+
     private static func strictJSONObject(_ text: String) throws -> [String: Any] {
-        guard let start = text.firstIndex(of: "{"),
-              let end = text.lastIndex(of: "}"),
-              start <= end,
-              let object = try? JSONSerialization.jsonObject(with: Data(text[start...end].utf8)) as? [String: Any] else {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else {
             throw GuidePlannerError.malformedResponse("response was not a JSON object")
         }
         return object
@@ -170,7 +181,8 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         Choose the single next control the user should click to make progress on the goal.
         Reply: {"step":{"instruction":"<short spoken instruction>","target":"<control id>"}}
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}
-        When the goal is complete or cannot be advanced: {"done":true}
+        Only when the goal is complete: {"done":true}
+        When you cannot advance or verify completion: {"blocked":"<brief reason>"}
         """
     }
 
@@ -183,6 +195,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         """
         \(sharedContext(goal: goal, observation: observation, context: context, skill: skill))
         List, in order, the controls the user should click that are visible right now — never a control that is not on screen.
+        Return at most eight steps. If no controls can be grounded, return {"steps":[]}.
         Reply: {"steps":[{"instruction":"<short spoken instruction>","target":"<control id>"}]}
         """
     }

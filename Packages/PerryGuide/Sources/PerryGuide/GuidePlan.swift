@@ -141,12 +141,14 @@ public enum GuidePlannerError: Error, Equatable, Sendable, LocalizedError {
     case protectedWindow
     /// The planner could not produce a well-formed step.
     case malformedResponse(String)
+    case blocked(String)
 
     public var errorDescription: String? {
         switch self {
         case .invalidTarget(let detail): return "Guide target failed validation: \(detail)"
         case .protectedWindow: return "That window is protected, so Perry will not guide inside it."
         case .malformedResponse(let detail): return "Guide planner returned an unreadable step: \(detail)"
+        case .blocked(let reason): return reason
         }
     }
 }

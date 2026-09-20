@@ -193,6 +193,109 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(result, .finished)
     }
 
+    func testUnrelatedElementChangeCannotSatisfyDeclaredPostcondition() async throws {
+        let initial = snapshot([
+            button("target", label: "Open"),
+            AXElement(
+                stableID: "status",
+                role: .staticText,
+                label: "Waiting",
+                frame: AXElementFrame(x: 10, y: 60, width: 90, height: 20),
+                isActionable: false
+            ),
+        ])
+        let changed = snapshot([
+            button("target", label: "Open"),
+            AXElement(
+                stableID: "status",
+                role: .staticText,
+                label: "Changed",
+                frame: AXElementFrame(x: 10, y: 60, width: 90, height: 20),
+                isActionable: false
+            ),
+        ])
+        let observer = StubObserver(snapshots: [initial, changed])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let planner = QueueGuidePlanner(steps: [step])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+    }
+
+    func testUnrelatedTitleChangeCannotSatisfyDeclaredPostcondition() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let retitled = snapshot([button("target", label: "Open")], title: "Other")
+        let observer = StubObserver(snapshots: [initial, retitled])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let planner = QueueGuidePlanner(steps: [step])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.userActed()
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+    }
+
+    func testDifferentApplicationCannotSatisfyDeclaredPostcondition() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let otherApp = snapshot(
+            [button("target", label: "Open"), button("done", label: "Done")],
+            bundleID: "com.apple.TextEdit"
+        )
+        let observer = StubObserver(snapshots: [initial, otherApp])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let planner = QueueGuidePlanner(steps: [step])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.userActed()
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+    }
+
+    func testDeclaredPostconditionAdvancesWhenSatisfied() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let done = snapshot([button("target", label: "Open"), button("done", label: "Done")])
+        let observer = StubObserver(snapshots: [initial, done])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let planner = QueueGuidePlanner(steps: [step])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .finished)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.completedInstructions, [step.instruction])
+    }
+
     // MARK: - Target validation
 
     func testInventedElementIDIsRejectedAtStart() async throws {

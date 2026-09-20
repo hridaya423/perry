@@ -242,16 +242,12 @@ public actor GuideEngine {
     }
 
     private func isVerified(step: GuideStep, before: AXSnapshot, after: AXSnapshot) -> Bool {
-        if changeDetector.didChange(from: before, to: after) {
-            return true
+        guard before.appBundleID == after.appBundleID else { return false }
+        if let postcondition = step.postcondition {
+            return postcondition.isSatisfied(in: after)
         }
-        if changeDetector.didChange(from: before, titleAfter: after.windowTitle) {
-            return true
-        }
-        if before.appBundleID != after.appBundleID {
-            return true
-        }
-        return step.postcondition?.isSatisfied(in: after) == true
+        return changeDetector.didChange(from: before, to: after)
+            || changeDetector.didChange(from: before, titleAfter: after.windowTitle)
     }
 }
 
