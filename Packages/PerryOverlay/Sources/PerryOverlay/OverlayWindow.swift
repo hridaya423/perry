@@ -449,7 +449,7 @@ struct PerryBuddyView: View {
                         reduceMotion: accessibilityReduceMotion
                     )
                 } else {
-                    PerrySpriteView(animation: petAnimationState, size: 52)
+                    PerryGlassCursorView(animation: petAnimationState, size: 52)
                 }
             }
                 .frame(
@@ -725,7 +725,7 @@ struct PerryBuddyView: View {
         let position = CGPoint(x: local.x + 35, y: local.y + 25)
         let color = colorFromHex(cursor.accentHex) ?? PerryOverlayTheme.Colors.accent
         ZStack {
-            PerrySpriteView(size: 30)
+            PerryGlassCursorView(size: 30)
                 .shadow(color: color.opacity(0.90), radius: 10, x: 0, y: 0)
                 .position(position)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))

@@ -16,6 +16,7 @@ enum PerryDebugLaunchSurface: String, Equatable {
     case guideControls = "guide-controls"
     case history
     case prototypes
+    case cursors
     case backgroundTasksStorageError = "background-tasks-storage-error"
 
     init?(arguments: [String]) {
@@ -605,6 +606,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             DispatchQueue.main.async {
                 DebugPrototypeWindow.show()
             }
+        } else if debugSurface == .cursors {
+            DispatchQueue.main.async {
+                DebugCursorGalleryWindow.show()
+            }
         } else if debugSurface == .backgroundTasksStorageError {
             DispatchQueue.main.async { [weak self] in
                 self?.showBackgroundTasks()
@@ -849,6 +854,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         fixtures.submenu = fixtureMenu
         menu.addItem(fixtures)
         menu.addItem(withTitle: "Invocation prototypes", action: #selector(prototypeAction), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Cursor prototypes", action: #selector(cursorPrototypeAction), keyEquivalent: "").target = self
 #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: "History", action: #selector(historyAction), keyEquivalent: "").target = self
@@ -969,6 +975,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     @objc private func prototypeAction() {
         DebugPrototypeWindow.show()
+    }
+
+    @objc private func cursorPrototypeAction() {
+        DebugCursorGalleryWindow.show()
     }
 
     private func runFailureDrill(_ drill: FailureDrill) {
