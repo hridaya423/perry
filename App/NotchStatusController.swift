@@ -62,7 +62,10 @@ final class NotchStatusController {
             hosting.sizingOptions = []
             panel.contentView = hosting
         }
-        let size = hosting.fittingSize
+        // sizingOptions = [] keeps the attached view out of window extrema
+        // negotiation, but fittingSize rides the same machinery and
+        // under-measures — a detached view with defaults measures fine.
+        let size = NSHostingView(rootView: view).fittingSize
         let drop = screen.safeAreaInsets.top + 4
         panel.setFrame(
             NSRect(

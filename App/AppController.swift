@@ -17,6 +17,7 @@ enum PerryDebugLaunchSurface: String, Equatable {
     case history
     case prototypes
     case cursors
+    case notch
     case backgroundTasksStorageError = "background-tasks-storage-error"
 
     init?(arguments: [String]) {
@@ -627,6 +628,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         } else if debugSurface == .cursors {
             DispatchQueue.main.async {
                 DebugCursorGalleryWindow.show()
+            }
+        } else if debugSurface == .notch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.notchStatus.update(isRecording: true, backgroundCount: 2)
             }
         } else if debugSurface == .backgroundTasksStorageError {
             DispatchQueue.main.async { [weak self] in

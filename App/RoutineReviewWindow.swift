@@ -208,7 +208,9 @@ final class RoutineReviewWindow: NSPanel {
 
     private func sizeToFit() {
         guard let hostingView = contentView as? NSHostingView<RoutineReviewView> else { return }
-        let fitting = hostingView.fittingSize
+        // sizingOptions = [] on the attached view makes fittingSize
+        // under-measure — a detached view with defaults measures fine.
+        let fitting = NSHostingView(rootView: hostingView.rootView).fittingSize
         let newSize = NSSize(width: max(340, fitting.width), height: max(80, fitting.height))
         guard newSize != frame.size else { return }
         let visible = (anchorScreen ?? NSScreen.main)?.visibleFrame ?? .zero
