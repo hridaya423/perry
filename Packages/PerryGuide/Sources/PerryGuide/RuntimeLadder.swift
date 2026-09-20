@@ -186,8 +186,10 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             : progress.completedInstructions.enumerated().map { "\($0 + 1). \($1)" }.joined(separator: "\n")
         return """
         \(sharedContext(goal: goal, observation: observation, context: context, skill: skill))
-        Steps already completed:
+        Independently verified steps:
         \(completed)
+        User-confirmed steps, not independently verified:
+        \(progress.userConfirmedInstructions.isEmpty ? "none yet" : progress.userConfirmedInstructions.joined(separator: "\n"))
         Choose the single next control the user should click to make progress on the goal.
         Reply: {"step":{"instruction":"<short spoken instruction>","target":"<control id>"}}
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}

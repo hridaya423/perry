@@ -889,7 +889,7 @@ final class GuideSessionCoordinator {
         case .needsInput(let prompt, let choices):
             finishGuide(guideID: guideID, outcome: .stopped, summary: ([prompt] + choices).joined(separator: "\n"))
         case .stillWaiting:
-            output?.guideSetStatus("I’m still watching that step; click the highlighted control.")
+            output?.guideSetStatus("Not verified yet. Complete the step, then choose Done.")
         case .blocked(let reason):
             finishGuide(guideID: guideID, outcome: .failed, summary: reason)
         case .ignoredClick:

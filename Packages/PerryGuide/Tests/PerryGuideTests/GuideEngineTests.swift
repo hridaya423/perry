@@ -104,7 +104,7 @@ final class GuideEngineTests: XCTestCase {
 
         let planner = ObservationPlanner { observation, _ in
             if observation.snapshot.element(withStableID: "open") != nil {
-                return GuideStep(instruction: "open it", target: .axElement(stableID: "open"))
+                return GuideStep(instruction: "open it", target: .axElement(stableID: "open"), postcondition: .elementAbsent(stableID: "open"))
             }
             if observation.snapshot.element(withStableID: "insert") != nil {
                 return GuideStep(instruction: "insert a row", target: .axElement(stableID: "insert"))
@@ -178,6 +178,45 @@ final class GuideEngineTests: XCTestCase {
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
         XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+    }
+
+    func testUnrelatedChangeWithoutPostconditionCannotVerifyStep() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let changed = snapshot([button("target", label: "Open"), button("unrelated", label: "Notification")], title: "Other title")
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [GuideStep(instruction: "open it", target: .axElement(stableID: "target"))]),
+            observer: StubObserver(snapshots: [initial, changed])
+        )
+        _ = try await engine.start(goal: "g")
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+    }
+
+    func testExplicitConfirmationCanAdvanceWithoutObservableChange() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [GuideStep(instruction: "open it", target: .axElement(stableID: "target"))]),
+            observer: StubObserver(snapshots: [initial])
+        )
+        _ = try await engine.start(goal: "g")
+        let result = await engine.userActed()
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+        XCTAssertEqual(progress.userConfirmedInstructions, ["open it"])
+        XCTAssertEqual(progress.completedTargetIDs, ["target"])
+    }
+
+    func testUserConfirmedHistoryIsBoundedAndNeverBecomesVerified() {
+        var progress = GuideProgress()
+        for index in 0..<20 {
+            progress.recordUserConfirmed(GuideStep(instruction: "step \(index)", target: .verbalOnly))
+        }
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+        XCTAssertEqual(progress.userConfirmedInstructions.count, GuideProgress.historyLimit)
+        XCTAssertEqual(progress.userConfirmedInstructions.first, "step 12")
     }
 
     func testCaptureFailureBlocksInsteadOfPretendingTheStepWasUnchanged() async throws {
@@ -522,7 +561,7 @@ final class GuideEngineTests: XCTestCase {
         let changed = snapshot([button("b", label: "B")])
         let observer = StubObserver(snapshots: [first, changed])
         let planner = QueueGuidePlanner(steps: [
-            GuideStep(instruction: "click a", target: .axElement(stableID: "a")),
+            GuideStep(instruction: "click a", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a")),
             GuideStep(instruction: "ghost", target: .axElement(stableID: "invented")),
         ])
         let engine = GuideEngine(planner: planner, observer: observer)
@@ -554,7 +593,7 @@ final class GuideEngineTests: XCTestCase {
 
     func testStartRejectsUnavailableSelectedStep() async throws {
         let selected = observation([button("a")])
-        let steps = [GuideStep(instruction: "one", target: .axElement(stableID: "a"))]
+        let steps = [GuideStep(instruction: "one", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a"))]
         let engine = GuideEngine(
             planner: QueueGuidePlanner(steps: []),
             observer: StubObserver(observations: [selected])
@@ -669,7 +708,7 @@ final class GuideEngineTests: XCTestCase {
         let first = snapshot([button("a", label: "A")])
         let changed = snapshot([button("b", label: "B")])
         let engine = GuideEngine(
-            planner: DecisionQueuePlanner(decisions: [.step(GuideStep(instruction: "one", target: .axElement(stableID: "a")))]),
+            planner: DecisionQueuePlanner(decisions: [.step(GuideStep(instruction: "one", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a")))]),
             observer: StubObserver(snapshots: [first, changed])
         )
         _ = try await engine.start(goal: "g")
@@ -738,7 +777,7 @@ final class GuideEngineTests: XCTestCase {
         let changed = snapshot([button("b", label: "B")])
         let engine = GuideEngine(
             planner: DecisionQueuePlanner(decisions: [
-                .step(GuideStep(instruction: "one", target: .axElement(stableID: "a"))),
+                .step(GuideStep(instruction: "one", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a"))),
                 .needsInput(prompt: "Which file?", choices: ["a.txt", "b.txt"]),
             ]),
             observer: StubObserver(snapshots: [first, changed])
@@ -799,7 +838,7 @@ final class GuideEngineTests: XCTestCase {
         let observer = StubObserver(snapshots: [first, changed])
         let planner = ObservationPlanner { observation, _ in
             if observation.snapshot.element(withStableID: "a") != nil {
-                return GuideStep(instruction: "one", target: .axElement(stableID: "a"))
+                return GuideStep(instruction: "one", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a"))
             }
             return GuideStep(instruction: "again", target: .axElement(stableID: "b"))
         }

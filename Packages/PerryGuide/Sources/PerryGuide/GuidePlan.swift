@@ -105,11 +105,19 @@ public struct GuideProgress: Equatable, Sendable {
     public private(set) var presentedCount: Int
     public private(set) var completedInstructions: [String]
     public private(set) var completedTargetIDs: [String]
+    public private(set) var userConfirmedInstructions: [String]
 
-    public init(presentedCount: Int = 0, completedInstructions: [String] = [], completedTargetIDs: [String] = []) {
+    public init(presentedCount: Int = 0, completedInstructions: [String] = [], completedTargetIDs: [String] = [], userConfirmedInstructions: [String] = []) {
         self.presentedCount = presentedCount
-        self.completedInstructions = completedInstructions
-        self.completedTargetIDs = completedTargetIDs
+        self.completedInstructions = Array(completedInstructions.suffix(Self.historyLimit))
+        self.completedTargetIDs = Array(completedTargetIDs.suffix(Self.historyLimit))
+        self.userConfirmedInstructions = Array(userConfirmedInstructions.suffix(Self.historyLimit))
+    }
+
+    public mutating func recordUserConfirmed(_ step: GuideStep) {
+        userConfirmedInstructions.append(step.instruction)
+        userConfirmedInstructions = Array(userConfirmedInstructions.suffix(Self.historyLimit))
+        recordSkipped(step)
     }
 
     public mutating func recordPresented() {

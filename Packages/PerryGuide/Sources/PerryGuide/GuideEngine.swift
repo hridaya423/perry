@@ -16,7 +16,6 @@ public actor GuideEngine {
 
     private let planner: GuidePlanner
     private let observer: GuideObserving
-    private let changeDetector: ScreenChangeDetector
     private let clickMatcher: ClickAdvanceMatcher
     private(set) public var phase: Phase
     private(set) public var progress = GuideProgress()
@@ -31,12 +30,10 @@ public actor GuideEngine {
     public init(
         planner: GuidePlanner,
         observer: GuideObserving,
-        changeDetector: ScreenChangeDetector = ScreenChangeDetector(),
         clickMatcher: ClickAdvanceMatcher = ClickAdvanceMatcher()
     ) {
         self.planner = planner
         self.observer = observer
-        self.changeDetector = changeDetector
         self.clickMatcher = clickMatcher
         self.phase = .idle
     }
@@ -133,7 +130,7 @@ public actor GuideEngine {
               let index = currentStepIndex else {
             return .notPresenting
         }
-        return await verifyAndAdvance(step: step, baseline: actionBaseline, stepIndex: index)
+        return await verifyAndAdvance(step: step, baseline: actionBaseline, stepIndex: index, userConfirmed: true)
     }
 
     public func skip() async -> AdvanceResult {
@@ -181,7 +178,7 @@ public actor GuideEngine {
         }
     }
 
-    private func verifyAndAdvance(step: GuideStep, baseline: GuideObservation, stepIndex: Int) async -> AdvanceResult {
+    private func verifyAndAdvance(step: GuideStep, baseline: GuideObservation, stepIndex: Int, userConfirmed: Bool = false) async -> AdvanceResult {
         let after: GuideObservation
         do {
             try await Task.sleep(nanoseconds: 250_000_000)
@@ -194,11 +191,19 @@ public actor GuideEngine {
             phase = .waitingForUser(stepIndex: stepIndex)
             return .blocked(reason: "Cua could not verify that step: \(error.localizedDescription)")
         }
-        guard isVerified(step: step, before: baseline.snapshot, after: after.snapshot) else {
-            phase = .waitingForUser(stepIndex: stepIndex)
-            return .stillWaiting(stepIndex: stepIndex)
+        if let postcondition = step.postcondition {
+            guard postcondition.isSatisfied(in: after.snapshot) else {
+                phase = .waitingForUser(stepIndex: stepIndex)
+                return .stillWaiting(stepIndex: stepIndex)
+            }
+            progress.recordCompleted(step)
+        } else {
+            guard userConfirmed else {
+                phase = .waitingForUser(stepIndex: stepIndex)
+                return .stillWaiting(stepIndex: stepIndex)
+            }
+            progress.recordUserConfirmed(step)
         }
-        progress.recordCompleted(step)
         return await presentNext(observation: after)
     }
 
@@ -277,14 +282,6 @@ public actor GuideEngine {
         }
     }
 
-    private func isVerified(step: GuideStep, before: AXSnapshot, after: AXSnapshot) -> Bool {
-        guard before.appBundleID == after.appBundleID else { return false }
-        if let postcondition = step.postcondition {
-            return postcondition.isSatisfied(in: after)
-        }
-        return changeDetector.didChange(from: before, to: after)
-            || changeDetector.didChange(from: before, titleAfter: after.windowTitle)
-    }
 }
 
 public struct GuidePresentation: Equatable, Sendable {
