@@ -68,6 +68,25 @@ final class DemonstrationRecorderTests: XCTestCase {
         ])
     }
 
+    func testTimeLimitWarnsThenSignalsStop() async throws {
+        var warnings = 0
+        var limitHit = false
+        let recorder = DemonstrationRecorder(
+            observe: { GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.app", windowTitle: "Main", elements: [])) },
+            bundleIDProvider: { "com.example.app" },
+            maximumDuration: .milliseconds(120),
+            warningLead: .milliseconds(40),
+            onLimitWarning: { warnings += 1 },
+            onTimeLimit: { limitHit = true }
+        )
+        recorder.start()
+        try await Task.sleep(for: .milliseconds(90))
+        XCTAssertEqual(warnings, 1)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertTrue(limitHit)
+        _ = await recorder.stop()
+    }
+
     func testNamedKeysRecordPressesAndModifierChordsAreNotText() async {
         let recorder = makeRecorder(elements: [])
         recorder.start()

@@ -39,7 +39,7 @@ public enum RoutineReplay {
         taskID: TaskID,
         parameters: [String: String] = [:]
     ) throws -> ExecutionPlan {
-        guard observation.snapshot.appBundleID == routine.bundleID else {
+        guard routine.appBundleIDs.contains(observation.snapshot.appBundleID) else {
             throw RoutineReplayError.wrongApplication
         }
         guard let processID = observation.processID,
@@ -57,6 +57,7 @@ public enum RoutineReplay {
         var actions: [ExecutableAction] = []
         for (index, step) in routine.steps.enumerated() {
             if case .wait = step.action { continue } // waits are absorbed by per-step verification
+            if step.requiresHuman { continue } // manual steps are never dispatched
             let selector: ExecutableAction.Selector? = try step.target.map { target in
                 .accessibilityID(try resolve(target, in: observation.snapshot.elements, step: index))
             }

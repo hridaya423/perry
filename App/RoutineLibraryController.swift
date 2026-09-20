@@ -56,13 +56,36 @@ final class RoutineLibraryController {
 
     private func runPendingRoutine() {
         guard let routine = pendingRun else { return }
+        let values = reviewState.parameterValues
+        guard values.values.allSatisfy({ $0.count <= LearnedRoutine.parameterValueMaxLength }) else {
+            setStatus("A parameter is longer than \(LearnedRoutine.parameterValueMaxLength) characters — shorten it to run this routine.")
+            return
+        }
         pendingRun = nil
         closeReview()
-        runRoutine(routine, reviewState.parameterValues)
+        runRoutine(routine, values)
     }
 
     func remove(_ routine: LearnedRoutine) {
         try? store.remove(id: routine.id)
+    }
+
+    func importRoutine(from url: URL) {
+        do {
+            let routine = try store.importRoutine(from: url)
+            setStatus("Imported routine \"\(routine.name)\" — run it from the menu.")
+        } catch {
+            setStatus("The routine could not be imported.")
+        }
+    }
+
+    func exportRoutine(_ routine: LearnedRoutine, to url: URL) {
+        do {
+            try store.exportData(routine).write(to: url, options: .atomic)
+            setStatus("Exported routine \"\(routine.name)\".")
+        } catch {
+            setStatus("The routine could not be exported.")
+        }
     }
 
     func toggleRecording() {
@@ -85,6 +108,14 @@ final class RoutineLibraryController {
             },
             onEventCount: { [weak self] count in
                 self?.reviewState.eventCount = count
+            },
+            onLimitWarning: { [weak self] in
+                self?.setStatus("Recording stops in 30 seconds — finish the step you're on.")
+                self?.speak("Recording stops in 30 seconds.")
+            },
+            onTimeLimit: { [weak self] in
+                self?.setStatus("Recording reached its time limit — reviewing what was captured.")
+                Task { await self?.stopRecordingForReview() }
             }
         )
         self.recorder = recorder
@@ -128,6 +159,7 @@ final class RoutineLibraryController {
             )
             routine.steps[index].summary = "Type text I'll give you into \(field)"
         }
+        routine.provenance = .reviewed
         do {
             try store.save(routine)
             setStatus("Saved routine \"\(routine.name)\" — run it from the menu.")

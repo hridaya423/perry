@@ -13,6 +13,10 @@ final class DemonstrationRecorder {
     private let observe: () async throws -> GuideObservation
     private let bundleIDProvider: () -> String?
     private let onEventCount: (Int) -> Void
+    private let maximumDuration: Duration
+    private let warningLead: Duration
+    private let onLimitWarning: () -> Void
+    private let onTimeLimit: () -> Void
     private var globalMonitors: [Any] = []
     private var localMonitors: [Any] = []
     private var events: [RecordedEvent] = []
@@ -21,15 +25,24 @@ final class DemonstrationRecorder {
     private var lastClickSensitive = false
     private var recording = false
     private var correlationChain: Task<Void, Never>?
+    private var limitTask: Task<Void, Never>?
 
     init(
         observe: @escaping () async throws -> GuideObservation,
         bundleIDProvider: @escaping () -> String?,
-        onEventCount: @escaping (Int) -> Void = { _ in }
+        onEventCount: @escaping (Int) -> Void = { _ in },
+        maximumDuration: Duration = .seconds(600),
+        warningLead: Duration = .seconds(30),
+        onLimitWarning: @escaping () -> Void = {},
+        onTimeLimit: @escaping () -> Void = {}
     ) {
         self.observe = observe
         self.bundleIDProvider = bundleIDProvider
         self.onEventCount = onEventCount
+        self.maximumDuration = maximumDuration
+        self.warningLead = warningLead
+        self.onLimitWarning = onLimitWarning
+        self.onTimeLimit = onTimeLimit
     }
 
     var isRecording: Bool { recording }
@@ -59,6 +72,15 @@ final class DemonstrationRecorder {
                 return event
             }
         ].compactMap { $0 }
+        limitTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: self.maximumDuration - self.warningLead)
+            guard !Task.isCancelled, self.recording else { return }
+            self.onLimitWarning()
+            try? await Task.sleep(for: self.warningLead)
+            guard !Task.isCancelled, self.recording else { return }
+            self.onTimeLimit()
+        }
     }
 
     /// Stops listening and waits for in-flight click correlations to land so
@@ -66,6 +88,8 @@ final class DemonstrationRecorder {
     func stop() async -> RecordedDemonstration? {
         guard recording else { return nil }
         recording = false
+        limitTask?.cancel()
+        limitTask = nil
         globalMonitors.forEach { NSEvent.removeMonitor($0) }
         localMonitors.forEach { NSEvent.removeMonitor($0) }
         globalMonitors = []

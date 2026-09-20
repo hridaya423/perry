@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 import SwiftUI
 import PerryCore
 import PerryOverlay
@@ -861,6 +862,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         recordItem.target = self
         recordDemoMenuItem = recordItem
         watchMenu.addItem(recordItem)
+        let importItem = NSMenuItem(title: "Import routine…", action: #selector(importRoutineAction), keyEquivalent: "")
+        importItem.target = self
+        watchMenu.addItem(importItem)
         watchMenu.addItem(.separator())
         watchItem.submenu = watchMenu
         watchLearnMenu = watchMenu
@@ -960,7 +964,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func refreshWatchLearnMenu(_ menu: NSMenu) {
         recordDemoMenuItem?.title = routineLibrary.isRecording ? "Stop recording & review" : "Record a demonstration…"
-        while menu.items.count > 2 { menu.removeItem(at: menu.items.count - 1) }
+        while menu.items.count > 3 { menu.removeItem(at: menu.items.count - 1) }
         let routines = routineLibrary.routines()
         guard !routines.isEmpty else {
             let empty = NSMenuItem(title: "No routines yet", action: nil, keyEquivalent: "")
@@ -969,11 +973,51 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         for routine in routines {
-            let item = NSMenuItem(title: "Run \"\(routine.name)\"", action: #selector(runRoutineAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = routine.id.uuidString
+            let item = NSMenuItem(title: routine.name, action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            let run = NSMenuItem(title: "Run", action: #selector(runRoutineAction(_:)), keyEquivalent: "")
+            run.target = self
+            run.representedObject = routine.id.uuidString
+            let export = NSMenuItem(title: "Export…", action: #selector(exportRoutineAction(_:)), keyEquivalent: "")
+            export.target = self
+            export.representedObject = routine.id.uuidString
+            let delete = NSMenuItem(title: "Delete", action: #selector(deleteRoutineAction(_:)), keyEquivalent: "")
+            delete.target = self
+            delete.representedObject = routine.id.uuidString
+            submenu.addItem(run)
+            submenu.addItem(export)
+            submenu.addItem(delete)
+            item.submenu = submenu
             menu.addItem(item)
         }
+    }
+
+    @objc private func importRoutineAction() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json, UTType(filenameExtension: "md") ?? .data]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        routineLibrary.importRoutine(from: url)
+    }
+
+    @objc private func exportRoutineAction(_ sender: NSMenuItem) {
+        guard let routine = routineFrom(sender) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(routine.name).md"
+        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        routineLibrary.exportRoutine(routine, to: url)
+    }
+
+    @objc private func deleteRoutineAction(_ sender: NSMenuItem) {
+        guard let routine = routineFrom(sender) else { return }
+        routineLibrary.remove(routine)
+    }
+
+    private func routineFrom(_ sender: NSMenuItem) -> LearnedRoutine? {
+        guard let raw = sender.representedObject as? String,
+              let id = UUID(uuidString: raw) else { return nil }
+        return routineLibrary.routines().first(where: { $0.id == id })
     }
 
     @objc private func everythingAction() {

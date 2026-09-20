@@ -53,13 +53,13 @@ final class LearnedRoutineTests: XCTestCase {
     }
 
     func testRoutineRejectsBlankNameAndOversizedStepList() {
-        XCTAssertThrowsError(try LearnedRoutine(name: "  ", bundleID: "com.example.app", steps: [
+        XCTAssertThrowsError(try LearnedRoutine(name: "  ", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
         ])) { XCTAssertEqual($0 as? RoutineError, .invalidName) }
         let many = (0...LearnedRoutine.maximumSteps).map { _ in
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
         }
-        XCTAssertThrowsError(try LearnedRoutine(name: "Big", bundleID: "com.example.app", steps: many)) {
+        XCTAssertThrowsError(try LearnedRoutine(name: "Big", appBundleIDs: ["com.example.app"], steps: many)) {
             XCTAssertEqual($0 as? RoutineError, .invalidStepCount)
         }
     }
@@ -136,7 +136,7 @@ final class LearnedRoutineTests: XCTestCase {
     }
 
     func testRequiredParametersEnumeratesOnlyParameterSlots() throws {
-        let routine = try LearnedRoutine(name: "Fill", bundleID: "com.example.app", steps: [
+        let routine = try LearnedRoutine(name: "Fill", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Search", target: fieldTarget, action: .click),
             RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "query", prompt: "Search for what?"))),
             RoutineStep(summary: "Type fixed", target: fieldTarget, action: .typeText(.literal("fixed"))),
@@ -147,7 +147,7 @@ final class LearnedRoutineTests: XCTestCase {
     }
 
     func testReplayFillsParametersAndDropsWaitSteps() throws {
-        let routine = try LearnedRoutine(name: "Fill", bundleID: "com.example.app", steps: [
+        let routine = try LearnedRoutine(name: "Fill", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Wait", action: .wait(milliseconds: 400)),
             RoutineStep(summary: "Type into Search", target: fieldTarget, action: .typeText(.parameter(name: "query", prompt: "Search for what?")))
         ])
@@ -163,7 +163,7 @@ final class LearnedRoutineTests: XCTestCase {
     }
 
     func testReplayRefusesMissingAmbiguousAndForeignTargets() throws {
-        let clickRoutine = try LearnedRoutine(name: "Click", bundleID: "com.example.app", steps: [
+        let clickRoutine = try LearnedRoutine(name: "Click", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
         ])
         // Wrong app.
@@ -183,12 +183,105 @@ final class LearnedRoutineTests: XCTestCase {
             routine: clickRoutine, observation: makeObservation(elements: duplicates), taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .ambiguousTarget(step: 0)) }
         // Missing parameter value.
-        let parameterRoutine = try LearnedRoutine(name: "P", bundleID: "com.example.app", steps: [
+        let parameterRoutine = try LearnedRoutine(name: "P", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "q", prompt: "?")))
         ])
         let observation = makeObservation(elements: [makeElement(stableID: "f", role: .textField, label: "Search")])
         XCTAssertThrowsError(try RoutineReplay.plan(
             routine: parameterRoutine, observation: observation, taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .missingParameter("q")) }
+    }
+
+    // MARK: Document contract
+
+    private func makeRoutine(name: String = "Doc") throws -> LearnedRoutine {
+        try LearnedRoutine(name: name, appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click),
+            RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "q", prompt: "?")))
+        ], provenance: .reviewed)
+    }
+
+    func testDocumentRoundTripKeepsMetadataAndHumanEditableBody() throws {
+        let routine = try makeRoutine()
+        let data = try RoutineDocument.encode(routine)
+        let text = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(text.hasPrefix("```json\n"))
+        XCTAssertTrue(text.contains("# Doc"))
+        XCTAssertTrue(text.contains("\"appBundleIDs\""))
+        // Body edits don't affect decode — metadata is authoritative.
+        let edited = text + "\nUser notes here.\n"
+        let decoded = try RoutineDocument.decode(Data(edited.utf8))
+        XCTAssertEqual(decoded, routine)
+        XCTAssertEqual(decoded.provenance, .reviewed)
+        XCTAssertEqual(decoded.requiredParameters.map(\.name), ["q"])
+    }
+
+    func testDocumentRejectsUnknownKeys() throws {
+        let routine = try makeRoutine()
+        let data = try RoutineDocument.encode(routine)
+        let text = String(data: data, encoding: .utf8)!
+        let smuggled = text.replacingOccurrences(of: "\"steps\"", with: "\"runShell\": \"rm -rf ~\", \"steps\"")
+        XCTAssertThrowsError(try RoutineDocument.decode(Data(smuggled.utf8))) {
+            XCTAssertEqual($0 as? RoutineError, .unknownKeys)
+        }
+    }
+
+    func testDocumentRejectsMissingFenceAndOversize() throws {
+        XCTAssertThrowsError(try RoutineDocument.decode(Data("# no fence".utf8))) {
+            XCTAssertEqual($0 as? RoutineError, .invalidDocument)
+        }
+    }
+
+    func testImportDowngradesTestedProvenanceAndWritesMarkdown() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RoutineStore(storageDirectory: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var routine = try makeRoutine(name: "Imported")
+        routine.provenance = .tested
+        let source = directory.appendingPathComponent("source.md")
+        try RoutineDocument.encode(routine).write(to: source)
+        let imported = try store.importRoutine(from: source)
+        XCTAssertEqual(imported.provenance, .reviewed)
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("Routines/\(imported.id.uuidString).md").path
+        ))
+    }
+
+    func testLegacyJSONStoreFilesStillDecode() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let routinesDir = directory.appendingPathComponent("Routines", isDirectory: true)
+        try FileManager.default.createDirectory(at: routinesDir, withIntermediateDirectories: true)
+        // A legacy record used a single bundleID key.
+        let legacy = """
+        {"schemaVersion":1,"id":"\(UUID().uuidString)","name":"Old","bundleID":"com.example.app","steps":[{"summary":"Click Save","target":{"role":"button","label":"Save"},"action":{"click":{}}}],"createdAt":0}
+        """
+        try Data(legacy.utf8).write(to: routinesDir.appendingPathComponent("\(UUID().uuidString).json"))
+        let loaded = RoutineStore(storageDirectory: directory).all()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded[0].bundleID, "com.example.app")
+        XCTAssertEqual(loaded[0].provenance, .reviewed)
+    }
+
+    func testRejectsMoreThanTwentyParameters() {
+        let steps = (0...LearnedRoutine.maximumParameters).map { index in
+            RoutineStep(summary: "Type \(index)", action: .typeText(.parameter(name: "p\(index)", prompt: "?")))
+        }
+        XCTAssertThrowsError(try LearnedRoutine(name: "P", appBundleIDs: ["com.example.app"], steps: steps)) {
+            XCTAssertEqual($0 as? RoutineError, .tooManyParameters)
+        }
+    }
+
+    func testReplaySkipsManualSteps() throws {
+        let routine = try LearnedRoutine(name: "Mix", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click),
+            RoutineStep(summary: "Confirm the dialog yourself", action: .click, requiresHuman: true)
+        ])
+        let observation = makeObservation(elements: [makeElement(stableID: "ax-save", role: .button, label: "Save")])
+        let plan = try RoutineReplay.plan(routine: routine, observation: observation, taskID: TaskID("t"))
+        XCTAssertEqual(plan.actions.count, 1)
     }
 }
