@@ -927,6 +927,97 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(progress.completedTargetIDs.count, GuideProgress.historyLimit)
         XCTAssertEqual(progress.completedInstructions.first, "step 12")
     }
+
+    // MARK: - needsInput continuation
+
+    /// A planner question during `start` pauses instead of finishing; the
+    /// user's answer reaches the next planner call as context, not a command.
+    func testNeedsInputDuringStartPausesAndResumeFeedsAnswer() async throws {
+        let planner = DecisionQueuePlanner(decisions: [
+            .needsInput(prompt: "Which account?", choices: ["Work", "Personal"]),
+            .step(GuideStep(instruction: "click Save", target: .axElement(stableID: "target"))),
+        ])
+        let engine = GuideEngine(
+            planner: planner,
+            observer: StubObserver(snapshots: [snapshot([button("target", label: "Save")])])
+        )
+
+        do {
+            _ = try await engine.start(goal: "save the file")
+            XCTFail("expected needsInput")
+        } catch GuidePlannerError.needsInput(let prompt, let choices) {
+            XCTAssertEqual(prompt, "Which account?")
+            XCTAssertEqual(choices, ["Work", "Personal"])
+        }
+
+        let result = await engine.resume(withAnswer: "Work")
+        guard case .advanced(let step, _) = result else {
+            return XCTFail("expected advance, got \(result)")
+        }
+        XCTAssertEqual(step.instruction, "click Save")
+        XCTAssertNil(planner.recorded.contexts[0].inputAnswer)
+        XCTAssertEqual(planner.recorded.contexts[1].inputAnswer, "Work")
+    }
+
+    /// The answer is consumed once: a later unrelated question does not
+    /// inherit a stale answer.
+    func testConsumedAnswerDoesNotLeakIntoUnrelatedQuestion() async throws {
+        let planner = DecisionQueuePlanner(decisions: [
+            .step(GuideStep(instruction: "open it", target: .axElement(stableID: "target"))),
+            .needsInput(prompt: "Keep going?", choices: ["Yes", "No"]),
+            .step(GuideStep(instruction: "click Done", target: .axElement(stableID: "done"))),
+            .needsInput(prompt: "Really?", choices: ["Yes", "No"]),
+        ])
+        let initial = snapshot([button("target", label: "Open"), button("done", label: "Done")])
+        let engine = GuideEngine(planner: planner, observer: StubObserver(snapshots: [initial]))
+        _ = try await engine.start(goal: "open the file")
+
+        let question = await engine.skip()
+        guard case .needsInput(let prompt, let choices) = question else {
+            return XCTFail("expected needsInput, got \(question)")
+        }
+        XCTAssertEqual(prompt, "Keep going?")
+        XCTAssertEqual(choices, ["Yes", "No"])
+
+        let advanced = await engine.resume(withAnswer: "Yes")
+        guard case .advanced = advanced else {
+            return XCTFail("expected advance, got \(advanced)")
+        }
+        XCTAssertEqual(planner.recorded.contexts[2].inputAnswer, "Yes")
+
+        let unrelated = await engine.skip()
+        guard case .needsInput(let secondPrompt, _) = unrelated else {
+            return XCTFail("expected the unrelated question, got \(unrelated)")
+        }
+        XCTAssertEqual(secondPrompt, "Really?")
+        XCTAssertNil(planner.recorded.contexts[3].inputAnswer, "consumed answer must not leak into a new question")
+    }
+
+    /// Resume is only meaningful when a session is waiting: no goal, no read.
+    func testResumeWithoutSessionDoesNothing() async {
+        let observer = StubObserver(snapshots: [snapshot([button("target")])])
+        let engine = GuideEngine(planner: DecisionQueuePlanner(decisions: []), observer: observer)
+        let result = await engine.resume(withAnswer: "Yes")
+        XCTAssertEqual(result, .notPresenting)
+        let reads = await observer.readCount()
+        XCTAssertEqual(reads, 0)
+    }
+
+    /// A step already on screen cannot be answered over — resume waits for
+    /// the paused states only.
+    func testResumeWhilePresentingDoesNothing() async throws {
+        let planner = DecisionQueuePlanner(decisions: [
+            .step(GuideStep(instruction: "open it", target: .axElement(stableID: "target"))),
+        ])
+        let observer = StubObserver(snapshots: [snapshot([button("target", label: "Open")])])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.resume(withAnswer: "Yes")
+        XCTAssertEqual(result, .notPresenting)
+        let reads = await observer.readCount()
+        XCTAssertEqual(reads, 1)
+    }
 }
 
 private struct ObservationPlanner: GuidePlanner {
@@ -949,13 +1040,19 @@ private struct ObservationPlanner: GuidePlanner {
 private struct DecisionQueuePlanner: GuidePlanner {
     let decisions: [GuideDecision]
     private let position = PositionBox()
+    let recorded = ContextBox()
 
     final class PositionBox: @unchecked Sendable {
         var index = 0
     }
 
+    final class ContextBox: @unchecked Sendable {
+        var contexts: [GuideContext] = []
+    }
+
     func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
         defer { position.index += 1 }
+        recorded.contexts.append(context)
         guard position.index < decisions.count else { return .complete(evidence: .explanationOnly) }
         return decisions[position.index]
     }

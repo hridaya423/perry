@@ -25,6 +25,10 @@ public actor GuideEngine {
     private var hasRepointed = false
     private var goal = ""
     private var context: GuideContext = .empty
+    /// The user's answer to a `needsInput` question — merged into the next
+    /// planner call only, then cleared so a later question can't silently
+    /// reuse it.
+    private var inputAnswer: String?
     private var maximumSteps: Int?
 
     public init(
@@ -150,6 +154,32 @@ public actor GuideEngine {
         return await presentNext(observation: observation)
     }
 
+    /// Continues after a planner `needsInput` pause: the chosen answer joins
+    /// the next planner call alongside a fresh observation. `.idle` is
+    /// accepted because a `needsInput` during `start` throws before any step
+    /// is presented; an idle engine that never started has no goal and is
+    /// rejected.
+    public func resume(withAnswer answer: String) async -> AdvanceResult {
+        guard !goal.isEmpty else { return .notPresenting }
+        switch phase {
+        case .idle, .waitingForUser:
+            break
+        default:
+            return .notPresenting
+        }
+        inputAnswer = answer
+        let observation: GuideObservation
+        do {
+            observation = try await observer.observe()
+        } catch is CancellationError {
+            return .notPresenting
+        } catch {
+            phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
+            return .blocked(reason: "Cua could not read the window to continue: \(error.localizedDescription)")
+        }
+        return await presentNext(observation: observation)
+    }
+
     public func stop() {
         phase = .idle
         currentStep = nil
@@ -157,6 +187,7 @@ public actor GuideEngine {
         actionBaseline = nil
         progress = GuideProgress()
         hasRepointed = false
+        inputAnswer = nil
     }
 
     private func reset(goal: String, context: GuideContext, maximumSteps: Int?) {
@@ -169,6 +200,7 @@ public actor GuideEngine {
         actionBaseline = nil
         progress = GuideProgress()
         hasRepointed = false
+        inputAnswer = nil
     }
 
     private var currentStepIndex: Int? {
@@ -242,11 +274,21 @@ public actor GuideEngine {
             throw GuidePlannerError.blocked("The guide reached its step limit. Goal completion has not been verified.")
         }
         try Task.checkCancellation()
+        // The input answer is consumed once: it answers the question it was
+        // given for, then leaves the context so a later unrelated question
+        // can't silently reuse it.
+        let answer = inputAnswer
+        inputAnswer = nil
         let decision = try await planner.nextStep(
             goal: goal,
             observation: observation,
             progress: progress,
-            context: context
+            context: GuideContext(
+                spatialRegionDescription: context.spatialRegionDescription,
+                memoryContext: context.memoryContext,
+                goalPostcondition: context.goalPostcondition,
+                inputAnswer: answer
+            )
         )
         try Task.checkCancellation()
         switch decision {

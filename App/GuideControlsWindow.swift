@@ -11,13 +11,18 @@ final class GuideControlsState: ObservableObject {
     @Published var stepPosition: Int = 1
     @Published var targetLabel: String?
     @Published var markerCaptions: [String] = []
+    @Published var pendingPrompt: String?
+    @Published var pendingChoices: [String] = []
 
     var mapIsPresented: Bool { !markerCaptions.isEmpty }
+    var inputIsPending: Bool { pendingPrompt != nil }
 
     func reset() {
         stepPosition = 1
         targetLabel = nil
         markerCaptions = []
+        pendingPrompt = nil
+        pendingChoices = []
     }
 }
 
@@ -27,11 +32,14 @@ struct GuideControlsView: View {
     let onSkip: () -> Void
     let onRepoint: () -> Void
     let onSelectMarker: (Int) -> Void
+    let onChooseInput: (Int) -> Void
     let onStop: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            if state.mapIsPresented {
+            if state.inputIsPending {
+                inputContent
+            } else if state.mapIsPresented {
                 mapContent
             } else {
                 stepContent
@@ -113,6 +121,30 @@ struct GuideControlsView: View {
             }
         }
     }
+
+    private var inputContent: some View {
+        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
+            Text(state.pendingPrompt ?? "")
+                .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(state.pendingChoices.indices, id: \.self) { index in
+                Button(state.pendingChoices[index]) { onChooseInput(index) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityHint("Answer the guide's question with this choice")
+            }
+            HStack {
+                Spacer(minLength: 0)
+                Button(role: .destructive) { onStop() } label: {
+                    Text("Stop")
+                }
+                .keyboardShortcut(.cancelAction)
+                .controlSize(.small)
+                .accessibilityHint("Stop the guide")
+            }
+        }
+    }
 }
 
 final class GuideControlsWindow: NSPanel {
@@ -126,6 +158,7 @@ final class GuideControlsWindow: NSPanel {
         onSkip: @escaping () -> Void,
         onRepoint: @escaping () -> Void,
         onSelectMarker: @escaping (Int) -> Void,
+        onChooseInput: @escaping (Int) -> Void,
         onStop: @escaping () -> Void
     ) {
         self.controlsState = state
@@ -151,6 +184,7 @@ final class GuideControlsWindow: NSPanel {
                 onSkip: onSkip,
                 onRepoint: onRepoint,
                 onSelectMarker: onSelectMarker,
+                onChooseInput: onChooseInput,
                 onStop: onStop
             )
         )

@@ -255,11 +255,15 @@ public struct GuideContext: Equatable, Sendable {
     public let spatialRegionDescription: String?
     public let memoryContext: String?
     public let goalPostcondition: GuidePostcondition?
+    /// The user's chosen answer after a `needsInput` pause — set only for the
+    /// planner call that follows the answer, never persisted.
+    public let inputAnswer: String?
 
-    public init(spatialRegionDescription: String? = nil, memoryContext: String? = nil, goalPostcondition: GuidePostcondition? = nil) {
+    public init(spatialRegionDescription: String? = nil, memoryContext: String? = nil, goalPostcondition: GuidePostcondition? = nil, inputAnswer: String? = nil) {
         self.spatialRegionDescription = spatialRegionDescription
         self.memoryContext = memoryContext
         self.goalPostcondition = goalPostcondition
+        self.inputAnswer = inputAnswer
     }
 
     public static let empty = GuideContext()

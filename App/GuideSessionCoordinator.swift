@@ -462,6 +462,7 @@ final class GuideSessionCoordinator {
                 onSkip: { [weak self] in self?.skipGuideStep() },
                 onRepoint: { [weak self] in self?.repointGuideStep() },
                 onSelectMarker: { [weak self] index in self?.selectMarker(index: index) },
+                onChooseInput: { [weak self] index in self?.answerGuideInput(at: index) },
                 onStop: { [weak self] in _ = self?.dismissIfActive() }
             )
         }
@@ -475,6 +476,35 @@ final class GuideSessionCoordinator {
         guideControlsWindow = nil
         guideControlsState.reset()
         guideStepPosition = 0
+    }
+
+    private func presentGuideInput(guideID: UUID, prompt: String, choices: [String]) {
+        guideControlsState.pendingPrompt = prompt
+        guideControlsState.pendingChoices = choices
+        output?.guideSetStatus(prompt)
+        speak(prompt, guideID: guideID)
+        showGuideControls()
+    }
+
+    /// The user picked one of the planner's `needsInput` choices — resume the
+    /// paused engine with the answer so it re-plans from a fresh observation.
+    func answerGuideInput(at index: Int) {
+        guard let guideID = activeGuideID,
+              guideControlsState.pendingChoices.indices.contains(index),
+              let scope = currentGuideScope,
+              let engine = scope.engine,
+              let callbackID = scope.reserveAction() else { return }
+        let answer = guideControlsState.pendingChoices[index]
+        guideControlsState.pendingPrompt = nil
+        guideControlsState.pendingChoices = []
+        let task = Task { @MainActor [weak self, weak scope] in
+            defer { scope?.removeCallback(callbackID) }
+            guard !Task.isCancelled else { return }
+            let result = await engine.resume(withAnswer: answer)
+            guard !Task.isCancelled, let self, self.guideIsCurrent(guideID) else { return }
+            self.handleGuideResult(result, guideID: guideID)
+        }
+        scope.addAction(task, id: callbackID)
     }
 
     private func skipGuideStep() {
@@ -599,7 +629,11 @@ final class GuideSessionCoordinator {
                     } catch GuidePlannerError.explanationEnded {
                         self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
                     } catch GuidePlannerError.needsInput(let prompt, let choices) {
-                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: ([prompt] + choices).joined(separator: "\n"))
+                        // The engine is bound to this scope and paused in
+                        // .idle/.waitingForUser — keep the worker alive so the
+                        // user's answer can resume it.
+                        self.presentGuideInput(guideID: guide.id, prompt: prompt, choices: choices)
+                        for await _ in scope.finishStream { break }
                     } catch {
                         if full {
                             self.failFullGuide(guideID: guide.id, error: error)
@@ -887,7 +921,7 @@ final class GuideSessionCoordinator {
         case .explanationEnded:
             finishGuide(guideID: guideID, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
         case .needsInput(let prompt, let choices):
-            finishGuide(guideID: guideID, outcome: .stopped, summary: ([prompt] + choices).joined(separator: "\n"))
+            presentGuideInput(guideID: guideID, prompt: prompt, choices: choices)
         case .stillWaiting:
             output?.guideSetStatus("Not verified yet. Complete the step, then choose Done.")
         case .blocked(let reason):
@@ -1027,6 +1061,8 @@ final class GuideSessionCoordinator {
         activeGuideInstruction = step.instruction
         output?.guideSetStatus(step.instruction)
         guideControlsState.markerCaptions = []
+        guideControlsState.pendingPrompt = nil
+        guideControlsState.pendingChoices = []
         guideControlsState.stepPosition = guideStepPosition
         guideControlsState.targetLabel = nil
         showGuideControls()
