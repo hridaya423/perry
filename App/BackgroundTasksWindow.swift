@@ -118,6 +118,7 @@ private struct BackgroundTaskRow: View {
     @ObservedObject var backgroundTasks: BackgroundTaskController
     let runtimes: RuntimeCatalog
     @State private var showDeleteConfirmation = false
+    @State private var showUndoConfirmation = false
     @State private var workspaceApproval: TaskRecord?
 
     private var recoveryNotice: BackgroundTaskRecoveryNotice? {
@@ -178,6 +179,18 @@ private struct BackgroundTaskRow: View {
                 backgroundTasks.approveWorkspace(presented)
             }
         }
+        .confirmationDialog(
+            "Undo Perry's changes?",
+            isPresented: $showUndoConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
+                backgroundTasks.undoWorkspaceChanges(record)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched — Undo stops at the first conflict.")
+        }
     }
 
     @ViewBuilder
@@ -234,11 +247,20 @@ private struct BackgroundTaskRow: View {
                     .controlSize(.small)
                     .accessibilityLabel("Stop task \(record.goal)")
             } else {
+                if !undoDescriptions.isEmpty {
+                    Button("Undo…") { showUndoConfirmation = true }
+                        .controlSize(.small)
+                        .accessibilityLabel("Undo Perry's changes for \(record.goal)")
+                }
                 Button("Delete…", role: .destructive) { showDeleteConfirmation = true }
                     .controlSize(.small)
                     .accessibilityLabel("Delete task and workspace \(record.goal)")
             }
         }
+    }
+
+    private var undoDescriptions: [String] {
+        backgroundTasks.undoableDescriptions(for: record)
     }
 
     private var iconName: String {

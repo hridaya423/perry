@@ -88,6 +88,60 @@ final class BackgroundTaskController: ObservableObject {
         messages[id]
     }
 
+    // MARK: Undo
+
+    /// The receipt-derived inverses a terminal task still supports, in the
+    /// order Undo would apply them (last change first). Empty means nothing
+    /// reversible is on record — the row shows no Undo control.
+    func undoableDescriptions(for record: TaskRecord) -> [String] {
+        guard let engine = undoEngine(for: record),
+              let journal = record.workspaceJournal else { return [] }
+        return journal.completed.reversed().compactMap { engine.inverseDescription(for: $0.receipt) }
+    }
+
+    /// Reverses a terminal task's completed workspace effects, last change
+    /// first, stopping at the first conflict so intervening user work is
+    /// never touched. The journal stays the record of what Perry did — an
+    /// already-undone receipt simply conflicts on re-run.
+    func undoWorkspaceChanges(_ record: TaskRecord) {
+        guard controlScope.acceptsControls,
+              let engine = undoEngine(for: record),
+              let journal = record.workspaceJournal,
+              !journal.completed.isEmpty else { return }
+        let receipts = journal.completed.reversed().map(\.receipt)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var undone = 0
+            var stopped: String?
+            for receipt in receipts {
+                do {
+                    _ = try engine.undo(receipt)
+                    undone += 1
+                } catch {
+                    stopped = error.localizedDescription
+                    break
+                }
+            }
+            if let stopped {
+                self.messages[record.id] = undone == 0
+                    ? "Nothing was undone — \(stopped)"
+                    : "Undid \(undone) change\(undone == 1 ? "" : "s"), then stopped: \(stopped)"
+            } else {
+                self.messages[record.id] = "Undid \(undone) change\(undone == 1 ? "" : "s")."
+            }
+        }
+    }
+
+    private func undoEngine(for record: TaskRecord) -> WorkspaceUndoEngine? {
+        guard record.isTerminal, !isRunning(record.id),
+              case .executable(let plan) = record.plan else { return nil }
+        let workspace = plan.actions.lazy.compactMap { action -> URL? in
+            guard case .transform(let workspace, _) = action.operation else { return nil }
+            return workspace
+        }.first
+        return workspace.map { WorkspaceUndoEngine(workspace: $0) }
+    }
+
     // MARK: Records
 
     func refreshRecords() {
