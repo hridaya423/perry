@@ -40,6 +40,8 @@ final class ForegroundTaskController: ObservableObject {
     private let hooks: Hooks
 
     private(set) var activeSupervisor: DoSupervisor?
+    private var handoffToHuman = false
+    private var handoffGoal: String?
     private var doStartTask: Task<Void, Never>?
     private var foregroundActivityGeneration = UUID()
     private var observedForegroundTaskID: UUID?
@@ -474,7 +476,8 @@ final class ForegroundTaskController: ObservableObject {
             onResume: { [weak self] in self?.resume() },
             onStop: { [weak self] in self?.cancel() },
             onRetry: { [weak self] in self?.retry() },
-            onSteer: { [weak self] instruction in self?.steer(instruction) }
+            onSteer: { [weak self] instruction in self?.steer(instruction) },
+            onTakeOver: { [weak self] in self?.takeOver() }
         )
         activityStripWindow?.show(on: NSScreen.main)
 #if DEBUG
@@ -606,9 +609,53 @@ final class ForegroundTaskController: ObservableObject {
 
     func resume() {
         guard let activeSupervisor else { return }
+        if handoffToHuman {
+            continueFromHuman()
+            return
+        }
         guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
         hooks.setStatus("Resuming the task.")
         Task { await activeSupervisor.resume() }
+    }
+
+    /// "I'll do this step": settle at the next boundary, hand control to the
+    /// user, and remember the goal so Continue can replan rather than resume
+    /// a plan that expected to perform the step itself.
+    func takeOver() {
+        guard let activeSupervisor, !handoffToHuman else { return }
+        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        if case .executing(let execution) = sessionController.state {
+            handoffGoal = execution.goal
+        }
+        handoffToHuman = true
+        activityStripState.handedToHuman = true
+        hooks.setStatus("You're in control — do the step yourself, then Continue with Perry replans the rest.")
+        voice.speak("You're in control. Choose Continue with Perry when you're done.")
+        Task { await activeSupervisor.pause() }
+    }
+
+    /// After a human takeover, resume means a fresh plan — never the stale
+    /// plan that expected to perform the step itself. The old run is
+    /// cancelled through the normal settle path, then the same goal replans
+    /// against the current screen.
+    private func continueFromHuman() {
+        guard handoffToHuman, let activeSupervisor, let goal = handoffGoal else { return }
+        handoffToHuman = false
+        handoffGoal = nil
+        activityStripState.handedToHuman = false
+        hooks.setStatus("Replanning the remaining work from the current screen.")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await activeSupervisor.cancel()
+            for _ in 0..<100 where self.activeSupervisor != nil {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard self.activeSupervisor == nil else {
+                hooks.setStatus("Perry is still settling the paused task — try Continue again in a moment.")
+                return
+            }
+            self.start(goal: goal)
+        }
     }
 
     func cancel() {
@@ -812,6 +859,9 @@ final class ForegroundTaskController: ObservableObject {
         }
         voice.deliverVoiceReply(summary)
         activeSupervisor = nil
+        handoffToHuman = false
+        handoffGoal = nil
+        activityStripState.handedToHuman = false
         voice.refreshWakeWordListener()
         let generation = foregroundActivityGeneration
         scheduleActivityRetirement(taskID: taskID, generation: generation, after: 8)

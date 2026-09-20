@@ -35,9 +35,16 @@ final class AgentActivityStripState: ObservableObject {
     @Published var startedAt: Date?
     @Published var isExpanded = false
     @Published var canRetry = false
+    /// The user took over mid-task — resume means replan, not restart the
+    /// stale plan that expected to do the step itself.
+    @Published var handedToHuman = false
 
     var steeringIsAvailable: Bool {
         phase == .working || phase == .paused
+    }
+
+    var takeOverIsAvailable: Bool {
+        phase == .working
     }
 
     var stopIsAvailable: Bool {
@@ -164,6 +171,7 @@ final class AgentActivityStripState: ObservableObject {
         startedAt = nil
         isExpanded = false
         canRetry = false
+        handedToHuman = false
     }
 
     private static func verificationLabel(for evidence: ExecutionVerificationEvidence?) -> String? {
@@ -182,6 +190,7 @@ struct AgentActivityStripView: View {
     let onStop: () -> Void
     let onRetry: () -> Void
     let onSteer: (String) -> Void
+    let onTakeOver: () -> Void
     let onToggleExpanded: () -> Void
 
     @State private var steering = ""
@@ -430,8 +439,16 @@ struct AgentActivityStripView: View {
                     Image(systemName: "play.fill")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Resume task")
-                .help("Resume the task")
+                .accessibilityLabel(state.handedToHuman ? "Continue with Perry" : "Resume task")
+                .help(state.handedToHuman ? "Replan the remaining work from the current screen" : "Resume the task")
+            }
+            if state.takeOverIsAvailable {
+                Button { onTakeOver() } label: {
+                    Image(systemName: "person.fill")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("I'll do this step")
+                .help("Pause so you can do the step yourself — Perry replans the rest")
             }
             if state.retryIsAvailable {
                 Button { onRetry() } label: {
@@ -594,7 +611,8 @@ final class AgentActivityStripWindow: NSPanel {
         onResume: @escaping () -> Void,
         onStop: @escaping () -> Void,
         onRetry: @escaping () -> Void,
-        onSteer: @escaping (String) -> Void
+        onSteer: @escaping (String) -> Void,
+        onTakeOver: @escaping () -> Void = {}
     ) {
         self.state = state
         self.onStop = onStop
@@ -611,7 +629,7 @@ final class AgentActivityStripWindow: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         ignoresMouseEvents = false
-        contentView = NSHostingView(rootView: AgentActivityStripView(state: state, onPause: onPause, onResume: onResume, onStop: onStop, onRetry: onRetry, onSteer: onSteer, onToggleExpanded: { [weak self] in self?.setExpanded(!(self?.state.isExpanded ?? false)) }))
+        contentView = NSHostingView(rootView: AgentActivityStripView(state: state, onPause: onPause, onResume: onResume, onStop: onStop, onRetry: onRetry, onSteer: onSteer, onTakeOver: onTakeOver, onToggleExpanded: { [weak self] in self?.setExpanded(!(self?.state.isExpanded ?? false)) }))
     }
 
     func show(on screen: NSScreen?) {
