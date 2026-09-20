@@ -56,9 +56,9 @@ private struct DebugCursorGallery: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                section(title: "Light", background: Color(white: 0.96))
-                section(title: "Dark", background: Color(white: 0.14))
-                section(title: "Busy", background: nil)
+                section(title: "Light", background: Color(white: 0.96), scheme: .light)
+                section(title: "Dark", background: Color(white: 0.14), scheme: .dark)
+                section(title: "Busy", background: nil, scheme: .dark)
             }
             .padding(24)
         }
@@ -66,13 +66,16 @@ private struct DebugCursorGallery: View {
     }
 
     @ViewBuilder
-    private func section(title: String, background: Color?) -> some View {
+    private func section(title: String, background: Color?, scheme: ColorScheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.headline)
             HStack(alignment: .top, spacing: 8) {
                 ForEach(states) { state in
                     VStack(spacing: 8) {
+                        Text(state.title)
+                            .font(.caption.weight(.semibold))
+                            .frame(height: 14)
                         row(title: "Faceted") {
                             PerryGlassCursorView(animation: state.animation, size: 44, variant: .faceted)
                         }
@@ -95,6 +98,7 @@ private struct DebugCursorGallery: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .environment(\.colorScheme, scheme)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Cursor prototypes on \(title.lowercased()) background")
