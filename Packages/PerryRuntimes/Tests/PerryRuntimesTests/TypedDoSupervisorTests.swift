@@ -123,7 +123,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         )
         let receivedAction = await executor.received
 
-        XCTAssertEqual(outcome, .blocked(reason: "user denied Write report"))
+        XCTAssertEqual(outcome, .blocked(reason: "user denied the execution plan"))
         XCTAssertNil(receivedAction)
     }
 
@@ -171,6 +171,45 @@ final class TypedDoSupervisorTests: XCTestCase {
         let cancellationObserved = await executor.cancellationObserved
         XCTAssertTrue(reason.contains("exceeded"))
         XCTAssertTrue(cancellationObserved)
+    }
+
+    func testRehearsalPreviewsEveryActionTargetBeforeDispatch() async throws {
+        let first = try makeAction()
+        let second = try ExecutableAction(
+            id: ActionID("rename-report"),
+            summary: "Rename report",
+            approvalRequirement: .action,
+            operation: .transform(
+                workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
+                command: .rename(path: "report.txt", destination: "done.txt")
+            ),
+            postcondition: .renamedItem(device: 1, inode: 2)
+        )
+        let plan = try PerryRuntimes.ExecutionPlan(
+            taskID: TaskID("typed-supervisor-task"),
+            goal: "Write report",
+            actions: [first, second],
+            requestedScopes: [.workspaceWrite]
+        )
+        let confirmer = RehearsalRecordingConfirmer()
+        let executor = RecordingTypedActionExecutor()
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier()
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
+        let requests = await confirmer.requests
+
+        XCTAssertEqual(outcome, .completed(stepsRun: 2))
+        let rehearsal = try XCTUnwrap(requests.first)
+        XCTAssertEqual(rehearsal.actionSummary, "Write report")
+        XCTAssertTrue(rehearsal.reason.contains("1. Write report — creates report.txt"))
+        XCTAssertTrue(rehearsal.reason.contains("2. Rename report — renames report.txt → done.txt"))
+        XCTAssertTrue(rehearsal.reversible)
+        // Rehearsal, then one card per .action step.
+        XCTAssertEqual(requests.count, 3)
     }
 
     func testTypedRunCancellationDuringVerificationReturnsPromptlyWithoutRecording() async throws {
@@ -243,6 +282,15 @@ private actor StubTypedConfirmer: Confirmer {
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
         approved
+    }
+}
+
+private actor RehearsalRecordingConfirmer: Confirmer {
+    private(set) var requests: [ConfirmationRequest] = []
+
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
+        requests.append(request)
+        return true
     }
 }
 

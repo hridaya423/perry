@@ -101,6 +101,44 @@ extension ExecutableAction.Operation {
         case .askUser: return .askUser
         }
     }
+
+    /// One honest line about where this operation lands — the rehearsal card
+    /// shows the real typed target, not the planner's prose summary.
+    public var rehearsalTarget: String {
+        switch self {
+        case .computer(let window, _):
+            return "controls \(window.bundleID)"
+        case .integration(let accountID, let command):
+            return "\(command.rehearsalService) as \(accountID)"
+        case .shell(let workspace, let executable, _, _):
+            return "runs \(executable.path.lastPathComponent) in \(workspace.lastPathComponent)"
+        case .transform(_, let command):
+            return command.rehearsalTarget
+        case .askUser(let prompt, _):
+            return "asks you: \(prompt)"
+        }
+    }
+}
+
+extension ExecutableAction.FileTransform {
+    var rehearsalTarget: String {
+        switch self {
+        case .createUTF8File(let path, _): return "creates \(path)"
+        case .createDirectory(let path): return "creates folder \(path)"
+        case .rename(let path, let destination): return "renames \(path) → \(destination)"
+        case .moveToTrash(let path): return "trashes \(path)"
+        }
+    }
+}
+
+extension ExecutableAction.IntegrationCommand {
+    var rehearsalService: String {
+        switch self {
+        case .slackSendMessage: return "Slack"
+        case .notionCreatePage, .notionUpdatePage, .notionAppendBlock: return "Notion"
+        case .linearUpdateIssue: return "Linear"
+        }
+    }
 }
 
 /// Pre-publication gate: a plan may only reach a queue or a supervisor when

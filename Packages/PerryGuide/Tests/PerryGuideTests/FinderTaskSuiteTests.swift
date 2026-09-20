@@ -66,7 +66,8 @@ final class FinderTaskSuiteTests: XCTestCase {
             return XCTFail("expected completion, got \(outcome)")
         }
         XCTAssertEqual(steps, 3)
-        XCTAssertEqual(confirmer.requestCount, 3)
+        // One plan rehearsal plus a per-action card for each .action step.
+        XCTAssertEqual(confirmer.requestCount, 4)
         XCTAssertTrue(try scenario.verify(workDirectory))
 
         let entries = await activityLog.snapshot()

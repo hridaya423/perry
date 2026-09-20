@@ -120,7 +120,6 @@ private enum ActionExecutionOutcome {
 }
 
 private enum PlanApprovalResult {
-    case notRequired
     case approved(tier: TrustTier)
     case denied
     case cancelled
@@ -290,9 +289,11 @@ public actor DoSupervisor {
 
             if !planApprovalChecked {
                 switch await requestTypedPlanApproval(for: plan, targetWindow: targetWindow) {
-                case .notRequired:
-                    break
                 case .approved:
+                    // The rehearsal doubles as the .plan-scope grant only
+                    // when an action actually requires it; minting one for a
+                    // plan with no .plan action is a scope mismatch.
+                    guard plan.actions.contains(where: { $0.approvalRequirement == .plan }) else { break }
                     do {
                         planApprovalGrant = try ExecutionApprovalGrant(plan: plan, scope: .plan)
                     } catch {
@@ -430,18 +431,22 @@ public actor DoSupervisor {
         for plan: ExecutionPlan,
         targetWindow: WindowContext?
     ) async -> PlanApprovalResult {
-        guard plan.actions.contains(where: { $0.approvalRequirement == .plan }) else {
-            return .notRequired
-        }
+        // Ghost rehearsal: every typed plan is previewed — real actions and
+        // targets, not planner prose — before the first dispatch. Approving
+        // the preview doubles as the .plan-scope grant; per-action .action
+        // requirements still confirm individually at their step.
         let tier = plan.actions
             .map { $0.policy.trustTier }
             .max() ?? .green
         guard transition(.requestConfirmation) else { return .denied }
         let planTarget = targetWindow.map { "\($0.title) (\($0.appBundleID))" }
+        let steps = plan.actions.enumerated().map { index, action in
+            "\(index + 1). \(action.summary) — \(action.operation.rehearsalTarget)"
+        }.joined(separator: "\n")
         let request = ConfirmationRequest(
             actionSummary: plan.goal,
             tier: tier,
-            reason: "execution plan requires explicit approval",
+            reason: "planned steps:\n\(steps)",
             targetSummary: planTarget,
             requiredText: tier >= .red ? (planTarget ?? plan.goal) : nil,
             reversible: plan.actions.allSatisfy { $0.policy.reversible }
