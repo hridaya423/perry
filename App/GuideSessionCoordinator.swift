@@ -29,6 +29,13 @@ protocol GuideSessionOutput: AnyObject {
     func guideClearPresentation()
     func guideClearHighlight()
     func guideClearFullPath()
+    /// The user asked Perry to finish the guided task itself — shared
+    /// control, one direction. The coordinator hands over the same goal.
+    func guideRequestTakeOver(goal: String)
+}
+
+extension GuideSessionOutput {
+    func guideRequestTakeOver(goal: String) {}
 }
 
 @MainActor
@@ -463,6 +470,7 @@ final class GuideSessionCoordinator {
                 onRepoint: { [weak self] in self?.repointGuideStep() },
                 onSelectMarker: { [weak self] index in self?.selectMarker(index: index) },
                 onChooseInput: { [weak self] index in self?.answerGuideInput(at: index) },
+                onTakeOver: { [weak self] in self?.takeOverGuide() },
                 onStop: { [weak self] in _ = self?.dismissIfActive() }
             )
         }
@@ -476,6 +484,15 @@ final class GuideSessionCoordinator {
         guideControlsWindow = nil
         guideControlsState.reset()
         guideStepPosition = 0
+    }
+
+    /// "Do it" on the guide controls: the user hands the remaining work to
+    /// Perry. The shell tears the guide down and starts the same goal as a
+    /// Do task — no restart, no re-typing.
+    func takeOverGuide() {
+        guard activeGuideID != nil,
+              case .guiding(let guide) = sessionController.state else { return }
+        output?.guideRequestTakeOver(goal: guide.goal)
     }
 
     private func presentGuideInput(guideID: UUID, prompt: String, choices: [String]) {

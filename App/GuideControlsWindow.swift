@@ -33,6 +33,7 @@ struct GuideControlsView: View {
     let onRepoint: () -> Void
     let onSelectMarker: (Int) -> Void
     let onChooseInput: (Int) -> Void
+    let onTakeOver: () -> Void
     let onStop: () -> Void
 
     var body: some View {
@@ -79,6 +80,8 @@ struct GuideControlsView: View {
                     .accessibilityHint("Skip this step")
                 Button("Re-point") { onRepoint() }
                     .accessibilityHint("Find the target again")
+                Button("Do it") { onTakeOver() }
+                    .accessibilityHint("Hand the rest of this task to Perry")
                 Spacer(minLength: 0)
                 Button(role: .destructive) { onStop() } label: {
                     Text("Stop")
@@ -159,6 +162,7 @@ final class GuideControlsWindow: NSPanel {
         onRepoint: @escaping () -> Void,
         onSelectMarker: @escaping (Int) -> Void,
         onChooseInput: @escaping (Int) -> Void,
+        onTakeOver: @escaping () -> Void,
         onStop: @escaping () -> Void
     ) {
         self.controlsState = state
@@ -185,6 +189,7 @@ final class GuideControlsWindow: NSPanel {
                 onRepoint: onRepoint,
                 onSelectMarker: onSelectMarker,
                 onChooseInput: onChooseInput,
+                onTakeOver: onTakeOver,
                 onStop: onStop
             )
         )

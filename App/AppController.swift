@@ -1825,6 +1825,11 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
         overlayState.visualGuidanceOverlays = []
     }
 
+    func guideRequestTakeOver(goal: String) {
+        _ = guideCoordinator.dismissIfActive()
+        foreground.start(goal: goal)
+    }
+
     func guideTargetHint() -> CuaTargetHint {
         probe.currentTargetHint()
     }
