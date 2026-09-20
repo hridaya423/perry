@@ -8,11 +8,13 @@ struct SessionPanelView: View {
     @ObservedObject var controller: AppController
 
     private enum InvocationMode: String, CaseIterable {
+        case ask
         case guide
         case do_
 
         var prompt: String {
             switch self {
+            case .ask: return "What should Perry explain?"
             case .guide: return "What should Perry show you?"
             case .do_: return "What should Perry take off your hands?"
             }
@@ -20,13 +22,14 @@ struct SessionPanelView: View {
 
         var subtitle: String {
             switch self {
+            case .ask: return "here. I look, I tell you."
             case .guide: return "here. I point, you click."
             case .do_: return "here. I work, you supervise."
             }
         }
     }
 
-    @State private var mode = InvocationMode.guide
+    @State private var mode = InvocationMode.ask
     @State private var text = ""
     @State private var runInBackground = false
     @State private var runtimeID = RuntimeChoice.automaticID
@@ -110,14 +113,15 @@ struct SessionPanelView: View {
                 .accessibilityHint("Dismiss Perry's request panel")
             }
 
-            Picker("Guide or Do", selection: $mode) {
+            Picker("Ask, Guide, or Do", selection: $mode) {
+                Text("Ask").tag(InvocationMode.ask)
                 Text("Guide").tag(InvocationMode.guide)
                 Text("Do").tag(InvocationMode.do_)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .disabled(controller.isTaskActive)
-            .accessibilityLabel("Guide or Do")
+            .accessibilityLabel("Ask, Guide, or Do")
 
             HStack(spacing: PerryTheme.Spacing.control) {
                 TextField(mode.prompt, text: $text)
@@ -237,6 +241,24 @@ struct SessionPanelView: View {
                     }
                 }
 
+                if case .asking(let ask) = controller.sessionState {
+                    VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
+                        if let answer = ask.answerText {
+                            Text(answer)
+                                .font(PerryTheme.Typography.panelBody)
+                                .foregroundStyle(PerryTheme.Colors.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityLabel("Perry's answer")
+                        }
+                        if let followUp = ask.followUpPrompt {
+                            Text("Try: \(followUp)")
+                                .font(PerryTheme.Typography.panelMetadata)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
                 Button { submit() } label: {
                     Text(startTitle)
                         .font(PerryTheme.Typography.action)
@@ -260,6 +282,9 @@ struct SessionPanelView: View {
 
     private var startTitle: String {
         switch mode {
+        case .ask:
+            if case .asking = controller.sessionState { return "Ask follow-up" }
+            return "Ask"
         case .guide: return "Start guiding"
         case .do_: return runInBackground ? "Queue task" : "Start"
         }
@@ -279,22 +304,32 @@ struct SessionPanelView: View {
         case .dismiss:
             controller.dismiss()
         case .doTask(let goal):
-            dispatchDo(goal)
+            if mode == .ask {
+                controller.ask(question: raw)
+            } else {
+                dispatchDo(goal)
+            }
         case .showEverything(let goal):
             if mode == .do_ {
                 dispatchDo(raw)
+            } else if mode == .ask {
+                controller.ask(question: raw)
             } else {
                 Task { await controller.showEverything(goal: goal) }
             }
         case .guide(let goal):
             if mode == .do_ {
                 dispatchDo(raw)
+            } else if mode == .ask {
+                controller.ask(question: raw)
             } else {
                 controller.startGuiding(goal: goal)
             }
         case .notAGuideRequest:
             if mode == .do_ {
                 dispatchDo(raw)
+            } else if mode == .ask {
+                controller.ask(question: raw)
             } else {
                 controller.startGuiding(goal: raw)
             }

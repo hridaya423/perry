@@ -25,6 +25,13 @@ public struct SpatialReference: Equatable, Sendable {
     public let observationID: String
     public let target: Target
     public let frame: AXElementFrame
+
+    public init(caption: String, observationID: String, target: Target, frame: AXElementFrame) {
+        self.caption = caption
+        self.observationID = observationID
+        self.target = target
+        self.frame = frame
+    }
 }
 
 public struct SpatialAnswer: Equatable, Sendable {
@@ -32,6 +39,13 @@ public struct SpatialAnswer: Equatable, Sendable {
     public let references: [SpatialReference]
     public let followUp: String?
     public let observationID: String
+
+    public init(text: String, references: [SpatialReference], followUp: String?, observationID: String) {
+        self.text = text
+        self.references = references
+        self.followUp = followUp
+        self.observationID = observationID
+    }
 
     public static func decode(_ response: String, observation: GuideObservation) throws -> SpatialAnswer {
         try GuideTargetValidator.requireUnprotected(observation)

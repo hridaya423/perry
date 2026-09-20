@@ -150,6 +150,24 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     )
 #endif
+    lazy var askController = AskSessionController(
+        sessionController: sessionController,
+        workers: workers,
+        overlayState: overlayState,
+        output: self,
+        context: self,
+        answererFactory: { [weak self] in
+            guard let answerer = self?.runtimes.makeSpatialAnswerer() else { return nil }
+            return { question, observation, conversation, spatial in
+                try await answerer.answer(
+                    question: question,
+                    observation: observation,
+                    conversation: conversation,
+                    spatialRegionDescription: spatial
+                )
+            }
+        }
+    )
     lazy var voice = VoiceController(
         overlayState: overlayState,
         workers: workers,
@@ -743,6 +761,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             foreground.cancelInvocationIfCurrent(invocation.id)
         }
         sessionStatus = "Ready when you are."
+        askController.cancel()
         guideCoordinator.stopClickObservation()
         guideCoordinator.cancelPendingDemoInputs()
         spatialMonitor.stop()
@@ -795,6 +814,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         let menu = NSMenu()
         menu.addItem(withTitle: "Wake Perry (⌥⌘P)", action: #selector(wakeAction), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Ask Perry…", action: #selector(askPromptAction), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Guide me…", action: #selector(guidePromptAction), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Show full guide", action: #selector(everythingAction), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Do a task…", action: #selector(doPromptAction), keyEquivalent: "").target = self
@@ -860,6 +880,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func refreshMemoryMenuTitle() async {
         let current = await memoryStore.currentConfiguration()
         memoryMenuItem?.title = "Memory: \(current.enabled ? "on" : "off")"
+    }
+
+    @objc private func askPromptAction() {
+        wake()
+        voice.speak("What are you curious about?")
     }
 
     @objc private func guidePromptAction() {
@@ -1103,6 +1128,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func prepareForTermination() async throws {
         backgroundTasks.closeControls()
+        askController.cancel()
         guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
         voice.cancelInput()
@@ -1123,6 +1149,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func stopWorkForErasure() async {
         demoDirector.cancel()
+        askController.cancel()
         await guideCoordinator.stopForErasure()
         spatialMonitor.stop()
         foreground.cancelStartTask()
@@ -1201,6 +1228,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func startGuiding(goal: String) {
         guideCoordinator.startGuiding(goal: goal)
+    }
+
+    func ask(question: String) {
+        askController.submit(question: question)
     }
 
     func advanceGuide() {
@@ -1350,6 +1381,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func cancelPendingDemoInputs() {
+        askController.cancel()
         if case .invoking(let invocation) = sessionState {
             foreground.cancelInvocationIfCurrent(invocation.id)
         }

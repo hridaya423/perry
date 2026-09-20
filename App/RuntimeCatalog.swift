@@ -201,4 +201,19 @@ final class RuntimeCatalog: ObservableObject {
             skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory)
         )
     }
+
+    /// Ask shares the configured direct provider with Guide; without one the
+    /// controller answers with a literal, clearly-labelled screen listing.
+    func makeSpatialAnswerer() -> RuntimeSpatialAnswerer? {
+        guard let endpoint = Self.currentBYOKVisionEndpoint(),
+              let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
+              !key.isEmpty else { return nil }
+        let provider = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) ?? .openAI
+        return RuntimeSpatialAnswerer(
+            client: DirectProviderClient(
+                configuration: DirectProviderConfiguration(provider: provider, model: endpoint.model, baseURL: endpoint.baseURL),
+                apiKeyProvider: { key }
+            )
+        )
+    }
 }

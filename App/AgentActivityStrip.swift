@@ -63,6 +63,10 @@ final class AgentActivityStripState: ObservableObject {
             phase = .working
             title = "Perry is guiding"
             detail = "Waiting for the next step"
+        case .asking(let ask):
+            phase = .working
+            title = "Answering a question"
+            detail = ask.question
         case .executing(let execution):
             startedAt = execution.startedAt
             progress = execution.progress

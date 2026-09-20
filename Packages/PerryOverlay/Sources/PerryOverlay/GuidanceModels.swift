@@ -166,7 +166,7 @@ extension PerryGuidanceOverlay {
         )
     }
 
-    static func rectangle(
+    public static func rectangle(
         rect: CGRect,
         accentHex: String? = nil,
         lineWidth: Double = 4,

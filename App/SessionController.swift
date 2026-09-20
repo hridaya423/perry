@@ -24,6 +24,19 @@ struct GuideSessionState: Equatable {
     var actionableStepIDs: Set<UUID> = []
 }
 
+/// Read-only question session. Ask never plans or performs actions; it only
+/// observes one window, answers, and holds bounded follow-up context until the
+/// session is dismissed.
+struct AskSessionState: Equatable {
+    let id: UUID
+    let startedAt: Date
+    var question: String
+    var answerText: String?
+    var followUpPrompt: String?
+    var turnCount = 0
+    var isWorking = false
+}
+
 enum ExecutionPhase: Equatable {
     case starting
     case running
@@ -234,6 +247,7 @@ enum SessionState: Equatable {
     case idle
     case invoking(InvocationState)
     case guiding(GuideSessionState)
+    case asking(AskSessionState)
     case executing(ExecutionSessionState)
     case reporting(ReportState)
     case failed(SessionFailure)
@@ -298,6 +312,26 @@ final class SessionController: ObservableObject {
 
     func startExecution(_ execution: ExecutionSessionState) throws {
         try startExecution(execution, attemptID: try invokingAttemptID())
+    }
+
+    func startAsk(_ ask: AskSessionState) throws {
+        try startAsk(ask, attemptID: try invokingAttemptID())
+    }
+
+    func startAsk(_ ask: AskSessionState, attemptID: UUID) throws {
+        guard case .invoking(let invocation) = state, invocation.id == attemptID else {
+            throw IllegalSessionTransitionError(state: state, operation: "start ask")
+        }
+        state = .asking(ask)
+    }
+
+    /// Mutates the live ask session (new question, delivered answer, working
+    /// flag). No-op outside `.asking` so late provider callbacks cannot
+    /// resurrect a dismissed session.
+    func updateAsk(_ update: (inout AskSessionState) -> Void) {
+        guard case .asking(var ask) = state else { return }
+        update(&ask)
+        state = .asking(ask)
     }
 
     func startExecution(_ execution: ExecutionSessionState, attemptID: UUID) throws {
@@ -558,7 +592,7 @@ final class SessionController: ObservableObject {
 
     func fail(_ failure: SessionFailure) throws {
         switch state {
-        case .invoking, .guiding, .executing:
+        case .invoking, .guiding, .asking, .executing:
             state = .failed(failure)
         case .idle, .reporting, .failed:
             throw IllegalSessionTransitionError(state: state, operation: "fail")
@@ -601,7 +635,7 @@ final class SessionController: ObservableObject {
             state = .idle
         case .executing:
             throw IllegalSessionTransitionError(state: state, operation: "complete dismissal")
-        case .idle, .invoking, .guiding:
+        case .idle, .invoking, .guiding, .asking:
             state = .idle
         }
     }
