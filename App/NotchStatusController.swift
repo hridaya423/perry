@@ -1,17 +1,27 @@
 import AppKit
-import SwiftUI
 
 /// A glanceable pill that drops below the camera notch with live status —
 /// only while a demonstration is recording or background tasks are active.
 /// Hidden whenever there's nothing to say, and skipped entirely on Macs
 /// without a notch. Status only: it never intercepts input.
+///
+/// Rendered in plain AppKit, not NSHostingView: a hosting view attached to a
+/// borderless panel can re-invalidate the window's size extrema every
+/// constraint pass until AppKit throws. A fixed NSStackView can't.
 @MainActor
 final class NotchStatusController {
     static let enabledKey = "perry.notchStatus.enabled"
 
     private var window: NSPanel?
+    private var stack: NSStackView?
     private var isRecording = false
     private var backgroundCount = 0
+
+    private let dot = NSView()
+    private let recordingLabel = NSTextField(labelWithString: "Recording")
+    private let separator = NSTextField(labelWithString: "·")
+    private let gear = NSImageView()
+    private let countLabel = NSTextField(labelWithString: "")
 
     var isEnabled: Bool {
         get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
@@ -48,24 +58,23 @@ final class NotchStatusController {
             hide()
             return
         }
-        let view = NotchStatusPill(isRecording: isRecording, backgroundCount: backgroundCount)
-        let panel = window ?? Self.makePanel()
-        let hosting: NSHostingView<NotchStatusPill>
-        if let existing = panel.contentView as? NSHostingView<NotchStatusPill> {
-            existing.rootView = view
-            hosting = existing
-        } else {
-            hosting = NSHostingView(rootView: view)
-            // The frame is set explicitly from fittingSize — the hosting view
-            // must not negotiate window size extrema or its sizing loop can
-            // re-invalidate constraints every pass (AppKit throws).
-            hosting.sizingOptions = []
-            panel.contentView = hosting
+        let panel = window ?? Self.makePanel(controller: self)
+        guard let stack else {
+            hide()
+            return
         }
-        // sizingOptions = [] keeps the attached view out of window extrema
-        // negotiation, but fittingSize rides the same machinery and
-        // under-measures — a detached view with defaults measures fine.
-        let size = NSHostingView(rootView: view).fittingSize
+        dot.isHidden = !isRecording
+        recordingLabel.isHidden = !isRecording
+        separator.isHidden = !(isRecording && backgroundCount > 0)
+        gear.isHidden = backgroundCount == 0
+        countLabel.isHidden = backgroundCount == 0
+        countLabel.stringValue = backgroundCount == 1 ? "1 task" : "\(backgroundCount) tasks"
+        var parts: [String] = []
+        if isRecording { parts.append("Recording a demonstration") }
+        if backgroundCount > 0 { parts.append("\(backgroundCount) background \(backgroundCount == 1 ? "task" : "tasks")") }
+        panel.contentView?.setAccessibilityLabel(parts.joined(separator: ", "))
+
+        let size = stack.fittingSize
         let drop = screen.safeAreaInsets.top + 4
         panel.setFrame(
             NSRect(
@@ -76,11 +85,12 @@ final class NotchStatusController {
             ),
             display: true
         )
+        panel.contentView?.layer?.cornerRadius = size.height / 2
         window = panel
         panel.orderFrontRegardless()
     }
 
-    private static func makePanel() -> NSPanel {
+    private static func makePanel(controller: NotchStatusController) -> NSPanel {
         let panel = NSPanel(
             contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -93,45 +103,49 @@ final class NotchStatusController {
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
-        return panel
-    }
-}
 
-private struct NotchStatusPill: View {
-    let isRecording: Bool
-    let backgroundCount: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if isRecording {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 7, height: 7)
-                Text("Recording")
-                    .foregroundStyle(.primary)
-            }
-            if isRecording && backgroundCount > 0 {
-                Text("·").foregroundStyle(.secondary)
-            }
-            if backgroundCount > 0 {
-                Image(systemName: "gearshape.2")
-                    .imageScale(.small)
-                Text(backgroundCount == 1 ? "1 task" : "\(backgroundCount) tasks")
-                    .foregroundStyle(.primary)
-            }
+        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        controller.dot.wantsLayer = true
+        controller.dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        controller.dot.layer?.cornerRadius = 3.5
+        controller.dot.translatesAutoresizingMaskIntoConstraints = false
+        controller.dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
+        controller.dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
+        for label in [controller.recordingLabel, controller.separator, controller.countLabel] {
+            label.font = font
+            label.textColor = .labelColor
         }
-        .font(.system(size: 11, weight: .medium))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(.ultraThinMaterial, in: Capsule())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(label)
-    }
+        controller.separator.textColor = .secondaryLabelColor
+        controller.gear.image = NSImage(systemSymbolName: "gearshape.2", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
+        controller.gear.contentTintColor = .labelColor
 
-    private var label: String {
-        var parts: [String] = []
-        if isRecording { parts.append("Recording a demonstration") }
-        if backgroundCount > 0 { parts.append("\(backgroundCount) background \(backgroundCount == 1 ? "task" : "tasks")") }
-        return parts.joined(separator: ", ")
+        let stack = NSStackView(views: [
+            controller.dot, controller.recordingLabel, controller.separator, controller.gear, controller.countLabel
+        ])
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        stack.alignment = .centerY
+        stack.edgeInsets = NSEdgeInsets(top: 5, left: 10, bottom: 5, right: 10)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        controller.stack = stack
+
+        let capsule = NSVisualEffectView()
+        capsule.material = .hudWindow
+        capsule.state = .active
+        capsule.blendingMode = .behindWindow
+        capsule.wantsLayer = true
+        capsule.layer?.masksToBounds = true
+        capsule.setAccessibilityElement(true)
+        capsule.setAccessibilityRole(.group)
+        capsule.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: capsule.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: capsule.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: capsule.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: capsule.trailingAnchor)
+        ])
+        panel.contentView = capsule
+        return panel
     }
 }
