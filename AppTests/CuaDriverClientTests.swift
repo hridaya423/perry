@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 import XCTest
 import PerryCore
+import PerryGuide
 import PerryRuntimes
 @testable import Perry
 
@@ -102,7 +103,11 @@ final class CuaDriverClientTests: XCTestCase {
                 elif [ "$name" = "list_windows" ]; then
                     printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true},{"bundle_id":"com.example.Editor","pid":4242,"window_id":1002,"title":"Editor - Other","bounds":{"x":40,"y":40,"width":1200,"height":900},"z_index":10,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id"
                 elif [ "$name" = "get_window_state" ]; then
-                    printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-1","elements":[{"element_token":"s1","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
+                    if [ -f "$root/secure-fields" ]; then
+                        printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-secure","elements":[{"element_token":"pw","role":"AXSecureTextField","label":"Password","value":"bullets","frame":{"x":20,"y":60,"width":160,"height":24}},{"element_token":"note","role":"AXTextField","value":"draft text","frame":{"x":20,"y":90,"width":160,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
+                    else
+                        printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-1","elements":[{"element_token":"s1","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
+                    fi
                 elif [ "$name" = "verify_state" ]; then
                     mode="status-verified"
                     if [ -f "$root/verification-mode" ]; then
@@ -236,6 +241,35 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertEqual(target.windowID, 1001)
         XCTAssertTrue(requestLines().contains { $0.contains("\"name\":\"list_windows\"") })
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
+    }
+
+    func testCaptureSeparatesSecureAndUnknownFieldValues() async throws {
+        FileManager.default.createFile(
+            atPath: testDirectory.appendingPathComponent("secure-fields").path,
+            contents: Data()
+        )
+        let client = makeClient()
+        addTeardownBlock {
+            await client.shutdown()
+        }
+
+        let capture = try await client.capture(
+            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            sessionID: "secure-capture"
+        )
+        XCTAssertEqual(capture.snapshotID, "snapshot-secure")
+        let snapshot = try XCTUnwrap(capture.accessibilitySnapshotModel)
+
+        let password = try XCTUnwrap(snapshot.element(withStableID: "pw"))
+        XCTAssertEqual(password.role, .textField)
+        XCTAssertEqual(password.rawRole, "AXSecureTextField")
+        XCTAssertEqual(password.sensitivity, .secure)
+        XCTAssertNil(password.value)
+
+        let note = try XCTUnwrap(snapshot.element(withStableID: "note"))
+        XCTAssertEqual(note.sensitivity, .unknown)
+        XCTAssertNil(note.value)
+        XCTAssertNil(note.label)
     }
 
     func testResolvedTargetRejectsMismatchedSession() async throws {

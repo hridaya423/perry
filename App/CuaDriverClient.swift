@@ -1405,15 +1405,21 @@ actor CuaDriverClient {
                   let height = double(frame["height"] ?? frame["h"]) else {
                 return nil
             }
-            let role = guideRole(element["role"] as? String ?? "")
+            let rawRole = element["role"] as? String ?? ""
+            let role = guideRole(rawRole)
             let label = nonEmpty(element["label"] as? String)
-                ?? nonEmpty(element["value"] as? String)
+            let sensitivity: AXSensitivity = rawRole == "AXSecureTextField" ? .secure : .unknown
+            let value: String? = nil
             return AXElement(
                 stableID: stableID,
                 role: role,
                 label: label,
                 frame: AXElementFrame(x: x, y: y, width: width, height: height),
-                isActionable: guideRoleIsActionable(role)
+                isActionable: guideRoleIsActionable(role),
+                value: value,
+                rawRole: rawRole,
+                subrole: nonEmpty(element["subrole"] as? String),
+                sensitivity: sensitivity
             )
         }
         return AXSnapshot(appBundleID: target.bundleID, windowTitle: target.title, elements: mapped)
@@ -1422,7 +1428,7 @@ actor CuaDriverClient {
     private func guideRole(_ rawRole: String) -> AXElement.Role {
         switch rawRole {
         case "AXButton", "button": return .button
-        case "AXTextField", "textField": return .textField
+        case "AXTextField", "AXSecureTextField", "AXTextArea", "textField": return .textField
         case "AXSlider", "slider": return .slider
         case "AXCheckBox", "checkBox": return .checkBox
         case "AXMenu", "menu": return .menu

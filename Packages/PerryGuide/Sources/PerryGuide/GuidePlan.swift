@@ -61,6 +61,7 @@ public typealias GuidePostcondition = GuideStep.Postcondition
 /// bytes exist only in memory so pixels can never reach history, memory,
 /// diagnostics, or test reports.
 public struct GuideObservation: Sendable {
+    public let observationID: String
     public let snapshot: AXSnapshot
     public let processID: Int32?
     public let windowID: Int64?
@@ -76,8 +77,10 @@ public struct GuideObservation: Sendable {
         connectionGeneration: UInt64? = nil,
         windowBounds: AXElementFrame? = nil,
         screenshotData: Data? = nil,
-        screenshotMIMEType: String = "image/jpeg"
+        screenshotMIMEType: String = "image/jpeg",
+        observationID: String? = nil
     ) {
+        self.observationID = observationID ?? UUID().uuidString
         self.snapshot = snapshot
         self.processID = processID
         self.windowID = windowID
@@ -142,6 +145,8 @@ public enum GuidePlannerError: Error, Equatable, Sendable, LocalizedError {
     /// The planner could not produce a well-formed step.
     case malformedResponse(String)
     case blocked(String)
+    case explanationEnded
+    case needsInput(prompt: String, choices: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -149,6 +154,8 @@ public enum GuidePlannerError: Error, Equatable, Sendable, LocalizedError {
         case .protectedWindow: return "That window is protected, so Perry will not guide inside it."
         case .malformedResponse(let detail): return "Guide planner returned an unreadable step: \(detail)"
         case .blocked(let reason): return reason
+        case .explanationEnded: return "Explanation ended. Goal completion has not been verified."
+        case .needsInput(let prompt, _): return prompt
         }
     }
 }
@@ -194,11 +201,23 @@ public enum GuideTargetValidator {
     }
 }
 
+public enum GuideCompletionEvidence: Equatable, Sendable {
+    case explanationOnly
+    case observedGoal(GuidePostcondition)
+}
+
+public enum GuideDecision: Equatable, Sendable {
+    case step(GuideStep)
+    case complete(evidence: GuideCompletionEvidence)
+    case blocked(reason: String)
+    case needsInput(prompt: String, choices: [String])
+}
+
 /// Receding-horizon guide planner. Implementations see the current
 /// observation plus a bounded progress record and return the next single
 /// step — or nil when the goal is complete or cannot be advanced honestly.
 public protocol GuidePlanner: Sendable {
-    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideStep?
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision
 
     /// The visible portion of the path, for "map the path" painting. Every
     /// returned step must be grounded in `observation`; implementations that
@@ -207,7 +226,7 @@ public protocol GuidePlanner: Sendable {
 }
 
 public extension GuidePlanner {
-    func nextStep(goal: String, observation: GuideObservation, context: GuideContext) async throws -> GuideStep? {
+    func nextStep(goal: String, observation: GuideObservation, context: GuideContext) async throws -> GuideDecision {
         try await nextStep(goal: goal, observation: observation, progress: GuideProgress(), context: context)
     }
 }
@@ -227,10 +246,12 @@ public struct GuidePlan: Codable, Equatable, Sendable {
 public struct GuideContext: Equatable, Sendable {
     public let spatialRegionDescription: String?
     public let memoryContext: String?
+    public let goalPostcondition: GuidePostcondition?
 
-    public init(spatialRegionDescription: String? = nil, memoryContext: String? = nil) {
+    public init(spatialRegionDescription: String? = nil, memoryContext: String? = nil, goalPostcondition: GuidePostcondition? = nil) {
         self.spatialRegionDescription = spatialRegionDescription
         self.memoryContext = memoryContext
+        self.goalPostcondition = goalPostcondition
     }
 
     public static let empty = GuideContext()
@@ -252,23 +273,23 @@ public struct AXGuidePlanner: GuidePlanner {
         observation: GuideObservation,
         progress: GuideProgress,
         context: GuideContext
-    ) async throws -> GuideStep? {
+    ) async throws -> GuideDecision {
         let candidates = rankedCandidates(
             goal: goal,
             snapshot: observation.snapshot,
             excluding: Set(progress.completedTargetIDs)
         )
         if let best = candidates.first, best.score > 0 || Self.goalWords(for: goal).isEmpty {
-            return Self.step(for: best.element, ordinal: progress.presentedCount == 0 ? "this" : "next")
+            return .step(Self.step(for: best.element, ordinal: progress.presentedCount == 0 ? "this" : "next"))
         }
         if progress.presentedCount == 0 {
-            return GuideStep(
+            return .step(GuideStep(
                 instruction: "I can't see a control in \"\(observation.snapshot.windowTitle)\" that matches \"\(goal)\" — click the control yourself, or describe the one you mean and I'll watch for it.",
                 target: .verbalOnly,
                 waitForUserAction: false
-            )
+            ))
         }
-        throw GuidePlannerError.blocked("No matching control is visible. Goal completion has not been verified.")
+        return .blocked(reason: "No matching control is visible. Goal completion has not been verified.")
     }
 
     public func visiblePath(

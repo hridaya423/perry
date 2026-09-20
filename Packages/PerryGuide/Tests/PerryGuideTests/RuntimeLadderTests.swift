@@ -123,10 +123,13 @@ final class RuntimeGuidePlannerTests: XCTestCase {
             capture: capture
         )
 
-        let step = try await planner.nextStep(goal: "tag the file", observation: observation(), context: .empty)
+        let decision = try await planner.nextStep(goal: "tag the file", observation: observation(), context: .empty)
 
-        XCTAssertEqual(step?.instruction, "click Tags")
-        if case .axElement(let id)? = step?.target {
+        guard case .step(let step) = decision else {
+            return XCTFail("expected step, got \(decision)")
+        }
+        XCTAssertEqual(step.instruction, "click Tags")
+        if case .axElement(let id) = step.target {
             XCTAssertEqual(id, "b1")
         } else {
             XCTFail("expected element target")
@@ -161,8 +164,8 @@ final class RuntimeGuidePlannerTests: XCTestCase {
 
     func testDoneSignalEndsTheSession() async throws {
         let planner = planner(body: { try self.openAIBody(#"{"done":true}"#) })
-        let step = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
-        XCTAssertNil(step)
+        let decision = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+        XCTAssertEqual(decision, .complete(evidence: .explanationOnly))
     }
 
     func testInventedElementIDIsRejected() async throws {
@@ -265,6 +268,14 @@ final class RuntimeGuidePlannerTests: XCTestCase {
             #"{"blocked":""}"#,
             #"{"blocked":"   "}"#,
             #"{"blocked":null}"#,
+            #"{"needs_input":null}"#,
+            #"{"needs_input":{"prompt":"","choices":[]}}"#,
+            #"{"needs_input":{"prompt":"  ","choices":["a"]}}"#,
+            #"{"needs_input":{"prompt":"x"}}"#,
+            #"{"needs_input":{"prompt":"x","choices":null}}"#,
+            #"{"needs_input":{"prompt":"x","choices":["a","b","c","d","e"]}}"#,
+            #"{"needs_input":{"prompt":"x","choices":["a",""]}}"#,
+            #"{"needs_input":{"prompt":"x","choices":[],"extra":1}}"#,
         ]
         for body in malformed {
             XCTAssertThrowsError(
@@ -279,42 +290,53 @@ final class RuntimeGuidePlannerTests: XCTestCase {
     }
 
     func testParserAcceptsValidResponses() throws {
-        XCTAssertNil(try RuntimeGuidePlanner.parseNextStep(
-            text: "  \n {\"done\":true} \n",
-            observation: observation()
-        ))
+        XCTAssertEqual(
+            try RuntimeGuidePlanner.parseNextStep(
+                text: "  \n {\"done\":true} \n",
+                observation: observation()
+            ),
+            .complete(evidence: .explanationOnly)
+        )
 
-        let verbal = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+        guard case .step(let verbal) = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"look at the toolbar","target":null,"wait":false}}"#,
             observation: observation()
-        ))
+        ) else {
+            return XCTFail("expected step decision")
+        }
         XCTAssertEqual(verbal.target.isVerbal, true)
         XCTAssertEqual(verbal.waitForUserAction, false)
 
-        let element = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+        guard case .step(let element) = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"click Tags","target":"b1"}}"#,
             observation: observation()
-        ))
+        ) else {
+            return XCTFail("expected step decision")
+        }
         guard case .axElement(let id) = element.target else {
             return XCTFail("expected element target")
         }
         XCTAssertEqual(id, "b1")
         XCTAssertEqual(element.waitForUserAction, true)
 
-        let pair = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+        guard case .step(let pair) = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"click there","target":[10,20]}}"#,
             observation: observation()
-        ))
+        ) else {
+            return XCTFail("expected step decision")
+        }
         guard case .screenPoint(let p1) = pair.target else {
             return XCTFail("expected point target")
         }
         XCTAssertEqual(p1.x, 10)
         XCTAssertEqual(p1.y, 20)
 
-        let dict = try XCTUnwrap(RuntimeGuidePlanner.parseNextStep(
+        guard case .step(let dict) = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"click there","target":{"x":10.5,"y":20.25}}}"#,
             observation: observation()
-        ))
+        ) else {
+            return XCTFail("expected step decision")
+        }
         guard case .screenPoint(let p2) = dict.target else {
             return XCTFail("expected point target")
         }
@@ -322,18 +344,20 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         XCTAssertEqual(p2.y, 20.25)
     }
 
-    func testBlockedOutcomeThrowsBlockedError() {
-        XCTAssertThrowsError(
-            try RuntimeGuidePlanner.parseNextStep(
-                text: #"{"blocked":"no matching control is visible"}"#,
-                observation: observation()
-            )
-        ) { error in
-            guard case .blocked(let reason) = error as? GuidePlannerError else {
-                return XCTFail("expected blocked, got \(error)")
-            }
-            XCTAssertEqual(reason, "no matching control is visible")
-        }
+    func testBlockedOutcomeReturnsBlockedDecision() throws {
+        let decision = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"blocked":"no matching control is visible"}"#,
+            observation: observation()
+        )
+        XCTAssertEqual(decision, .blocked(reason: "no matching control is visible"))
+    }
+
+    func testNeedsInputSchemaIsAccepted() throws {
+        let decision = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"needs_input":{"prompt":"Which file should I rename?","choices":["a.txt","b.txt"]}}"#,
+            observation: observation()
+        )
+        XCTAssertEqual(decision, .needsInput(prompt: "Which file should I rename?", choices: ["a.txt", "b.txt"]))
     }
 
     func testEngineSurfacesBlockedPlannerOutcome() async throws {

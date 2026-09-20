@@ -49,10 +49,12 @@ private struct QueueGuidePlanner: GuidePlanner {
         var index = 0
     }
 
-    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideStep? {
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
         defer { position.index += 1 }
-        guard position.index < steps.count else { return nil }
-        return steps[position.index]
+        guard position.index < steps.count, let step = steps[position.index] else {
+            return .complete(evidence: .explanationOnly)
+        }
+        return .step(step)
     }
 
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
@@ -211,7 +213,7 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .finished)
+        XCTAssertEqual(result, .explanationEnded)
     }
 
     func testUnrelatedElementChangeCannotSatisfyDeclaredPostcondition() async throws {
@@ -314,7 +316,7 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .finished)
+        XCTAssertEqual(result, .explanationEnded)
         let progress = await engine.progress
         XCTAssertEqual(progress.completedInstructions, [step.instruction])
     }
@@ -425,7 +427,7 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .finished)
+        XCTAssertEqual(result, .explanationEnded)
         let progress = await engine.progress
         XCTAssertEqual(progress.completedInstructions, ["open it"])
     }
@@ -588,26 +590,35 @@ final class GuideEngineTests: XCTestCase {
             button("b3", label: "Preview"),
         ]))
 
-        let step = try await planner.nextStep(goal: "tag a file", observation: observation, context: .empty)
-        XCTAssertTrue(step?.instruction.contains("Tags") == true)
+        let decision = try await planner.nextStep(goal: "tag a file", observation: observation, context: .empty)
+        guard case .step(let step) = decision else {
+            return XCTFail("expected step, got \(decision)")
+        }
+        XCTAssertTrue(step.instruction.contains("Tags"))
     }
 
     func testFallbackPlannerAdmitsItCannotDeriveAnUnmatchedGoal() async throws {
         let planner = AXGuidePlanner()
         let observation = GuideObservation(snapshot: snapshot([button("b1", label: "Share")]))
 
-        let step = try await planner.nextStep(goal: "compose a symphony", observation: observation, context: .empty)
-        XCTAssertEqual(step?.target.isVerbal, true)
-        XCTAssertEqual(step?.waitForUserAction, false)
-        XCTAssertTrue(step?.instruction.contains("compose a symphony") == true)
+        let decision = try await planner.nextStep(goal: "compose a symphony", observation: observation, context: .empty)
+        guard case .step(let step) = decision else {
+            return XCTFail("expected step, got \(decision)")
+        }
+        XCTAssertEqual(step.target.isVerbal, true)
+        XCTAssertEqual(step.waitForUserAction, false)
+        XCTAssertTrue(step.instruction.contains("compose a symphony"))
     }
 
     func testFallbackPlannerPointsAtTopControlForGenericWalkthrough() async throws {
         let planner = AXGuidePlanner()
         let observation = GuideObservation(snapshot: snapshot([button("b1", label: "Share")]))
 
-        let step = try await planner.nextStep(goal: "walk me through this window", observation: observation, context: .empty)
-        XCTAssertEqual(step?.target.isVerbal, false)
+        let decision = try await planner.nextStep(goal: "walk me through this window", observation: observation, context: .empty)
+        guard case .step(let step) = decision else {
+            return XCTFail("expected step, got \(decision)")
+        }
+        XCTAssertEqual(step.target.isVerbal, false)
     }
 
     func testFallbackPlannerNeverRepeatsACompletedTarget() async throws {
@@ -619,12 +630,11 @@ final class GuideEngineTests: XCTestCase {
         var progress = GuideProgress()
         progress.recordCompleted(GuideStep(instruction: "x", target: .axElement(stableID: "b1")))
 
-        let step = try await planner.nextStep(goal: "tag a file", observation: observation, progress: progress, context: .empty)
-        if case .axElement(let id)? = step?.target {
-            XCTAssertEqual(id, "b2")
-        } else {
-            XCTFail("expected the second tag control")
+        let decision = try await planner.nextStep(goal: "tag a file", observation: observation, progress: progress, context: .empty)
+        guard case .step(let step) = decision, case .axElement(let id) = step.target else {
+            return XCTFail("expected the second tag control")
         }
+        XCTAssertEqual(id, "b2")
     }
 
     func testFallbackPlannerBlocksWhenNothingMatchesAnymore() async throws {
@@ -634,12 +644,111 @@ final class GuideEngineTests: XCTestCase {
         progress.recordPresented()
         progress.recordCompleted(GuideStep(instruction: "x", target: .axElement(stableID: "b0")))
 
-        do {
-            _ = try await planner.nextStep(goal: "compose a symphony", observation: observation, progress: progress, context: .empty)
-            XCTFail("expected blocked")
-        } catch GuidePlannerError.blocked(let reason) {
-            XCTAssertTrue(reason.contains("No matching control"))
+        let decision = try await planner.nextStep(goal: "compose a symphony", observation: observation, progress: progress, context: .empty)
+        guard case .blocked(let reason) = decision else {
+            return XCTFail("expected blocked, got \(decision)")
         }
+        XCTAssertTrue(reason.contains("No matching control"))
+    }
+
+    func testStartThrowsExplanationEndedForUnverifiedCompletion() async throws {
+        let engine = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [.complete(evidence: .explanationOnly)]),
+            observer: StubObserver(snapshots: [snapshot([button("a")])])
+        )
+
+        do {
+            _ = try await engine.start(goal: "g")
+            XCTFail("expected explanationEnded")
+        } catch GuidePlannerError.explanationEnded {}
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .idle)
+    }
+
+    func testExplanationEndedAfterLastStepIsNotVerifiedFinish() async throws {
+        let first = snapshot([button("a", label: "A")])
+        let changed = snapshot([button("b", label: "B")])
+        let engine = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [.step(GuideStep(instruction: "one", target: .axElement(stableID: "a")))]),
+            observer: StubObserver(snapshots: [first, changed])
+        )
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.completedInstructions, ["one"])
+    }
+
+    func testObservedGoalCompletionRequiresMatchingAppOwnedCriterion() async throws {
+        let satisfied = observation([button("done", label: "Done")])
+        let decision: GuideDecision = .complete(evidence: .observedGoal(.elementExists(stableID: "done")))
+
+        let accepted = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [decision]),
+            observer: StubObserver(observations: [satisfied])
+        )
+        let first = try await accepted.start(
+            goal: "g",
+            context: GuideContext(goalPostcondition: .elementExists(stableID: "done"))
+        )
+        XCTAssertNil(first)
+        let phase = await accepted.phase
+        XCTAssertEqual(phase, .finished)
+
+        let unowned = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [decision]),
+            observer: StubObserver(observations: [satisfied])
+        )
+        do {
+            _ = try await unowned.start(goal: "g", context: .empty)
+            XCTFail("expected blocked")
+        } catch GuidePlannerError.blocked {}
+
+        let unmet = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [decision]),
+            observer: StubObserver(observations: [observation([button("a", label: "A")])])
+        )
+        do {
+            _ = try await unmet.start(
+                goal: "g",
+                context: GuideContext(goalPostcondition: .elementExists(stableID: "done"))
+            )
+            XCTFail("expected blocked")
+        } catch GuidePlannerError.blocked {}
+    }
+
+    func testNeedsInputFromStartThrowsTypedError() async throws {
+        let engine = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [.needsInput(prompt: "Which file?", choices: ["a.txt", "b.txt"])]),
+            observer: StubObserver(snapshots: [snapshot([button("a")])])
+        )
+
+        do {
+            _ = try await engine.start(goal: "g")
+            XCTFail("expected needsInput")
+        } catch GuidePlannerError.needsInput(let prompt, let choices) {
+            XCTAssertEqual(prompt, "Which file?")
+            XCTAssertEqual(choices, ["a.txt", "b.txt"])
+        }
+    }
+
+    func testNeedsInputDuringAdvanceReturnsTypedResult() async throws {
+        let first = snapshot([button("a", label: "A")])
+        let changed = snapshot([button("b", label: "B")])
+        let engine = GuideEngine(
+            planner: DecisionQueuePlanner(decisions: [
+                .step(GuideStep(instruction: "one", target: .axElement(stableID: "a"))),
+                .needsInput(prompt: "Which file?", choices: ["a.txt", "b.txt"]),
+            ]),
+            observer: StubObserver(snapshots: [first, changed])
+        )
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .needsInput(prompt: "Which file?", choices: ["a.txt", "b.txt"]))
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
     }
 
     func testVisiblePathOnlyPaintsGroundedControls() async throws {
@@ -788,8 +897,28 @@ private struct ObservationPlanner: GuidePlanner {
         self.decide = decide
     }
 
-    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideStep? {
-        decide(observation, progress)
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
+        if let step = decide(observation, progress) { return .step(step) }
+        return .complete(evidence: .explanationOnly)
+    }
+
+    func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
+        []
+    }
+}
+
+private struct DecisionQueuePlanner: GuidePlanner {
+    let decisions: [GuideDecision]
+    private let position = PositionBox()
+
+    final class PositionBox: @unchecked Sendable {
+        var index = 0
+    }
+
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
+        defer { position.index += 1 }
+        guard position.index < decisions.count else { return .complete(evidence: .explanationOnly) }
+        return decisions[position.index]
     }
 
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {

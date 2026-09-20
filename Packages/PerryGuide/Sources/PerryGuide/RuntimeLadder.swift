@@ -41,7 +41,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         observation: GuideObservation,
         progress: GuideProgress,
         context: GuideContext
-    ) async throws -> GuideStep? {
+    ) async throws -> GuideDecision {
         try Task.checkCancellation()
         let text = try await client.complete(
             prompt: Self.nextStepPrompt(goal: goal, observation: observation, progress: progress, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
@@ -69,20 +69,30 @@ public struct RuntimeGuidePlanner: GuidePlanner {
 
     /// {"done":true} finishes the session; a step must name an instruction and
     /// a target that survives observation validation.
-    static func parseNextStep(text: String, observation: GuideObservation) throws -> GuideStep? {
+    static func parseNextStep(text: String, observation: GuideObservation) throws -> GuideDecision {
         let payload = try strictJSONObject(text)
         guard payload.count == 1 else { throw GuidePlannerError.malformedResponse("expected exactly one outcome") }
         if let done = payload["done"] {
             guard let number = done as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID(), number.boolValue else {
                 throw GuidePlannerError.malformedResponse("done must be true")
             }
-            return nil
+            return .complete(evidence: .explanationOnly)
         }
         if let reason = payload["blocked"] as? String, !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw GuidePlannerError.blocked(reason)
+            return .blocked(reason: reason)
+        }
+        if let input = payload["needs_input"] as? [String: Any] {
+            guard Set(input.keys) == ["prompt", "choices"],
+                  let prompt = input["prompt"] as? String,
+                  !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let choices = input["choices"] as? [String], choices.count <= 4,
+                  choices.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+                throw GuidePlannerError.malformedResponse("needs_input requires a prompt and up to four nonempty choices")
+            }
+            return .needsInput(prompt: prompt, choices: choices)
         }
         guard let step = payload["step"] as? [String: Any] else { throw GuidePlannerError.malformedResponse("expected step, done, or blocked") }
-        return try GuideTargetValidator.validated(parseStep(step, observation: observation), in: observation)
+        return .step(try GuideTargetValidator.validated(parseStep(step, observation: observation), in: observation))
     }
 
     /// Every marker must ground in the live window; entries that do not are
@@ -183,6 +193,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}
         Only when the goal is complete: {"done":true}
         When you cannot advance or verify completion: {"blocked":"<brief reason>"}
+        When the user must clarify: {"needs_input":{"prompt":"<question>","choices":["<optional choice>"]}}
         """
     }
 

@@ -35,13 +35,31 @@ final class SessionControllerTests: XCTestCase {
 
         try controller.wake(at: startedAt)
         try controller.startGuide(guide)
-        try controller.finishGuide(summary: "Guide complete")
+        try controller.finishGuide(summary: "Guide complete", outcome: .completed)
         XCTAssertEqual(
             controller.state,
             .reporting(ReportState(taskID: guideID, summary: "Guide complete"))
         )
         XCTAssertEqual(controller.requestDismissal(), .dismiss)
         XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testGuideFinishDefaultsToStoppedOutcome() throws {
+        let controller = SessionController()
+        let guide = GuideSessionState(
+            id: guideID,
+            goal: "Show me how to rename this file",
+            startedAt: startedAt,
+            appBundleID: "com.apple.finder"
+        )
+
+        try controller.wake(at: startedAt)
+        try controller.startGuide(guide)
+        try controller.finishGuide(summary: "Stopped before the goal was verified")
+        XCTAssertEqual(
+            controller.state,
+            .reporting(ReportState(taskID: guideID, summary: "Stopped before the goal was verified", outcome: .stopped))
+        )
     }
 
     func testExecutionLifecycleMakesSubstatesMutuallyExclusive() throws {

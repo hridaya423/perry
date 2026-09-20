@@ -596,6 +596,10 @@ final class GuideSessionCoordinator {
                         return
                     } catch GuidePlannerError.protectedWindow {
                         self.finishGuide(guideID: guide.id, outcome: .failed, summary: "That window is protected, so Perry won't guide inside it.")
+                    } catch GuidePlannerError.explanationEnded {
+                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
+                    } catch GuidePlannerError.needsInput(let prompt, let choices) {
+                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: ([prompt] + choices).joined(separator: "\n"))
                     } catch {
                         if full {
                             self.failFullGuide(guideID: guide.id, error: error)
@@ -752,7 +756,8 @@ final class GuideSessionCoordinator {
             connectionGeneration: target.connectionGeneration,
             windowBounds: AXElementFrame(x: target.x, y: target.y, width: target.width, height: target.height),
             screenshotData: capture.screenshotData.isEmpty ? nil : capture.screenshotData,
-            screenshotMIMEType: capture.screenshotMIMEType
+            screenshotMIMEType: capture.screenshotMIMEType,
+            observationID: capture.snapshotID
         )
         do {
             try GuideTargetValidator.requireUnprotected(observation)
@@ -878,7 +883,11 @@ final class GuideSessionCoordinator {
             speak(step.instruction, guideID: guideID, stepID: step.id)
             if !step.waitForUserAction { scheduleGuideFinish(after: 1.5) }
         case .finished:
-            finishGuide(guideID: guideID)
+            finishGuide(guideID: guideID, outcome: .completed)
+        case .explanationEnded:
+            finishGuide(guideID: guideID, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
+        case .needsInput(let prompt, let choices):
+            finishGuide(guideID: guideID, outcome: .stopped, summary: ([prompt] + choices).joined(separator: "\n"))
         case .stillWaiting:
             output?.guideSetStatus("I’m still watching that step; click the highlighted control.")
         case .blocked(let reason):
@@ -923,7 +932,7 @@ final class GuideSessionCoordinator {
         return transitionSession { try sessionController.wake(attemptID: attemptID) }
     }
 
-    private func finishGuide(guideID: UUID, outcome: TranscriptEntry.Outcome = .completed, summary: String? = nil) {
+    private func finishGuide(guideID: UUID, outcome: TranscriptEntry.Outcome, summary: String? = nil) {
         guard guideIsCurrent(guideID), case .guiding(let guide) = sessionController.state else { return }
         currentGuideScope?.closeCallbackAdmission()
         clickObserver.stop()
@@ -933,7 +942,7 @@ final class GuideSessionCoordinator {
         everythingGuideSession = nil
         hideGuideControls()
         let isComplete = outcome == .completed
-        let finalSummary = summary ?? "Guided two live steps and waited for real user clicks."
+        let finalSummary = summary ?? "The requested outcome was verified."
         let scope = currentGuideScope
         if let scope, scope.id == guide.id, scope.workerBodyActive {
             scope.requestFinalization(GuideFinalizationRequest(id: guide.id, goal: guide.goal, startedAt: guide.startedAt, steps: guide.steps, outcome: outcome, summary: finalSummary, appBundleID: guide.appBundleID))
@@ -947,7 +956,7 @@ final class GuideSessionCoordinator {
         output?.guideSetStatus(isComplete ? "Guide complete." : finalSummary)
         output?.guidePlay(isComplete ? .done : .fail)
         output?.guideSetBuddyState(isComplete ? .success : (outcome == .stopped ? .idle : .blocked))
-        guard transitionSession({ try sessionController.finishGuide(summary: finalSummary) }) else { return }
+        guard transitionSession({ try sessionController.finishGuide(summary: finalSummary, outcome: isComplete ? .completed : .stopped) }) else { return }
         if let scope, scope.id == guide.id { scope.finishContinuation.finish() }
         _ = sessionController.requestDismissal()
         output?.guideClearPresentation()
@@ -989,7 +998,7 @@ final class GuideSessionCoordinator {
             defer { scope?.removeCallback(callbackID) }
             do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
             guard let self, self.activeGuideID == guideID else { return }
-            self.finishGuide(guideID: guideID)
+            self.finishGuide(guideID: guideID, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
         }
         scope.finishTask = task
         scope.addCallback(task, id: callbackID)

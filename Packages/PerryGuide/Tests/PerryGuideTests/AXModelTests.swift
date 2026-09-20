@@ -62,4 +62,90 @@ final class AXModelTests: XCTestCase {
         let before = AXSnapshot(appBundleID: "x", windowTitle: "General", elements: [])
         XCTAssertTrue(detector.didChange(from: before, titleAfter: "Accessibility"))
     }
+
+    func testMissingSensitivityDecodesAsUnknown() throws {
+        let json = #"{"stableID":"f1","role":"textField","label":"Name","frame":{"x":0,"y":0,"width":100,"height":24},"isActionable":true}"#
+        let decoded = try JSONDecoder().decode(AXElement.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.sensitivity, .unknown)
+        XCTAssertNil(decoded.value)
+        XCTAssertNil(decoded.rawRole)
+        XCTAssertNil(decoded.subrole)
+    }
+
+    func testUnrecognizedSensitivityDecodesAsUnknown() throws {
+        let json = #"{"stableID":"f1","role":"textField","label":null,"frame":{"x":0,"y":0,"width":100,"height":24},"isActionable":true,"sensitivity":"totally-fine"}"#
+        let decoded = try JSONDecoder().decode(AXElement.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.sensitivity, .unknown)
+    }
+
+    func testValueStaysSeparateFromLabel() throws {
+        let field = AXElement(
+            stableID: "f1",
+            role: .textField,
+            label: "Username",
+            frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
+            isActionable: true,
+            value: "alice",
+            sensitivity: .ordinary
+        )
+        let decoded = try JSONDecoder().decode(AXElement.self, from: JSONEncoder().encode(field))
+        XCTAssertEqual(decoded.label, "Username")
+        XCTAssertEqual(decoded.value, "alice")
+        XCTAssertEqual(decoded.sensitivity, .ordinary)
+        XCTAssertEqual(decoded, field)
+    }
+
+    func testChangeDetectorCountsValueOnlyChange() {
+        let detector = ScreenChangeDetector()
+        let before = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
+            AXElement(
+                stableID: "f1",
+                role: .textField,
+                label: "Name",
+                frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
+                isActionable: true,
+                value: "a",
+                sensitivity: .ordinary
+            ),
+        ])
+        let after = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
+            AXElement(
+                stableID: "f1",
+                role: .textField,
+                label: "Name",
+                frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
+                isActionable: true,
+                value: "ab",
+                sensitivity: .ordinary
+            ),
+        ])
+        XCTAssertTrue(detector.didChange(from: before, to: after))
+    }
+
+    func testSensitiveAndUnknownValuesAreDiscardedBeforeEncoding() throws {
+        for sensitivity in [AXSensitivity.secure, .unknown] {
+            let field = AXElement(
+                stableID: "f1", role: .textField, label: "Input",
+                frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
+                isActionable: true, value: "private-sentinel", sensitivity: sensitivity
+            )
+            XCTAssertNil(field.value)
+            XCTAssertFalse(String(decoding: try JSONEncoder().encode(field), as: UTF8.self).contains("private-sentinel"))
+            let json = """
+            {"stableID":"f1","role":"textField","label":"Input","value":"private-sentinel","frame":{"x":0,"y":0,"width":100,"height":24},"isActionable":true,"sensitivity":"\(sensitivity.rawValue)"}
+            """
+            let decoded = try JSONDecoder().decode(AXElement.self, from: Data(json.utf8))
+            XCTAssertNil(decoded.value)
+            XCTAssertFalse(String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self).contains("private-sentinel"))
+        }
+    }
+
+    func testObservationCarriesExplicitID() {
+        let snapshot = AXSnapshot(appBundleID: "x", windowTitle: "w", elements: [])
+        let driverBound = GuideObservation(snapshot: snapshot, observationID: "snapshot-7")
+        XCTAssertEqual(driverBound.observationID, "snapshot-7")
+        let generated = GuideObservation(snapshot: snapshot)
+        XCTAssertFalse(generated.observationID.isEmpty)
+        XCTAssertNotEqual(generated.observationID, GuideObservation(snapshot: snapshot).observationID)
+    }
 }

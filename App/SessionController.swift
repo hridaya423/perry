@@ -549,11 +549,11 @@ final class SessionController: ObservableObject {
         state = .reporting(ReportState(taskID: execution.taskID, summary: summary, outcome: effectiveOutcome))
     }
 
-    func finishGuide(summary: String) throws {
+    func finishGuide(summary: String, outcome: ReportOutcome = .stopped) throws {
         guard case .guiding(let guide) = state else {
             throw IllegalSessionTransitionError(state: state, operation: "finish guide")
         }
-        state = .reporting(ReportState(taskID: guide.id, summary: summary))
+        state = .reporting(ReportState(taskID: guide.id, summary: summary, outcome: outcome))
     }
 
     func fail(_ failure: SessionFailure) throws {

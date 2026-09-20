@@ -16,6 +16,12 @@ public struct AXElementFrame: Codable, Equatable, Sendable {
     }
 }
 
+public enum AXSensitivity: String, Codable, Sendable, CaseIterable {
+    case ordinary
+    case secure
+    case unknown
+}
+
 public struct AXElement: Codable, Equatable, Sendable, Identifiable {
     public enum Role: String, Codable, Sendable, CaseIterable {
         case button
@@ -37,21 +43,50 @@ public struct AXElement: Codable, Equatable, Sendable, Identifiable {
     public let stableID: String
     public let role: Role
     public let label: String?
+    public let value: String?
     public let frame: AXElementFrame
     public let isActionable: Bool
+    public let rawRole: String?
+    public let subrole: String?
+    public let sensitivity: AXSensitivity
 
     public init(
         stableID: String,
         role: Role,
         label: String?,
         frame: AXElementFrame,
-        isActionable: Bool
+        isActionable: Bool,
+        value: String? = nil,
+        rawRole: String? = nil,
+        subrole: String? = nil,
+        sensitivity: AXSensitivity = .unknown
     ) {
         self.stableID = stableID
         self.role = role
         self.label = label
+        self.value = sensitivity == .ordinary ? value : nil
         self.frame = frame
         self.isActionable = isActionable
+        self.rawRole = rawRole
+        self.subrole = subrole
+        self.sensitivity = sensitivity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case stableID, role, label, value, frame, isActionable, rawRole, subrole, sensitivity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        stableID = try container.decode(String.self, forKey: .stableID)
+        role = try container.decode(Role.self, forKey: .role)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        frame = try container.decode(AXElementFrame.self, forKey: .frame)
+        isActionable = try container.decode(Bool.self, forKey: .isActionable)
+        rawRole = try container.decodeIfPresent(String.self, forKey: .rawRole)
+        subrole = try container.decodeIfPresent(String.self, forKey: .subrole)
+        sensitivity = (try? container.decode(AXSensitivity.self, forKey: .sensitivity)) ?? .unknown
+        value = sensitivity == .ordinary ? try container.decodeIfPresent(String.self, forKey: .value) : nil
     }
 
     public var center: CGPointShim {
@@ -121,7 +156,7 @@ public struct ScreenChangeDetector: Sendable {
     }
 
     static func fingerprint(_ element: AXElement) -> String {
-        "\(element.stableID)|\(element.role.rawValue)|\(element.label ?? "")"
+        "\(element.stableID)|\(element.role.rawValue)|\(element.label ?? "")|\(element.value ?? "")"
     }
 }
 

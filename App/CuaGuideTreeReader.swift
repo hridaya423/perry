@@ -29,7 +29,8 @@ struct CuaGuideTreeReader: GuideObserving {
             connectionGeneration: target.connectionGeneration,
             windowBounds: AXElementFrame(x: target.x, y: target.y, width: target.width, height: target.height),
             screenshotData: capture.screenshotData.isEmpty ? nil : capture.screenshotData,
-            screenshotMIMEType: capture.screenshotMIMEType
+            screenshotMIMEType: capture.screenshotMIMEType,
+            observationID: capture.snapshotID
         )
     }
 }

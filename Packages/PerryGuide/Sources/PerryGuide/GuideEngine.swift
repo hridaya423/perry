@@ -214,6 +214,12 @@ public actor GuideEngine {
             }
             present(step, observation: observation)
             return .advanced(toStep: step, stepIndex: progress.presentedCount - 1)
+        } catch GuidePlannerError.explanationEnded {
+            phase = .finished
+            return .explanationEnded
+        } catch GuidePlannerError.needsInput(let prompt, let choices) {
+            phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
+            return .needsInput(prompt: prompt, choices: choices)
         } catch is CancellationError {
             return .notPresenting
         } catch {
@@ -231,13 +237,24 @@ public actor GuideEngine {
             throw GuidePlannerError.blocked("The guide reached its step limit. Goal completion has not been verified.")
         }
         try Task.checkCancellation()
-        guard let step = try await planner.nextStep(
+        let decision = try await planner.nextStep(
             goal: goal,
             observation: observation,
             progress: progress,
             context: context
-        ) else { return nil }
-        return try GuideTargetValidator.validated(step, in: observation)
+        )
+        try Task.checkCancellation()
+        switch decision {
+        case .step(let step): return try GuideTargetValidator.validated(step, in: observation)
+        case .complete(evidence: .explanationOnly): throw GuidePlannerError.explanationEnded
+        case .complete(evidence: .observedGoal(let condition)):
+            guard context.goalPostcondition == condition, condition.isSatisfied(in: observation.snapshot) else {
+                throw GuidePlannerError.blocked("Goal completion could not be verified against the requested outcome.")
+            }
+            return nil
+        case .blocked(let reason): throw GuidePlannerError.blocked(reason)
+        case .needsInput(let prompt, let choices): throw GuidePlannerError.needsInput(prompt: prompt, choices: choices)
+        }
     }
 
     private func present(_ step: GuideStep, observation: GuideObservation) {
@@ -288,5 +305,7 @@ public enum AdvanceResult: Equatable, Sendable {
     case ignoredClick(stepIndex: Int)
     case blocked(reason: String)
     case finished
+    case explanationEnded
+    case needsInput(prompt: String, choices: [String])
     case notPresenting
 }
