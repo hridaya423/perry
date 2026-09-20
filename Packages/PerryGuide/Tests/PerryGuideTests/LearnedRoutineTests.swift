@@ -1,0 +1,183 @@
+import XCTest
+import CryptoKit
+import PerryCore
+import PerryRuntimes
+@testable import PerryGuide
+
+final class LearnedRoutineTests: XCTestCase {
+    private let saveTarget = RoutineTarget(role: "button", label: "Save")
+    private let fieldTarget = RoutineTarget(role: "textField", label: "Search")
+
+    func testClickFollowedByTypingFoldsIntoOneTypeStep() throws {
+        let demo = RecordedDemonstration(bundleID: "com.example.app", events: [
+            .click(fieldTarget),
+            .typed(text: "quarterly report", into: fieldTarget),
+            .click(saveTarget)
+        ])
+        let routine = try RoutineInference.infer(demonstration: demo, name: "Save a report")
+        XCTAssertEqual(routine.steps.count, 2)
+        XCTAssertEqual(routine.steps[0].action, .typeText(.literal("quarterly report")))
+        XCTAssertEqual(routine.steps[0].target, fieldTarget)
+        XCTAssertEqual(routine.steps[1].action, .click)
+        XCTAssertEqual(routine.steps[1].summary, "Click Save")
+    }
+
+    func testConsecutiveTypingOnSameTargetMerges() throws {
+        let demo = RecordedDemonstration(bundleID: "com.example.app", events: [
+            .typed(text: "hello", into: fieldTarget),
+            .typed(text: " world", into: fieldTarget),
+            .typed(text: "elsewhere", into: saveTarget)
+        ])
+        let routine = try RoutineInference.infer(demonstration: demo, name: "Merge")
+        XCTAssertEqual(routine.steps.map(\.action), [
+            .typeText(.literal("hello world")),
+            .typeText(.literal("elsewhere"))
+        ])
+    }
+
+    func testClickWithoutFollowingTypeStaysAClickStep() throws {
+        let demo = RecordedDemonstration(bundleID: "com.example.app", events: [
+            .click(saveTarget),
+            .keyPress("return")
+        ])
+        let routine = try RoutineInference.infer(demonstration: demo, name: "Keys")
+        XCTAssertEqual(routine.steps.map(\.action), [.click, .pressKey("return")])
+        XCTAssertNil(routine.steps[1].target)
+    }
+
+    func testEmptyDemonstrationIsRejected() {
+        XCTAssertThrowsError(try RoutineInference.infer(
+            demonstration: RecordedDemonstration(bundleID: "com.example.app", events: []),
+            name: "Empty"
+        )) { XCTAssertEqual($0 as? RoutineError, .emptyDemonstration) }
+    }
+
+    func testRoutineRejectsBlankNameAndOversizedStepList() {
+        XCTAssertThrowsError(try LearnedRoutine(name: "  ", bundleID: "com.example.app", steps: [
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
+        ])) { XCTAssertEqual($0 as? RoutineError, .invalidName) }
+        let many = (0...LearnedRoutine.maximumSteps).map { _ in
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
+        }
+        XCTAssertThrowsError(try LearnedRoutine(name: "Big", bundleID: "com.example.app", steps: many)) {
+            XCTAssertEqual($0 as? RoutineError, .invalidStepCount)
+        }
+    }
+
+    func testStoreRoundTripsAndSkipsMalformedFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RoutineStore(storageDirectory: directory)
+        let routine = try RoutineInference.infer(
+            demonstration: RecordedDemonstration(bundleID: "com.example.app", events: [.click(saveTarget)]),
+            name: "Save flow"
+        )
+        try store.save(routine)
+        // Malformed file alongside a valid one is skipped, not fatal.
+        let routinesDir = directory.appendingPathComponent("Routines", isDirectory: true)
+        try Data("not json".utf8).write(to: routinesDir.appendingPathComponent("junk.json"))
+        let loaded = store.all()
+        XCTAssertEqual(loaded, [routine])
+        XCTAssertEqual(store.routine(id: routine.id), routine)
+        try store.remove(id: routine.id)
+        XCTAssertTrue(store.all().isEmpty)
+    }
+
+    // MARK: Replay
+
+    private func makeObservation(elements: [AXElement], bundleID: String = "com.example.app") -> GuideObservation {
+        GuideObservation(
+            snapshot: AXSnapshot(appBundleID: bundleID, windowTitle: "Main", elements: elements),
+            processID: 42,
+            windowID: 7,
+            connectionGeneration: 3,
+            screenshotData: Data("baseline-pixels".utf8)
+        )
+    }
+
+    private func makeElement(stableID: String, role: AXElement.Role, label: String) -> AXElement {
+        AXElement(
+            stableID: stableID,
+            role: role,
+            label: label,
+            frame: AXElementFrame(x: 0, y: 0, width: 10, height: 10),
+            isActionable: true
+        )
+    }
+
+    func testReplayResolvesTargetsAgainstFreshObservation() throws {
+        let routine = try RoutineInference.infer(
+            demonstration: RecordedDemonstration(bundleID: "com.example.app", events: [
+                .click(fieldTarget),
+                .typed(text: "report", into: fieldTarget),
+                .click(saveTarget)
+            ]),
+            name: "Save a report"
+        )
+        let observation = makeObservation(elements: [
+            makeElement(stableID: "ax-search", role: .textField, label: "Search"),
+            makeElement(stableID: "ax-save", role: .button, label: "Save")
+        ])
+        let plan = try RoutineReplay.plan(routine: routine, observation: observation, taskID: TaskID("t"))
+        XCTAssertEqual(plan.requestedScopes, [.computerControl])
+        XCTAssertEqual(plan.actions.count, 2)
+        guard case .computer(_, .typeText("report", .accessibilityID("ax-search"))) = plan.actions[0].operation else {
+            return XCTFail("type step did not resolve to the fresh field ID")
+        }
+        XCTAssertEqual(plan.actions[0].postcondition, .elementValue("report"))
+        guard case .computer(_, .click(.accessibilityID("ax-save"))) = plan.actions[1].operation,
+              case .visualChange(let baseline) = plan.actions[1].postcondition else {
+            return XCTFail("click step did not resolve or declare a visual baseline")
+        }
+        let expected = SHA256.hash(data: Data("baseline-pixels".utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(baseline, expected)
+        XCTAssertTrue(plan.actions.allSatisfy { $0.approvalRequirement == .plan })
+    }
+
+    func testReplayFillsParametersAndDropsWaitSteps() throws {
+        let routine = try LearnedRoutine(name: "Fill", bundleID: "com.example.app", steps: [
+            RoutineStep(summary: "Wait", action: .wait(milliseconds: 400)),
+            RoutineStep(summary: "Type into Search", target: fieldTarget, action: .typeText(.parameter(name: "query", prompt: "Search for what?")))
+        ])
+        let observation = makeObservation(elements: [makeElement(stableID: "ax-search", role: .textField, label: "Search")])
+        let plan = try RoutineReplay.plan(
+            routine: routine, observation: observation, taskID: TaskID("t"),
+            parameters: ["query": "invoices"]
+        )
+        XCTAssertEqual(plan.actions.count, 1)
+        guard case .computer(_, .typeText("invoices", _)) = plan.actions[0].operation else {
+            return XCTFail("parameter was not substituted")
+        }
+    }
+
+    func testReplayRefusesMissingAmbiguousAndForeignTargets() throws {
+        let clickRoutine = try LearnedRoutine(name: "Click", bundleID: "com.example.app", steps: [
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
+        ])
+        // Wrong app.
+        XCTAssertThrowsError(try RoutineReplay.plan(
+            routine: clickRoutine, observation: makeObservation(elements: [], bundleID: "com.other.app"), taskID: TaskID("t")
+        )) { XCTAssertEqual($0 as? RoutineReplayError, .wrongApplication) }
+        // Target absent from the fresh tree.
+        XCTAssertThrowsError(try RoutineReplay.plan(
+            routine: clickRoutine, observation: makeObservation(elements: []), taskID: TaskID("t")
+        )) { XCTAssertEqual($0 as? RoutineReplayError, .targetNotFound(step: 0)) }
+        // Two indistinguishable matches refuse to guess.
+        let duplicates = [
+            makeElement(stableID: "one", role: .button, label: "Save"),
+            makeElement(stableID: "two", role: .button, label: "Save")
+        ]
+        XCTAssertThrowsError(try RoutineReplay.plan(
+            routine: clickRoutine, observation: makeObservation(elements: duplicates), taskID: TaskID("t")
+        )) { XCTAssertEqual($0 as? RoutineReplayError, .ambiguousTarget(step: 0)) }
+        // Missing parameter value.
+        let parameterRoutine = try LearnedRoutine(name: "P", bundleID: "com.example.app", steps: [
+            RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "q", prompt: "?")))
+        ])
+        let observation = makeObservation(elements: [makeElement(stableID: "f", role: .textField, label: "Search")])
+        XCTAssertThrowsError(try RoutineReplay.plan(
+            routine: parameterRoutine, observation: observation, taskID: TaskID("t")
+        )) { XCTAssertEqual($0 as? RoutineReplayError, .missingParameter("q")) }
+    }
+}
