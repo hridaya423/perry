@@ -9,8 +9,13 @@ public enum ExecutionScope: String, Codable, Hashable, Sendable {
     case sandboxedExecution
 }
 
-public enum ExecutablePlanError: Error, Equatable, Sendable {
+public enum ExecutablePlanError: Error, Equatable, Sendable, LocalizedError {
     case invalid(String)
+
+    public var errorDescription: String? {
+        if case .invalid(let message) = self { return message }
+        return nil
+    }
 }
 
 public struct ExecutionPlan: Codable, Sendable {

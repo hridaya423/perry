@@ -184,15 +184,15 @@ final class BackgroundTaskController: ObservableObject {
                         plan = try await runtimeSelection.provider.plan(request.withScreenContext(captured.context))
                     }
                     try Task.checkCancellation()
-                    // Same publication gate as the foreground path: nothing is
-                    // enqueued unless every action is supported, bound to this
-                    // workspace, and inside timeout bounds.
+                    // Publication is bound to the actual background executor:
+                    // WorkspaceFileRuntime runs typed file transforms only, so
+                    // computer/integration/shell plans are refused before a
+                    // record is ever enqueued.
                     try ExecutionPlanValidator.validate(
                         plan,
                         capabilities: ExecutionPlanValidator.Capabilities(
-                            supportedOperations: Set(ExecutableAction.Operation.Kind.allCases),
-                            workspace: workspace,
-                            integrationAccounts: self.remoteIntegrationExecutor.executableAccountIDs
+                            supportedOperations: [.transform],
+                            workspace: workspace
                         )
                     )
                     let record = try await self.coordinator.enqueue(executablePlan: plan)

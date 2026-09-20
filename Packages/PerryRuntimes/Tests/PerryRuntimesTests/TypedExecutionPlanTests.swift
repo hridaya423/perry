@@ -300,11 +300,11 @@ final class TypedExecutionPlanTests: XCTestCase {
             bundleID: "Com.Example.Editor", processID: 1, windowID: 2, connectionGeneration: 3
         )
         let cases: [(ExecutableAction.Operation, TrustTier, ApprovalScope, Bool, Set<ResourceClaim>)] = [
-            (.computer(window: window, command: .click(.windowPixels(x: 0, y: 0))), .yellow, .plan, true,
+            (.computer(window: window, command: .click(.windowPixels(x: 0, y: 0))), .yellow, .plan, false,
              [.application(bundleID: "com.example.editor")]),
             (.integration(accountID: "acct", command: .linearUpdateIssue(issueID: "i", title: "t")), .orange, .action, false,
              [.integration(accountID: "acct")]),
-            (.shell(workspace: workspace, executable: .init(path: URL(fileURLWithPath: "/opt/x"), version: "1", sha256: String(repeating: "a", count: 64)), confinement: .workspaceReadWrite, command: .codingTask(runtimeID: "r", prompt: "p")), .yellow, .plan, true,
+            (.shell(workspace: workspace, executable: .init(path: URL(fileURLWithPath: "/opt/x"), version: "1", sha256: String(repeating: "a", count: 64)), confinement: .workspaceReadWrite, command: .codingTask(runtimeID: "r", prompt: "p")), .yellow, .plan, false,
              [.workspace(workspace)]),
             (.transform(workspace: workspace, command: .rename(path: "a", destination: "b")), .yellow, .plan, true,
              [.workspace(workspace)]),

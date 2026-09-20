@@ -578,7 +578,7 @@ final class ForegroundTaskController: ObservableObject {
                     id: action.id.rawValue,
                     summary: action.summary,
                     tier: tier,
-                    reversible: Self.isReversible(action.operation),
+                    reversible: action.policy.reversible,
                     index: index
                 )
             }) else { return }
@@ -696,11 +696,6 @@ final class ForegroundTaskController: ObservableObject {
             self.activityStripWindow?.orderOut(nil)
             _ = self.transitionSession { try self.sessionController.completeDismissal() }
         }
-    }
-
-    private static func isReversible(_ operation: ExecutableAction.Operation) -> Bool {
-        if case .transform(_, .moveToTrash) = operation { return false }
-        return true
     }
 
 #if DEBUG

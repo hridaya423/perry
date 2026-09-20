@@ -40,7 +40,9 @@ extension ExecutableAction.Operation {
             return ActionPolicy(
                 trustTier: .yellow,
                 minimumApproval: .plan,
-                reversible: true,
+                // Generic GUI input has no honest inverse; the plan's typed
+                // Undo scope covers workspace effects only.
+                reversible: false,
                 claims: [.application(bundleID: window.bundleID.lowercased())]
             )
         case .integration(let accountID, _):
@@ -54,7 +56,9 @@ extension ExecutableAction.Operation {
             return ActionPolicy(
                 trustTier: .yellow,
                 minimumApproval: .plan,
-                reversible: true,
+                // A sandboxed coding task may create, mutate, or delete
+                // arbitrary workspace content; no general inverse exists.
+                reversible: false,
                 claims: [.workspace(workspace)]
             )
         case .transform(let workspace, let command):
