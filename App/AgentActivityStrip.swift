@@ -229,7 +229,7 @@ struct AgentActivityStripView: View {
         HStack(spacing: PerryTheme.Spacing.header) {
             Button { onToggleExpanded() } label: {
                 HStack(alignment: .top, spacing: PerryTheme.Spacing.header) {
-                    PerrySpriteView(animation: state.phase == .failed ? .failed : state.phase == .paused ? .idle : .running, size: 30)
+                    PerryGlassCursorView(animation: state.phase == .failed ? .failed : state.phase == .paused ? .idle : .running, size: 30, variant: .lens)
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
                         HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
                             Text(state.title)

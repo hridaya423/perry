@@ -1247,7 +1247,7 @@ private struct PerryGuidanceScribbleView: View {
             if !reduceMotion,
                let cursorPoint = PerrySmoothScribblePath.point(on: points, progress: clampedProgress),
                clampedProgress < 0.995 {
-                PerrySpriteView(size: 24)
+                PerryGlassCursorView(size: 24, variant: .faceted)
                     .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                     .position(cursorPoint)
             }
@@ -1434,7 +1434,7 @@ private struct PerryGuidanceRectangleView: View {
                     )
 
                 if !reduceMotion && clampedProgress < 0.995 {
-                    PerrySpriteView(size: 24)
+                    PerryGlassCursorView(size: 24, variant: .faceted)
                         .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                         .position(
                             x: max(0, min(size.width, size.width * clampedProgress)),

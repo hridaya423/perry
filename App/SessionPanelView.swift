@@ -89,7 +89,7 @@ struct SessionPanelView: View {
     private var panelContent: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
             HStack(spacing: PerryTheme.Spacing.header) {
-                PerrySpriteView(animation: .idle, size: 36)
+                PerryGlassCursorView(animation: .idle, size: 36, variant: .lens)
                 VStack(alignment: .leading, spacing: PerryTheme.Spacing.label) {
                     Text("Perry")
                         .font(PerryTheme.Typography.panelTitle)
