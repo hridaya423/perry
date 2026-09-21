@@ -109,7 +109,9 @@ extension ExecutableAction.Operation {
         case .computer(let window, _):
             return "controls \(window.bundleID)"
         case .integration(let accountID, let command):
-            return "\(command.rehearsalService) as \(accountID)"
+            // Integration writes show the account, object, and exact payload —
+            // the review is the last place the user sees what leaves.
+            return "\(command.rehearsalService) as \(accountID): \(command.rehearsalPayload)"
         case .shell(let workspace, let executable, _, _):
             return "runs \(executable.path.lastPathComponent) in \(workspace.lastPathComponent)"
         case .transform(_, let command):
@@ -137,6 +139,22 @@ extension ExecutableAction.IntegrationCommand {
         case .slackSendMessage: return "Slack"
         case .notionCreatePage, .notionUpdatePage, .notionAppendBlock: return "Notion"
         case .linearUpdateIssue: return "Linear"
+        }
+    }
+
+    /// Object and payload, verbatim — e.g. `channel C123: "launch at 9"`.
+    var rehearsalPayload: String {
+        switch self {
+        case .slackSendMessage(let channelID, let text):
+            return "channel \(channelID): \"\(text)\""
+        case .notionCreatePage(let parentID, let title):
+            return "new page under \(parentID): \"\(title)\""
+        case .notionUpdatePage(let pageID, let title):
+            return "page \(pageID): \"\(title)\""
+        case .notionAppendBlock(let blockID, let text):
+            return "block \(blockID): \"\(text)\""
+        case .linearUpdateIssue(let issueID, let title):
+            return "issue \(issueID): \"\(title)\""
         }
     }
 }

@@ -760,9 +760,25 @@ final class ForegroundTaskController: ObservableObject {
         await activeSupervisor?.cancel()
     }
 
+    /// A typed plan can't be edited mid-run: steering settles the current
+    /// plan at the next step boundary, then replans the goal plus the
+    /// instruction against a fresh observation — the new segment earns its
+    /// own rehearsal instead of pretending the first preview predicted it.
     func steer(_ instruction: String) {
-        guard let activeSupervisor else { return }
-        Task { await activeSupervisor.steer(instruction) }
+        guard let activeSupervisor, !handoffToHuman else { return }
+        let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard case .executing(let execution) = sessionController.state,
+              execution.lifecycle == .running || execution.lifecycle == .paused else { return }
+        Task { await activeSupervisor.steer(trimmed) }
+        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        handoffGoal = "\(execution.goal) — user steered: \(trimmed)"
+        handoffToHuman = true
+        hooks.setStatus("Replanning with your instruction…")
+        Task { @MainActor [weak self] in
+            await activeSupervisor.pause()
+            self?.continueFromHuman()
+        }
     }
 
     func retry() {

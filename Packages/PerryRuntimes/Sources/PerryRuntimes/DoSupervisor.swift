@@ -315,9 +315,6 @@ public actor DoSupervisor {
                     // The rehearsal doubles as the .plan-scope grant only
                     // when an action actually requires it; minting one for a
                     // plan with no .plan action is a scope mismatch.
-                    // The rehearsal doubles as the .plan-scope grant only
-                    // when an action actually requires it; minting one for a
-                    // plan with no .plan action is a scope mismatch.
                     guard plan.actions.contains(where: { $0.approvalRequirement == .plan }) else { break }
                     do {
                         planApprovalGrant = try ExecutionApprovalGrant(plan: plan, scope: .plan)
