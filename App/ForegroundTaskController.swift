@@ -1068,8 +1068,10 @@ enum WorkspaceScope {
 enum RehearsalMarks {
     struct Mark: Equatable {
         let stepNumber: Int
+        let actionID: ActionID
         let caption: String
         let frame: AXElementFrame
+        let sensitive: Bool
     }
 
     static func marks(for plan: ExecutionPlan, elements: [AXElement]) -> [Mark] {
@@ -1080,7 +1082,13 @@ enum RehearsalMarks {
                   let element = elements.first(where: { $0.stableID == identifier }) else {
                 return nil
             }
-            return Mark(stepNumber: index + 1, caption: action.summary, frame: element.frame)
+            return Mark(
+                stepNumber: index + 1,
+                actionID: action.id,
+                caption: action.summary,
+                frame: element.frame,
+                sensitive: element.sensitivity != .ordinary
+            )
         }
     }
 
@@ -1092,5 +1100,34 @@ enum RehearsalMarks {
         case .scroll(_, _, _, let selector), .pressKey(_, _, let selector), .hotkey(_, _, let selector):
             return selector
         }
+    }
+}
+
+extension ExecutionPlan {
+    /// Replace the human-facing summary of actions whose targets resolve to
+    /// non-ordinary-sensitivity elements, so typed secrets never reach the
+    /// rehearsal card, activity strip, receipts, or history. The operation —
+    /// and therefore what actually executes — is unchanged.
+    func maskingSensitiveSummaries(_ actionIDs: Set<ActionID>) throws -> ExecutionPlan {
+        guard !actionIDs.isEmpty else { return self }
+        return try ExecutionPlan(
+            schemaVersion: schemaVersion,
+            planID: planID,
+            taskID: taskID,
+            goal: goal,
+            actions: actions.map { action in
+                guard actionIDs.contains(action.id) else { return action }
+                return try ExecutableAction(
+                    id: action.id,
+                    summary: "Enter sensitive input",
+                    timeout: action.timeout,
+                    approvalRequirement: action.approvalRequirement,
+                    idempotency: action.idempotency,
+                    operation: action.operation,
+                    postcondition: action.postcondition
+                )
+            },
+            requestedScopes: requestedScopes
+        )
     }
 }
