@@ -42,6 +42,7 @@ final class ForegroundTaskController: ObservableObject {
     private(set) var activeSupervisor: DoSupervisor?
     private var handoffToHuman = false
     private var handoffGoal: String?
+    private var rehearsalMarkIDs = Set<UUID>()
     private var doStartTask: Task<Void, Never>?
     private var foregroundActivityGeneration = UUID()
     private var observedForegroundTaskID: UUID?
@@ -500,13 +501,61 @@ final class ForegroundTaskController: ObservableObject {
             }
         )
         activeSupervisor = supervisor
+        rehearsalMarkIDs = await paintRehearsalMarks(plan: plan, target: captured.target, worker: worker)
         let outcome = await supervisor.run(
             plan: plan,
             context: captured.context,
             targetWindow: targetWindow,
             typedExecutor: typedExecutor
         )
+        clearRehearsalMarks()
         return await finalizeTask(with: outcome)
+    }
+
+    /// Spatial rehearsal: number the targets the plan will actually touch, resolved
+    /// against a fresh observation. Only selectors that resolve right now produce
+    /// marks — ungrounded steps stay text-only in the rehearsal card.
+    private func paintRehearsalMarks(plan: ExecutionPlan, target: CuaWindowTarget?, worker: CuaWorkerHandle) async -> Set<UUID> {
+        let targetStore = CuaGuideTargetStore()
+        if let target {
+            await targetStore.set(CuaTargetHint(
+                bundleID: target.bundleID,
+                processID: target.processID,
+                windowID: target.windowID,
+                windowTitle: target.title
+            ))
+        }
+        guard let observation = try? await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe() else {
+            return []
+        }
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        var ids = Set<UUID>()
+        for mark in RehearsalMarks.marks(for: plan, elements: observation.snapshot.elements) {
+            let rect = AXCoordinateConverter.appKitRect(
+                axX: mark.frame.x,
+                axY: mark.frame.y,
+                width: mark.frame.width,
+                height: mark.frame.height,
+                primaryScreenMaxY: primaryMaxY
+            )
+            let overlay = PerryGuidanceOverlay.rectangle(
+                rect: rect,
+                accentHex: "#F59E0B",
+                lineWidth: 3,
+                fillOpacity: 0.08,
+                caption: "\(mark.stepNumber). \(mark.caption)",
+                duration: 60
+            )
+            ids.insert(overlay.id)
+            overlayState.visualGuidanceOverlays.append(overlay)
+        }
+        return ids
+    }
+
+    private func clearRehearsalMarks() {
+        guard !rehearsalMarkIDs.isEmpty else { return }
+        overlayState.visualGuidanceOverlays.removeAll { rehearsalMarkIDs.contains($0.id) }
+        rehearsalMarkIDs.removeAll()
     }
 
     private func makeConfirmer() -> any Confirmer {
@@ -757,6 +806,7 @@ final class ForegroundTaskController: ObservableObject {
               !execution.isFinalized else { return }
         switch event {
         case .actionStarted(let index, let action, let tier):
+            clearRehearsalMarks()
             guard transitionSession({
                 try sessionController.recordExecutionStep(
                     id: action.id.rawValue,
@@ -1008,5 +1058,39 @@ enum WorkspaceScope {
 
     static func setRoot(_ url: URL) {
         UserDefaults.standard.set(url.standardizedFileURL.path, forKey: defaultsKey)
+    }
+}
+
+/// Spatial rehearsal marks: resolve a typed plan's computer targets against a
+/// fresh observation. Only `.accessibilityID` selectors that resolve right now
+/// produce marks — raw pixel targets and ungrounded steps stay text-only in the
+/// rehearsal card rather than inventing coordinates.
+enum RehearsalMarks {
+    struct Mark: Equatable {
+        let stepNumber: Int
+        let caption: String
+        let frame: AXElementFrame
+    }
+
+    static func marks(for plan: ExecutionPlan, elements: [AXElement]) -> [Mark] {
+        plan.actions.enumerated().compactMap { index, action in
+            guard case .computer(_, let command) = action.operation,
+                  let selector = primarySelector(of: command),
+                  case .accessibilityID(let identifier) = selector,
+                  let element = elements.first(where: { $0.stableID == identifier }) else {
+                return nil
+            }
+            return Mark(stepNumber: index + 1, caption: action.summary, frame: element.frame)
+        }
+    }
+
+    private static func primarySelector(of command: ExecutableAction.ComputerCommand) -> ExecutableAction.Selector? {
+        switch command {
+        case .click(let selector), .rightClick(let selector), .doubleClick(let selector),
+             .typeText(_, target: let selector), .drag(from: let selector, to: _, durationMilliseconds: _, steps: _):
+            return selector
+        case .scroll(_, _, _, let selector), .pressKey(_, _, let selector), .hotkey(_, _, let selector):
+            return selector
+        }
     }
 }
