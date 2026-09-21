@@ -280,9 +280,6 @@ struct PerryBuddyView: View {
         }
     }
 
-    private var cursorFollowAnimation: Animation? {
-        buddyNavigationMode == .followingCursor ? .linear(duration: 1.0 / 120.0) : nil
-    }
 
     private let fullWelcomeMessage = "hey! i'm Perry"
     private var captionBubbleBackgroundColor: Color { PerryOverlayTheme.Colors.captionSurface }
@@ -325,7 +322,6 @@ struct PerryBuddyView: View {
                     )
                     .opacity(bubbleOpacity)
                     .position(x: cursorPosition.x + 10 + (bubbleSize.width / 2), y: cursorPosition.y + 18)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
                     .animation(PerryOverlayTheme.Motion.entrance, value: bubbleOpacity)
                     .onPreferenceChange(SizePreferenceKey.self) { newSize in
                         bubbleSize = newSize
@@ -357,7 +353,6 @@ struct PerryBuddyView: View {
                     .scaleEffect(navigationBubbleScale)
                     .opacity(navigationBubbleOpacity)
                     .position(x: cursorPosition.x + 10 + (navigationBubbleSize.width / 2), y: cursorPosition.y + 18)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
                     .animation(PerryOverlayTheme.Motion.travel, value: navigationBubbleScale)
                     .animation(PerryOverlayTheme.Motion.entrance, value: navigationBubbleOpacity)
                     .onPreferenceChange(NavigationBubbleSizePreferenceKey.self) { newSize in
@@ -435,7 +430,6 @@ struct PerryBuddyView: View {
                     )
                     .position(x: bubblePosition.x, y: bubblePosition.y)
                     .opacity(cursorOpacity)
-                    .animation(cursorFollowAnimation, value: cursorPosition)
                     .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: taskBubbleText)
                     .onPreferenceChange(AgentTaskBubbleSizePreferenceKey.self) { newSize in
                         agentTaskBubbleSize = newSize
@@ -486,7 +480,6 @@ struct PerryBuddyView: View {
             )
                 .opacity(buddyIsVisibleOnThisScreen && cursorState.voiceState == .listening ? cursorOpacity : 0)
                 .position(cursorPosition)
-                .animation(cursorFollowAnimation, value: cursorPosition)
                 .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
 
             PerrySpinnerView(
@@ -495,7 +488,6 @@ struct PerryBuddyView: View {
             )
                 .opacity(buddyIsVisibleOnThisScreen && cursorState.voiceState == .processing ? cursorOpacity : 0)
                 .position(cursorPosition)
-                .animation(cursorFollowAnimation, value: cursorPosition)
                 .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
 
         }
