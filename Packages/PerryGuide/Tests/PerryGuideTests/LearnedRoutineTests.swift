@@ -275,14 +275,22 @@ final class LearnedRoutineTests: XCTestCase {
         }
     }
 
-    func testReplaySkipsManualSteps() throws {
+    func testReplayPausesOnManualSteps() throws {
         let routine = try LearnedRoutine(name: "Mix", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click),
             RoutineStep(summary: "Confirm the dialog yourself", action: .click, requiresHuman: true)
         ])
         let observation = makeObservation(elements: [makeElement(stableID: "ax-save", role: .button, label: "Save")])
         let plan = try RoutineReplay.plan(routine: routine, observation: observation, taskID: TaskID("t"))
-        XCTAssertEqual(plan.actions.count, 1)
+        // The manual step is never dispatched — it surfaces as an askUser
+        // pause so the run stops and tells the user which part is theirs.
+        XCTAssertEqual(plan.actions.count, 2)
+        let manual = try XCTUnwrap(plan.actions.last)
+        guard case .askUser(let prompt, _) = manual.operation else {
+            return XCTFail("manual step should become an askUser pause")
+        }
+        XCTAssertTrue(prompt.contains("Confirm the dialog yourself"))
+        XCTAssertEqual(manual.approvalRequirement, .action)
     }
 }
 

@@ -57,7 +57,19 @@ public enum RoutineReplay {
         var actions: [ExecutableAction] = []
         for (index, step) in routine.steps.enumerated() {
             if case .wait = step.action { continue } // waits are absorbed by per-step verification
-            if step.requiresHuman { continue } // manual steps are never dispatched
+            // Manual steps are never dispatched — but never hidden either:
+            // they surface as askUser pauses so the run stops and tells the
+            // user exactly which part is theirs.
+            if step.requiresHuman {
+                actions.append(try ExecutableAction(
+                    id: ActionID("routine-step-\(index)"),
+                    summary: step.summary,
+                    approvalRequirement: .action,
+                    operation: .askUser(prompt: "Your turn: \(step.summary)", choices: ["Done"]),
+                    postcondition: .answered
+                ))
+                continue
+            }
             let selector: ExecutableAction.Selector? = try step.target.map { target in
                 .accessibilityID(try resolve(target, in: observation.snapshot.elements, step: index))
             }
@@ -102,11 +114,10 @@ public enum RoutineReplay {
             taskID: taskID,
             goal: routine.name,
             actions: actions,
-            requestedScopes: [.computerControl]
+            requestedScopes: Set(actions.flatMap { $0.operation.requiredScopes })
         )
     }
 
-    /// A target resolves to exactly one element — a miss fails the plan and an
     /// A target resolves to exactly one element — a miss fails the plan and an
     /// ambiguous match refuses to guess rather than acting on the wrong
     /// control.
