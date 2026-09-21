@@ -30,10 +30,13 @@ public struct ConfirmationRequest: Sendable {
 }
 
 /// The plan-card answer: run the whole plan, walk it one action at a time
-/// with a confirmation each, or stop.
+/// with a confirmation each, replay the preview, send the goal back for
+/// editing, or stop.
 public enum PlanDecision: Sendable {
     case run
     case stepThrough
+    case replay
+    case edit
     case cancel
 }
 
@@ -43,7 +46,7 @@ public protocol Confirmer: Sendable {
 }
 
 extension Confirmer {
-    /// Confirmers without a step-through control degrade to run/cancel.
+    /// Confirmers without the extra controls degrade to run/cancel.
     public func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
         await requestConfirmation(request) ? .run : .cancel
     }
@@ -138,6 +141,7 @@ private enum ActionExecutionOutcome {
 private enum PlanApprovalResult {
     case approved(tier: TrustTier, stepThrough: Bool)
     case denied
+    case edit
     case cancelled
 }
 
@@ -325,6 +329,9 @@ public actor DoSupervisor {
                 case .denied:
                     await stop(reason: "user denied the execution plan")
                     return .blocked(reason: "user denied the execution plan")
+                case .edit:
+                    await stop(reason: "goal sent back for editing")
+                    return .blocked(reason: "goal sent back for editing")
                 case .cancelled:
                     await stop(reason: "user cancelled the task")
                     return .blocked(reason: "user cancelled the task")
@@ -475,11 +482,21 @@ public actor DoSupervisor {
             requiredText: tier >= .red ? (planTarget ?? plan.goal) : nil,
             reversible: plan.actions.allSatisfy { $0.policy.reversible }
         )
-        await emit(.confirmationRequested(request))
-        guard !cancelRequested && !Task.isCancelled else { return .cancelled }
-        let decision = await awaitPlanDecision(request)
-        guard !cancelRequested && !Task.isCancelled else { return .cancelled }
-        guard decision != .cancel else { return .denied }
+        var decision: PlanDecision
+        repeat {
+            await emit(.confirmationRequested(request))
+            guard !cancelRequested && !Task.isCancelled else { return .cancelled }
+            decision = await awaitPlanDecision(request)
+            guard !cancelRequested && !Task.isCancelled else { return .cancelled }
+            // Replay re-presents the same preview; the surface repaints marks
+            // from a fresh observation, so the review never rests on stale targets.
+        } while decision == .replay
+        switch decision {
+        case .cancel: return .denied
+        case .edit: return .edit
+        case .run, .stepThrough: break
+        case .replay: preconditionFailure("replay exits the loop")
+        }
         guard transition(.approveAction) else {
             return cancelRequested ? .cancelled : .denied
         }

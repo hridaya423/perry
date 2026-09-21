@@ -319,6 +319,44 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertEqual(actionRequests, 0)
     }
 
+    func testReplayPreviewReasksWithoutDispatching() async throws {
+        let action = try makeAction()
+        let plan = try makePlan(action: action)
+        let confirmer = StepThroughConfirmer(queue: [.replay, .run])
+        let executor = RecordingTypedActionExecutor()
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier()
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
+
+        let decisions = await confirmer.decisions
+        let received = await executor.received
+        XCTAssertEqual(outcome, .completed(stepsRun: 1))
+        XCTAssertEqual(decisions, 2)
+        XCTAssertEqual(received?.action.id, action.id)
+    }
+
+    func testEditDecisionBlocksWithoutDispatching() async throws {
+        let action = try makeAction()
+        let plan = try makePlan(action: action)
+        let confirmer = StepThroughConfirmer(queue: [.edit])
+        let executor = RecordingTypedActionExecutor()
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier()
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
+
+        let received = await executor.received
+        XCTAssertEqual(outcome, .blocked(reason: "goal sent back for editing"))
+        XCTAssertNil(received)
+    }
+
     private func makeAction(timeout: TimeInterval = 30) throws -> ExecutableAction {
         try ExecutableAction(
             id: ActionID("write-report"),
@@ -356,12 +394,16 @@ private actor StubTypedConfirmer: Confirmer {
 }
 
 private actor StepThroughConfirmer: Confirmer {
-    let decision: PlanDecision
+    private var queue: [PlanDecision]
     private(set) var decisions = 0
     private(set) var actionRequests = 0
 
     init(decision: PlanDecision = .stepThrough) {
-        self.decision = decision
+        self.queue = [decision]
+    }
+
+    init(queue: [PlanDecision]) {
+        self.queue = queue
     }
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
@@ -371,7 +413,7 @@ private actor StepThroughConfirmer: Confirmer {
 
     func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
         decisions += 1
-        return decision
+        return queue.count > 1 ? queue.removeFirst() : queue.first ?? .run
     }
 }
 

@@ -42,7 +42,16 @@ final class ForegroundTaskController: ObservableObject {
     private(set) var activeSupervisor: DoSupervisor?
     private var handoffToHuman = false
     private var handoffGoal: String?
-    private var rehearsalMarkIDs = Set<UUID>()
+    private var rehearsalContext: RehearsalContext?
+
+    /// Everything a rehearsal repaint needs. Kept only while the plan card is
+    /// up — cleared when the first action dispatches or the run exits.
+    private struct RehearsalContext {
+        var plan: ExecutionPlan
+        var target: CuaWindowTarget?
+        var markIDs: Set<UUID>
+        var seenPlanRequest = false
+    }
     private var doStartTask: Task<Void, Never>?
     private var foregroundActivityGeneration = UUID()
     private var observedForegroundTaskID: UUID?
@@ -501,11 +510,13 @@ final class ForegroundTaskController: ObservableObject {
             }
         )
         activeSupervisor = supervisor
-        let rehearsal = await paintRehearsalMarks(plan: plan, target: captured.target, worker: worker)
-        rehearsalMarkIDs = rehearsal.overlayIDs
+        var context = RehearsalContext(plan: plan, target: captured.target, markIDs: [])
+        let painted = await paintRehearsalMarks(context: context)
+        context.markIDs = painted.overlayIDs
+        rehearsalContext = context
         // Mask summaries for actions targeting non-ordinary elements so typed
         // secrets never reach the card, activity strip, receipts, or history.
-        let executionPlan = (try? plan.maskingSensitiveSummaries(rehearsal.sensitiveActionIDs)) ?? plan
+        let executionPlan = (try? plan.maskingSensitiveSummaries(painted.sensitiveActionIDs)) ?? plan
         let outcome = await supervisor.run(
             plan: executionPlan,
             context: captured.context,
@@ -520,12 +531,11 @@ final class ForegroundTaskController: ObservableObject {
     /// against a fresh observation. Only selectors that resolve right now produce
     /// marks — ungrounded steps stay text-only in the rehearsal card.
     private func paintRehearsalMarks(
-        plan: ExecutionPlan,
-        target: CuaWindowTarget?,
-        worker: CuaWorkerHandle
+        context: RehearsalContext
     ) async -> (overlayIDs: Set<UUID>, sensitiveActionIDs: Set<ActionID>) {
+        let plan = context.plan
         let targetStore = CuaGuideTargetStore()
-        if let target {
+        if let target = context.target {
             await targetStore.set(CuaTargetHint(
                 bundleID: target.bundleID,
                 processID: target.processID,
@@ -533,10 +543,18 @@ final class ForegroundTaskController: ObservableObject {
                 windowTitle: target.title
             ))
         }
-        guard let observation = try? await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe() else {
+        // Observe on a guide-scope worker: a failed rehearsal read retires
+        // that worker instead of cancelling the foreground operation that
+        // borrowed it.
+        let elements: [AXElement]
+        do {
+            elements = try await workers.withWorker(scope: .guide, resources: []) { worker in
+                try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe().snapshot.elements
+            }
+        } catch {
             return ([], [])
         }
-        let marks = RehearsalMarks.marks(for: plan, elements: observation.snapshot.elements)
+        let marks = RehearsalMarks.marks(for: plan, elements: elements)
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         var ids = Set<UUID>()
         for mark in marks {
@@ -562,9 +580,22 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     private func clearRehearsalMarks() {
-        guard !rehearsalMarkIDs.isEmpty else { return }
-        overlayState.visualGuidanceOverlays.removeAll { rehearsalMarkIDs.contains($0.id) }
-        rehearsalMarkIDs.removeAll()
+        guard let context = rehearsalContext else { return }
+        overlayState.visualGuidanceOverlays.removeAll { context.markIDs.contains($0.id) }
+        rehearsalContext = nil
+    }
+
+    /// A replayed preview re-observes and repaints the marks — the review never
+    /// rests on where targets were last time.
+    private func repaintRehearsalMarks() {
+        guard var context = rehearsalContext else { return }
+        overlayState.visualGuidanceOverlays.removeAll { context.markIDs.contains($0.id) }
+        Task {
+            let painted = await paintRehearsalMarks(context: context)
+            guard var current = rehearsalContext, current.plan.planID == context.plan.planID else { return }
+            current.markIDs = painted.overlayIDs
+            rehearsalContext = current
+        }
     }
 
     private func makeConfirmer() -> any Confirmer {
@@ -794,6 +825,13 @@ final class ForegroundTaskController: ObservableObject {
             }) else { return }
             overlayState.buddyState = .awaitingApproval
             hooks.setStatus("Perry is waiting for your approval.")
+            if rehearsalContext != nil {
+                if rehearsalContext!.seenPlanRequest {
+                    repaintRehearsalMarks()
+                } else {
+                    rehearsalContext!.seenPlanRequest = true
+                }
+            }
         case .confirmationAccepted(let approvalID):
             guard transitionSession({ try sessionController.acceptApproval(approvalID) }) else { return }
             overlayState.buddyState = .acting

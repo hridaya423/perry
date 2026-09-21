@@ -129,6 +129,12 @@ struct IntentCardView: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 if allowsStepThrough {
+                    Button("Edit") { onAnswer(.edit) }
+                        .keyboardShortcut("e", modifiers: .command)
+                        .accessibilityHint("Send the goal back to revise it")
+                    Button("Replay") { onAnswer(.replay) }
+                        .keyboardShortcut("r", modifiers: .command)
+                        .accessibilityHint("Re-observe the targets and show the preview again")
                     Button("Step through") {
                         guard isTypedConfirmationValid else {
                             NSSound.beep()

@@ -49,6 +49,15 @@ struct SessionPanelView: View {
         .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
             controller.runtimes.refreshChoices()
+            if let prefill = controller.pendingPromptText {
+                controller.pendingPromptText = nil
+                text = prefill
+            }
+        }
+        .onReceive(controller.$pendingPromptText) { prefill in
+            guard let prefill else { return }
+            controller.pendingPromptText = nil
+            text = prefill
         }
         .task {
             await Task.yield()

@@ -19,6 +19,7 @@ enum PerryDebugLaunchSurface: String, Equatable {
     case prototypes
     case cursors
     case notch
+    case intentCard = "intent-card"
     case backgroundTasksStorageError = "background-tasks-storage-error"
 
     init?(arguments: [String]) {
@@ -299,6 +300,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         runRoutine: { [weak self] routine, parameters in self?.foreground.startRoutine(routine, parameters: parameters) },
         onRecordingChanged: { [weak self] recording in
             self?.notchStatus.update(isRecording: recording, backgroundCount: self?.lastBackgroundCount ?? 0)
+        },
+        providerCompleter: { [weak self] in
+            guard let client = self?.runtimes.makeProviderClient() else { return nil }
+            return { prompt in try await client.complete(prompt: prompt) }
         }
     )
     private lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: storageDirectory)
@@ -630,6 +635,18 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         } else if debugSurface == .cursors {
             DispatchQueue.main.async {
                 DebugCursorGalleryWindow.show()
+            }
+        } else if debugSurface == .intentCard {
+            DispatchQueue.main.async {
+                let card = IntentCard(
+                    title: "Rename 12 screenshots in ~/PerryDemo",
+                    detail: "1. Observe Desktop\n2. Select screenshot files\n3. Rename each with its date",
+                    tier: .orange,
+                    targetSummary: "12 files",
+                    approveLabel: "Run",
+                    reversible: true
+                )
+                IntentCardWindow(card: card, allowsStepThrough: true) { _ in }.showNearCursor()
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -1323,6 +1340,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     // MARK: Panel (the type/talk surface)
+
+    /// Text the panel seeds into its field — a rehearsal "Edit" answer lands
+    /// here with the goal ready to revise and resubmit. Consumed on read.
+    @Published var pendingPromptText: String?
+
+    func presentPrompt(prefill: String) {
+        pendingPromptText = prefill
+        showPanel()
+    }
 
     private func showPanel() {
         if panel == nil {
@@ -2047,6 +2073,10 @@ struct InteractiveConfirmer: Confirmer {
         )
         SoundPlayer.play(.receive)
         await MainActor.run { controller.voice.speak(card.spokenLine) }
-        return await controller.requestPlanDecision(id: request.id, card: card)
+        let decision = await controller.requestPlanDecision(id: request.id, card: card)
+        if decision == .edit {
+            await controller.presentPrompt(prefill: request.actionSummary)
+        }
+        return decision
     }
 }
