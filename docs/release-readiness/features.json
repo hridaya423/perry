@@ -2857,6 +2857,462 @@
      "reference": "docs/heyclicky-feature-audit.md:49"
     }
    ]
+  },
+  {
+   "id": "ask.spatial-answers",
+   "name": "Spatial Ask: point at the screen and get grounded answers",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Default session mode; bounded references, follow-ups, stale-answer refusal",
+   "limitations": [
+    "Without a configured provider, answers come from visible labels and accessibility text only - literal, not inferential.",
+    "Live end-to-end Ask against a real provider requires a BYOK key plus Screen Recording permission; this registry has no structured live run."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/AskSessionController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/SpatialAnswer.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/AskSessionControllerTests.swift::func testAnswerPublishesReferencesAndSpeech()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/AskSessionControllerTests.swift::func testFollowUpReusesSessionAndConversation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/AskSessionControllerTests.swift::func testChangedWindowInvalidatesLateAnswer()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/AskSessionControllerTests.swift::func testProtectedWindowNeverReachesAnswerer()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/AskSessionControllerTests.swift::func testCancelStopsPendingAnswer()"
+    }
+   ]
+  },
+  {
+   "id": "do.rehearsal",
+   "name": "Ghost rehearsal: plan preview with numbered marks before execution",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Plan card previews typed steps on real targets with Run / Step through / Replay / Edit / Stop",
+   "limitations": [
+    "Marks require grounded selectors; actions without a resolvable target show no mark, and Replay repaints from a fresh observation.",
+    "This registry has no structured live run of the rehearsal card on the real screen."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/ForegroundTaskController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SessionPanelView.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RehearsalMarksTests.swift::func testAccessibilityIDTargetsResolveToMarks()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RehearsalMarksTests.swift::func testPixelTargetsAndUngroundedSelectorsProduceNoMarks()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RehearsalMarksTests.swift::func testNonComputerActionsProduceNoMarks()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/RehearsalMarksTests.swift::func testSensitiveTargetsFlagForMasking()"
+    }
+   ]
+  },
+  {
+   "id": "do.durable-receipts",
+   "name": "Durable write-ahead receipts for workspace execution",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Foreground and background workspace transforms journal through TaskCoordinator before dispatch",
+   "limitations": [
+    "Receipts cover workspace file transforms; GUI operations are verified at execution but do not produce filesystem receipts.",
+    "Crash-recovery coverage is simulated in tests (relaunch fixtures), not a measured live crash drill."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/WorkspaceRunJournal.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/TaskCoordinator.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/TypedActionRouter.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceActionJournalTests.swift::func testCrashAfterDispatchRequiresInspectionAndCancellationPreservesUncertainty()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceActionJournalTests.swift::func testDuplicateDispatchCallbacksPerformOneFileCreation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceActionJournalTests.swift::func testDispatchPersistenceFailurePreventsFileCreation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/ForegroundPlanningTests.swift::func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition()"
+    }
+   ]
+  },
+  {
+   "id": "do.undo",
+   "name": "Agent Undo: conflict-safe reversal of verified workspace changes",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Typed inverse actions, approved and journaled like forward work; stops at the first conflict",
+   "limitations": [
+    "Covers workspace file transforms only (create, rename, trash, restore). GUI actions and integration writes are reported with no Undo.",
+    "Removing a task record removes its receipts and ends reversibility for that task."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/WorkspaceUndo.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/WorkspaceRunJournal.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/BackgroundTaskController.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceUndoTests.swift::func testRenameInverseRestoresOriginalName()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceUndoTests.swift::func testTrashInverseRestoresEntry()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceUndoTests.swift::func testCreatedFileInverseMovesUnchangedFileToTrash()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/WorkspaceUndoTests.swift::func testTraversalPathIsRejectedBeforeAnyFilesystemTouch()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/BackgroundTaskCreationTests.swift::func testUndoRunsOncePerRecordAndStopsAtConflict()"
+    }
+   ]
+  },
+  {
+   "id": "do.shared-control",
+   "name": "Shared control: take over, steer, and continue mid-task",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "User takeover pauses Perry at a step boundary; steering and continue replan from fresh screen state",
+   "limitations": [
+    "Steering settles at the current step boundary - it cannot interrupt an action already dispatched.",
+    "Continuation replans forward only; previously completed steps are never re-executed, and this registry has no structured live run."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/ForegroundTaskController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AgentActivityStrip.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripControlAvailabilityFollowsTaskPhaseAndRetryFinalization()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripProjectsForegroundExecutionFromSessionState()"
+    }
+   ]
+  },
+  {
+   "id": "routines.watch-learn",
+   "name": "Watch & Learn: bounded demonstration recording with review before save",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "User-bounded recording drafts a step list for review; secure-field values are never captured",
+   "limitations": [
+    "Clicks outside every observed element are dropped, and secure-field keystrokes record nothing - a routine can silently lack a step the user intended.",
+    "Recording requires Accessibility permission; this registry has no structured live capture."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/DemonstrationRecorder.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/RoutineReviewWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/LearnedRoutine.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemonstrationRecorderTests.swift::func testClickInsideElementRecordsAnchor()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemonstrationRecorderTests.swift::func testTypedTextFollowsLastClickTargetAndSecureFieldsDropText()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemonstrationRecorderTests.swift::func testTimeLimitWarnsThenSignalsStop()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/LearnedRoutineTests.swift::func testEmptyDemonstrationIsRejected()"
+    }
+   ]
+  },
+  {
+   "id": "routines.replay",
+   "name": "Routine replay against fresh observation with parameters",
+   "status": "unit-tested",
+   "owner": "PerryGuide",
+   "support": "Saved routines rebuild typed plans from the live screen; parameters prompt per run; manual steps pause",
+   "limitations": [
+    "Renamed apps or moved targets pause the run for input rather than clicking blind.",
+    "Replays run through the same approval and verification path as fresh tasks; this registry has no structured live run."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/RoutineReplay.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryGuide/Sources/PerryGuide/LearnedRoutine.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/LearnedRoutineTests.swift::func testReplayResolvesTargetsAgainstFreshObservation()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/LearnedRoutineTests.swift::func testReplayFillsParametersAndDropsWaitSteps()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/LearnedRoutineTests.swift::func testReplayRefusesMissingAmbiguousAndForeignTargets()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/LearnedRoutineTests.swift::func testReplayPausesOnManualSteps()"
+    }
+   ]
+  },
+  {
+   "id": "appearance.notch-status",
+   "name": "Optional notch status pill",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Glanceable status at the top-center safe area, off by default; menu bar remains the primary status surface",
+   "limitations": [
+    "Only renders on displays with a notch-safe area; other configurations keep the menu-bar strip.",
+    "Status only - approvals, text entry, and Ask/Guide/Do stay on the spatial surface; this registry has no structured live run across display configurations."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/NotchStatusController.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/NotchStatusControllerTests.swift::func testPillAppearsOnlyWithContentOnANotchedScreen()"
+    }
+   ]
+  },
+  {
+   "id": "history.outcome-surface",
+   "name": "History shows provider route, verification, and Undo availability",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Per-session rows record the runtime that answered, the verified outcome, and whether a safe Undo still exists",
+   "limitations": [
+    "Undo availability reflects retained task records; records pruned or erased end the badge.",
+    "Provider route is recorded for provider-backed runs only; local-planner runs show the local route."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/HistoryWindow.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/ExecutionFinalizer.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/ExecutionFinalizerTests.swift::func testTranscriptCarriesTheSelectedProviderRoute()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/ExecutionFinalizerTests.swift::func testCompletionPreservesActionIdentityOrderAndVerification()"
+    }
+   ]
+  },
+  {
+   "id": "onboarding.first-value-demo",
+   "name": "Onboarding demo answers about the screen before guiding or doing",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "The guided demo proves spatial Ask first, then Guide, then a small verified Do task",
+   "limitations": [
+    "The demo requires Screen Recording and Accessibility grants; without them it reports honestly instead of faking steps.",
+    "This registry has no structured live run of the full onboarding flow."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "not-recorded"
+    },
+    "last_successful_run": {
+     "status": "not-recorded"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/DemoDirector.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemoDirectorTests.swift::func testDemoAnswersAboutTheScreenBeforeGuidingOrDoing()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DemoDirectorTests.swift::func testBlockedTaskFailsDemoAndDoesNotReportCompletion()"
+    }
+   ]
   }
  ]
 }
