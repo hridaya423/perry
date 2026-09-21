@@ -216,4 +216,18 @@ final class RuntimeCatalog: ObservableObject {
             )
         )
     }
+
+    /// Raw provider access for bounded synthesis prompts (routine naming).
+    /// Same credential lookup as the Ask answerer; nil without a configured
+    /// endpoint + key.
+    func makeProviderClient() -> DirectProviderClient? {
+        guard let endpoint = Self.currentBYOKVisionEndpoint(),
+              let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
+              !key.isEmpty else { return nil }
+        let provider = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) ?? .openAI
+        return DirectProviderClient(
+            configuration: DirectProviderConfiguration(provider: provider, model: endpoint.model, baseURL: endpoint.baseURL),
+            apiKeyProvider: { key }
+        )
+    }
 }

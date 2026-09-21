@@ -285,3 +285,56 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertEqual(plan.actions.count, 1)
     }
 }
+
+
+final class RoutineSynthesisTests: XCTestCase {
+    private func draft() throws -> LearnedRoutine {
+        try LearnedRoutine(name: "New routine", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Save", target: RoutineTarget(role: "button", label: "Save"), action: .click),
+            RoutineStep(summary: "Type literal", target: RoutineTarget(role: "textField", label: "Title"), action: .typeText(.literal("draft")))
+        ])
+    }
+
+    func testPolishRenamesAndRephrases() async throws {
+        let raw = #"{"name":"Save a draft","stepSummaries":["Press Save","Enter the draft title"]}"#
+        let routine = try await RoutineSynthesis.polish(routine: draft()) { _ in raw }
+        XCTAssertEqual(routine.name, "Save a draft")
+        XCTAssertEqual(routine.steps.map(\.summary), ["Press Save", "Enter the draft title"])
+        XCTAssertEqual(routine.steps.map(\.action), try draft().steps.map(\.action))
+    }
+
+    func testFencedJSONAndOversizeNamesTolerated() async throws {
+        let longName = String(repeating: "x", count: 200)
+        let raw = "```json\n{\"name\":\"\(longName)\",\"stepSummaries\":[\"One\",\"Two\"]}\n```"
+        let routine = try await RoutineSynthesis.polish(routine: draft()) { _ in raw }
+        XCTAssertEqual(routine.name, "New routine")
+        XCTAssertEqual(routine.steps.map(\.summary), ["One", "Two"])
+    }
+
+    func testMalformedOrMismatchedResponsesThrow() async throws {
+        for raw in [
+            "not json",
+            #"{"name":"x","stepSummaries":["only one"]}"#,
+            #"{"name":"x","stepSummaries":["a","b"],"extra":true}"#,
+            String(repeating: "y", count: RoutineSynthesis.maximumResponseBytes + 1)
+        ] {
+            await XCTAssertThrowsErrorAsync(try await RoutineSynthesis.polish(routine: draft()) { _ in raw })
+        }
+    }
+
+    func testProviderFailurePropagates() async {
+        struct Boom: Error {}
+        await XCTAssertThrowsErrorAsync(try await RoutineSynthesis.polish(routine: draft()) { _ in throw Boom() })
+    }
+
+    private func XCTAssertThrowsErrorAsync(
+        _ expression: @autoclosure () async throws -> LearnedRoutine,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await expression()
+            XCTFail("expected throw", file: file, line: line)
+        } catch {}
+    }
+}

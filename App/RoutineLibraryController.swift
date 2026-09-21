@@ -28,8 +28,10 @@ final class RoutineLibraryController {
         setStatus: @escaping (String) -> Void,
         speak: @escaping (String) -> Void,
         runRoutine: @escaping (LearnedRoutine, [String: String]) -> Void,
-        onRecordingChanged: @escaping (Bool) -> Void = { _ in }
+        onRecordingChanged: @escaping (Bool) -> Void = { _ in },
+        providerCompleter: @escaping @MainActor () -> (@Sendable (String) async throws -> String)? = { nil }
     ) {
+        self.providerCompleter = providerCompleter
         self.store = store
         self.workers = workers
         self.context = context
@@ -38,6 +40,8 @@ final class RoutineLibraryController {
         self.runRoutine = runRoutine
         self.onRecordingChanged = onRecordingChanged
     }
+
+    private let providerCompleter: @MainActor () -> (@Sendable (String) async throws -> String)?
 
     var isRecording: Bool { recorder?.isRecording ?? false }
 
@@ -138,7 +142,13 @@ final class RoutineLibraryController {
             return
         }
         do {
-            let routine = try RoutineInference.infer(demonstration: demonstration, name: "New routine")
+            var routine = try RoutineInference.infer(demonstration: demonstration, name: "New routine")
+            // Provider synthesis renames/rephrases only — the step structure
+            // stays exactly what was recorded; any provider failure keeps the
+            // local draft.
+            if let complete = providerCompleter() {
+                routine = (try? await RoutineSynthesis.polish(routine: routine, complete: complete)) ?? routine
+            }
             pendingRoutine = routine
             reviewState.presentReview(steps: routine.steps)
         } catch {

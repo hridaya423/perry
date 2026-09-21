@@ -415,3 +415,79 @@ public struct RoutineStore: @unchecked Sendable {
         storageDirectory?.appendingPathComponent("Routines", isDirectory: true)
     }
 }
+
+/// Provider wording pass over a locally-inferred draft. The provider sees only
+/// step structure — action kind, target role/label, app bundle ID — never typed
+/// values, screenshots, or tools, and may only rename the routine and rephrase
+/// step summaries. Anything outside the strict schema is discarded and the
+/// local draft stands.
+public enum RoutineSynthesis {
+    public static let maximumResponseBytes = 8 * 1024
+
+    public static func polish(
+        routine: LearnedRoutine,
+        complete: @Sendable (String) async throws -> String
+    ) async throws -> LearnedRoutine {
+        let raw = try await complete(prompt(for: routine))
+        return try apply(raw: raw, to: routine)
+    }
+
+    static func prompt(for routine: LearnedRoutine) -> String {
+        let steps = routine.steps.enumerated().map { index, step in
+            "\(index + 1). \(describe(step))"
+        }.joined(separator: "\n")
+        return """
+        Name this recorded macOS routine and write one short summary per step.
+        Reply with ONLY a JSON object: {"name": string, "stepSummaries": [string]} —
+        exactly \(routine.steps.count) summaries, no other keys, no prose.
+        App: \(routine.appBundleIDs.joined(separator: ", "))
+        Steps:
+        \(steps)
+        """
+    }
+
+    static func apply(raw: String, to routine: LearnedRoutine) throws -> LearnedRoutine {
+        guard raw.utf8.count <= maximumResponseBytes else { throw RoutineError.invalidDocument }
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("```") {
+            text = text.replacingOccurrences(of: "```json", with: "")
+                .replacingOccurrences(of: "```", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let data = text.data(using: .utf8),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(object.keys) == ["name", "stepSummaries"],
+              let name = object["name"] as? String,
+              let summaries = object["stepSummaries"] as? [String],
+              summaries.count == routine.steps.count else {
+            throw RoutineError.invalidDocument
+        }
+        var polished = routine
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty, trimmedName.count <= 120 {
+            polished.name = trimmedName
+        }
+        for (index, summary) in summaries.enumerated() {
+            let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty, trimmed.count <= 120 {
+                polished.steps[index].summary = trimmed
+            }
+        }
+        return polished
+    }
+
+    private static func describe(_ step: RoutineStep) -> String {
+        let target = step.target.map { "\($0.role) \"\($0.label ?? "unlabeled")\"" } ?? "no target"
+        switch step.action {
+        case .click: return "click \(target)"
+        case .doubleClick: return "double-click \(target)"
+        case .typeText(let text):
+            switch text {
+            case .literal: return "type recorded text into \(target)"
+            case .parameter(let name, _): return "type {\(name)} into \(target)"
+            }
+        case .pressKey(let key): return "press \(key) on \(target)"
+        case .wait(let ms): return "wait \(ms) ms"
+        }
+    }
+}
