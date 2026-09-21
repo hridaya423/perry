@@ -157,6 +157,9 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
             (.preferences, "voice-dictionary.json.backup"),
             (.preferences, "voice-dictionary.json.corrupt-fixture"),
         ]
+        let routinesDirectory = supportDirectory.appendingPathComponent("Routines", isDirectory: true)
+        try FileManager.default.createDirectory(at: routinesDirectory, withIntermediateDirectories: true)
+        try Data("routine".utf8).write(to: routinesDirectory.appendingPathComponent("routine-fixture.md"))
         let taskCoordinator = TaskCoordinator(storageDirectory: supportDirectory)
         let backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: supportDirectory)
         let activityLog = ActivityLog(storageDirectory: supportDirectory)
@@ -187,13 +190,16 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
             memoryStore: memoryStore
         )
 
-        for category in [PerryErasureCategory.tasks, .history, .memory, .preferences] {
+        for category in [PerryErasureCategory.tasks, .history, .memory, .preferences, .routines] {
             let eraser = try XCTUnwrap(erasers.first { $0.category == category })
-            let expected = Set(
+            var expected = Set(
                 fixtures
                     .filter { $0.0 == category }
                     .map { PerryErasureItem(category: $0.0, identifier: $0.1) }
             )
+            if category == .routines {
+                expected = [PerryErasureItem(category: .routines, identifier: "routine:routine-fixture.md")]
+            }
             let inventory = try await eraser.inventory()
             XCTAssertEqual(Set(inventory), expected)
 
@@ -203,6 +209,9 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
             XCTAssertTrue(remaining.isEmpty)
             for (fixtureCategory, name) in fixtures where fixtureCategory == category {
                 XCTAssertFalse(FileManager.default.fileExists(atPath: supportDirectory.appendingPathComponent(name).path))
+            }
+            if category == .routines {
+                XCTAssertFalse(FileManager.default.fileExists(atPath: routinesDirectory.path))
             }
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
@@ -372,6 +381,7 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
         for directory in [
             supportDirectory.appendingPathComponent("Transcripts", isDirectory: true),
             supportDirectory.appendingPathComponent("AppSkills", isDirectory: true),
+            supportDirectory.appendingPathComponent("Routines", isDirectory: true),
         ] + paths.temporaryMediaDirectories + paths.cacheDirectories + paths.cuaArtifactDirectories + [paths.taskWorkspaceDirectory, telemetryDirectory] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try Data("seed".utf8).write(to: directory.appendingPathComponent("seed.txt"))

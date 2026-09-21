@@ -327,6 +327,7 @@ enum PerryLiveErasureErasers {
             preferencesEraser(paths: paths, defaults: defaults),
             keychainEraser ?? providerKeychainEraser(),
             oauthStateEraser(paths: paths, defaults: defaults),
+            routinesEraser(paths: paths),
             fileEraser(category: .temporaryMedia, urls: paths.temporaryMediaDirectories),
             fileEraser(category: .caches, urls: paths.cacheDirectories),
             fileEraser(category: .cuaArtifacts, urls: paths.cuaArtifactDirectories),
@@ -517,6 +518,26 @@ enum PerryLiveErasureErasers {
             erasers.append(recoveryFiles)
         }
         return combined(category: .preferences, erasers: erasers)
+    }
+
+    /// Learned routines, their provenance, and any draft material — the whole
+    /// Routines directory is Perry-owned and goes on selective erasure too.
+    private static func routinesEraser(paths: PerryErasurePaths) -> any PerryDataEraser {
+        let directory = paths.supportDirectory?.appendingPathComponent("Routines", isDirectory: true)
+        return PerryClosureEraser(
+            category: .routines,
+            inventory: {
+                guard let directory,
+                      let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
+                    return []
+                }
+                return names.sorted().map { PerryErasureItem(category: .routines, identifier: "routine:\($0)") }
+            },
+            erase: {
+                guard let directory, FileManager.default.fileExists(atPath: directory.path) else { return }
+                try FileManager.default.removeItem(at: directory)
+            }
+        )
     }
 
     static var providerKeychainServices: [String] {

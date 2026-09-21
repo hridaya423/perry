@@ -8,6 +8,7 @@ enum PerryErasureCategory: String, CaseIterable, Codable, Equatable, Hashable, S
     case preferences
     case providerKeychain
     case oauthState
+    case routines
     case temporaryMedia
     case caches
     case cuaArtifacts
