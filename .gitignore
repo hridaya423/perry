@@ -10,3 +10,4 @@ App/Resources/CodexRuntime/
 App/Resources/CuaDriver/*
 !App/Resources/CuaDriver/capabilities.yaml
 .swiftpm/
+__pycache__/
