@@ -378,7 +378,7 @@ final class ForegroundTaskController: ObservableObject {
             targetWindow: targetWindow,
             worker: worker,
             workspace: workspace,
-            sandboxLabel: "the learned routine",
+            sandboxLabel: "learned routine “\(routine.name)”",
             initialWarnings: []
         )
     }
