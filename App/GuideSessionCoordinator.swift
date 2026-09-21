@@ -581,8 +581,11 @@ final class GuideSessionCoordinator {
     }
 
     private func startGuideSession(goal: String, full: Bool) async {
-        let attemptID = UUID()
-        guard beginInvokingIfNeeded(attemptID: attemptID) else { return }
+        let attemptID = sessionController.currentOrFreshAttemptID
+        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+            output?.guideSetStatus("Finish or stop the current session first.")
+            return
+        }
         output?.guideSetStatus(full ? "Painting the complete path." : "Finding two useful places to show you.")
         output?.guideStopSpatialInput()
         let targetHint = context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)

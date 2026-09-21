@@ -57,6 +57,125 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(taskRecord.workspaceJournal?.completed.first?.receipt.effect, .createdFile(path: "report.txt", byteCount: 16))
     }
 
+    func testDoStartDuringPendingInvocationAdoptsIt() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let workspace = WorkspaceCapture()
+        let session = SessionController()
+        let controller = makeWakingController(
+            directory: directory,
+            session: session,
+            workspace: workspace
+        )
+
+        // Hotkey wake leaves the session .invoking; a Do submission must
+        // adopt that invocation instead of dropping on a mismatched id.
+        try session.wake()
+        controller.foreground.start(goal: #"create file "adopted.txt" with "post-wake""#)
+
+        var created = false
+        for _ in 0..<200 where !created {
+            try await Task.sleep(nanoseconds: 50_000_000)
+            if let taskWorkspace = workspace.value {
+                created = FileManager.default.fileExists(
+                    atPath: taskWorkspace.appendingPathComponent("adopted.txt").path
+                )
+            }
+        }
+        XCTAssertTrue(created, "Do goal submitted while .invoking never ran — state: \(controller.sessionState), status: \(controller.sessionStatus)")
+        let taskWorkspace = try XCTUnwrap(workspace.value)
+        XCTAssertEqual(
+            try String(contentsOf: taskWorkspace.appendingPathComponent("adopted.txt"), encoding: .utf8),
+            "post-wake"
+        )
+    }
+
+    func testGuideStartDuringPendingInvocationAdoptsIt() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+
+        try session.wake()
+        controller.startGuiding(goal: "how do I share this file")
+
+        let guided = await waitUntil(timeout: .seconds(10)) {
+            if case .guiding = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(guided, "Guide submitted while .invoking never started — state: \(controller.sessionState), status: \(controller.sessionStatus)")
+        controller.dismiss()
+    }
+
+    func testDispatchPlainRequestDuringPendingInvocationStartsAsk() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+
+        try session.wake()
+        controller.debugDispatch("what does this button do")
+
+        let asked = await waitUntil {
+            if case .asking(let ask) = controller.sessionState {
+                return ask.question == "what does this button do"
+            }
+            return false
+        }
+        XCTAssertTrue(asked, "plain request while .invoking did not open Ask — state: \(controller.sessionState)")
+        controller.dismiss()
+    }
+
+    func testDispatchDuringAskingKeepsDictatedIntentAsFollowUp() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+
+        try session.wake()
+        controller.debugDispatch("what does this button do")
+        let asked = await waitUntil {
+            if case .asking = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(asked, "Ask session never started — state: \(controller.sessionState)")
+
+        // A dictated Do-intent while Ask is live is a follow-up question,
+        // never a task started around the mode the user is in.
+        controller.debugDispatch(#"perry, do create file "evil.txt""#)
+        let followedUp = await waitUntil {
+            if case .asking(let ask) = controller.sessionState {
+                return ask.question == #"perry, do create file "evil.txt""#
+            }
+            return false
+        }
+        XCTAssertTrue(followedUp, "dictated intent did not stay in Ask — state: \(controller.sessionState)")
+        XCTAssertFalse(controller.foreground.startIsInFlight)
+        controller.dismiss()
+    }
+
+    func testDispatchDismissDuringAskingDismisses() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+
+        try session.wake()
+        controller.debugDispatch("what does this button do")
+        let asked = await waitUntil {
+            if case .asking = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(asked, "Ask session never started — state: \(controller.sessionState)")
+
+        controller.debugDispatch("stop")
+        let dismissed = await waitUntil {
+            if case .idle = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(dismissed, "dismiss while .asking did not settle — state: \(controller.sessionState)")
+    }
+
     func testFileGoalRoutesAwayFromConfiguredDirectProvider() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }
@@ -745,6 +864,51 @@ final class ForegroundPlanningTests: XCTestCase {
             }
         }
         return await condition()
+    }
+
+    /// AppController with granted permission/CUA fixtures and an injectable
+    /// SessionController so tests can drive `wake()` (hotkey → `.invoking`)
+    /// before exercising the real submission/dispatch paths.
+    private func makeWakingController(
+        directory: URL,
+        session: SessionController,
+        workspace: WorkspaceCapture? = nil
+    ) -> AppController {
+        let inspector = RuntimeInventoryInspector(
+            readDirectProvider: { nil },
+            commandLineProviders: []
+        )
+        return AppController(
+            debugStorageDirectory: directory,
+            sessionController: session,
+            runtimeInventoryLoader: { workingDirectory in
+                workspace?.value = workingDirectory
+                return try await inspector.inspect(workingDirectory: workingDirectory)
+            },
+            permissionSnapshotLoader: {
+                PerryPermissionSnapshot(
+                    accessibility: true,
+                    screenRecording: .granted,
+                    microphone: .granted
+                )
+            },
+            cuaHealthLoader: {
+                CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
+            },
+            screenContextLoader: { _, _ in
+                (
+                    ScreenContext(
+                        frontAppBundleID: "fixture.app",
+                        frontWindowTitle: "Fixture window",
+                        screenshotReferenceID: "cua:fixture",
+                        screenshotCoordinateSpace: .windowPixels
+                    ),
+                    nil
+                )
+            },
+            notifier: ForegroundNotifier(),
+            confirmer: ApprovingConfirmer()
+        )
     }
 
     private func makeProductionController(

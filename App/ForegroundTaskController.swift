@@ -73,10 +73,7 @@ final class ForegroundTaskController: ObservableObject {
 
     var supervisorActive: Bool { activeSupervisor != nil }
 
-    var startIsInFlight: Bool {
-        if case .invoking = sessionController.state { return true }
-        return false
-    }
+    var startIsInFlight: Bool { doStartTask != nil }
 
     init(
         sessionController: SessionController,
@@ -214,8 +211,12 @@ final class ForegroundTaskController: ObservableObject {
             voice.speak("I’m already working on a task. Stop or pause that one first.")
             return
         }
-        let attemptID = UUID()
-        guard beginInvokingIfNeeded(attemptID: attemptID) else { return }
+        let attemptID = sessionController.currentOrFreshAttemptID
+        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+            voice.speak("Finish or stop the current session first.")
+            hooks.setStatus("Finish or stop the current session first.")
+            return
+        }
         start(goal: goal, preferredRuntimeID: preferredRuntimeID, attemptID: attemptID)
     }
 
@@ -293,8 +294,12 @@ final class ForegroundTaskController: ObservableObject {
             voice.speak("I’m already working on a task. Stop or pause that one first.")
             return
         }
-        let attemptID = UUID()
-        guard beginInvokingIfNeeded(attemptID: attemptID) else { return }
+        let attemptID = sessionController.currentOrFreshAttemptID
+        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+            voice.speak("Finish or stop the current session first.")
+            hooks.setStatus("Finish or stop the current session first.")
+            return
+        }
         doStartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
@@ -712,7 +717,7 @@ final class ForegroundTaskController: ObservableObject {
 
     func runForDemo(goal: String) async -> DoOutcome? {
         guard activeSupervisor == nil, !startIsInFlight else { return nil }
-        let attemptID = UUID()
+        let attemptID = sessionController.currentOrFreshAttemptID
         guard beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
         defer { cancelInvocationIfCurrent(attemptID) }
         guard let outcome = await begin(goal: goal, attemptID: attemptID) else { return nil }
@@ -1055,7 +1060,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     func debugRun(goal: String, preferredRuntimeID: String? = nil) async throws -> DoOutcome? {
-        let attemptID = UUID()
+        let attemptID = sessionController.currentOrFreshAttemptID
         guard beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
         defer { cancelInvocationIfCurrent(attemptID) }
         return try await workers.withWorker(scope: .foreground, resources: []) { worker in

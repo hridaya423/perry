@@ -440,6 +440,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
     init(
         debugStorageDirectory: URL,
+        sessionController: SessionController? = nil,
         taskCoordinator: TaskCoordinator? = nil,
         runtimeInventoryLoader: RuntimeCatalog.InventoryLoader? = nil,
         permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader? = nil,
@@ -469,7 +470,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         self.debugConfirmer = confirmer
         self.debugAskUser = askUser
         self.notifier = notifier ?? SystemNotifier()
-        self.sessionController = SessionController()
+        self.sessionController = sessionController ?? SessionController()
         super.init()
         observeSessionState()
         if let taskCoordinator {
@@ -1778,6 +1779,18 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             showPanel()
             return
         }
+        // Voice follows the same session contract as typing: while an Ask
+        // session is live a dictated intent is a follow-up question, and a
+        // plain utterance defaults to Ask — never a silent drop or a task
+        // started around the mode the user is in.
+        if case .asking = sessionController.state {
+            if case .dismiss = GuideIntentParser.parse(text) {
+                dismiss()
+            } else {
+                ask(question: text)
+            }
+            return
+        }
         switch GuideIntentParser.parse(text) {
         case .guide(let goal):
             startGuiding(goal: goal)
@@ -1788,7 +1801,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         case .dismiss:
             dismiss()
         case .notAGuideRequest:
-            startGuiding(goal: text)
+            ask(question: text)
         }
     }
 
@@ -1820,6 +1833,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
 #if DEBUG
+    /// Test seam for the dictated-command path — identical to what
+    /// VoiceController's dispatch hook delivers after wake word/dictation.
+    func debugDispatch(_ text: String) {
+        dispatch(commandText: text)
+    }
+
     private func runDebugOnboarding() {
         let denied = PerryPermissionSnapshot(
             accessibility: false,

@@ -302,6 +302,14 @@ final class SessionController: ObservableObject {
         state = .idle
     }
 
+    /// The live invocation's id while a wake is pending, else a fresh one —
+    /// lets a session start adopt the hotkey's invocation instead of
+    /// refusing a mismatched attempt.
+    var currentOrFreshAttemptID: UUID {
+        if case .invoking(let invocation) = state { return invocation.id }
+        return UUID()
+    }
+
     func startGuide(_ guide: GuideSessionState) throws {
         try startGuide(guide, attemptID: try invokingAttemptID())
     }
