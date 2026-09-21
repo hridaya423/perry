@@ -532,6 +532,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             self.foreground.handleSessionState(state)
             self.objectWillChange.send()
         }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSystemSleep),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
     }
 
     static var supportDirectory: URL? {
@@ -953,6 +959,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     @objc private func wakeAction() { wake() }
     @objc private func checkForUpdatesAction() { updateNoticeController.checkForUpdates() }
     @objc private func quitAction() { NSApp.terminate(nil) }
+
+    /// System sleep settles an active run at a step boundary and hands
+    /// control to the user — after wake, Continue replans against whatever
+    /// the screen became rather than trusting pre-sleep observations.
+    @objc private func handleSystemSleep() {
+        foreground.takeOver()
+    }
 
     private func refreshMemoryMenuTitle() async {
         let current = await memoryStore.currentConfiguration()

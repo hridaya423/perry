@@ -154,6 +154,41 @@ final class ForegroundPlanningTests: XCTestCase {
         controller.dismiss()
     }
 
+    func testSystemSleepHandsAnActiveRunToTheUser() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let gate = FinalizationGate()
+        let controller = makeController(
+            directory: directory,
+            planner: ForegroundPlanner(),
+            askUser: { _, _ in await gate.pause() }
+        )
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "hold at the prompt")
+        let running = await waitUntil(timeout: .seconds(10)) {
+            guard case .executing(let execution) = controller.sessionState else { return false }
+            return execution.lifecycle == .running
+        }
+        XCTAssertTrue(running, "run never reached .executing — state: \(controller.sessionState)")
+
+        // The Mac sleeping mid-run settles the supervisor at a boundary and
+        // hands control to the user; Continue replans against the post-sleep
+        // screen instead of trusting pre-sleep observations.
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        let handedOff = await waitUntil {
+            guard case .executing(let execution) = controller.sessionState else { return false }
+            return execution.lifecycle == .paused
+        }
+        XCTAssertTrue(handedOff, "sleep did not settle the run — state: \(controller.sessionState)")
+
+        controller.dismiss()
+        await gate.release()
+    }
+
     func testDispatchDismissDuringAskingDismisses() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }
