@@ -3313,6 +3313,54 @@
      "reference": "AppTests/DemoDirectorTests.swift::func testBlockedTaskFailsDemoAndDoesNotReportCompletion()"
     }
    ]
+  },
+  {
+   "id": "privacy.no-telemetry",
+   "name": "No telemetry: zero outbound network while opted out",
+   "status": "live-tested",
+   "owner": "App",
+   "support": "Thirty-minute network capture of a real Perry.app fixture with telemetry preference off",
+   "limitations": [
+    "The capture covers the fixture app at revision 4b768c95 on macOS 26.5.1; a different build or enabled provider flows (BYOK Ask/Do, realtime voice) legitimately use the network and are outside this capture's scope.",
+    "Empty lsof/perry.log artifacts mean no socket or log anomalies were recorded during the window; the claim is bounded to the captured 1800 samples."
+   ],
+   "verification": {
+    "supported_environments": {
+     "status": "recorded",
+     "values": [
+      "macOS 26.5.1 arm64"
+     ]
+    },
+    "last_successful_run": {
+     "status": "recorded",
+     "reference": "docs/release-readiness/privacy/telemetry-opt-out-1800/metadata.json"
+    },
+    "benchmark": {
+     "status": "not-recorded"
+    }
+   },
+   "evidence": [
+    {
+     "kind": "source",
+     "reference": "App/DiagnosticsReporter.swift"
+    },
+    {
+     "kind": "audit",
+     "reference": "docs/capabilities.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DiagnosticsReporterTests.swift::func testSeededSensitiveValuesNeverEnterDiagnosticsExport()"
+    },
+    {
+     "kind": "live-test",
+     "reference": "docs/release-readiness/privacy/telemetry-opt-out-1800/metadata.json",
+     "actual_run": {
+      "reference": "docs/release-readiness/privacy/telemetry-opt-out-1800/metadata.json",
+      "sha256": "0f4a8d3390b31aa31b8346dbcc5465095b456eb9ea6906c7a059802153dccc5c"
+     }
+    }
+   ]
   }
  ]
 }

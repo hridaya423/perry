@@ -1,0 +1,36 @@
+{
+  "app_path": "/tmp/perry-privacy-fixture.GMsgZr/Perry.app",
+  "build": {
+    "architecture": "arm64",
+    "configuration": "fixture",
+    "revision": "4b768c95cb778f2a3fd41430695acdfd4785e112"
+  },
+  "bundle_id": "dev.perry.Perry",
+  "capture_type": "telemetry-opt-out-network",
+  "captured_at": "2026-08-30T07:36:36.881633+00:00",
+  "environment": {
+    "platform": "macOS",
+    "version": "26.5.1"
+  },
+  "executable_sha256": "143759f4291dce51acb0cc6d9780a70463ca4edc472b690515c51d3d4221653c",
+  "external_network_rows": 0,
+  "feature_id": "privacy.no-telemetry",
+  "git_revision": "4b768c95cb778f2a3fd41430695acdfd4785e112",
+  "machine": "arm64",
+  "macos": "26.5.1",
+  "network_protocols": [
+    "tcp",
+    "udp"
+  ],
+  "passed": true,
+  "raw_artifacts": {
+    "lsof.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "nettop.csv": "60c0ad3b2155fd7a68319f960e5382ecedae2ef34f55968c1963a87d35686790",
+    "nettop.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "perry.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "result": "passed",
+  "samples": 1800,
+  "schema_version": 1,
+  "telemetry_preference": "0"
+}
