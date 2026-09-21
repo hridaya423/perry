@@ -10,7 +10,7 @@ Budgets and measurements as of M6. Re-measure after any transplant refresh.
 ## Overlay choreography
 
 - One NSWindow per screen, hosting view sized to the screen frame. Window level sits just below the drag layer (`PerryWindowLevels.cursorOverlay`); do not raise it above drag images or drop previews vanish.
-- Buddy cursor tracking samples NSEvent.mouseLocation on a userInteractive queue and hops to main only when the pointer moved. Keep that pattern when replacing donor visuals with Perry sprite art.
+- Glass cursor tracking samples NSEvent.mouseLocation on a userInteractive queue and hops to main only when the pointer moved. Keep that pattern — direct tracking must not enqueue per-tick animation work.
 - Annotations draw in ~200ms per PRD §9; spring(response: 0.16, dampingFraction: 0.72) is the house curve for position changes.
 
 ## Runtime adapter latency classes

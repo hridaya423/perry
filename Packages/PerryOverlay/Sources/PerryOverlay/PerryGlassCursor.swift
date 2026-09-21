@@ -26,25 +26,44 @@ public struct PerryGlassCursorView: View {
     }
 
     public var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-            ZStack {
-                silhouette
-                    .fill(.ultraThinMaterial)
-                silhouette
-                    .stroke(PerryOverlayTheme.Colors.ink.opacity(0.85), lineWidth: size * 0.028)
-                if variant == .faceted {
-                    FacetLinesShape()
-                        .stroke(Color.white.opacity(0.55), lineWidth: size * 0.014)
-                        .clipShape(FacetedPointerShape())
-                }
-                stateOverlay(t)
+        if animates && !reduceMotion {
+            TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+                content(t: timeline.date.timeIntervalSinceReferenceDate)
             }
-            .frame(width: size, height: size)
-            .scaleEffect(x: facesLeft ? -1 : 1)
-            .rotationEffect(.radians(tilt(t)))
-            .offset(y: bob(t))
+        } else {
+            content(t: 0)
         }
+    }
+
+    /// Static states (idle, speak tint, failure) never spin the timeline —
+    /// an idle cursor must not cost a 30 fps ticker per mounted instance.
+    private var animates: Bool {
+        switch animation {
+        case .waiting, .review, .running, .runningRight, .runningLeft, .jumping:
+            return true
+        case .idle, .waving, .failed:
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private func content(t: TimeInterval) -> some View {
+        ZStack {
+            silhouette
+                .fill(.ultraThinMaterial)
+            silhouette
+                .stroke(PerryOverlayTheme.Colors.ink.opacity(0.85), lineWidth: size * 0.028)
+            if variant == .faceted {
+                FacetLinesShape()
+                    .stroke(Color.white.opacity(0.55), lineWidth: size * 0.014)
+                    .clipShape(FacetedPointerShape())
+            }
+            stateOverlay(t)
+        }
+        .frame(width: size, height: size)
+        .scaleEffect(x: facesLeft ? -1 : 1)
+        .rotationEffect(.radians(tilt(t)))
+        .offset(y: bob(t))
         .accessibilityHidden(true)
     }
 

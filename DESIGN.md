@@ -6,7 +6,7 @@ Source of truth for tokens: `App/PerryTheme.swift` and `PerryOverlayTheme` in `P
 
 ## Principles
 
-- **One canonical Perry.** One accent, one buddy, one panel shape. Per-user accent themes, novelty caption fonts, and alternate avatar styles are out of scope — they dilute recognition and multiply test surfaces.
+- **One canonical Perry.** One accent, one pointer, one panel shape. Per-user accent themes, novelty caption fonts, and alternate avatar styles are out of scope — they dilute recognition and multiply test surfaces.
 - **One focal action.** Every surface presents exactly one primary button. Secondary actions exist but never share the prominent style. The invocation panel has one Start; the intent card has one Approve; dialogs have one recovery path.
 - **Honest states.** A surface always says which of loading / empty / denied / planning / running / paused / approval / verified / unverified / failed / recovered / erased it is in. No silent transitions, no spinner without a status line.
 - **Ink on glass, not chrome.** Spatial marks (strokes, halos, numbered targets) draw over the user's windows in high-contrast mint ink. Panels use system materials and stay out of the way.
@@ -16,7 +16,7 @@ Source of truth for tokens: `App/PerryTheme.swift` and `PerryOverlayTheme` in `P
 
 | Role | Token | Value | Use |
 |---|---|---|---|
-| accent | `PerryOverlayTheme.Colors.accent` | rgb(0.204, 0.827, 0.600) mint | The single product accent: primary actions, focus ring, guide ink, buddy glow. The only decorative color Perry owns. |
+| accent | `PerryOverlayTheme.Colors.accent` | rgb(0.204, 0.827, 0.600) mint | The single product accent: primary actions, focus ring, guide ink, cursor tint. The only decorative color Perry owns. |
 | accentForeground | `PerryTheme.Colors.accentForeground` | rgb(0.024, 0.110, 0.070) | Text/icons on accent fills. |
 | primaryText | `Color.primary` | system | All primary copy. |
 | secondaryText | `Color.secondary` | system | Supporting copy, metadata. |
@@ -80,7 +80,7 @@ Five cues (`wake`, `send`, `receive`, `done`, `fail`), each a short `.caf` under
 
 ## States & components
 
-- **Buddy**: one geometric platypus-derived sprite; states idle / listening / thinking / acting / failed read at a glance (pulse, shimmer, focus ring). No triangle cursor avatars.
+- **Cursor**: one faceted glass pointer rides at the cursor offset — translucent material, ink stroke, facet cuts; states idle / waiting / review / acting / failed read at a glance (pulse, dashed ring, tint, small motion). Never steals pointer control. The lens variant is the in-chrome glyph (session panel, activity strip) where a cursor-shaped icon would misread; it never rides the pointer.
 - **Invocation**: Guide/Do segmented control, one prompt field focused on open, one Start. Background scope is a Do choice, not a separate action. Runtime is automatic by default.
 - **Intent card**: one line of action + scope ("About to move 34 files to Trash"), Approve / Stop. Red tier requires typing the required phrase — voice never confirms red.
 - **Guide marks**: numbered targets only when grounded in the current AX snapshot; a marker that loses its target is removed, never re-pointed silently.

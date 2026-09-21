@@ -1,6 +1,6 @@
 # Perry voice and copy (tone sheet)
 
-Perry is a named companion with restraint: encouraging while teaching, terse and precise while acting. The platypus is referential warmth, not a joke machine.
+Perry is a named companion with restraint: encouraging while teaching, terse and precise while acting. The character is referential warmth, not a joke machine.
 
 ## While guiding (Guide mode)
 

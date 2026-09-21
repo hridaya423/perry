@@ -4,11 +4,11 @@ import SwiftUI
 import PerryOverlay
 
 /// Throwaway glass-cursor comparison surface for the Living Pointer design
-/// selection. Both candidates (faceted arrow, lens pointer) are drawn next to
-/// the legacy sprite across the semantic states and three backgrounds —
-/// light, dark, and busy — so legibility and state clarity are judged
-/// directly, not guessed. Open via `--perry-debug-surface cursors` or the
-/// DEBUG Cursor prototypes menu item. Nothing here ships.
+/// selection. Both candidates (faceted arrow, lens pointer) are drawn across
+/// the semantic states and three backgrounds — light, dark, and busy — so
+/// legibility and state clarity are judged directly, not guessed. Open via
+/// `--perry-debug-surface cursors` or the DEBUG Cursor prototypes menu item.
+/// Nothing here ships.
 final class DebugCursorGalleryWindow: NSWindow {
     static func show() {
         let window = DebugCursorGalleryWindow()
@@ -81,9 +81,6 @@ private struct DebugCursorGallery: View {
                         }
                         row(title: "Lens") {
                             PerryGlassCursorView(animation: state.animation, size: 44, variant: .lens)
-                        }
-                        row(title: "Sprite") {
-                            PerrySpriteView(animation: state.animation, size: 44)
                         }
                     }
                     .frame(width: 148)
