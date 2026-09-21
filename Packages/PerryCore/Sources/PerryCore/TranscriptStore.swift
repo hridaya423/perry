@@ -17,6 +17,9 @@ public struct TranscriptEntry: Codable, Equatable, Sendable, Identifiable {
     public let finishedAt: Date
     public let steps: [String]
     public let verified: Bool?
+    /// Display name of the runtime/provider route that produced the result,
+    /// e.g. "Perry local planner" or "the learned routine".
+    public let providerRoute: String?
 
     public init(
         id: UUID = UUID(),
@@ -28,7 +31,8 @@ public struct TranscriptEntry: Codable, Equatable, Sendable, Identifiable {
         startedAt: Date,
         finishedAt: Date,
         steps: [String],
-        verified: Bool?
+        verified: Bool?,
+        providerRoute: String? = nil
     ) {
         self.id = id
         self.sessionID = sessionID
@@ -40,6 +44,7 @@ public struct TranscriptEntry: Codable, Equatable, Sendable, Identifiable {
         self.finishedAt = finishedAt
         self.steps = steps
         self.verified = verified
+        self.providerRoute = providerRoute
     }
 
     public var duration: TimeInterval {
@@ -107,7 +112,7 @@ public actor TranscriptStore {
         case .markdown:
             return Data(selected.map(Self.markdown).joined(separator: "\n").utf8)
         case .csv:
-            let header = "session_id,request,app,outcome,started_at,finished_at,duration_seconds,verified,summary"
+            let header = "session_id,request,app,outcome,started_at,finished_at,duration_seconds,verified,provider_route,summary"
             let rows = selected.map { entry in
                 [
                     entry.sessionID.uuidString,
@@ -118,6 +123,7 @@ public actor TranscriptStore {
                     Self.iso8601(entry.finishedAt),
                     String(format: "%.2f", entry.duration),
                     entry.verified.map(String.init) ?? "",
+                    entry.providerRoute ?? "",
                     entry.summary,
                 ].map(Self.csvField).joined(separator: ",")
             }
@@ -407,6 +413,7 @@ public actor TranscriptStore {
 
     private static func markdown(_ entry: TranscriptEntry, marker: String) -> String {
         let app = entry.appBundleID ?? "unknown app"
+        let route = entry.providerRoute ?? "unknown route"
         let verification = entry.verified.map { $0 ? "verified" : "not verified" } ?? "not requested"
         let steps = entry.steps.isEmpty ? "- No executable steps" : entry.steps.map { "- \($0)" }.joined(separator: "\n")
         return """
@@ -415,6 +422,7 @@ public actor TranscriptStore {
 
         - Session: `\(entry.sessionID.uuidString)`
         - App: `\(app)`
+        - Provider: \(route)
         - Outcome: \(entry.outcome.rawValue)
         - Started: \(iso8601(entry.startedAt))
         - Finished: \(iso8601(entry.finishedAt))

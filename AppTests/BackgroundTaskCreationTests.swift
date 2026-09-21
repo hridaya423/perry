@@ -121,9 +121,14 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertTrue(queuedAppeared)
         let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
         controller.backgroundTasks.approveWorkspace(queued)
+        // The record reaches terminal inside the runner before the
+        // report-write lands its status message — wait for the whole tail
+        // so the undo can't race it.
         let settled = await waitUntil {
             await controller.backgroundTasks.reloadRecords()
-            return await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+            let terminal = await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+            return terminal && controller.backgroundTasks.message(for: queued.id) != nil
+                && !controller.backgroundTasks.isRunning(queued.id)
         }
         XCTAssertTrue(settled)
         let record = try XCTUnwrap(controller.backgroundTasks.records.first)

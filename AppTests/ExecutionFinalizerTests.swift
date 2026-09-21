@@ -78,6 +78,28 @@ final class ExecutionFinalizerTests: XCTestCase {
         XCTAssertEqual(completion.notification.kind, .completed)
     }
 
+    func testTranscriptCarriesTheSelectedProviderRoute() {
+        var state = execution()
+        state = ExecutionSessionState(
+            taskID: state.taskID,
+            goal: state.goal,
+            startedAt: state.startedAt,
+            appBundleID: state.appBundleID,
+            providerRoute: "Perry local planner",
+            workspace: state.workspace,
+            lifecycle: state.lifecycle,
+            stepEvidence: state.stepEvidence,
+            verificationEvidence: state.verificationEvidence,
+            totalSteps: state.totalSteps
+        )
+        let completion = ExecutionFinalizer.completion(
+            execution: state,
+            outcome: .completed(stepsRun: 2),
+            finishedAt: finishedAt
+        )
+        XCTAssertEqual(completion.transcript.providerRoute, "Perry local planner")
+    }
+
     func testPartialVerificationDoesNotVerifyTheWholeTask() {
         let completion = ExecutionFinalizer.completion(
             execution: execution(verificationEvidence: [

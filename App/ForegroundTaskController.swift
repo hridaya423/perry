@@ -472,6 +472,7 @@ final class ForegroundTaskController: ObservableObject {
             goal: goal,
             startedAt: Date(),
             appBundleID: targetWindow?.appBundleID,
+            providerRoute: sandboxLabel,
             workspace: workspace,
             lifecycle: .starting,
             initialWarnings: initialWarnings

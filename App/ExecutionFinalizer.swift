@@ -106,7 +106,8 @@ struct ExecutionFinalizer: Sendable {
             startedAt: execution.startedAt,
             finishedAt: finishedAt,
             steps: execution.steps,
-            verified: verified
+            verified: verified,
+            providerRoute: execution.providerRoute
         )
         let memory = MemoryRecord(
             category: .pastSession,

@@ -1674,7 +1674,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func showHistory() {
         historyWindow?.close()
-        historyWindow = HistoryWindow(store: transcriptStore, activityLog: activityLog)
+        historyWindow = HistoryWindow(store: transcriptStore, activityLog: activityLog) { [backgroundTasks] in
+            await backgroundTasks.reloadRecords()
+            return Set(backgroundTasks.records.compactMap { record -> UUID? in
+                guard !backgroundTasks.undoableDescriptions(for: record).isEmpty else { return nil }
+                if case .executable(let plan) = record.plan { return plan.planID }
+                return UUID(uuidString: record.id.rawValue)
+            })
+        }
         historyWindow?.show()
     }
 

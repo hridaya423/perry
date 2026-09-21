@@ -124,6 +124,7 @@ struct ExecutionSessionState: Equatable {
     let goal: String
     let startedAt: Date
     let appBundleID: String?
+    let providerRoute: String?
     let workspace: URL
     fileprivate(set) var lifecycle: ExecutionLifecycle
     fileprivate(set) var stepEvidence: [ExecutionStepEvidence]
@@ -138,6 +139,7 @@ struct ExecutionSessionState: Equatable {
         goal: String,
         startedAt: Date,
         appBundleID: String?,
+        providerRoute: String? = nil,
         workspace: URL,
         lifecycle: ExecutionLifecycle,
         stepEvidence: [ExecutionStepEvidence] = [],
@@ -152,6 +154,7 @@ struct ExecutionSessionState: Equatable {
         self.goal = goal
         self.startedAt = startedAt
         self.appBundleID = appBundleID
+        self.providerRoute = providerRoute
         self.workspace = workspace
         self.lifecycle = lifecycle
         self.stepEvidence = stepEvidence

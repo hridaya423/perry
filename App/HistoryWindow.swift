@@ -6,7 +6,7 @@ import PerryCore
 final class HistoryWindow: NSPanel {
     override var canBecomeKey: Bool { true }
 
-    init(store: TranscriptStore, activityLog: ActivityLog) {
+    init(store: TranscriptStore, activityLog: ActivityLog, undoableEntryIDs: (@MainActor () async -> Set<UUID>)? = nil) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
             styleMask: [.titled, .closable, .resizable],
@@ -16,7 +16,7 @@ final class HistoryWindow: NSPanel {
         title = "Perry history"
         isFloatingPanel = true
         level = .floating
-        contentView = NSHostingView(rootView: HistoryView(store: store, activityLog: activityLog))
+        contentView = NSHostingView(rootView: HistoryView(store: store, activityLog: activityLog, undoableEntryIDs: undoableEntryIDs))
     }
 
     func show() {
@@ -31,12 +31,17 @@ final class HistoryWindow: NSPanel {
 struct HistoryView: View {
     let store: TranscriptStore
     let activityLog: ActivityLog
+    /// Resolves which entries still offer a safe Undo — the
+    /// recovery-availability half of the history outcome surface. Loaded
+    /// with the entries so the badge never paints stale.
+    let undoableEntryIDs: (@MainActor () async -> Set<UUID>)?
     @State private var entries: [TranscriptEntry] = []
     @State private var query = ""
     @State private var selectedIDs = Set<UUID>()
     @State private var message: String?
     @State private var isLoading = true
     @State private var showDeleteConfirmation = false
+    @State private var undoableIDs = Set<UUID>()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -68,7 +73,7 @@ struct HistoryView: View {
                     ForEach(groupedEntries) { group in
                         Section(group.day.formatted(date: .complete, time: .omitted)) {
                             ForEach(group.entries) { entry in
-                                HistoryRow(entry: entry)
+                                HistoryRow(entry: entry, undoable: undoableIDs.contains(entry.id))
                                     .tag(entry.id)
                             }
                         }
@@ -96,7 +101,10 @@ struct HistoryView: View {
         }
         .padding(18)
         .task {
-            entries = await store.snapshot()
+            async let entrySnapshot = store.snapshot()
+            async let recoverySnapshot = undoableEntryIDs?() ?? []
+            entries = await entrySnapshot
+            undoableIDs = await recoverySnapshot
             isLoading = false
         }
         .onChange(of: query) { _, _ in refreshSearch() }
@@ -179,6 +187,7 @@ struct HistoryView: View {
 
 private struct HistoryRow: View {
     let entry: TranscriptEntry
+    let undoable: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -202,11 +211,20 @@ private struct HistoryRow: View {
                     .font(PerryTheme.Typography.note)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
-                Text("\(entry.outcome.rawValue) · \(entry.finishedAt.formatted(date: .abbreviated, time: .shortened))")
+                Text([
+                    entry.outcome.rawValue,
+                    entry.providerRoute,
+                    entry.finishedAt.formatted(date: .abbreviated, time: .shortened)
+                ].compactMap { $0 }.joined(separator: " · "))
                     .font(PerryTheme.Typography.monoSmall)
                     .foregroundStyle(.tertiary)
             }
             Spacer()
+            if undoable {
+                Label("undo available", systemImage: "arrow.uturn.backward.circle")
+                    .font(PerryTheme.Typography.panelMetadata)
+                    .foregroundStyle(.secondary)
+            }
             if let verified = entry.verified {
                 Label(verified ? "verified" : "check needed", systemImage: verified ? "checkmark.seal" : "exclamationmark.triangle")
                     .font(PerryTheme.Typography.panelMetadata)
