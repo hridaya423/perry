@@ -972,6 +972,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         routineLibrary.toggleRecording()
     }
 
+    /// Onboarding's post-demo offer: starts a Watch & Learn recording once
+    /// onboarding has finished — never a required step.
+    func startDemonstrationRecording() {
+        guard !routineLibrary.isRecording else { return }
+        routineLibrary.toggleRecording()
+    }
+
     @objc private func toggleNotchStatusAction(_ sender: NSMenuItem) {
         let enabled = !notchStatus.isEnabled
         notchStatus.setEnabled(enabled)

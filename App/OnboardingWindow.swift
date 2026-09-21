@@ -302,6 +302,14 @@ struct OnboardingView: View {
                 Text("Use the hotkey or menu bar to start a request. Tasks you run in the background continue until they finish or you stop them.")
                     .font(.body)
                     .foregroundStyle(.secondary)
+                Button {
+                    onFinish()
+                    controller.startDemonstrationRecording()
+                } label: {
+                    Label("Teach Perry a task — record a demonstration", systemImage: "circle.dotted")
+                }
+                .buttonStyle(.link)
+                .accessibilityHint("Finish onboarding and start a Watch & Learn recording you can stop anytime")
             case .missingPermissions:
                 Text("Perry still needs access.")
                     .font(.title3.bold())
