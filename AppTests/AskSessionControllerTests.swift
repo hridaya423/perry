@@ -291,6 +291,49 @@ final class AskSessionControllerTests: XCTestCase {
         XCTAssertTrue(output.spoken.isEmpty)
     }
 
+    func testProviderFailureLeavesSessionReadyForRetry() async {
+        let session = SessionController()
+        let overlay = PerryCursorState()
+        let output = OutputStub()
+        var calls = 0
+        let answerer: AskSessionController.Answerer = { _, observation, _, _ in
+            calls += 1
+            if calls == 1 { throw SpatialAnswerError.invalidResponse }
+            return SpatialAnswer(
+                text: "Second try worked.", references: [], followUp: nil,
+                observationID: observation.observationID
+            )
+        }
+        let controller = makeController(
+            sessionController: session,
+            overlayState: overlay,
+            output: output,
+            answerer: answerer,
+            observationProvider: { self.observation() }
+        )
+
+        controller.submit(question: "What is this?")
+        await waitForCondition {
+            if case .asking(let ask) = session.state { return !ask.isWorking && output.statuses.count > 1 }
+            return false
+        }
+        guard case .asking(let ask) = session.state else { return XCTFail("expected asking") }
+        XCTAssertNil(ask.answerText)
+        XCTAssertEqual(ask.turnCount, 0)
+        XCTAssertTrue(overlay.visualGuidanceOverlays.isEmpty)
+        XCTAssertTrue(output.spoken.isEmpty)
+
+        controller.submit(question: "What is this?")
+        await waitForCondition {
+            if case .asking(let ask) = session.state { return ask.answerText != nil }
+            return false
+        }
+        guard case .asking(let retried) = session.state else { return XCTFail("expected asking") }
+        XCTAssertEqual(retried.answerText, "Second try worked.")
+        XCTAssertEqual(retried.turnCount, 1)
+        XCTAssertEqual(calls, 2)
+    }
+
     func testSessionControllerAskTransitions() throws {
         let controller = SessionController()
         let ask = AskSessionState(id: UUID(), startedAt: Date(), question: "q")
