@@ -1344,8 +1344,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Text the panel seeds into its field — a rehearsal "Edit" answer lands
     /// here with the goal ready to revise and resubmit. Consumed on read.
     @Published var pendingPromptText: String?
+    /// Edit answers come from a plan card — the panel must reopen in Do, not
+    /// whatever mode the picker was last on.
+    var pendingPromptDoMode = false
 
-    func presentPrompt(prefill: String) {
+    func presentPrompt(prefill: String, asTask: Bool = false) {
+        pendingPromptDoMode = asTask
         pendingPromptText = prefill
         showPanel()
     }
@@ -2077,7 +2081,7 @@ struct InteractiveConfirmer: Confirmer {
         await MainActor.run { controller.voice.speak(card.spokenLine) }
         let decision = await controller.requestPlanDecision(id: request.id, card: card)
         if decision == .edit {
-            await controller.presentPrompt(prefill: request.actionSummary)
+            await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
         }
         return decision
     }

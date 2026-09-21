@@ -30,6 +30,7 @@ struct SessionPanelView: View {
     }
 
     @State private var mode = InvocationMode.ask
+    @State private var skipIntentParse = false
     @State private var text = ""
     @State private var runInBackground = false
     @State private var runtimeID = RuntimeChoice.automaticID
@@ -49,15 +50,10 @@ struct SessionPanelView: View {
         .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
             controller.runtimes.refreshChoices()
-            if let prefill = controller.pendingPromptText {
-                controller.pendingPromptText = nil
-                text = prefill
-            }
+            consumePendingPrompt()
         }
-        .onReceive(controller.$pendingPromptText) { prefill in
-            guard let prefill else { return }
-            controller.pendingPromptText = nil
-            text = prefill
+        .onReceive(controller.$pendingPromptText) { _ in
+            consumePendingPrompt()
         }
         .task {
             await Task.yield()
@@ -82,6 +78,9 @@ struct SessionPanelView: View {
             }
         }
         .onChange(of: text) { _, newValue in
+            // A rehearsal Edit prefill already knows its mode — don't let the
+            // parser second-guess it.
+            if skipIntentParse { skipIntentParse = false; return }
             switch GuideIntentParser.parse(newValue) {
             case .doTask: mode = .do_
             case .guide, .showEverything: mode = .guide
@@ -301,6 +300,17 @@ struct SessionPanelView: View {
 
     private var requestIsEmpty: Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func consumePendingPrompt() {
+        guard let prefill = controller.pendingPromptText else { return }
+        controller.pendingPromptText = nil
+        if controller.pendingPromptDoMode {
+            skipIntentParse = true
+            mode = .do_
+        }
+        controller.pendingPromptDoMode = false
+        text = prefill
     }
 
     private func submit() {
