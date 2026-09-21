@@ -556,7 +556,27 @@ final class ForegroundTaskController: ObservableObject {
         }
         let marks = RehearsalMarks.marks(for: plan, elements: elements)
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        // Ghost pointer path: a faint line through the targets in step order,
+        // so the preview shows sequence, not just endpoints.
+        let centers = marks.map { mark -> CGPoint in
+            let rect = AXCoordinateConverter.appKitRect(
+                axX: mark.frame.x, axY: mark.frame.y,
+                width: mark.frame.width, height: mark.frame.height,
+                primaryScreenMaxY: primaryMaxY
+            )
+            return CGPoint(x: rect.midX, y: rect.midY)
+        }
         var ids = Set<UUID>()
+        if centers.count >= 2 {
+            let path = PerryGuidanceOverlay.scribble(
+                points: centers,
+                accentHex: "#F59E0B",
+                lineWidth: 2,
+                duration: 60
+            )
+            ids.insert(path.id)
+            overlayState.visualGuidanceOverlays.append(path)
+        }
         for mark in marks {
             let rect = AXCoordinateConverter.appKitRect(
                 axX: mark.frame.x,
