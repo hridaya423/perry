@@ -573,8 +573,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     private static func makeTaskWorkspace() throws -> URL {
-        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("PerryDemo", isDirectory: true)
-        let directory = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let directory = WorkspaceScope.root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
@@ -991,4 +990,23 @@ final class ForegroundTaskController: ObservableObject {
         activityStripWindow?.show(on: NSScreen.main)
     }
 #endif
+}
+
+/// The user-authorized root for Perry file work. Defaults to `~/PerryDemo`;
+/// a folder chosen through the status menu replaces it. Task workspaces are
+/// always per-task subdirectories inside this root, so existing containment
+/// checks and Undo bindings never see a path the user didn't authorize.
+enum WorkspaceScope {
+    static let defaultsKey = "perry.workspace.root"
+
+    static var root: URL {
+        if let path = UserDefaults.standard.string(forKey: defaultsKey), !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+        }
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("PerryDemo", isDirectory: true)
+    }
+
+    static func setRoot(_ url: URL) {
+        UserDefaults.standard.set(url.standardizedFileURL.path, forKey: defaultsKey)
+    }
 }

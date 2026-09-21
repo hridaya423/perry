@@ -808,8 +808,7 @@ final class BackgroundTaskController: ObservableObject {
             return override.appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
         }
 #endif
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("PerryDemo", isDirectory: true)
+        return WorkspaceScope.root
             .appendingPathComponent("BackgroundTasks", isDirectory: true)
     }
 

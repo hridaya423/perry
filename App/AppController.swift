@@ -362,6 +362,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var notchStatusMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
     private var recordDemoMenuItem: NSMenuItem?
+    private var workspaceLabelItem: NSMenuItem?
     private var watchLearnMenu: NSMenu?
     private var activeSpatialSelection: SpatialSelection?
     private var backgroundPromptTask: Task<Void, Never>?
@@ -855,6 +856,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         backgroundTasksMenuItem = backgroundTasksItem
         menu.addItem(backgroundTasksItem)
         menu.addItem(withTitle: "Retry last task", action: #selector(retryAction), keyEquivalent: "").target = self
+        let workspaceLabel = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        workspaceLabel.isEnabled = false
+        workspaceLabelItem = workspaceLabel
+        menu.addItem(workspaceLabel)
+        refreshWorkspaceLabel()
+        menu.addItem(withTitle: "Choose workspace folder…", action: #selector(chooseWorkspaceAction), keyEquivalent: "").target = self
         let watchItem = NSMenuItem(title: "Watch & Learn", action: nil, keyEquivalent: "")
         let watchMenu = NSMenu()
         watchMenu.delegate = self
@@ -990,6 +997,22 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             item.submenu = submenu
             menu.addItem(item)
         }
+    }
+
+    @objc private func chooseWorkspaceAction() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use as workspace"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        WorkspaceScope.setRoot(url)
+        refreshWorkspaceLabel()
+        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
+    }
+
+    private func refreshWorkspaceLabel() {
+        workspaceLabelItem?.title = "Workspace: \((WorkspaceScope.root.path() as NSString).abbreviatingWithTildeInPath)"
     }
 
     @objc private func importRoutineAction() {
@@ -1977,6 +2000,7 @@ extension AppController: NSMenuDelegate {
             refreshWatchLearnMenu(menu)
             return
         }
+        refreshWorkspaceLabel()
         Task { await refreshMemoryMenuTitle() }
     }
 }
