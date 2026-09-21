@@ -29,8 +29,24 @@ public struct ConfirmationRequest: Sendable {
     }
 }
 
+/// The plan-card answer: run the whole plan, walk it one action at a time
+/// with a confirmation each, or stop.
+public enum PlanDecision: Sendable {
+    case run
+    case stepThrough
+    case cancel
+}
+
 public protocol Confirmer: Sendable {
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool
+    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision
+}
+
+extension Confirmer {
+    /// Confirmers without a step-through control degrade to run/cancel.
+    public func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
+        await requestConfirmation(request) ? .run : .cancel
+    }
 }
 
 public enum DoOutcome: Equatable, Sendable {
@@ -120,7 +136,7 @@ private enum ActionExecutionOutcome {
 }
 
 private enum PlanApprovalResult {
-    case approved(tier: TrustTier)
+    case approved(tier: TrustTier, stepThrough: Bool)
     case denied
     case cancelled
 }
@@ -141,7 +157,7 @@ public actor DoSupervisor {
     private var isRunning = false
     private var activeTypedExecution: Task<ActionExecutionResult, Error>?
     private var activeOperation: Task<VerificationStatus, Never>?
-    private var activeConfirmation: Task<Bool, Never>?
+    private var cancelActiveConfirmation: (@Sendable () -> Void)?
     private var attemptedActionPolicies: [ActionID: IdempotencyPolicy] = [:]
     private var idempotencyKeySignatures: [String: String] = [:]
 
@@ -198,7 +214,7 @@ public actor DoSupervisor {
         cancelRequested = true
         activeTypedExecution?.cancel()
         activeOperation?.cancel()
-        activeConfirmation?.cancel()
+        cancelActiveConfirmation?()
         let state = orchestrator.state
         if state == .executing(.awaitingApproval) {
             if transition(.denyAction) {
@@ -280,6 +296,7 @@ public actor DoSupervisor {
 
         var stepsRun = 0
         var planApprovalChecked = false
+        var stepThrough = false
         var planApprovalGrant: ExecutionApprovalGrant?
         while stepsRun < plan.actions.count {
             guard await waitForStepBoundary() else {
@@ -289,7 +306,11 @@ public actor DoSupervisor {
 
             if !planApprovalChecked {
                 switch await requestTypedPlanApproval(for: plan, targetWindow: targetWindow) {
-                case .approved:
+                case .approved(_, let wantsStepThrough):
+                    stepThrough = wantsStepThrough
+                    // The rehearsal doubles as the .plan-scope grant only
+                    // when an action actually requires it; minting one for a
+                    // plan with no .plan action is a scope mismatch.
                     // The rehearsal doubles as the .plan-scope grant only
                     // when an action actually requires it; minting one for a
                     // plan with no .plan action is a scope mismatch.
@@ -320,7 +341,10 @@ public actor DoSupervisor {
             }
             let needsConfirmation: Bool
             let confirmationReason: String
-            if policy.trustTier >= .orange {
+            if stepThrough {
+                needsConfirmation = true
+                confirmationReason = "step-through review"
+            } else if policy.trustTier >= .orange {
                 needsConfirmation = action.approvalRequirement == .action || planApprovalGrant == nil
                 confirmationReason = policy.trustTier >= .red
                     ? "high-risk action requires explicit approval"
@@ -453,15 +477,26 @@ public actor DoSupervisor {
         )
         await emit(.confirmationRequested(request))
         guard !cancelRequested && !Task.isCancelled else { return .cancelled }
-        let approved = await awaitConfirmation(request)
+        let decision = await awaitPlanDecision(request)
         guard !cancelRequested && !Task.isCancelled else { return .cancelled }
-        guard approved else { return .denied }
+        guard decision != .cancel else { return .denied }
         guard transition(.approveAction) else {
             return cancelRequested ? .cancelled : .denied
         }
         await emit(.confirmationAccepted(request.id))
         guard !cancelRequested && !Task.isCancelled else { return .cancelled }
-        return .approved(tier: tier)
+        return .approved(tier: tier, stepThrough: decision == .stepThrough)
+    }
+
+    private func awaitPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
+        let confirmation = Task { await confirmer.requestPlanDecision(request) }
+        cancelActiveConfirmation = { confirmation.cancel() }
+        defer { cancelActiveConfirmation = nil }
+        return await withTaskCancellationHandler(operation: {
+            await confirmation.value
+        }, onCancel: {
+            confirmation.cancel()
+        })
     }
 
     private func confirm(
@@ -491,8 +526,8 @@ public actor DoSupervisor {
 
     private func awaitConfirmation(_ request: ConfirmationRequest) async -> Bool {
         let confirmation = Task { await confirmer.requestConfirmation(request) }
-        activeConfirmation = confirmation
-        defer { activeConfirmation = nil }
+        cancelActiveConfirmation = { confirmation.cancel() }
+        defer { cancelActiveConfirmation = nil }
         return await withTaskCancellationHandler(operation: {
             await confirmation.value
         }, onCancel: {

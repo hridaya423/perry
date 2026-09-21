@@ -249,6 +249,76 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertTrue(entries.isEmpty)
     }
 
+    func testStepThroughConfirmsEachAction() async throws {
+        let actions = try ["one.txt", "two.txt"].map { name in
+            try ExecutableAction(
+                id: ActionID("write-\(name)"),
+                summary: "Write \(name)",
+                approvalRequirement: .plan,
+                operation: .transform(
+                    workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
+                    command: .createUTF8File(path: name, contents: "hello")
+                ),
+                postcondition: .fileContents("hello")
+            )
+        }
+        let plan = try PerryRuntimes.ExecutionPlan(
+            taskID: TaskID("step-through-task"),
+            goal: "Write files",
+            actions: actions,
+            requestedScopes: [.workspaceWrite]
+        )
+        let confirmer = StepThroughConfirmer()
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier()
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: RecordingTypedActionExecutor())
+
+        XCTAssertEqual(outcome, .completed(stepsRun: 2))
+        let decisions = await confirmer.decisions
+        let actionRequests = await confirmer.actionRequests
+        XCTAssertEqual(decisions, 1)
+        XCTAssertEqual(actionRequests, 2)
+    }
+
+    func testRunDecisionSkipsPerActionConfirmations() async throws {
+        let actions = try ["one.txt", "two.txt"].map { name in
+            try ExecutableAction(
+                id: ActionID("write-\(name)"),
+                summary: "Write \(name)",
+                approvalRequirement: .plan,
+                operation: .transform(
+                    workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
+                    command: .createUTF8File(path: name, contents: "hello")
+                ),
+                postcondition: .fileContents("hello")
+            )
+        }
+        let plan = try PerryRuntimes.ExecutionPlan(
+            taskID: TaskID("run-decision-task"),
+            goal: "Write files",
+            actions: actions,
+            requestedScopes: [.workspaceWrite]
+        )
+        let confirmer = StepThroughConfirmer(decision: .run)
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier()
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: RecordingTypedActionExecutor())
+
+        XCTAssertEqual(outcome, .completed(stepsRun: 2))
+        let decisions = await confirmer.decisions
+        let actionRequests = await confirmer.actionRequests
+        XCTAssertEqual(decisions, 1)
+        XCTAssertEqual(actionRequests, 0)
+    }
+
     private func makeAction(timeout: TimeInterval = 30) throws -> ExecutableAction {
         try ExecutableAction(
             id: ActionID("write-report"),
@@ -282,6 +352,26 @@ private actor StubTypedConfirmer: Confirmer {
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
         approved
+    }
+}
+
+private actor StepThroughConfirmer: Confirmer {
+    let decision: PlanDecision
+    private(set) var decisions = 0
+    private(set) var actionRequests = 0
+
+    init(decision: PlanDecision = .stepThrough) {
+        self.decision = decision
+    }
+
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
+        actionRequests += 1
+        return true
+    }
+
+    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
+        decisions += 1
+        return decision
     }
 }
 

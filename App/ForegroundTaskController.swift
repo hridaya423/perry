@@ -501,9 +501,13 @@ final class ForegroundTaskController: ObservableObject {
             }
         )
         activeSupervisor = supervisor
-        rehearsalMarkIDs = await paintRehearsalMarks(plan: plan, target: captured.target, worker: worker)
+        let rehearsal = await paintRehearsalMarks(plan: plan, target: captured.target, worker: worker)
+        rehearsalMarkIDs = rehearsal.overlayIDs
+        // Mask summaries for actions targeting non-ordinary elements so typed
+        // secrets never reach the card, activity strip, receipts, or history.
+        let executionPlan = (try? plan.maskingSensitiveSummaries(rehearsal.sensitiveActionIDs)) ?? plan
         let outcome = await supervisor.run(
-            plan: plan,
+            plan: executionPlan,
             context: captured.context,
             targetWindow: targetWindow,
             typedExecutor: typedExecutor
@@ -515,7 +519,11 @@ final class ForegroundTaskController: ObservableObject {
     /// Spatial rehearsal: number the targets the plan will actually touch, resolved
     /// against a fresh observation. Only selectors that resolve right now produce
     /// marks — ungrounded steps stay text-only in the rehearsal card.
-    private func paintRehearsalMarks(plan: ExecutionPlan, target: CuaWindowTarget?, worker: CuaWorkerHandle) async -> Set<UUID> {
+    private func paintRehearsalMarks(
+        plan: ExecutionPlan,
+        target: CuaWindowTarget?,
+        worker: CuaWorkerHandle
+    ) async -> (overlayIDs: Set<UUID>, sensitiveActionIDs: Set<ActionID>) {
         let targetStore = CuaGuideTargetStore()
         if let target {
             await targetStore.set(CuaTargetHint(
@@ -526,11 +534,12 @@ final class ForegroundTaskController: ObservableObject {
             ))
         }
         guard let observation = try? await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe() else {
-            return []
+            return ([], [])
         }
+        let marks = RehearsalMarks.marks(for: plan, elements: observation.snapshot.elements)
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         var ids = Set<UUID>()
-        for mark in RehearsalMarks.marks(for: plan, elements: observation.snapshot.elements) {
+        for mark in marks {
             let rect = AXCoordinateConverter.appKitRect(
                 axX: mark.frame.x,
                 axY: mark.frame.y,
@@ -549,7 +558,7 @@ final class ForegroundTaskController: ObservableObject {
             ids.insert(overlay.id)
             overlayState.visualGuidanceOverlays.append(overlay)
         }
-        return ids
+        return (ids, Set(marks.filter(\.sensitive).map(\.actionID)))
     }
 
     private func clearRehearsalMarks() {

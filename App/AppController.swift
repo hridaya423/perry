@@ -1693,18 +1693,28 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: Intent card confirmation
 
     func requestIntentApproval(id: UUID, card: IntentCard) async -> Bool {
-        guard !Task.isCancelled, sessionController.approvalIsCurrent(id) else { return false }
+        await presentIntentCard(id: id, card: card, allowsStepThrough: false) == .run
+    }
+
+    /// Plan-level card: the same intent card plus a "Step through" choice that
+    /// walks the plan one confirmed action at a time.
+    func requestPlanDecision(id: UUID, card: IntentCard) async -> PlanDecision {
+        await presentIntentCard(id: id, card: card, allowsStepThrough: true)
+    }
+
+    private func presentIntentCard(id: UUID, card: IntentCard, allowsStepThrough: Bool) async -> PlanDecision {
+        guard !Task.isCancelled, sessionController.approvalIsCurrent(id) else { return .cancel }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else {
-                    continuation.resume(returning: false)
+                    continuation.resume(returning: .cancel)
                     return
                 }
-                let window = IntentCardWindow(approvalID: id, card: card) { [weak self] approved in
+                let window = IntentCardWindow(approvalID: id, card: card, allowsStepThrough: allowsStepThrough) { [weak self] decision in
                     if self?.intentCardWindow?.approvalID == id {
                         self?.intentCardWindow = nil
                     }
-                    continuation.resume(returning: approved)
+                    continuation.resume(returning: decision)
                 }
                 intentCardWindow = window
                 window.showNearCursor()
@@ -2022,5 +2032,21 @@ struct InteractiveConfirmer: Confirmer {
         SoundPlayer.play(.receive)
         await MainActor.run { controller.voice.speak(card.spokenLine) }
         return await controller.requestIntentApproval(id: request.id, card: card)
+    }
+
+    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
+        guard let controller = await MainActor.run(body: { controller }) else { return .cancel }
+        let card = IntentCard(
+            title: "About to \(request.actionSummary)",
+            detail: request.reason,
+            tier: request.tier,
+            targetSummary: request.targetSummary ?? request.actionSummary,
+            requiredPhrase: request.requiredText,
+            approveLabel: request.actionSummary,
+            reversible: request.reversible
+        )
+        SoundPlayer.play(.receive)
+        await MainActor.run { controller.voice.speak(card.spokenLine) }
+        return await controller.requestPlanDecision(id: request.id, card: card)
     }
 }

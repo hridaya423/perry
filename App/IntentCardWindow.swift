@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import PerryGuide
+import PerryRuntimes
 
 /// Floating intent card anchored near the cursor. Orange: click the action
 /// button or Stop. Red: also requires typing the exact displayed target
@@ -8,16 +9,18 @@ import PerryGuide
 final class IntentCardWindow: NSPanel {
     let approvalID: UUID
     private let card: IntentCard
-    private let completion: (Bool) -> Void
+    private let allowsStepThrough: Bool
+    private let completion: (PlanDecision) -> Void
     private static var active: IntentCardWindow?
     private var finished = false
     private var previousFrontmostApplication: NSRunningApplication?
 
     override var canBecomeKey: Bool { true }
 
-    init(approvalID: UUID = UUID(), card: IntentCard, completion: @escaping (Bool) -> Void) {
+    init(approvalID: UUID = UUID(), card: IntentCard, allowsStepThrough: Bool = false, completion: @escaping (PlanDecision) -> Void) {
         self.approvalID = approvalID
         self.card = card
+        self.allowsStepThrough = allowsStepThrough
         self.completion = completion
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 388, height: 320),
@@ -28,8 +31,8 @@ final class IntentCardWindow: NSPanel {
         isFloatingPanel = true
         level = .modalPanel
         hidesOnDeactivate = false
-        let hostingView = NSHostingView(rootView: IntentCardView(card: card) { [weak self] approved in
-            self?.finish(approved)
+        let hostingView = NSHostingView(rootView: IntentCardView(card: card, allowsStepThrough: allowsStepThrough) { [weak self] decision in
+            self?.finish(decision)
         })
         contentView = hostingView
         let fitting = hostingView.fittingSize
@@ -54,15 +57,15 @@ final class IntentCardWindow: NSPanel {
     }
 
     func cancel() {
-        finish(false)
+        finish(.cancel)
     }
 
-    private func finish(_ approved: Bool) {
+    private func finish(_ decision: PlanDecision) {
         guard !finished else { return }
         finished = true
         close()
         if Self.active === self { Self.active = nil }
-        completion(approved)
+        completion(decision)
         if let previousFrontmostApplication,
            previousFrontmostApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             previousFrontmostApplication.activate(options: [.activateAllWindows])
@@ -73,7 +76,8 @@ final class IntentCardWindow: NSPanel {
 
 struct IntentCardView: View {
     let card: IntentCard
-    let onAnswer: (Bool) -> Void
+    var allowsStepThrough: Bool = false
+    let onAnswer: (PlanDecision) -> Void
 
     @State private var typedConfirmation: String = ""
     @FocusState private var confirmationFocused: Bool
@@ -121,15 +125,27 @@ struct IntentCardView: View {
             }
 
             HStack {
-                Button("Stop") { onAnswer(false) }
+                Button("Stop") { onAnswer(.cancel) }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
+                if allowsStepThrough {
+                    Button("Step through") {
+                        guard isTypedConfirmationValid else {
+                            NSSound.beep()
+                            return
+                        }
+                        onAnswer(.stepThrough)
+                    }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!isTypedConfirmationValid)
+                    .accessibilityHint("Run the plan one action at a time, confirming each step")
+                }
                 Button(approveButtonTitle) {
                     guard isTypedConfirmationValid else {
                         NSSound.beep()
                         return
                     }
-                    onAnswer(true)
+                    onAnswer(.run)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
