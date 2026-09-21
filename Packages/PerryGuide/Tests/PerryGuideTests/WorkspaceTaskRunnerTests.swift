@@ -29,7 +29,8 @@ final class WorkspaceTaskRunnerTests: XCTestCase {
         let tasks = await TaskCoordinator(storageDirectory: directory).records()
         let history = await TranscriptStore(directory: directory).snapshot()
         let delivered = await notifications.values
-        XCTAssertTrue(tasks.isEmpty)
+        XCTAssertEqual(tasks.map(\.state), [.completed])
+        XCTAssertEqual(tasks.first?.workspaceJournal?.completed.count, 1)
         XCTAssertEqual(history.count, 1)
         XCTAssertEqual(history.first?.verified, true)
         XCTAssertEqual(delivered.map(\.kind), [.completed])
@@ -129,8 +130,11 @@ final class WorkspaceTaskRunnerTests: XCTestCase {
         XCTAssertEqual(entries.first?.outcome, .completed)
         XCTAssertEqual(entries.first?.verified, true)
         XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "report")
+        // The verified prefix stays on record as a terminal receipt row —
+        // it is the durable evidence Undo reads.
         let remaining = await relaunched.records()
-        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertEqual(remaining.map(\.state), [.completed])
+        XCTAssertEqual(remaining.first?.workspaceJournal?.completed.count, 1)
     }
 
     func testDiscardCannotRemoveVerifiedWorkAwaitingHistory() async throws {
@@ -221,7 +225,8 @@ final class WorkspaceTaskRunnerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: secondOutput, encoding: .utf8), "second")
         let remaining = await restored.records()
         let entries = await TranscriptStore(directory: directory).snapshot()
-        XCTAssertTrue(remaining.isEmpty)
+        XCTAssertEqual(remaining.map(\.state), [.completed])
+        XCTAssertEqual(remaining.first?.workspaceJournal?.completed.count, 2)
         XCTAssertEqual(entries.count, 1)
         XCTAssertEqual(entries.first?.steps, executionPlan.actions.map(\.summary))
         XCTAssertEqual(entries.first?.outcome, .completed)

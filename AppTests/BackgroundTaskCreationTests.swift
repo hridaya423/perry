@@ -78,7 +78,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let fileCompleted = await waitUntil {
             await controller.backgroundTasks.reloadRecords()
             let history = await TranscriptStore(directory: directory).snapshot()
-            return await controller.backgroundTasks.debugRecord(queued.id) == nil
+            return await controller.backgroundTasks.debugRecord(queued.id).map(\.isTerminal) ?? true
                 && FileManager.default.fileExists(atPath: fileURL.path)
                 && history.count == 1
                 && probe.notifications.contains(where: { $0.kind == .completed && $0.taskID == queued.id })

@@ -6,6 +6,7 @@ import PerryCore
 final class WorkspaceUndoTests: XCTestCase {
     private var workspace: URL!
     private var trash: URL!
+    private var store: URL!
     private var engine: WorkspaceUndoEngine!
 
     override func setUpWithError() throws {
@@ -13,14 +14,18 @@ final class WorkspaceUndoTests: XCTestCase {
             .appendingPathComponent("perry-undo-ws-\(UUID().uuidString)", isDirectory: true)
         trash = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-undo-trash-\(UUID().uuidString)", isDirectory: true)
+        store = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-undo-store-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
         engine = WorkspaceUndoEngine(workspace: workspace, trashURL: trash)
     }
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: workspace)
         try? FileManager.default.removeItem(at: trash)
+        try? FileManager.default.removeItem(at: store)
     }
 
     private func receipt(_ effect: WorkspaceFileExecutionEffect) -> WorkspaceFileExecutionReceipt {
@@ -39,19 +44,33 @@ final class WorkspaceUndoTests: XCTestCase {
         return url
     }
 
+    /// Runs the typed inverse plan through the shared write-ahead performer —
+    /// the same journaled path the Undo button drives.
+    private func runInversePlan(receipts: [WorkspaceFileExecutionReceipt]) async throws {
+        let plan = try engine.inversePlan(receipts: receipts, goal: "Undo the task")
+        let journal = WorkspaceRunJournal(
+            plan: plan,
+            workspace: workspace,
+            coordinator: TaskCoordinator(storageDirectory: store),
+            trashURL: trash
+        )
+        for action in plan.actions {
+            _ = try await journal.perform(action)
+        }
+    }
+
     // MARK: - Rename
 
-    func testRenameInverseRestoresOriginalName() throws {
+    func testRenameInverseRestoresOriginalName() async throws {
         let original = try write("a.txt")
         let moved = workspace.appendingPathComponent("b.txt")
         let (device, inode) = try identity(of: original)
         try FileManager.default.moveItem(at: original, to: moved)
 
-        let description = try engine.undo(receipt(.renamed(
+        try await runInversePlan(receipts: [receipt(.renamed(
             source: "a.txt", destination: "b.txt", device: device, inode: inode
-        )))
+        ))])
 
-        XCTAssertTrue(description.contains("b.txt"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("a.txt").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: moved.path))
         let restored = try identity(of: workspace.appendingPathComponent("a.txt"))
@@ -68,9 +87,9 @@ final class WorkspaceUndoTests: XCTestCase {
         try FileManager.default.removeItem(at: moved)
         _ = try write("b.txt", "user edits")
 
-        XCTAssertThrowsError(try engine.undo(receipt(.renamed(
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.renamed(
             source: "a.txt", destination: "b.txt", device: device, inode: inode
-        )))) { error in
+        ))], goal: "undo")) { error in
             guard case WorkspaceUndoError.conflicted = error else {
                 return XCTFail("expected conflict, got \(error)")
             }
@@ -85,9 +104,9 @@ final class WorkspaceUndoTests: XCTestCase {
         try FileManager.default.moveItem(at: original, to: moved)
         _ = try write("a.txt", "new file using the old name")
 
-        XCTAssertThrowsError(try engine.undo(receipt(.renamed(
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.renamed(
             source: "a.txt", destination: "b.txt", device: device, inode: inode
-        )))) { error in
+        ))], goal: "undo")) { error in
             guard case WorkspaceUndoError.conflicted = error else {
                 return XCTFail("expected conflict, got \(error)")
             }
@@ -97,25 +116,27 @@ final class WorkspaceUndoTests: XCTestCase {
 
     // MARK: - Trash restore
 
-    func testTrashInverseRestoresEntry() throws {
+    func testTrashInverseRestoresEntry() async throws {
         let file = try write("gone.txt")
         let (device, inode) = try identity(of: file)
         let entryURL = trash.appendingPathComponent("Perry-entry")
         try FileManager.default.moveItem(at: file, to: entryURL)
 
-        let description = try engine.undo(receipt(.trashed(
+        try await runInversePlan(receipts: [receipt(.trashed(
             source: "gone.txt", entryName: "Perry-entry", device: device, inode: inode
-        )))
+        ))])
 
-        XCTAssertTrue(description.contains("gone.txt"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("gone.txt").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: entryURL.path))
+        let restored = try identity(of: workspace.appendingPathComponent("gone.txt"))
+        XCTAssertEqual(restored.0, device)
+        XCTAssertEqual(restored.1, inode)
     }
 
     func testTrashInverseConflictsWhenEntryIsGone() throws {
-        XCTAssertThrowsError(try engine.undo(receipt(.trashed(
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.trashed(
             source: "gone.txt", entryName: "Perry-missing", device: 1, inode: 2
-        )))) { error in
+        ))], goal: "undo")) { error in
             guard case WorkspaceUndoError.conflicted = error else {
                 return XCTFail("expected conflict, got \(error)")
             }
@@ -124,10 +145,10 @@ final class WorkspaceUndoTests: XCTestCase {
 
     // MARK: - Created file
 
-    func testCreatedFileInverseMovesUnchangedFileToTrash() throws {
+    func testCreatedFileInverseMovesUnchangedFileToTrash() async throws {
         let file = try write("made.txt")
 
-        try engine.undo(receipt(.createdFile(path: "made.txt", byteCount: 5)))
+        try await runInversePlan(receipts: [receipt(.createdFile(path: "made.txt", byteCount: 5))])
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     }
@@ -135,7 +156,7 @@ final class WorkspaceUndoTests: XCTestCase {
     func testCreatedFileInverseConflictsWhenFileChanged() throws {
         _ = try write("made.txt", "the user edited this")
 
-        XCTAssertThrowsError(try engine.undo(receipt(.createdFile(path: "made.txt", byteCount: 5)))) { error in
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.createdFile(path: "made.txt", byteCount: 5))], goal: "undo")) { error in
             guard case WorkspaceUndoError.conflicted = error else {
                 return XCTFail("expected conflict, got \(error)")
             }
@@ -145,11 +166,11 @@ final class WorkspaceUndoTests: XCTestCase {
 
     // MARK: - Created directory
 
-    func testCreatedDirectoryInverseRemovesEmptyDirectory() throws {
+    func testCreatedDirectoryInverseRemovesEmptyDirectory() async throws {
         let dir = workspace.appendingPathComponent("newdir")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
 
-        try engine.undo(receipt(.createdDirectory(path: "newdir")))
+        try await runInversePlan(receipts: [receipt(.createdDirectory(path: "newdir"))])
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path))
     }
@@ -159,7 +180,7 @@ final class WorkspaceUndoTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: false)
         try "user file".write(to: dir.appendingPathComponent("note.txt"), atomically: true, encoding: .utf8)
 
-        XCTAssertThrowsError(try engine.undo(receipt(.createdDirectory(path: "newdir")))) { error in
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.createdDirectory(path: "newdir"))], goal: "undo")) { error in
             guard case WorkspaceUndoError.conflicted = error else {
                 return XCTFail("expected conflict, got \(error)")
             }
@@ -171,7 +192,7 @@ final class WorkspaceUndoTests: XCTestCase {
 
     func testLegacyEffectIsNotUndoable() {
         XCTAssertNil(engine.inverseDescription(for: receipt(.legacy(path: "x", byteCount: 1))))
-        XCTAssertThrowsError(try engine.undo(receipt(.legacy(path: "x", byteCount: 1)))) { error in
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.legacy(path: "x", byteCount: 1))], goal: "undo")) { error in
             guard case WorkspaceUndoError.notUndoable = error else {
                 return XCTFail("expected notUndoable, got \(error)")
             }
@@ -183,7 +204,7 @@ final class WorkspaceUndoTests: XCTestCase {
         try "x".write(to: outside, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: outside) }
 
-        XCTAssertThrowsError(try engine.undo(receipt(.createdFile(path: "../escape.txt", byteCount: 1)))) { error in
+        XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.createdFile(path: "../escape.txt", byteCount: 1))], goal: "undo")) { error in
             guard case WorkspaceUndoError.notUndoable = error else {
                 return XCTFail("expected notUndoable, got \(error)")
             }

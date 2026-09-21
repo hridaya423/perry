@@ -265,7 +265,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             finalizationBarrier: debugFinalizationBarrier,
             confirmer: debugConfirmer,
             askUser: debugAskUser,
-            typedVerifier: debugTypedVerifier
+            typedVerifier: debugTypedVerifier,
+            workspaceCoordinator: backgroundTaskCoordinator
         )
 #else
         return ForegroundTaskController(
@@ -279,6 +280,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             executionFinalizer: executionFinalizer,
             transcriptStore: transcriptStore,
             overlayState: overlayState,
+            workspaceCoordinator: backgroundTaskCoordinator,
             hooks: hooks
         )
 #endif

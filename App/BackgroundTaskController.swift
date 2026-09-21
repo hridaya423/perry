@@ -94,52 +94,64 @@ final class BackgroundTaskController: ObservableObject {
     /// order Undo would apply them (last change first). Empty means nothing
     /// reversible is on record — the row shows no Undo control.
     func undoableDescriptions(for record: TaskRecord) -> [String] {
-        guard let engine = undoEngine(for: record),
+        guard let workspace = undoWorkspace(for: record),
               let journal = record.workspaceJournal else { return [] }
+        let engine = WorkspaceUndoEngine(workspace: workspace)
         return journal.completed.reversed().compactMap { engine.inverseDescription(for: $0.receipt) }
     }
 
     /// Reverses a terminal task's completed workspace effects, last change
     /// first, stopping at the first conflict so intervening user work is
-    /// never touched. The journal stays the record of what Perry did — an
-    /// already-undone receipt simply conflicts on re-run.
+    /// never touched. The inverses run as approved typed actions through the
+    /// shared write-ahead journal, so an undo lands its own durable receipts —
+    /// and is itself undoable.
     func undoWorkspaceChanges(_ record: TaskRecord) {
         guard controlScope.acceptsControls,
-              let engine = undoEngine(for: record),
+              let workspace = undoWorkspace(for: record),
               let journal = record.workspaceJournal,
               !journal.completed.isEmpty else { return }
-        let receipts = journal.completed.reversed().map(\.receipt)
+        let receipts = journal.completed.map(\.receipt)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            var undone = 0
-            var stopped: String?
-            for receipt in receipts {
-                do {
-                    _ = try engine.undo(receipt)
-                    undone += 1
-                } catch {
-                    stopped = error.localizedDescription
-                    break
+            do {
+                let plan = try WorkspaceUndoEngine(workspace: workspace).inversePlan(
+                    receipts: receipts,
+                    goal: "Undo “\(record.goal)”"
+                )
+                let journal = WorkspaceRunJournal(
+                    plan: plan, workspace: workspace, coordinator: self.coordinator
+                )
+                var undone = 0
+                var stopped: String?
+                for action in plan.actions {
+                    do {
+                        _ = try await journal.perform(action)
+                        undone += 1
+                    } catch {
+                        stopped = error.localizedDescription
+                        break
+                    }
                 }
+                await journal.settle()
+                self.messages[record.id] = stopped.map { stopped in
+                    undone == 0
+                        ? "Nothing was undone — \(stopped)"
+                        : "Undid \(undone) change\(undone == 1 ? "" : "s"), then stopped: \(stopped)"
+                } ?? "Undid \(undone) change\(undone == 1 ? "" : "s")."
+            } catch {
+                self.messages[record.id] = "Nothing was undone — \(error.localizedDescription)"
             }
-            if let stopped {
-                self.messages[record.id] = undone == 0
-                    ? "Nothing was undone — \(stopped)"
-                    : "Undid \(undone) change\(undone == 1 ? "" : "s"), then stopped: \(stopped)"
-            } else {
-                self.messages[record.id] = "Undid \(undone) change\(undone == 1 ? "" : "s")."
-            }
+            await self.reloadRecords()
         }
     }
 
-    private func undoEngine(for record: TaskRecord) -> WorkspaceUndoEngine? {
+    private func undoWorkspace(for record: TaskRecord) -> URL? {
         guard record.isTerminal, !isRunning(record.id),
               case .executable(let plan) = record.plan else { return nil }
-        let workspace = plan.actions.lazy.compactMap { action -> URL? in
+        return plan.actions.lazy.compactMap { action -> URL? in
             guard case .transform(let workspace, _) = action.operation else { return nil }
             return workspace
         }.first
-        return workspace.map { WorkspaceUndoEngine(workspace: $0) }
     }
 
     // MARK: Records
@@ -443,7 +455,9 @@ final class BackgroundTaskController: ObservableObject {
             do {
                 try await self.runner.cancel(id: id, expectedRevision: expectedRevision)
             } catch {
-                if await self.coordinator.record(id: id) == nil {
+                // Gone or already terminal — either way the task is finished
+                // and there is nothing left to cancel.
+                if await self.coordinator.record(id: id).map(\.isTerminal) ?? true {
                     self.cancelOwnedWork(id)
                     _ = await self.waitForOwnershipToEnd(id)
                     self.refreshRecords()
@@ -484,7 +498,7 @@ final class BackgroundTaskController: ObservableObject {
                     outcome: outcome
                 )
             } catch {
-                if await self.coordinator.record(id: id) == nil {
+                if await self.coordinator.record(id: id).map(\.isTerminal) ?? true {
                     self.refreshRecords()
                     return
                 }
@@ -627,7 +641,11 @@ final class BackgroundTaskController: ObservableObject {
                     try await self.contextStore.remove(for: record.id)
                 }
             } catch {
-                if !reported, await self.coordinator.record(id: record.id) == nil,
+                // A retained terminal record means the report already landed —
+                // finishWorkspaceTask keeps evidence rows instead of removing
+                // them, so "reported" is terminal-or-gone, not just gone.
+                let recordIsFinished = await self.coordinator.record(id: record.id).map(\.isTerminal) ?? true
+                if !reported, recordIsFinished,
                    await self.runner.takeReportedWorkspaceOutcome(for: plan.planID) != nil {
                     reported = true
                     do {
@@ -684,7 +702,9 @@ final class BackgroundTaskController: ObservableObject {
         if let reportedOutcome {
             outcome = reportedOutcome
         } else {
-            guard let currentRecord = await coordinator.record(id: record.id) else {
+            guard let currentRecord = await coordinator.record(id: record.id),
+                  !currentRecord.isTerminal else {
+                // Terminal records are retained receipts — already reported.
                 refreshRecords()
                 return
             }
@@ -698,7 +718,7 @@ final class BackgroundTaskController: ObservableObject {
                     reason: "user cancelled the task"
                 )
             } catch {
-                if await coordinator.record(id: currentRecord.id) == nil {
+                if await coordinator.record(id: currentRecord.id).map(\.isTerminal) ?? true {
                     refreshRecords()
                     return
                 }
@@ -707,7 +727,9 @@ final class BackgroundTaskController: ObservableObject {
                 return
             }
         }
-        let persisted = await runner.records().contains { $0.id == record.id }
+        // "Persisted" means a live record the user can still act on; retained
+        // terminal receipts don't count — the task is done, its evidence stays.
+        let persisted = await runner.records().contains { $0.id == record.id && !$0.isTerminal }
         switch outcome {
         case .completed:
             messages[record.id] = "Finished"

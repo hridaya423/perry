@@ -13,6 +13,10 @@ struct TypedActionRouter: ExecutableActionExecutor {
     let remoteIntegrations: RemoteIntegrationActionRuntime?
     let askUser: (@Sendable (String, [String]) async throws -> Void)?
     let runCodingTask: (@Sendable (String, URL, String) async throws -> Void)?
+    /// When bound, workspace transforms run through the shared write-ahead
+    /// journal so the run lands durable receipts. Bound means journaling is
+    /// mandatory — there is no silent unjournaled fallback.
+    var journaledTransforms: (@Sendable (ExecutableAction) async throws -> WorkspaceFileExecutionReceipt)? = nil
 
     func execute(_ approvedAction: ApprovedExecutableAction) async throws -> ActionExecutionResult {
         let action = approvedAction.action
@@ -22,6 +26,10 @@ struct TypedActionRouter: ExecutableActionExecutor {
                   base.resolvingSymlinksInPath().standardizedFileURL.path
                       == workspace.resolvingSymlinksInPath().standardizedFileURL.path else {
                 throw ExecutionError(message: "typed transform is not bound to this executor's workspace")
+            }
+            if let journaledTransforms {
+                let receipt = try await journaledTransforms(action)
+                return ActionExecutionResult(action: action, evidence: .workspaceFile(receipt), journaled: true)
             }
             return try await WorkspaceFileRuntime(baseURL: base).execute(approvedAction)
         case .computer(let window, let command):

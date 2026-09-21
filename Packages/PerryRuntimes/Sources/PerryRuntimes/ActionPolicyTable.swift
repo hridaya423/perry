@@ -63,7 +63,7 @@ extension ExecutableAction.Operation {
             )
         case .transform(let workspace, let command):
             switch command {
-            case .moveToTrash:
+            case .moveToTrash, .restoreFromTrash:
                 return ActionPolicy(
                     trustTier: .orange,
                     minimumApproval: .action,
@@ -129,6 +129,7 @@ extension ExecutableAction.FileTransform {
         case .createDirectory(let path): return "creates folder \(path)"
         case .rename(let path, let destination): return "renames \(path) → \(destination)"
         case .moveToTrash(let path): return "trashes \(path)"
+        case .restoreFromTrash(_, let destination): return "restores \(destination) from the Trash"
         }
     }
 }

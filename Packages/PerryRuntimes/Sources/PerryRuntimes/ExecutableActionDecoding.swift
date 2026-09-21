@@ -230,6 +230,7 @@ extension ExecutableAction.FileTransform {
                 "createDirectory": ["path"],
                 "rename": ["path", "destination"],
                 "moveToTrash": ["path"],
+                "restoreFromTrash": ["entryName", "destination"],
             ]
         )
         switch payload.name {
@@ -247,6 +248,11 @@ extension ExecutableAction.FileTransform {
             )
         case "moveToTrash":
             return .moveToTrash(path: try payload.fields.decode(String.self, "path"))
+        case "restoreFromTrash":
+            return .restoreFromTrash(
+                entryName: try payload.fields.decode(String.self, "entryName"),
+                destination: try payload.fields.decode(String.self, "destination")
+            )
         default:
             throw ExecutablePlanError.invalid("unknown file transform variant")
         }

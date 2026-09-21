@@ -111,7 +111,8 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let reported = await waitUntil {
             let current = await controller.backgroundTasks.debugRecord(plan.taskID)
             let context = await controller.backgroundTasks.debugMetadata(plan.taskID)
-            return current == nil && context == nil && !controller.backgroundTasks.isRunning(plan.taskID)
+            // A retained terminal row is the durable receipt — the task is done.
+            return (current?.isTerminal ?? true) && context == nil && !controller.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(reported)
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("second.txt"), encoding: .utf8), "second")
@@ -150,7 +151,8 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let reported = await waitUntil {
             let record = await controller.backgroundTasks.debugRecord(plan.taskID)
             let metadata = await controller.backgroundTasks.debugMetadata(plan.taskID)
-            return record == nil && metadata == nil && !controller.backgroundTasks.isRunning(plan.taskID)
+            // Terminal retention keeps the cancelled run's receipts on record.
+            return (record?.isTerminal ?? true) && metadata == nil && !controller.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(reported)
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.path))

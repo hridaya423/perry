@@ -7,10 +7,11 @@ public enum WorkspaceFileExecutionEffect: Codable, Equatable, Sendable {
     case createdDirectory(path: String)
     case renamed(source: String, destination: String, device: UInt64, inode: UInt64)
     case trashed(source: String, entryName: String, device: UInt64, inode: UInt64)
+    case restored(source: String, entryName: String, device: UInt64, inode: UInt64)
     case legacy(path: String, byteCount: Int)
 
     private enum CodingKeys: String, CodingKey {
-        case createdFile, createdDirectory, renamed, trashed
+        case createdFile, createdDirectory, renamed, trashed, restored
     }
 
     private enum PayloadKeys: String, CodingKey {
@@ -26,6 +27,10 @@ public enum WorkspaceFileExecutionEffect: Codable, Equatable, Sendable {
                 PayloadKeys.device.rawValue, PayloadKeys.inode.rawValue,
             ],
             CodingKeys.trashed.rawValue: [
+                PayloadKeys.source.rawValue, PayloadKeys.entryName.rawValue,
+                PayloadKeys.device.rawValue, PayloadKeys.inode.rawValue,
+            ],
+            CodingKeys.restored.rawValue: [
                 PayloadKeys.source.rawValue, PayloadKeys.entryName.rawValue,
                 PayloadKeys.device.rawValue, PayloadKeys.inode.rawValue,
             ],
@@ -49,6 +54,13 @@ public enum WorkspaceFileExecutionEffect: Codable, Equatable, Sendable {
             )
         case CodingKeys.trashed.rawValue:
             self = .trashed(
+                source: try payload.fields.decode(String.self, PayloadKeys.source.rawValue),
+                entryName: try payload.fields.decode(String.self, PayloadKeys.entryName.rawValue),
+                device: try payload.fields.decode(UInt64.self, PayloadKeys.device.rawValue),
+                inode: try payload.fields.decode(UInt64.self, PayloadKeys.inode.rawValue)
+            )
+        case CodingKeys.restored.rawValue:
+            self = .restored(
                 source: try payload.fields.decode(String.self, PayloadKeys.source.rawValue),
                 entryName: try payload.fields.decode(String.self, PayloadKeys.entryName.rawValue),
                 device: try payload.fields.decode(UInt64.self, PayloadKeys.device.rawValue),
@@ -83,6 +95,12 @@ public enum WorkspaceFileExecutionEffect: Codable, Equatable, Sendable {
             try payload.encode(entryName, forKey: .entryName)
             try payload.encode(device, forKey: .device)
             try payload.encode(inode, forKey: .inode)
+        case .restored(let source, let entryName, let device, let inode):
+            var payload = root.nestedContainer(keyedBy: PayloadKeys.self, forKey: .restored)
+            try payload.encode(source, forKey: .source)
+            try payload.encode(entryName, forKey: .entryName)
+            try payload.encode(device, forKey: .device)
+            try payload.encode(inode, forKey: .inode)
         case .legacy:
             throw ExecutablePlanError.invalid("legacy workspace receipt effects use the legacy receipt wire format")
         }
@@ -106,6 +124,10 @@ public enum WorkspaceFileExecutionEffect: Codable, Equatable, Sendable {
             guard !source.isEmpty, !entryName.isEmpty, device > 0, inode > 0 else {
                 throw ExecutablePlanError.invalid("workspace receipt trash effect is invalid")
             }
+        case .restored(let source, let entryName, let device, let inode):
+            guard !source.isEmpty, !entryName.isEmpty, device > 0, inode > 0 else {
+                throw ExecutablePlanError.invalid("workspace receipt restore effect is invalid")
+            }
         }
     }
 }
@@ -120,14 +142,14 @@ public struct WorkspaceFileExecutionReceipt: Codable, Equatable, Sendable {
         switch effect {
         case .createdFile(let path, _), .createdDirectory(let path), .legacy(let path, _): path
         case .renamed(_, let destination, _, _): destination
-        case .trashed(let source, _, _, _): source
+        case .trashed(let source, _, _, _), .restored(let source, _, _, _): source
         }
     }
 
     public var byteCount: Int {
         switch effect {
         case .createdFile(_, let byteCount), .legacy(_, let byteCount): byteCount
-        case .createdDirectory, .renamed, .trashed: 0
+        case .createdDirectory, .renamed, .trashed, .restored: 0
         }
     }
 
@@ -304,6 +326,22 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
             )
             effect = .trashed(
                 source: requestedPath,
+                entryName: entryName,
+                device: device,
+                inode: inode
+            )
+        case .restoreFromTrash(let entryName, let destination):
+            guard case .renamedItem(let device, let inode) = action.postcondition else {
+                throw ExecutionError(message: "typed restore requires entry identity")
+            }
+            try restoreTypedItemFromTrash(
+                entryName: entryName,
+                destination: destination,
+                expectedDevice: device,
+                expectedInode: inode
+            )
+            effect = .restored(
+                source: destination,
                 entryName: entryName,
                 device: device,
                 inode: inode
@@ -554,6 +592,83 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
         }
     }
 
+    private func restoreTypedItemFromTrash(
+        entryName: String,
+        destination: String,
+        expectedDevice: UInt64,
+        expectedInode: UInt64
+    ) throws {
+        guard let trashRoot else {
+            throw ExecutionError(message: "Trash directory binding is unavailable")
+        }
+        guard !entryName.isEmpty,
+              entryName != ".", entryName != "..",
+              !entryName.hasPrefix("/"),
+              !entryName.contains("/"), !entryName.contains("\\"),
+              !entryName.contains("\0") else {
+            throw ExecutionError(message: "typed restore entry name is unsafe")
+        }
+        let trash = try openBoundDirectory(trashRoot)
+        defer { close(trash) }
+        try withOpenParent(of: destination) { destinationParent, destinationName in
+            var parentInfo = stat()
+            guard Darwin.fstat(destinationParent, &parentInfo) == 0,
+                  parentInfo.st_dev == trashRoot.device else {
+                throw ExecutionError(message: "typed restore cannot move an item across filesystems")
+            }
+            var original = stat()
+            let entryLookup = entryName.withCString {
+                Darwin.fstatat(trash, $0, &original, AT_SYMLINK_NOFOLLOW)
+            }
+            guard entryLookup == 0,
+                  original.st_mode & S_IFMT != S_IFLNK,
+                  UInt64(original.st_dev) == expectedDevice,
+                  UInt64(original.st_ino) == expectedInode else {
+                throw ExecutionError(message: "typed restore entry identity does not match approval")
+            }
+
+            var restoreError: Int32 = 0
+            let restored = entryName.withCString { entryComponent in
+                destinationName.withCString { destinationComponent in
+                    let result = Darwin.renameatx_np(
+                        trash,
+                        entryComponent,
+                        destinationParent,
+                        destinationComponent,
+                        UInt32(RENAME_EXCL)
+                    )
+                    if result != 0 {
+                        restoreError = errno
+                    }
+                    return result
+                }
+            }
+            guard restored == 0 else {
+                if restoreError == EEXIST {
+                    throw ExecutionError(message: "typed restore destination already exists")
+                }
+                throw ExecutionError(message: "could not restore typed workspace item")
+            }
+
+            var moved = stat()
+            let destinationLookup = destinationName.withCString {
+                Darwin.fstatat(destinationParent, $0, &moved, AT_SYMLINK_NOFOLLOW)
+            }
+            var staleEntry = stat()
+            let staleLookup = entryName.withCString {
+                Darwin.fstatat(trash, $0, &staleEntry, AT_SYMLINK_NOFOLLOW)
+            }
+            guard destinationLookup == 0,
+                  moved.st_dev == original.st_dev, moved.st_ino == original.st_ino,
+                  staleLookup != 0, errno == ENOENT else {
+                throw ExecutionError(message: "typed restore result did not match approved entry")
+            }
+            guard Darwin.fsync(destinationParent) == 0, Darwin.fsync(trash) == 0 else {
+                throw ExecutionError(message: "could not flush typed restore directories")
+            }
+        }
+    }
+
     private func withOpenParent<T>(
         of path: String,
         _ operation: (Int32, String) throws -> T
@@ -753,12 +868,19 @@ public struct WorkspaceFileVerifier: TypedActionVerifier {
             return .unverified(reason: "the typed executor returned a mismatched action")
         }
         guard case .workspaceFile(let receipt) = result.evidence,
-              receipt.planID == approvedAction.planID,
               receipt.actionID == action.id,
-              receipt.planDigest == approvedAction.planDigest,
-              receipt.planDigest == approvedAction.grant.planDigest,
               receiptMatches(receipt.effect, action: action) else {
             return .unverified(reason: "the typed executor returned a receipt for another approved action")
+        }
+        // A journaled receipt binds the shared write-ahead record — the
+        // journal already validated grant, digest, and postcondition — while
+        // a direct receipt must bind this exact approved plan.
+        if !result.journaled {
+            guard receipt.planID == approvedAction.planID,
+                  receipt.planDigest == approvedAction.planDigest,
+                  receipt.planDigest == approvedAction.grant.planDigest else {
+                return .unverified(reason: "the typed executor returned a receipt for another approved action")
+            }
         }
         guard case .transform(let workspace, let command) = action.operation,
               workspace.resolvingSymlinksInPath().standardizedFileURL.path == baseURL.path else {
@@ -818,6 +940,26 @@ public struct WorkspaceFileVerifier: TypedActionVerifier {
                 return .unverified(reason: "the Trash destination does not match the approved item")
             }
             return .verified(evidence: "the trashed item was read back with its approved identity")
+        case .restoreFromTrash(let entryName, let destination):
+            guard case .renamedItem(let expectedDevice, let expectedInode) = action.postcondition,
+                  let destinationURL = safeURL(for: destination),
+                  case .workspaceFile(let receipt) = result.evidence,
+                  case .restored(let source, let receiptEntry, let device, let inode) = receipt.effect,
+                  source == destination, receiptEntry == entryName,
+                  device == expectedDevice, inode == expectedInode else {
+                return .unverified(reason: "the typed restore receipt does not match the approved entry")
+            }
+            var restored = stat()
+            guard Darwin.lstat(destinationURL.path, &restored) == 0,
+                  UInt64(restored.st_dev) == expectedDevice,
+                  UInt64(restored.st_ino) == expectedInode else {
+                return .unverified(reason: "the restored path does not match the approved entry")
+            }
+            if let trashItem = safeTrashURL(for: entryName),
+               FileManager.default.fileExists(atPath: trashItem.path) {
+                return .unverified(reason: "the Trash entry was not consumed by the restore")
+            }
+            return .verified(evidence: "the restored item was read back with its approved identity")
         }
     }
 
@@ -849,6 +991,13 @@ public struct WorkspaceFileVerifier: TypedActionVerifier {
         ):
             return path == receiptSource && device == receiptDevice && inode == receiptInode
                 && Self.isSafeTrashEntryName(entryName)
+        case (
+            .transform(_, .restoreFromTrash(let entryName, let destination)),
+            .renamedItem(let device, let inode),
+            .restored(let receiptSource, let receiptEntry, let receiptDevice, let receiptInode)
+        ):
+            return destination == receiptSource && entryName == receiptEntry
+                && device == receiptDevice && inode == receiptInode
         default:
             return false
         }

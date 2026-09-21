@@ -37,6 +37,11 @@ final class ForegroundTaskController: ObservableObject {
     private let executionFinalizer: ExecutionFinalizer
     private let transcriptStore: TranscriptStore
     private let overlayState: PerryCursorState
+    /// Durable record owner for workspace effects: when a plan contains file
+    /// transforms they run write-ahead through this coordinator, so a
+    /// foreground run lands the same receipts the queue produces — and Undo
+    /// covers it.
+    private let workspaceCoordinator: TaskCoordinator?
     private let hooks: Hooks
 
     private(set) var activeSupervisor: DoSupervisor?
@@ -84,6 +89,7 @@ final class ForegroundTaskController: ObservableObject {
         executionFinalizer: ExecutionFinalizer,
         transcriptStore: TranscriptStore,
         overlayState: PerryCursorState,
+        workspaceCoordinator: TaskCoordinator?,
         hooks: Hooks
     ) {
         self.sessionController = sessionController
@@ -96,6 +102,7 @@ final class ForegroundTaskController: ObservableObject {
         self.executionFinalizer = executionFinalizer
         self.transcriptStore = transcriptStore
         self.overlayState = overlayState
+        self.workspaceCoordinator = workspaceCoordinator
         self.hooks = hooks
 #if DEBUG
         self.debugFinalizationBarrier = nil
@@ -121,7 +128,8 @@ final class ForegroundTaskController: ObservableObject {
         finalizationBarrier: FinalizationBarrier?,
         confirmer: (any Confirmer)?,
         askUser: (@Sendable (String, [String]) async throws -> Void)?,
-        typedVerifier: (any TypedActionVerifier)?
+        typedVerifier: (any TypedActionVerifier)?,
+        workspaceCoordinator: TaskCoordinator? = nil
     ) {
         self.init(
             sessionController: sessionController,
@@ -134,6 +142,7 @@ final class ForegroundTaskController: ObservableObject {
             executionFinalizer: executionFinalizer,
             transcriptStore: transcriptStore,
             overlayState: overlayState,
+            workspaceCoordinator: workspaceCoordinator,
             hooks: hooks
         )
         self.debugFinalizationBarrier = finalizationBarrier
@@ -444,7 +453,6 @@ final class ForegroundTaskController: ObservableObject {
         // The execution session keeps the plan's own task ID so history,
         // grants, and transcripts describe one task end to end.
         let taskUUID = UUID(uuidString: plan.taskID.rawValue) ?? UUID()
-        let typedExecutor = typedActionRouter(worker: worker, workspace: workspace)
         // Publication gate: nothing reaches the supervisor unless every action
         // is supported by this executor surface, bound to this workspace, and
         // inside timeout bounds.
@@ -517,6 +525,14 @@ final class ForegroundTaskController: ObservableObject {
         // Mask summaries for actions targeting non-ordinary elements so typed
         // secrets never reach the card, activity strip, receipts, or history.
         let executionPlan = (try? plan.maskingSensitiveSummaries(painted.sensitiveActionIDs)) ?? plan
+        // Workspace transforms journal write-ahead through the shared durable
+        // record — a foreground run lands receipts Undo can reach. The journal
+        // binds the masked plan so its evidence never carries sensitive text.
+        let runJournal = try executionPlan.workspaceEffectsPlan().flatMap { effectsPlan -> WorkspaceRunJournal? in
+            guard let coordinator = workspaceCoordinator else { return nil }
+            return WorkspaceRunJournal(plan: effectsPlan, workspace: workspace, coordinator: coordinator)
+        }
+        let typedExecutor = typedActionRouter(worker: worker, workspace: workspace, journal: runJournal)
         let outcome = await supervisor.run(
             plan: executionPlan,
             context: captured.context,
@@ -524,6 +540,7 @@ final class ForegroundTaskController: ObservableObject {
             typedExecutor: typedExecutor
         )
         clearRehearsalMarks()
+        await runJournal?.settle()
         return await finalizeTask(with: outcome)
     }
 
@@ -622,7 +639,7 @@ final class ForegroundTaskController: ObservableObject {
         hooks.makeConfirmer()
     }
 
-    private func typedActionRouter(worker: CuaWorkerHandle, workspace: URL) -> TypedActionRouter {
+    private func typedActionRouter(worker: CuaWorkerHandle, workspace: URL, journal: WorkspaceRunJournal?) -> TypedActionRouter {
         let codexRuntimeHome = RuntimeCatalog.codexRuntimeHome
 #if DEBUG
         let debugAskUser = self.debugAskUser
@@ -647,6 +664,9 @@ final class ForegroundTaskController: ObservableObject {
                     runtimeHome: codexRuntimeHome
                 )
                 _ = try await runtime.runCodingTask(prompt: prompt)
+            },
+            journaledTransforms: journal.map { journal in
+                { action in try await journal.perform(action) }
             }
         )
     }
@@ -1187,6 +1207,35 @@ enum RehearsalMarks {
 }
 
 extension ExecutionPlan {
+    /// The transform-only projection of a plan — the journaled record's plan.
+    /// Approval lifts to action scope because each journaled effect is
+    /// individually approved through the write-ahead performer. The record
+    /// keeps the run's task identity so its row and workspace line up with
+    /// the task the user saw.
+    func workspaceEffectsPlan() throws -> ExecutionPlan? {
+        let transforms = actions.filter {
+            if case .transform = $0.operation { return true }
+            return false
+        }
+        guard !transforms.isEmpty else { return nil }
+        return try ExecutionPlan(
+            taskID: taskID,
+            goal: goal,
+            actions: try transforms.map { action in
+                try ExecutableAction(
+                    id: action.id,
+                    summary: action.summary,
+                    timeout: action.timeout,
+                    approvalRequirement: .action,
+                    idempotency: action.idempotency,
+                    operation: action.operation,
+                    postcondition: action.postcondition
+                )
+            },
+            requestedScopes: [.workspaceWrite]
+        )
+    }
+
     /// Replace the human-facing summary of actions whose targets resolve to
     /// non-ordinary-sensitivity elements, so typed secrets never reach the
     /// rehearsal card, activity strip, receipts, or history. The operation —

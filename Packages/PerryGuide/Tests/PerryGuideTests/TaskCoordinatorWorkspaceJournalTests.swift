@@ -244,11 +244,20 @@ final class TaskCoordinatorWorkspaceJournalTests: XCTestCase {
 
         let finished = try await coordinator.finishWorkspaceTask(id: queued.id, expectedRevision: cancelled.revision)
         XCTAssertEqual(finished, outcome)
-        let removed = await coordinator.record(id: queued.id)
-        XCTAssertNil(removed)
+        // The partial run's verified receipt is retained as a terminal row —
+        // it is the durable evidence Undo reads.
+        let terminal = await coordinator.record(id: queued.id)
+        XCTAssertEqual(terminal?.state, .blocked)
+        XCTAssertTrue(terminal?.isTerminal ?? false)
+        XCTAssertEqual(terminal?.workspaceJournal?.completed.count, 1)
         let reloaded = TaskCoordinator(storageDirectory: directory)
-        let records = await reloaded.records()
-        XCTAssertTrue(records.isEmpty)
+        let persisted = await reloaded.record(id: queued.id)
+        XCTAssertEqual(persisted?.state, .blocked)
+        XCTAssertEqual(persisted?.workspaceJournal?.completed.count, 1)
+        // Deleting the row removes the receipt record outright.
+        try await reloaded.remove(id: queued.id)
+        let afterRemoval = await reloaded.records()
+        XCTAssertTrue(afterRemoval.isEmpty)
     }
 
     func testFullPrefixReportRequiresExplicitFinishAndPersistsV5Journal() async throws {
@@ -276,8 +285,11 @@ final class TaskCoordinatorWorkspaceJournalTests: XCTestCase {
         XCTAssertNotNil(retained)
         let finished = try await coordinator.finishWorkspaceTask(id: queued.id, expectedRevision: completed.revision)
         XCTAssertEqual(finished, outcome)
-        let removed = await coordinator.record(id: queued.id)
-        XCTAssertNil(removed)
+        // A fully-verified journal finishes as a retained terminal receipt row.
+        let terminal = await coordinator.record(id: queued.id)
+        XCTAssertEqual(terminal?.state, .completed)
+        XCTAssertTrue(terminal?.isTerminal ?? false)
+        XCTAssertEqual(terminal?.workspaceJournal?.completed.count, 1)
     }
 
     func testVersionFourRunningVerifiedRecordMigratesToCompletedPrefix() async throws {

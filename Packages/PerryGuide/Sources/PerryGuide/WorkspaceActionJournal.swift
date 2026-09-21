@@ -188,6 +188,18 @@ public enum WorkspaceActionJournal: Codable, Sendable {
                 default:
                     throw ExecutionError(message: "verified workspace receipt is inconsistent")
                 }
+            case .restoreFromTrash(let entryName, let destination):
+                switch receipt.effect {
+                case .restored(let source, let receiptEntry, let device, let inode):
+                    guard case .renamedItem(let expectedDevice, let expectedInode) = action.postcondition,
+                          Array(source.utf8) == Array(destination.utf8),
+                          receiptEntry == entryName,
+                          device == expectedDevice, inode == expectedInode else {
+                        throw ExecutionError(message: "verified workspace receipt is inconsistent")
+                    }
+                default:
+                    throw ExecutionError(message: "verified workspace receipt is inconsistent")
+                }
             }
         }
     }

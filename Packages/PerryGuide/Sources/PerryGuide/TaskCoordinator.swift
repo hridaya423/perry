@@ -289,9 +289,16 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable {
                     || (state == .paused && (intent == .pause || intent == .cancel))
             case nil:
                 let full = journal.completed.count == executable.actions.count
-                validLifecycle = (full && ((state == .running && (intent == .none || intent == .cancel))
-                    || (state == .ready && (intent == .none || intent == .cancel))
-                    || (state == .paused && (intent == .pause || intent == .cancel))))
+                // Terminal journaled records are the durable receipts Undo
+                // reads: completed when every action verified, blocked when a
+                // stopped run kept verified evidence.
+                let terminal = full
+                    ? (state == .completed || state == .blocked)
+                    : (state == .blocked && !journal.completed.isEmpty)
+                validLifecycle = terminal
+                    || (full && ((state == .running && (intent == .none || intent == .cancel))
+                        || (state == .ready && (intent == .none || intent == .cancel))
+                        || (state == .paused && (intent == .pause || intent == .cancel))))
                     || (!full && ((state == .paused && (intent == .pause || intent == .cancel))
                         || (state == .running && (intent == .none || intent == .cancel))
                         || (state == .ready && (intent == .none || intent == .cancel))
@@ -467,9 +474,17 @@ public actor TaskCoordinator {
     public func enqueue(executablePlan: PerryRuntimes.ExecutionPlan) throws -> TaskRecord {
         let record = TaskRecord(executablePlan: executablePlan)
         guard storedRecords[record.id] == nil else { throw TaskCoordinatorError.duplicateID(record.id) }
-        guard storedRecords.count < maxTasks else { throw TaskCoordinatorError.capacityReached }
         try validateExecutablePlanForEnqueue(executablePlan)
         var nextRecords = storedRecords
+        // Retained terminal records are receipts, not queued work — evict them
+        // before telling the user the queue is full.
+        if nextRecords.count >= maxTasks {
+            for terminalID in nextRecords.values.filter(\.isTerminal).map(\.id).sorted(by: { $0.rawValue < $1.rawValue }) {
+                nextRecords.removeValue(forKey: terminalID)
+                if nextRecords.count < maxTasks { break }
+            }
+        }
+        guard nextRecords.count < maxTasks else { throw TaskCoordinatorError.capacityReached }
         nextRecords[record.id] = record
         try save(nextRecords)
         return record
@@ -514,6 +529,18 @@ public actor TaskCoordinator {
 
     public func record(id: TaskID) -> TaskRecord? {
         storedRecords[id]
+    }
+
+    /// Removes a retained terminal record outright — the user deleting a
+    /// finished row's receipts. Live records must go through cancel instead.
+    public func remove(id: TaskID) throws {
+        let record = try requireRecord(id)
+        guard record.isTerminal else {
+            throw TaskCoordinatorError.invalidTransition(id: id, state: record.state)
+        }
+        var nextRecords = storedRecords
+        nextRecords.removeValue(forKey: id)
+        try save(nextRecords)
     }
 
     @discardableResult
@@ -718,9 +745,22 @@ public actor TaskCoordinator {
     @discardableResult
     public func finishWorkspaceTask(id: TaskID, expectedRevision: UUID) throws -> DoOutcome {
         let outcome = try workspaceReportOutcome(id: id, expectedRevision: expectedRevision)
-        var remaining = storedRecords
-        remaining.removeValue(forKey: id)
-        try save(remaining)
+        let record = try requireRecord(id)
+        // Records carrying verified receipts stay in the store as terminal
+        // rows — they are the durable evidence Undo reads. Records with no
+        // completed actions leave nothing to undo and are removed.
+        guard record.workspaceJournal?.completed.isEmpty == false else {
+            var remaining = storedRecords
+            remaining.removeValue(forKey: id)
+            try save(remaining)
+            return outcome
+        }
+        let terminal: TaskLifecycleState
+        switch outcome {
+        case .completed: terminal = .completed
+        case .blocked, .failed: terminal = .blocked
+        }
+        _ = try replace(record.updating(state: terminal, intent: TaskIntent.none))
         return outcome
     }
 
@@ -1252,9 +1292,6 @@ private struct PersistedTaskStore: Codable {
         var records: [TaskID: TaskRecord] = [:]
         var approvalIDs: Set<UUID> = []
         for record in tasks {
-            guard !record.state.isTerminal else {
-                throw TaskCoordinator.TaskPersistenceValidationError.terminalTask(record.id)
-            }
             guard records[record.id] == nil else {
                 throw TaskCoordinator.TaskPersistenceValidationError.duplicateID(record.id)
             }
@@ -1320,7 +1357,25 @@ private struct PersistedTaskStore: Codable {
                     "paused tasks must be paused or cancelled"
                 )
             }
-        case .completed, .blocked, .failed:
+        case .completed, .blocked:
+            // Retained terminal records are the durable receipts Undo reads:
+            // a fully-settled journal, no in-flight attempt, no live intent.
+            guard let journal = record.workspaceJournal else {
+                throw TaskCoordinator.TaskPersistenceValidationError.invalidState(record.id, "terminal record without journal")
+            }
+            guard journal.current == nil else {
+                throw TaskCoordinator.TaskPersistenceValidationError.invalidState(record.id, "terminal record with in-flight action")
+            }
+            guard !journal.completed.isEmpty else {
+                throw TaskCoordinator.TaskPersistenceValidationError.invalidState(record.id, "terminal record without receipts")
+            }
+            guard record.intent == .none else {
+                throw TaskCoordinator.TaskPersistenceValidationError.invalidState(record.id, "terminal record with live intent \(record.intent)")
+            }
+            guard !record.checkpoint.hasUncertainSideEffect else {
+                throw TaskCoordinator.TaskPersistenceValidationError.invalidState(record.id, "terminal record with uncertain side effect")
+            }
+        case .failed:
             throw TaskCoordinator.TaskPersistenceValidationError.terminalTask(record.id)
         }
     }

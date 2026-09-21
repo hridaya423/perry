@@ -152,9 +152,13 @@ public actor ResumableTaskRunner {
     }
 
     public func discard(id: TaskID) async throws {
-        _ = try await coordinator.cancel(id: id)
-        if let retained = await coordinator.record(id: id) {
-            throw TaskCoordinatorError.invalidTransition(id: id, state: retained.state)
+        if let record = await coordinator.record(id: id), record.isTerminal {
+            try await coordinator.remove(id: id)
+        } else {
+            _ = try await coordinator.cancel(id: id)
+            if let retained = await coordinator.record(id: id) {
+                throw TaskCoordinatorError.invalidTransition(id: id, state: retained.state)
+            }
         }
         outcomes[id] = nil
     }

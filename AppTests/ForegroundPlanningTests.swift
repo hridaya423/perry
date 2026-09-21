@@ -46,6 +46,15 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "typed foreground")
         XCTAssertEqual(history.first?.outcome, .completed)
         XCTAssertEqual(history.first?.verified, true)
+
+        // The transform journaled through the shared write-ahead record —
+        // a foreground run lands the same durable receipt Undo reads.
+        await controller.backgroundTasks.reloadRecords()
+        let taskRecord = try XCTUnwrap(controller.backgroundTasks.records.first)
+        XCTAssertTrue(taskRecord.isTerminal)
+        XCTAssertEqual(taskRecord.state, .completed)
+        XCTAssertEqual(taskRecord.workspaceJournal?.completed.count, 1)
+        XCTAssertEqual(taskRecord.workspaceJournal?.completed.first?.receipt.effect, .createdFile(path: "report.txt", byteCount: 16))
     }
 
     func testFileGoalRoutesAwayFromConfiguredDirectProvider() async throws {

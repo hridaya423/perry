@@ -365,6 +365,7 @@ public struct ExecutableAction: Codable, Sendable, Identifiable {
         case createDirectory(path: String)
         case rename(path: String, destination: String)
         case moveToTrash(path: String)
+        case restoreFromTrash(entryName: String, destination: String)
 
         fileprivate func validate(postcondition: Postcondition) throws {
             switch (self, postcondition) {
@@ -384,6 +385,16 @@ public struct ExecutableAction: Codable, Sendable, Identifiable {
             case (.moveToTrash(let path), .trashedItem(let device, let inode)):
                 try ExecutableAction.requireRelativePath(path)
                 guard device > 0, inode > 0 else { throw ExecutablePlanError.invalid("trash requires source identity") }
+            case (.restoreFromTrash(let entryName, let destination), .renamedItem(let device, let inode)):
+                guard !entryName.isEmpty,
+                      entryName != ".", entryName != "..",
+                      !entryName.hasPrefix("/"),
+                      !entryName.contains("/"), !entryName.contains("\\"),
+                      !entryName.contains("\0") else {
+                    throw ExecutablePlanError.invalid("restore requires a safe Trash entry name")
+                }
+                try ExecutableAction.requireRelativePath(destination)
+                guard device > 0, inode > 0 else { throw ExecutablePlanError.invalid("restore requires entry identity") }
             default: throw ExecutablePlanError.invalid("file operation and postcondition do not match")
             }
         }

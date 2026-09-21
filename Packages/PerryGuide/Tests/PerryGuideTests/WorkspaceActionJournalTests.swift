@@ -339,8 +339,9 @@ final class WorkspaceActionJournalTests: XCTestCase {
         let outcome = try await restored.finishWorkspaceTask(id: queued.id, expectedRevision: verified.revision)
         XCTAssertEqual(outcome, .completed(stepsRun: 1))
         let reloaded = TaskCoordinator(storageDirectory: directory)
-        let remaining = await reloaded.records()
-        XCTAssertTrue(remaining.isEmpty)
+        let terminal = await reloaded.record(id: queued.id)
+        XCTAssertEqual(terminal?.state, .completed)
+        XCTAssertEqual(terminal?.workspaceJournal?.completed.count, 1)
         XCTAssertEqual(try Data(contentsOf: output), Data(contents.utf8))
     }
 

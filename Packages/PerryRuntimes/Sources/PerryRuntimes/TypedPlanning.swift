@@ -128,6 +128,20 @@ public enum TypedPlanParser {
         }
         return (UInt64(identity.st_dev), UInt64(identity.st_ino))
     }
+
+    static func trashEntryIdentity(entryName: String) throws -> (device: UInt64, inode: UInt64) {
+        let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+        let candidate = trash.appendingPathComponent(entryName).standardizedFileURL
+        guard candidate.path.hasPrefix(trash.path + "/"),
+              candidate.resolvingSymlinksInPath().standardizedFileURL.path == candidate.path else {
+            throw PlanError(message: "restore entry escapes the Trash")
+        }
+        var identity = stat()
+        guard Darwin.lstat(candidate.path, &identity) == 0 else {
+            throw PlanError(message: "restore entry \(entryName) is no longer in the Trash")
+        }
+        return (UInt64(identity.st_dev), UInt64(identity.st_ino))
+    }
 }
 
 private struct DraftPlan: Decodable {
@@ -238,6 +252,9 @@ private enum DraftOperation {
             case .moveToTrash(let path):
                 let identity = try TypedPlanParser.sourceIdentity(workspace: bindings.workspace, path: path)
                 postcondition = .trashedItem(device: identity.device, inode: identity.inode)
+            case .restoreFromTrash(let entryName, _):
+                let identity = try TypedPlanParser.trashEntryIdentity(entryName: entryName)
+                postcondition = .renamedItem(device: identity.device, inode: identity.inode)
             }
             return try ExecutableAction(
                 id: ActionID(UUID().uuidString),

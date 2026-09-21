@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import PerryCore
 import PerryRuntimes
 
 public enum WorkspaceUndoError: Error, Equatable, Sendable, LocalizedError {
@@ -49,32 +50,43 @@ public struct WorkspaceUndoEngine: Sendable {
             return "Rename “\(destination)” back to “\(source)”"
         case .trashed(let source, _, _, _):
             return "Restore “\(source)” from the Trash"
+        case .restored(let source, _, _, _):
+            return "Move the restored item “\(source)” back to the Trash"
         case .legacy:
             return nil
         }
     }
 
-    /// Applies the receipt's inverse. Throws `WorkspaceUndoError` — callers
-    /// apply receipts in reverse order and stop at the first throw.
-    @discardableResult
-    public func undo(_ receipt: WorkspaceFileExecutionReceipt) throws -> String {
+    /// The typed inverse plan for a run's completed receipts, last change
+    /// first. Every postcondition binds the identity observed right now, so
+    /// execution re-verifies it — and the same conflict checks the
+    /// synchronous path applies run here at build time, so a changed world
+    /// stops Undo before it touches anything.
+    public func inversePlan(
+        receipts: [WorkspaceFileExecutionReceipt],
+        goal: String,
+        taskID: TaskID = TaskID(UUID().uuidString)
+    ) throws -> ExecutionPlan {
+        let workspace = URL(fileURLWithPath: workspacePath, isDirectory: true)
+        let actions = try receipts.reversed().map { try inverseAction(for: $0, workspace: workspace) }
+        return try ExecutionPlan(
+            taskID: taskID,
+            goal: goal,
+            actions: actions,
+            requestedScopes: [.workspaceWrite]
+        )
+    }
+
+    private func inverseAction(
+        for receipt: WorkspaceFileExecutionReceipt,
+        workspace: URL
+    ) throws -> ExecutableAction {
+        guard let summary = inverseDescription(for: receipt) else {
+            throw WorkspaceUndoError.notUndoable("receipts without verified identity cannot be undone")
+        }
+        let command: ExecutableAction.FileTransform
+        let postcondition: ExecutableAction.Postcondition
         switch receipt.effect {
-        case .renamed(let source, let destination, let device, let inode):
-            let destinationURL = try resolveWorkspace(destination)
-            let sourceURL = try resolveWorkspace(source)
-            try requireIdentity(destinationURL, device: device, inode: inode, what: "The renamed item")
-            try requireAbsent(sourceURL, what: "The original name")
-            try move(destinationURL, to: sourceURL)
-            try requireIdentity(sourceURL, device: device, inode: inode, what: "The restored item")
-            return "Renamed “\(destination)” back to “\(source)”."
-        case .trashed(let source, let entryName, let device, let inode):
-            let entryURL = try resolveTrashEntry(entryName)
-            let sourceURL = try resolveWorkspace(source)
-            try requireIdentity(entryURL, device: device, inode: inode, what: "The Trash entry")
-            try requireAbsent(sourceURL, what: "The restore location")
-            try move(entryURL, to: sourceURL)
-            try requireIdentity(sourceURL, device: device, inode: inode, what: "The restored item")
-            return "Restored “\(source)” from the Trash."
         case .createdFile(let path, let byteCount):
             let url = try resolveWorkspace(path)
             var info = stat()
@@ -87,8 +99,8 @@ public struct WorkspaceUndoEngine: Sendable {
             guard info.st_size == off_t(byteCount) else {
                 throw WorkspaceUndoError.conflicted("“\(path)” changed since Perry created it")
             }
-            try trash(url, what: "the created file")
-            return "Moved the created file “\(path)” to the Trash."
+            command = .moveToTrash(path: path)
+            postcondition = .trashedItem(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
         case .createdDirectory(let path):
             let url = try resolveWorkspace(path)
             var info = stat()
@@ -99,11 +111,32 @@ public struct WorkspaceUndoEngine: Sendable {
             guard contents.isEmpty else {
                 throw WorkspaceUndoError.conflicted("“\(path)” is no longer empty")
             }
-            try trash(url, what: "the created directory")
-            return "Moved the empty directory “\(path)” to the Trash."
+            command = .moveToTrash(path: path)
+            postcondition = .trashedItem(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
+        case .renamed(let source, let destination, let device, let inode):
+            try requireIdentity(try resolveWorkspace(destination), device: device, inode: inode, what: "The renamed item")
+            try requireAbsent(try resolveWorkspace(source), what: "The original name")
+            command = .rename(path: destination, destination: source)
+            postcondition = .renamedItem(device: device, inode: inode)
+        case .trashed(let source, let entryName, let device, let inode):
+            try requireIdentity(try resolveTrashEntry(entryName), device: device, inode: inode, what: "The Trash entry")
+            try requireAbsent(try resolveWorkspace(source), what: "The restore location")
+            command = .restoreFromTrash(entryName: entryName, destination: source)
+            postcondition = .renamedItem(device: device, inode: inode)
+        case .restored(let source, _, let device, let inode):
+            try requireIdentity(try resolveWorkspace(source), device: device, inode: inode, what: "The restored item")
+            command = .moveToTrash(path: source)
+            postcondition = .trashedItem(device: device, inode: inode)
         case .legacy:
             throw WorkspaceUndoError.notUndoable("receipts without verified identity cannot be undone")
         }
+        return try ExecutableAction(
+            id: ActionID(UUID().uuidString),
+            summary: summary,
+            approvalRequirement: .action,
+            operation: .transform(workspace: workspace, command: command),
+            postcondition: postcondition
+        )
     }
 
     /// Same lexical rules as the runtime and verifier: workspace-relative,
@@ -163,22 +196,4 @@ public struct WorkspaceUndoEngine: Sendable {
         }
     }
 
-    private func move(_ from: URL, to: URL) throws {
-        do {
-            try FileManager.default.moveItem(at: from, to: to)
-        } catch {
-            throw WorkspaceUndoError.failed(error.localizedDescription)
-        }
-    }
-
-    /// Undo of a Perry-created item goes through the Trash, never unlink:
-    /// the user can still recover it manually.
-    private func trash(_ url: URL, what: String) throws {
-        do {
-            var result: NSURL?
-            try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-        } catch {
-            throw WorkspaceUndoError.failed(error.localizedDescription)
-        }
-    }
 }
