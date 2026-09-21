@@ -91,6 +91,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             return current?.workspaceActionToApprove?.id == actions[1].id && !controller.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(awaitingSecond)
+        XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 1)
         let retainedMetadata = await controller.backgroundTasks.debugMetadata(plan.taskID)
         XCTAssertEqual(retainedMetadata, metadata)
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("first.txt"), encoding: .utf8), "first")
@@ -115,6 +116,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             return (current?.isTerminal ?? true) && context == nil && !controller.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(reported)
+        XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 0)
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("second.txt"), encoding: .utf8), "second")
         let history = await TranscriptStore(directory: directory).snapshot()
         XCTAssertEqual(history.count, 1)

@@ -18,7 +18,7 @@ final class BackgroundTaskController: ObservableObject {
         var requestOnboarding: () -> Void = {}
         /// Fired with the visible record count after each reload — the shell
         /// uses it for the status-item menu label.
-        var recordCountChanged: (Int) -> Void = { _ in }
+        var statusCountsChanged: (_ total: Int, _ active: Int, _ awaitingApproval: Int) -> Void = { _, _, _ in }
     }
 
     private let workers: CuaWorkerService
@@ -209,7 +209,17 @@ final class BackgroundTaskController: ObservableObject {
         for record in records where messages[record.id] == nil {
             messages[record.id] = metadata[record.id]?.runtimeRoutingSummary
         }
-        hooks.recordCountChanged(records.count)
+        hooks.statusCountsChanged(
+            records.count,
+            records.filter { !$0.isTerminal }.count,
+            awaitingApprovalCount
+        )
+    }
+
+    /// Records parked on an approval-gated action — the signal the notch pill
+    /// and status surfaces count as "needs review" rather than just running.
+    var awaitingApprovalCount: Int {
+        records.filter { $0.workspaceActionToApprove != nil }.count
     }
 
     /// Called once after launch: recovers interrupted runs, reloads the visible

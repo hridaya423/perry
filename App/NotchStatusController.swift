@@ -16,12 +16,16 @@ final class NotchStatusController {
     private var stack: NSStackView?
     private var isRecording = false
     private var backgroundCount = 0
+    private var awaitingApproval = 0
 
     private let dot = NSView()
     private let recordingLabel = NSTextField(labelWithString: "Recording")
     private let separator = NSTextField(labelWithString: "·")
     private let gear = NSImageView()
     private let countLabel = NSTextField(labelWithString: "")
+    private let separator2 = NSTextField(labelWithString: "·")
+    private let reviewIcon = NSImageView()
+    private let reviewLabel = NSTextField(labelWithString: "")
 
     var isEnabled: Bool {
         get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
@@ -33,9 +37,10 @@ final class NotchStatusController {
         if !enabled { hide() } else { present() }
     }
 
-    func update(isRecording: Bool, backgroundCount: Int) {
+    func update(isRecording: Bool, backgroundCount: Int, awaitingApproval: Int = 0) {
         self.isRecording = isRecording
         self.backgroundCount = max(0, backgroundCount)
+        self.awaitingApproval = max(0, awaitingApproval)
         present()
     }
 
@@ -65,13 +70,18 @@ final class NotchStatusController {
         }
         dot.isHidden = !isRecording
         recordingLabel.isHidden = !isRecording
-        separator.isHidden = !(isRecording && backgroundCount > 0)
+        separator.isHidden = !(isRecording && (backgroundCount > 0 || awaitingApproval > 0))
         gear.isHidden = backgroundCount == 0
         countLabel.isHidden = backgroundCount == 0
         countLabel.stringValue = backgroundCount == 1 ? "1 task" : "\(backgroundCount) tasks"
+        separator2.isHidden = !(awaitingApproval > 0 && (isRecording || backgroundCount > 0))
+        reviewIcon.isHidden = awaitingApproval == 0
+        reviewLabel.isHidden = awaitingApproval == 0
+        reviewLabel.stringValue = awaitingApproval == 1 ? "1 needs review" : "\(awaitingApproval) need review"
         var parts: [String] = []
         if isRecording { parts.append("Recording a demonstration") }
         if backgroundCount > 0 { parts.append("\(backgroundCount) background \(backgroundCount == 1 ? "task" : "tasks")") }
+        if awaitingApproval > 0 { parts.append("\(awaitingApproval) awaiting approval") }
         panel.contentView?.setAccessibilityLabel(parts.joined(separator: ", "))
 
         let size = stack.fittingSize
@@ -111,17 +121,22 @@ final class NotchStatusController {
         controller.dot.translatesAutoresizingMaskIntoConstraints = false
         controller.dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
         controller.dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
-        for label in [controller.recordingLabel, controller.separator, controller.countLabel] {
+        for label in [controller.recordingLabel, controller.separator, controller.countLabel, controller.separator2, controller.reviewLabel] {
             label.font = font
             label.textColor = .labelColor
         }
         controller.separator.textColor = .secondaryLabelColor
+        controller.separator2.textColor = .secondaryLabelColor
         controller.gear.image = NSImage(systemSymbolName: "gearshape.2", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
         controller.gear.contentTintColor = .labelColor
+        controller.reviewIcon.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
+        controller.reviewIcon.contentTintColor = .labelColor
 
         let stack = NSStackView(views: [
-            controller.dot, controller.recordingLabel, controller.separator, controller.gear, controller.countLabel
+            controller.dot, controller.recordingLabel, controller.separator, controller.gear, controller.countLabel,
+            controller.separator2, controller.reviewIcon, controller.reviewLabel
         ])
         stack.orientation = .horizontal
         stack.spacing = 6

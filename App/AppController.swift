@@ -293,6 +293,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private lazy var notchStatus = NotchStatusController()
     private var lastBackgroundCount = 0
+    private var lastAwaitingApprovalCount = 0
     private lazy var routineLibrary = RoutineLibraryController(
         store: RoutineStore(storageDirectory: storageDirectory),
         workers: workers,
@@ -301,7 +302,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         speak: { [weak self] text in self?.voice.speak(text) },
         runRoutine: { [weak self] routine, parameters in self?.foreground.startRoutine(routine, parameters: parameters) },
         onRecordingChanged: { [weak self] recording in
-            self?.notchStatus.update(isRecording: recording, backgroundCount: self?.lastBackgroundCount ?? 0)
+            self?.notchStatus.update(
+                isRecording: recording,
+                backgroundCount: self?.lastBackgroundCount ?? 0,
+                awaitingApproval: self?.lastAwaitingApprovalCount ?? 0
+            )
         },
         providerCompleter: { [weak self] in
             guard let client = self?.runtimes.makeProviderClient() else { return nil }
@@ -314,10 +319,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             setStatus: { [weak self] status in self?.sessionStatus = status },
             isErasureInProgress: { [weak self] in self?.erasureInProgress ?? false },
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
-            recordCountChanged: { [weak self] count in
-                self?.backgroundTasksMenuItem?.title = "Background Tasks (\(count))"
-                self?.lastBackgroundCount = count
-                self?.notchStatus.update(isRecording: self?.routineLibrary.isRecording ?? false, backgroundCount: count)
+            statusCountsChanged: { [weak self] total, active, awaiting in
+                self?.backgroundTasksMenuItem?.title = "Background Tasks (\(total))"
+                self?.lastBackgroundCount = active
+                self?.lastAwaitingApprovalCount = awaiting
+                self?.notchStatus.update(
+                    isRecording: self?.routineLibrary.isRecording ?? false,
+                    backgroundCount: active,
+                    awaitingApproval: awaiting
+                )
             }
         )
 #if DEBUG
@@ -659,7 +669,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.notchStatus.update(isRecording: true, backgroundCount: 2)
+                self?.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
             }
         } else if debugSurface == .backgroundTasksStorageError {
             DispatchQueue.main.async { [weak self] in
@@ -998,7 +1008,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         notchStatus.setEnabled(enabled)
         sender.state = enabled ? .on : .off
         if enabled {
-            notchStatus.update(isRecording: routineLibrary.isRecording, backgroundCount: lastBackgroundCount)
+            notchStatus.update(
+                isRecording: routineLibrary.isRecording,
+                backgroundCount: lastBackgroundCount,
+                awaitingApproval: lastAwaitingApprovalCount
+            )
         }
     }
 
