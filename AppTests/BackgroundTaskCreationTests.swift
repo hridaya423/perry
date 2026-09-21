@@ -97,6 +97,70 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertEqual(probe.notifications.filter { $0.kind == .completed }.map(\.taskID), [queued.id])
     }
 
+    /// Undo must run its typed inverse through the journaled path, refuse
+    /// re-entry while a pass is in flight, and stop honestly at a conflict
+    /// instead of re-dispatching or touching intervening state.
+    func testUndoRunsOncePerRecordAndStopsAtConflict() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let trash = directory.appendingPathComponent("Trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let probe = BackgroundCreationProbe()
+        let controller = makeController(
+            directory: directory,
+            planner: LocalTaskPlannerRuntime(),
+            probe: probe
+        )
+        controller.backgroundTasks.debugTrashURL = trash
+
+        controller.backgroundTasks.queue(goal: #"create file "undo-me.txt" with "revert me""#)
+        let queuedAppeared = await waitUntil {
+            await controller.backgroundTasks.reloadRecords()
+            return controller.backgroundTasks.records.first?.workspaceActionToApprove != nil
+        }
+        XCTAssertTrue(queuedAppeared)
+        let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
+        controller.backgroundTasks.approveWorkspace(queued)
+        let settled = await waitUntil {
+            await controller.backgroundTasks.reloadRecords()
+            return await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+        }
+        XCTAssertTrue(settled)
+        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
+        guard case .executable(let plan) = record.plan,
+              case .transform(let workspace, _)? = plan.actions.first?.operation else {
+            return XCTFail("expected a workspace file plan")
+        }
+        let fileURL = workspace.appendingPathComponent("undo-me.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+        XCTAssertFalse(controller.backgroundTasks.undoableDescriptions(for: record).isEmpty)
+
+        controller.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertTrue(controller.backgroundTasks.isUndoing(record.id))
+        // A second request while the pass is in flight must be refused —
+        // the inverses cannot dispatch twice.
+        controller.backgroundTasks.undoWorkspaceChanges(record)
+
+        let undone = await waitUntil {
+            !controller.backgroundTasks.isUndoing(record.id)
+                && !FileManager.default.fileExists(atPath: fileURL.path)
+        }
+        XCTAssertTrue(undone)
+        XCTAssertEqual(controller.backgroundTasks.message(for: record.id), "Undid 1 change.")
+        let trashEntries = try FileManager.default.contentsOfDirectory(atPath: trash.path)
+        XCTAssertEqual(trashEntries.count, 1)
+
+        // A later Undo on the same record hits the conflict check and stops
+        // without touching anything — no silent second dispatch.
+        controller.backgroundTasks.undoWorkspaceChanges(record)
+        let conflicted = await waitUntil {
+            !controller.backgroundTasks.isUndoing(record.id)
+                && (controller.backgroundTasks.message(for: record.id) ?? "").hasPrefix("Nothing was undone")
+        }
+        XCTAssertTrue(conflicted)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    }
+
     func testPlanningFailureLeavesNoRecordOrMetadata() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }

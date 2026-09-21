@@ -247,7 +247,11 @@ private struct BackgroundTaskRow: View {
                     .controlSize(.small)
                     .accessibilityLabel("Stop task \(record.goal)")
             } else {
-                if !undoDescriptions.isEmpty {
+                if backgroundTasks.isUndoing(record.id) {
+                    Button("Undoing…") {}
+                        .controlSize(.small)
+                        .disabled(true)
+                } else if !undoDescriptions.isEmpty {
                     Button("Undo…") { showUndoConfirmation = true }
                         .controlSize(.small)
                         .accessibilityLabel("Undo Perry's changes for \(record.goal)")

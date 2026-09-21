@@ -43,12 +43,18 @@ final class BackgroundTaskController: ObservableObject {
     @Published private(set) var records: [TaskRecord] = []
     @Published private(set) var persistenceError: PersistenceError?
     @Published private(set) var runningCount = 0
+    /// Records with an undo pass in flight — re-entry is refused so a
+    /// double-click or late callback cannot dispatch the inverses twice.
+    @Published private(set) var undoingIDs: Set<TaskID> = []
 
     private static let maximumConcurrentTasks = 3
     private static let joinTimeout: Duration = .milliseconds(500)
 
 #if DEBUG
     private var debugLaunchBarrier: (@MainActor () async -> Void)?
+    /// Overrides the Undo Trash root so tests never touch the user's real
+    /// Trash; nil keeps the system default.
+    var debugTrashURL: URL?
 #endif
 
     init(
@@ -105,22 +111,46 @@ final class BackgroundTaskController: ObservableObject {
     /// never touched. The inverses run as approved typed actions through the
     /// shared write-ahead journal, so an undo lands its own durable receipts —
     /// and is itself undoable.
+    func isUndoing(_ id: TaskID) -> Bool {
+        undoingIDs.contains(id)
+    }
+
     func undoWorkspaceChanges(_ record: TaskRecord) {
         guard controlScope.acceptsControls,
+              !undoingIDs.contains(record.id),
               let workspace = undoWorkspace(for: record),
               let journal = record.workspaceJournal,
               !journal.completed.isEmpty else { return }
         let receipts = journal.completed.map(\.receipt)
+        undoingIDs.insert(record.id)
         Task { @MainActor [weak self] in
             guard let self else { return }
+            defer { self.undoingIDs.remove(record.id) }
             do {
-                let plan = try WorkspaceUndoEngine(workspace: workspace).inversePlan(
+                let engine: WorkspaceUndoEngine
+#if DEBUG
+                if let trash = self.debugTrashURL {
+                    engine = WorkspaceUndoEngine(workspace: workspace, trashURL: trash)
+                } else {
+                    engine = WorkspaceUndoEngine(workspace: workspace)
+                }
+#else
+                engine = WorkspaceUndoEngine(workspace: workspace)
+#endif
+                let plan = try engine.inversePlan(
                     receipts: receipts,
                     goal: "Undo “\(record.goal)”"
                 )
+#if DEBUG
+                let journal = WorkspaceRunJournal(
+                    plan: plan, workspace: workspace, coordinator: self.coordinator,
+                    trashURL: self.debugTrashURL
+                )
+#else
                 let journal = WorkspaceRunJournal(
                     plan: plan, workspace: workspace, coordinator: self.coordinator
                 )
+#endif
                 var undone = 0
                 var stopped: String?
                 for action in plan.actions {
