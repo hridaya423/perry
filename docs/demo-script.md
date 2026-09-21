@@ -44,22 +44,39 @@ does this button do?" — Perry answers about *that* region.
 *The circle is the question. Perry grounds answers in the exact window and
 region, not the whole screen.*
 
-## Beat 4 — typed Do plan with exact approval (90s)
+## Beat 4 — typed Do plan with rehearsal and exact approval (90s)
 
 Back in the Finder folder, switch to Do and type:
 "move perry-demo-a.txt and perry-demo-b.txt into a new folder called Archive".
 
-- The plan appears as typed steps in the activity strip — each step named.
+- Before anything runs, the plan card previews every step with numbered
+  marks painted on the real targets and a ghost path through them.
+- Show the controls: Run, Step through (⌘S), Replay (⌘R), Edit (⌘E), Stop.
+  Hit Replay once — the marks repaint from a fresh observation.
 - The approval card names the files and destination. Note the orange card:
   reversible, one tap to approve.
 - Approve. Watch the strip: steps tick off, then the verified line —
   "Verified: both files moved and contents unchanged."
 
-*Nothing runs without the approval card, and Perry reads the result back
-instead of claiming it worked.*
+*You review the exact plan against the live screen before it runs — and
+Perry reads the result back instead of claiming it worked.*
 
 Optional: queue "empty the Trash" to show the red card — it demands the exact
 target phrase typed out before it will proceed.
+
+## Beat 4b — shared control and Undo (45s)
+
+Run the same kind of task again. Mid-run, hit "I'll do this step" on the
+activity strip — Perry settles at the boundary and hands you the pointer;
+do a step by hand, then Continue and Perry replans the rest from the live
+screen.
+
+Then open the tasks window and Undo the finished task: Perry reverses only
+what it provably did, stops at anything you changed, and says which. Edit
+one of the moved files first to show the conflict stop.
+
+*Control passes back and forth without restarting, and Undo touches only
+verified Perry work — never your edits.*
 
 ## Beat 5 — voice and fallback (30s)
 
@@ -80,21 +97,38 @@ offers retry instead of pretending.
 
 *It tells you what it couldn't do, not a success it didn't have.*
 
-## Beat 7 — local history (20s)
+## Beat 7 — teach Perry once (60s)
 
-Open History from the menu. Show the sessions just recorded — searchable,
-expandable, exportable to Markdown or CSV, deletable with a confirmation that
-says exactly what leaves the Mac.
+In Finder, open Perry's routine library and start a Watch & Learn
+recording on the folder. Rename `perry-demo-c.txt` once, stop recording.
+
+- The review card lists the steps Perry observed — drag-free, no raw keys.
+- Mark the new filename as "ask each run", save the routine.
+- Run it again with a different name — Perry re-reads the live window and
+  does the rename fresh, then verify it in the task's report.
+
+*A routine is steps with meaning, not a macro — it re-looks every run, and
+review before save means Perry never hides what it recorded.*
+
+## Beat 8 — local history (20s)
+
+Open History from the menu. Show the sessions just recorded — each row says
+what you asked, which runtime answered, whether Perry verified it, and
+whether Undo is still available. Searchable, exportable to Markdown or CSV,
+deletable with a confirmation that says exactly what leaves the Mac.
 
 *Everything Perry did is on this machine, inspectable and erasable.*
 
 ## Close (10s)
 
-"Local-first. Every action visible, every destructive step approved, every
-result read back. Perry beta — it teaches, it does, and it shows its work."
+"Local-first. Every action rehearsed before it runs, every destructive
+step approved, every result read back, every file change reversible. Perry
+beta — it teaches, it learns, it does, and it shows its work."
 
 ## Reset checklist
 
-- Delete `Archive` and restore the three demo files.
+- Delete `Archive` and restore the three demo files; rename
+  `perry-demo-c.txt` back if the routine renamed it.
+- Routine library → delete the demo routine.
 - History → select the demo sessions → Delete selected…
 - If a permission was revoked for the voice beat, re-grant it.
