@@ -166,6 +166,57 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    /// An in-flight Undo is a live handle: worker-stop (erasure/termination)
+    /// must drain it rather than let inverses run against deleted workspaces,
+    /// and no new recovery may start once controls are closed.
+    func testWorkerStopDrainsAnInFlightUndoAndRefusesNewRecovery() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let trash = directory.appendingPathComponent("Trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let probe = BackgroundCreationProbe()
+        let controller = makeController(
+            directory: directory,
+            planner: LocalTaskPlannerRuntime(),
+            probe: probe
+        )
+        controller.backgroundTasks.debugTrashURL = trash
+
+        controller.backgroundTasks.queue(goal: #"create file "drain-me.txt" with "revert me""#)
+        let queuedAppeared = await waitUntil {
+            await controller.backgroundTasks.reloadRecords()
+            return controller.backgroundTasks.records.first?.workspaceActionToApprove != nil
+        }
+        XCTAssertTrue(queuedAppeared)
+        let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
+        controller.backgroundTasks.approveWorkspace(queued)
+        let settled = await waitUntil {
+            await controller.backgroundTasks.reloadRecords()
+            let terminal = await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+            return terminal && controller.backgroundTasks.message(for: queued.id) != nil
+                && !controller.backgroundTasks.isRunning(queued.id)
+        }
+        XCTAssertTrue(settled)
+        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
+        guard case .executable(let plan) = record.plan,
+              case .transform(let workspace, _)? = plan.actions.first?.operation else {
+            return XCTFail("expected a workspace file plan")
+        }
+        let fileURL = workspace.appendingPathComponent("drain-me.txt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+
+        controller.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertTrue(controller.backgroundTasks.isUndoing(record.id))
+
+        try await controller.backgroundTasks.pauseAllOwnedForWorkerStop()
+        XCTAssertFalse(controller.backgroundTasks.isUndoing(record.id))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        XCTAssertEqual(controller.backgroundTasks.message(for: record.id), "Undid 1 change.")
+
+        controller.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertFalse(controller.backgroundTasks.isUndoing(record.id))
+    }
+
     func testPlanningFailureLeavesNoRecordOrMetadata() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }

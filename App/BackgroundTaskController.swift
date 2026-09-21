@@ -123,7 +123,7 @@ final class BackgroundTaskController: ObservableObject {
               !journal.completed.isEmpty else { return }
         let receipts = journal.completed.map(\.receipt)
         undoingIDs.insert(record.id)
-        Task { @MainActor [weak self] in
+        let admitted = controlScope.start { @MainActor [weak self] in
             guard let self else { return }
             defer { self.undoingIDs.remove(record.id) }
             do {
@@ -172,6 +172,9 @@ final class BackgroundTaskController: ObservableObject {
                 self.messages[record.id] = "Nothing was undone — \(error.localizedDescription)"
             }
             await self.reloadRecords()
+        }
+        if !admitted {
+            undoingIDs.remove(record.id)
         }
     }
 
