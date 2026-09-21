@@ -492,7 +492,9 @@ public actor DoSupervisor {
         case .cancel: return .denied
         case .edit: return .edit
         case .run, .stepThrough: break
-        case .replay: preconditionFailure("replay exits the loop")
+        // Unreachable: the loop above only exits on a non-replay decision.
+        // Deny rather than crash if that ever changes.
+        case .replay: return .denied
         }
         guard transition(.approveAction) else {
             return cancelRequested ? .cancelled : .denied
