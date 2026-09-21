@@ -12,6 +12,21 @@ per-item evidence, see `docs/release-readiness/features.json`.
   unhealthy, Perry reports the failure — it never silently falls back to a
   second capture or action backend.
 
+## Ask
+
+- The default mode. Circle or point at anything on screen and ask about it —
+  Perry grounds the answer in that window and region, and outlines the
+  elements it means on screen.
+- Follow-ups keep the session and re-look at the live screen; if the target
+  window changed or closed, stale answers are refused rather than pointed at
+  nothing.
+- Ask never acts — a request that needs doing is routed to Do explicitly, it
+  can't run while Ask is selected.
+- Limit: without a configured provider, answers come from the visible labels
+  and accessibility text on screen — literal, not inferential. With a
+  provider, the bounded screen context for that question goes to that
+  provider under your key; the active route is always shown.
+
 ## Guide
 
 - Teaches in the app you're actually in: Perry reads the live screen, points
@@ -25,14 +40,43 @@ per-item evidence, see `docs/release-readiness/features.json`.
 
 ## Do
 
-- Plans are typed and shown before execution. Dangerous or irreversible steps
-  need an exact approval; writes to connected integrations need explicit
-  enablement and per-write approval.
-- You can pause, steer, retry, or stop any task; Perry verifies the end state
-  and reports what it actually did.
+- Plans are typed and rehearsed before execution — the card previews every
+  step with marks on the real targets. You can run, step through each action
+  separately, repaint the preview, edit the goal, or stop.
+- Dangerous or irreversible steps need an exact approval; writes to
+  connected integrations need explicit enablement and per-write approval.
+- You can pause, steer, take over, retry, or stop any task. Taking over
+  hands you the pointer at a step boundary; continuing replans from the
+  live screen rather than replaying what already succeeded.
+- Perry verifies the end state and reports what it actually did — including
+  partial results and the exact step that couldn't be done.
 - Limit: the bundled local planner handles a disclosed, deterministic task
   set only. Open-ended work requires a signed-in agent runtime (Claude Code /
   OpenCode / bundled Codex), which uses your own provider account and keys.
+
+## Undo
+
+- Workspace file changes Perry made — creates, renames, trash moves — can be
+  reversed from the tasks window. Each inverse action is itself approved,
+  journaled, and verified.
+- Undo stops at the first conflict: if you moved or edited a file since
+  Perry touched it, that step and everything after it are left alone and
+  the report says so.
+- Limit: Undo covers file transforms only. GUI clicks, shell commands, and
+  integration writes are reported honestly with no Undo — Perry refuses
+  rather than guess. Removing a task's record removes its receipts, so its
+  Undo goes with it.
+
+## Routines
+
+- Watch & Learn records a bounded demo you start and stop: Perry drafts a
+  step list you review before it's saved — nothing saves silently, and the
+  recorder captures steps and structure, not your keystrokes' values.
+- Parameters marked "ask each run" prompt you each time; routines replay by
+  re-reading the live screen, never by replaying coordinates.
+- Limit: a renamed app or moved button may pause a run for input — that's
+  the honest failure, not a bug. Routines are erased with everything else
+  or on their own.
 
 ## Voice
 
