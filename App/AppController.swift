@@ -2068,7 +2068,9 @@ struct InteractiveConfirmer: Confirmer {
             tier: request.tier,
             targetSummary: request.targetSummary ?? request.actionSummary,
             requiredPhrase: request.requiredText,
-            approveLabel: request.actionSummary,
+            // The plan card approves the whole rehearsal — the button is the
+            // action, not the goal.
+            approveLabel: "Run",
             reversible: request.reversible
         )
         SoundPlayer.play(.receive)
