@@ -45,7 +45,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var hotkey: HotkeyController?
     private let overlayState = PerryCursorState()
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
-        try? PerformanceSampleLog.configured()
+        try? PerformanceSampleLog.shared.get()
     }()
     private lazy var overlayManager: OverlayWindowManager = {
         let manager = OverlayWindowManager()
@@ -786,6 +786,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func toggleSession() {
+        PerfMark.mark("invoke.keydown")
         if isIdle {
             wake()
         } else {
@@ -1431,6 +1432,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
+        PerfMark.mark("panel.visible")
     }
 
     private func hidePanel() {

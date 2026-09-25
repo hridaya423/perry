@@ -13,6 +13,7 @@ PYTHON_BIN="$(command -v python3 || true)"
 "${PYTHON_BIN}" "${SCRIPT_DIR}/test_assemble.py"
 "${PYTHON_BIN}" "${SCRIPT_DIR}/test_sample_process.py"
 "${PYTHON_BIN}" "${SCRIPT_DIR}/test_acoustic_barge_in.py"
+"${PYTHON_BIN}" "${SCRIPT_DIR}/../lab/test_latency_report.py"
 
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/perry-performance-self-test.XXXXXX")"
 trap 'rmdir "${TEMP_DIR}"' EXIT

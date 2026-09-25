@@ -58,7 +58,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     private lazy var performanceSampleLog: PerformanceSampleLog? = {
         do {
-            return try PerformanceSampleLog.configured()
+            return try PerformanceSampleLog.shared.get()
         } catch {
             hooks.setStatus("Performance recording is unavailable: \(error.localizedDescription)")
             return nil

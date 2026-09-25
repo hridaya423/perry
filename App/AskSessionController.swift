@@ -113,6 +113,7 @@ final class AskSessionController {
     private func run(question: String, askID: UUID, answerer: Answerer?) async {
         do {
             let baseline = try await capture()
+            PerfMark.mark("capture.done")
             try GuideTargetValidator.requireUnprotected(baseline)
             try Task.checkCancellation()
             let answer: SpatialAnswer
@@ -122,6 +123,7 @@ final class AskSessionController {
                 )
                 try Task.checkCancellation()
                 let fresh = try await capture()
+                PerfMark.mark("capture.done")
                 try Task.checkCancellation()
                 answer = try proposed.revalidated(from: baseline, to: fresh)
             } else {
@@ -135,6 +137,7 @@ final class AskSessionController {
                 $0.turnCount += 1
                 $0.isWorking = false
             }
+            PerfMark.mark("answer.first_text")
             present(answer)
             output?.guideSpeak(
                 answer.text,
@@ -165,6 +168,9 @@ final class AskSessionController {
                 primaryScreenMaxY: primaryMaxY
             )
             return .rectangle(rect: rect, accentHex: "#34D399", caption: reference.caption)
+        }
+        if !overlayState.visualGuidanceOverlays.isEmpty {
+            PerfMark.mark("ink.first_draw")
         }
     }
 

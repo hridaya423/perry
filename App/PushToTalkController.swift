@@ -146,6 +146,7 @@ final class PushToTalkController {
             guard keyCode == 49 else { return }
             if isKeyDown, modifiers, !pressed {
                 pressed = true
+                PerfMark.mark("talk.keydown")
                 onPress()
             } else if isKeyUp, pressed {
                 releaseIfNeeded()
@@ -160,6 +161,7 @@ final class PushToTalkController {
                 } else if let lastCapsTap, timestamp - lastCapsTap <= 0.35 {
                     self.lastCapsTap = nil
                     pressed = true
+                    PerfMark.mark("talk.keydown")
                     onPress()
                 } else {
                     lastCapsTap = timestamp
@@ -174,6 +176,7 @@ final class PushToTalkController {
         guard pressed else { return }
         pressed = false
         lastCapsTap = nil
+        PerfMark.mark("talk.keyup")
         onRelease()
     }
 

@@ -1,4 +1,17 @@
 import Foundation
+import OSLog
+
+enum PerfMark {
+    private static let signposter = OSSignposter(subsystem: "app.perry", category: "latency")
+    private static var log: PerformanceSampleLog? { try? PerformanceSampleLog.shared.get() }
+
+    static func mark(_ name: StaticString) {
+        signposter.emitEvent(name)
+        guard let log else { return }
+        let marker = PerformanceMarker(name: name.description, capturedAt: Date())
+        Task { try? await log.append(marker) }
+    }
+}
 
 struct PerformanceSample: Codable, Equatable, Sendable {
     let metricID: String
@@ -130,6 +143,9 @@ actor PerformanceSampleLog {
         encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
     }
+
+    /// One writer per process so every caller appends to the same files without interleaving.
+    static let shared = Result { try configured() }
 
     static func configured(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> PerformanceSampleLog? {
         guard let path = environment["PERRY_PERFORMANCE_EVENT_LOG"]?.trimmingCharacters(in: .whitespacesAndNewlines),
