@@ -31,6 +31,26 @@ final class PerryStoreTests: XCTestCase {
         XCTAssertEqual(remaining.count, 0)
     }
 
+    func testPerryMemoryFile() async throws {
+        let perry = try await store.create(job: "watch the build")
+        let empty = await store.memory(for: perry.id)
+        XCTAssertEqual(empty, "")
+        try await store.setMemory("prefers short pings", for: perry.id)
+        let stored = await store.memory(for: perry.id)
+        XCTAssertEqual(stored, "prefers short pings")
+        // A second Perry has its own memory file.
+        let other = try await store.create(job: "sort downloads")
+        let otherMemory = await store.memory(for: other.id)
+        XCTAssertEqual(otherMemory, "")
+        // Removing a Perry removes its memory too.
+        try await store.remove(id: perry.id)
+        let afterRemove = await store.memory(for: perry.id)
+        XCTAssertEqual(afterRemove, "")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent("\(perry.id.uuidString).memory.md").path
+        ))
+    }
+
     func testCorruptFileSkipped() async throws {
         _ = try await store.create(job: "read the news every morning")
         try "not json".write(to: dir.appendingPathComponent("broken.json"), atomically: true, encoding: .utf8)

@@ -72,12 +72,24 @@ public final class MCPServer: Sendable {
                             "name": .string(spec.name),
                             "description": .string(spec.description),
                             "inputSchema": spec.inputSchema,
+                            "annotations": .object([
+                                "readOnlyHint": .bool(spec.readOnly),
+                                "destructiveHint": .bool(spec.tier >= .orange),
+                            ]),
                         ])
                     }),
                 ]))
             } catch {
                 response = err(-32603, "tools/list failed")
             }
+        case "resources/list":
+            response = ok(.object(["resources": .array([])]))
+        case "resources/templates/list":
+            response = ok(.object(["resourceTemplates": .array([])]))
+        case "prompts/list":
+            response = ok(.object(["prompts": .array([])]))
+        case "logging/setLevel":
+            response = ok(.object([:]))
         case "tools/call":
             guard let name = params?["name"]?.stringValue else {
                 response = err(-32602, "tools/call requires params.name")
