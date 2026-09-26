@@ -61,8 +61,51 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 }
             ).executors
             + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + packageExecutors()
         )
     }()
+
+    /// Package-level executor cores (Phase 7c): workspace files, memory files,
+    /// integrations, and Perrys. `files:`/support-dir pieces are skipped when
+    /// the support directory is unavailable rather than silently rooted
+    /// somewhere else.
+    private func packageExecutors() -> [any ToolExecutor] {
+        guard let support = Self.supportDirectory else { return [] }
+        var executors: [any ToolExecutor] = []
+        // LocalWorkspaceFiles requires an existing root — the workspace is
+        // created on first launch, empty until an agent writes to it.
+        let workspace = support.appendingPathComponent("workspace", isDirectory: true)
+        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        if let files = try? LocalWorkspaceFiles(root: workspace) {
+            executors += FileToolExecutors.make(backend: files)
+        }
+        executors += MemoryToolExecutors.make(
+            files: MemoryFiles(directory: support.appendingPathComponent("memory", isDirectory: true))
+        )
+        executors += IntegrationToolExecutors.make(backend: AppIntegrationBackend(
+            client: integrationClient,
+            oauth: oauthCoordinator,
+            permissionStore: remoteIntegrationPermissions
+        ))
+        executors += PerryToolExecutors.make(
+            store: PerryStore(directory: support.appendingPathComponent("perrys", isDirectory: true)),
+            openSettings: { [weak self] page in
+                Task { @MainActor in
+                    // perry.settings.open pages → nearest SettingsTab.
+                    let tab: SettingsTab = switch page {
+                    case "voice": .voice
+                    case "apps": .integrations
+                    case "memory": .memory
+                    case "brain", "perrys": .runtimes
+                    case "shortcuts", "about": .general
+                    default: .general
+                    }
+                    self?.openSettings(tab: tab)
+                }
+            }
+        )
+        return executors
+    }
 
     /// Ghost cursor for agent work: a Perry cursor tracks each ui.* actuation
     /// point so the user can watch without their real pointer ever moving.
