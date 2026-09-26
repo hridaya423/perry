@@ -25,6 +25,29 @@ final class AppSkillLibraryTests: XCTestCase {
         XCTAssertEqual(bundleIDs.compactMap { library.skill(for: $0) }.count, bundleIDs.count)
     }
 
+    func testBundledSkillsCoverTheScorecardApps() {
+        let library = AppSkillLibrary()
+
+        // Megaplan §6 scorecard apps; Sheets is web-only and rides the Chrome skill.
+        let bundleIDs = [
+            "com.blackmagic-design.DaVinciResolve",
+            "com.figma.Desktop",
+            "com.microsoft.Excel",
+            "notion.id",
+            "com.tinyspeck.slackmacgap",
+            "com.google.Chrome",
+            "com.apple.finder",
+            "com.apple.iWork.Keynote",
+            "com.apple.FinalCut",
+            "com.apple.logic10",
+            "com.apple.systempreferences",
+        ]
+
+        for bundleID in bundleIDs {
+            XCTAssertNotNil(library.skill(for: bundleID), "missing bundled skill for \(bundleID)")
+        }
+    }
+
     func testUserSkillOverridesTheBundledSkillAndCanBeRemoved() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let library = AppSkillLibrary(storageDirectory: directory)

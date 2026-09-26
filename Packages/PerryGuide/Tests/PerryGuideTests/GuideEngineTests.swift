@@ -161,8 +161,9 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         // The click lands inside a real control — just not the highlighted one.
+        // The nudge names it so the app can say "that's Other, we want Open".
         let result = await engine.acceptClick(at: CGPointShim(x: 245, y: 35))
-        XCTAssertEqual(result, .ignoredClick(stepIndex: 0))
+        XCTAssertEqual(result, .ignoredClick(stepIndex: 0, hitLabel: "Other"))
     }
 
     // MARK: - Verification

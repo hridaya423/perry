@@ -1,19 +1,115 @@
 {
     "version": 1,
     "skills": [
-        { "bundleID": "com.apple.finder", "displayName": "Finder", "resource": "com.apple.finder.md" },
-        { "bundleID": "com.apple.Preview", "displayName": "Preview", "resource": "com.apple.Preview.md" },
-        { "bundleID": "com.apple.systempreferences", "displayName": "System Settings", "resource": "com.apple.systempreferences.md" },
-        { "bundleID": "com.apple.Notes", "displayName": "Notes", "resource": "com.apple.Notes.md" },
-        { "bundleID": "com.apple.Safari", "displayName": "Safari", "resource": "com.apple.Safari.md" },
-        { "bundleID": "com.apple.mail", "displayName": "Mail", "resource": "com.apple.mail.md" },
-        { "bundleID": "com.apple.iCal", "displayName": "Calendar", "resource": "com.apple.iCal.md" },
-        { "bundleID": "com.apple.TextEdit", "displayName": "TextEdit", "resource": "com.apple.TextEdit.md" },
-        { "bundleID": "com.apple.Terminal", "displayName": "Terminal", "resource": "com.apple.Terminal.md" },
-        { "bundleID": "com.apple.Xcode", "displayName": "Xcode", "resource": "com.apple.Xcode.md" },
-        { "bundleID": "com.google.Chrome", "displayName": "Google Chrome", "resource": "com.google.Chrome.md" },
-        { "bundleID": "com.microsoft.VSCode", "displayName": "Visual Studio Code", "resource": "com.microsoft.VSCode.md" },
-        { "bundleID": "com.apple.MobileSMS", "displayName": "Messages", "resource": "com.apple.MobileSMS.md" },
-        { "bundleID": "com.apple.Photos", "displayName": "Photos", "resource": "com.apple.Photos.md" }
+        {
+            "bundleID": "com.apple.finder",
+            "displayName": "Finder",
+            "resource": "com.apple.finder.md"
+        },
+        {
+            "bundleID": "com.apple.Preview",
+            "displayName": "Preview",
+            "resource": "com.apple.Preview.md"
+        },
+        {
+            "bundleID": "com.apple.systempreferences",
+            "displayName": "System Settings",
+            "resource": "com.apple.systempreferences.md"
+        },
+        {
+            "bundleID": "com.apple.Notes",
+            "displayName": "Notes",
+            "resource": "com.apple.Notes.md"
+        },
+        {
+            "bundleID": "com.apple.Safari",
+            "displayName": "Safari",
+            "resource": "com.apple.Safari.md"
+        },
+        {
+            "bundleID": "com.apple.mail",
+            "displayName": "Mail",
+            "resource": "com.apple.mail.md"
+        },
+        {
+            "bundleID": "com.apple.iCal",
+            "displayName": "Calendar",
+            "resource": "com.apple.iCal.md"
+        },
+        {
+            "bundleID": "com.apple.TextEdit",
+            "displayName": "TextEdit",
+            "resource": "com.apple.TextEdit.md"
+        },
+        {
+            "bundleID": "com.apple.Terminal",
+            "displayName": "Terminal",
+            "resource": "com.apple.Terminal.md"
+        },
+        {
+            "bundleID": "com.apple.Xcode",
+            "displayName": "Xcode",
+            "resource": "com.apple.Xcode.md"
+        },
+        {
+            "bundleID": "com.google.Chrome",
+            "displayName": "Google Chrome",
+            "resource": "com.google.Chrome.md"
+        },
+        {
+            "bundleID": "com.microsoft.VSCode",
+            "displayName": "Visual Studio Code",
+            "resource": "com.microsoft.VSCode.md"
+        },
+        {
+            "bundleID": "com.apple.MobileSMS",
+            "displayName": "Messages",
+            "resource": "com.apple.MobileSMS.md"
+        },
+        {
+            "bundleID": "com.apple.Photos",
+            "displayName": "Photos",
+            "resource": "com.apple.Photos.md"
+        },
+        {
+            "bundleID": "com.figma.Desktop",
+            "displayName": "Figma",
+            "resource": "com.figma.Desktop.md"
+        },
+        {
+            "bundleID": "com.blackmagic-design.DaVinciResolve",
+            "displayName": "DaVinci Resolve",
+            "resource": "com.blackmagic-design.DaVinciResolve.md"
+        },
+        {
+            "bundleID": "com.microsoft.Excel",
+            "displayName": "Microsoft Excel",
+            "resource": "com.microsoft.Excel.md"
+        },
+        {
+            "bundleID": "notion.id",
+            "displayName": "Notion",
+            "resource": "notion.id.md"
+        },
+        {
+            "bundleID": "com.tinyspeck.slackmacgap",
+            "displayName": "Slack",
+            "resource": "com.tinyspeck.slackmacgap.md"
+        },
+        {
+            "bundleID": "com.apple.iWork.Keynote",
+            "displayName": "Keynote",
+            "resource": "com.apple.iWork.Keynote.md"
+        },
+        {
+            "bundleID": "com.apple.FinalCut",
+            "displayName": "Final Cut Pro",
+            "resource": "com.apple.FinalCut.md"
+        },
+        {
+            "bundleID": "com.apple.logic10",
+            "displayName": "Logic Pro",
+            "resource": "com.apple.logic10.md"
+        }
     ]
 }

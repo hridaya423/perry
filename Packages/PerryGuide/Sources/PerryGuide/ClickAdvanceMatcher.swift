@@ -47,4 +47,19 @@ public struct ClickAdvanceMatcher: Sendable {
             ? .hit(stableID: stableID)
             : .miss
     }
+
+    /// The smallest actionable element under the point, skipping the intended
+    /// target — used to say "that's the Effects tab" on a wrong click.
+    public func elementUnder(
+        clickPoint: CGPointShim, elements: [AXElement], excluding stableID: String?
+    ) -> AXElement? {
+        let point = CGPoint(x: clickPoint.x, y: clickPoint.y)
+        return elements
+            .filter { $0.stableID != stableID && $0.isActionable }
+            .filter { e in
+                CGRect(x: e.frame.x, y: e.frame.y, width: e.frame.width, height: e.frame.height)
+                    .contains(point)
+            }
+            .min { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
 }

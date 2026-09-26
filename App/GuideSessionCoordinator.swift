@@ -780,7 +780,7 @@ final class GuideSessionCoordinator {
         let guideContext = await MainActor.run {
             GuideContext(spatialRegionDescription: self.context?.guideSpatialRegionDescription(), memoryContext: memoryContext)
         }
-        let firstStep = try await engine.start(goal: guide.goal, maximumSteps: 2, context: guideContext)
+        let firstStep = try await engine.start(goal: guide.goal, maximumSteps: 25, context: guideContext)
         guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }) else { return }
         if let firstStep {
             clickObserver.start()
@@ -946,8 +946,13 @@ final class GuideSessionCoordinator {
             output?.guideSetStatus("Not verified yet. Complete the step, then choose Done.")
         case .blocked(let reason):
             finishGuide(guideID: guideID, outcome: .failed, summary: reason)
-        case .ignoredClick:
-            output?.guideSetStatus("Not quite — click the highlighted control.")
+        case .ignoredClick(_, let hitLabel):
+            if let hitLabel, !hitLabel.isEmpty {
+                output?.guideSetStatus("That's \(hitLabel) — we want the highlighted control.")
+                speak("That's \(hitLabel) — we want the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
+            } else {
+                output?.guideSetStatus("Not quite — click the highlighted control.")
+            }
         case .notPresenting:
             break
         }

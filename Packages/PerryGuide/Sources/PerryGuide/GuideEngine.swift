@@ -123,7 +123,14 @@ public actor GuideEngine {
             elements: presentation.snapshot.elements
         )
         guard case .hit = outcome else {
-            return .ignoredClick(stepIndex: index)
+            let targetID: String?
+            if case .axElement(let stableID) = step.target { targetID = stableID } else { targetID = nil }
+            let hitLabel = clickMatcher.elementUnder(
+                clickPoint: point,
+                elements: presentation.snapshot.elements,
+                excluding: targetID
+            )?.label
+            return .ignoredClick(stepIndex: index, hitLabel: hitLabel)
         }
         return await verifyAndAdvance(step: step, baseline: actionBaseline, stepIndex: index)
     }
@@ -341,7 +348,7 @@ public struct GuidePresentation: Equatable, Sendable {
 public enum AdvanceResult: Equatable, Sendable {
     case advanced(toStep: GuideStep, stepIndex: Int)
     case stillWaiting(stepIndex: Int)
-    case ignoredClick(stepIndex: Int)
+    case ignoredClick(stepIndex: Int, hitLabel: String? = nil)
     case blocked(reason: String)
     case finished
     case explanationEnded
