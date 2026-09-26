@@ -8,10 +8,24 @@ import PerryRuntimes
 /// decision (stop/cancel/dismiss) denies. Red-tier calls additionally need
 /// the card's typed-confirmation flow — `IntentCardView` enforces the exact
 /// displayed phrase, so the card itself is the typed-confirmation surface.
+///
+/// When a `consentScope` is supplied (thread ID), orange-tier cards offer
+/// "Always allow" which records a per-thread grant; future calls of the same
+/// tool in that thread skip the card. Red-tier calls are never auto-approved.
 @MainActor
 enum ToolApprovalPresenter {
-    static func present(call: ToolCall, spec: ToolSpec) async -> Bool {
-        await withCheckedContinuation { continuation in
+    static func present(
+        call: ToolCall,
+        spec: ToolSpec,
+        consentScope: String? = nil,
+        consentStore: AgentConsentStore = .shared
+    ) async -> Bool {
+        if let consentScope,
+           spec.tier < .red,
+           consentStore.isGranted(scope: consentScope, tool: spec.name) {
+            return true
+        }
+        return await withCheckedContinuation { continuation in
             let summary = targetSummary(call)
             let card = IntentCard(
                 title: "Perry wants to run \(spec.name)",
@@ -20,8 +34,15 @@ enum ToolApprovalPresenter {
                 targetSummary: summary,
                 requiredPhrase: spec.tier >= .red ? summary : nil
             )
-            let window = IntentCardWindow(card: card, allowsStepThrough: false) { decision in
-                continuation.resume(returning: decision == .run)
+            let window = IntentCardWindow(
+                card: card,
+                allowsStepThrough: false,
+                alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always allow" : nil,
+                onAlwaysAllow: consentScope.map { scope in
+                    { consentStore.grant(scope: scope, tool: spec.name) }
+                }
+            ) { decision in
+                continuation.resume(returning: decision == .run || decision == .stepThrough)
             }
             window.showNearCursor()
         }

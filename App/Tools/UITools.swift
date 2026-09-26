@@ -9,17 +9,21 @@ import PerryCore
 struct UITools {
     let workers: CuaWorkerService
     let observations: AgentObservationStore
+    /// Ghost cursor hook: called with the AX-space point each ui.* tool acts
+    /// on, so the overlay can show where the agent is working without ever
+    /// moving the real pointer.
+    var onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var executors: [any ToolExecutor] {
         [
-            UIActionExecutor(kind: .click, workers: workers, observations: observations),
-            UIActionExecutor(kind: .doubleClick, workers: workers, observations: observations),
-            UIActionExecutor(kind: .rightClick, workers: workers, observations: observations),
-            UITypeExecutor(workers: workers, observations: observations),
-            UIScrollExecutor(workers: workers, observations: observations),
-            UIKeyExecutor(workers: workers, observations: observations),
+            UIActionExecutor(kind: .click, workers: workers, observations: observations, onActuation: onActuation),
+            UIActionExecutor(kind: .doubleClick, workers: workers, observations: observations, onActuation: onActuation),
+            UIActionExecutor(kind: .rightClick, workers: workers, observations: observations, onActuation: onActuation),
+            UITypeExecutor(workers: workers, observations: observations, onActuation: onActuation),
+            UIScrollExecutor(workers: workers, observations: observations, onActuation: onActuation),
+            UIKeyExecutor(workers: workers, observations: observations, onActuation: onActuation),
             UIHotkeyExecutor(workers: workers),
-            UIDragExecutor(workers: workers),
+            UIDragExecutor(workers: workers, onActuation: onActuation),
         ]
     }
 }
@@ -100,6 +104,7 @@ private struct UIActionExecutor: ToolExecutor {
     let kind: UIClickKind
     let workers: CuaWorkerService
     let observations: AgentObservationStore
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -127,6 +132,9 @@ private struct UIActionExecutor: ToolExecutor {
         let action = ComputerAction(stepID: call.id, operation: operation)
         return try await workers.withWorker(scope: .background, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success, let point = resolved.target.coordinates {
+                onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
+            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }
@@ -135,6 +143,7 @@ private struct UIActionExecutor: ToolExecutor {
 private struct UITypeExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let observations: AgentObservationStore
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -163,6 +172,9 @@ private struct UITypeExecutor: ToolExecutor {
         let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: resolved.target))
         return try await workers.withWorker(scope: .background, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success, let point = resolved.target.coordinates {
+                onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
+            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }
@@ -171,6 +183,7 @@ private struct UITypeExecutor: ToolExecutor {
 private struct UIScrollExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let observations: AgentObservationStore
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -204,6 +217,9 @@ private struct UIScrollExecutor: ToolExecutor {
         )
         return try await workers.withWorker(scope: .background, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success, let point = target?.target.coordinates {
+                onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
+            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }
@@ -212,6 +228,7 @@ private struct UIScrollExecutor: ToolExecutor {
 private struct UIKeyExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let observations: AgentObservationStore
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -243,6 +260,9 @@ private struct UIKeyExecutor: ToolExecutor {
         )
         return try await workers.withWorker(scope: .background, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success, let point = target?.target.coordinates {
+                onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
+            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }
@@ -284,6 +304,7 @@ private struct UIHotkeyExecutor: ToolExecutor {
 
 private struct UIDragExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -323,6 +344,9 @@ private struct UIDragExecutor: ToolExecutor {
         let bundleID = args["bundleID"]?.stringValue
         return try await workers.withWorker(scope: .background, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success {
+                onActuation?(CGPoint(x: toX, y: toY), nil)
+            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }

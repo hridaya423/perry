@@ -53,10 +53,31 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         PerryToolHost(executors:
             DrawTools(overlayState: overlayState, observations: AgentObservationStore.shared).executors
             + ScreenTools(workers: workers, observations: AgentObservationStore.shared).executors
-            + UITools(workers: workers, observations: AgentObservationStore.shared).executors
+            + UITools(
+                workers: workers,
+                observations: AgentObservationStore.shared,
+                onActuation: { [weak self] point, label in
+                    Task { @MainActor in self?.agentDidAct(at: point, label: label) }
+                }
+            ).executors
             + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
         )
     }()
+
+    /// Ghost cursor for agent work: a Perry cursor tracks each ui.* actuation
+    /// point so the user can watch without their real pointer ever moving.
+    private static let agentGhostCursorID = UUID(uuidString: "A6E11C7E-0000-4A00-9E00-000000000007")!
+
+    private func agentDidAct(at axPoint: CGPoint, label: String?) {
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        let screenPoint = CGPoint(x: axPoint.x, y: primaryMaxY - axPoint.y)
+        var cursor = overlayState.externalSecondaryCursors.first { $0.id == Self.agentGhostCursorID }
+            ?? PerryExternalCursor(id: Self.agentGhostCursorID, screenLocation: screenPoint, caption: nil, accentHex: "#34D399")
+        cursor.screenLocation = screenPoint
+        cursor.caption = label
+        overlayState.externalSecondaryCursors.removeAll { $0.id == Self.agentGhostCursorID }
+        overlayState.externalSecondaryCursors.append(cursor)
+    }
     private var mcpSocket: PerryMCPSocket?
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
