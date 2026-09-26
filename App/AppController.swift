@@ -44,10 +44,19 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     static let shared = AppController()
 
     private var hotkey: HotkeyController?
-    private let overlayState = PerryCursorState()
+    let overlayState = PerryCursorState()
     let brain = BrainController()
-    /// Model→world dispatch; executors register in Phase 7b.
-    let toolHost = PerryToolHost(executors: [])
+    /// Model→world dispatch. Executors bind the app's real services (Cua
+    /// workers, overlay ink, memory, Perrys); package-level executor cores
+    /// (file/memory/integration/perry) plug in alongside these.
+    lazy var toolHost: PerryToolHost = {
+        PerryToolHost(executors:
+            DrawTools(overlayState: overlayState, observations: AgentObservationStore.shared).executors
+            + ScreenTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + UITools(workers: workers, observations: AgentObservationStore.shared).executors
+            + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
+        )
+    }()
     private var mcpSocket: PerryMCPSocket?
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
@@ -77,7 +86,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
-    private let workers = CuaWorkerService()
+    let workers = CuaWorkerService()
     private lazy var spatialMonitor = SpatialInputMonitor(
         onPointsChanged: { [weak self] points in self?.handleSpatialPoints(points) },
         onSelection: { [weak self] selection in self?.handleSpatialSelection(selection) },
