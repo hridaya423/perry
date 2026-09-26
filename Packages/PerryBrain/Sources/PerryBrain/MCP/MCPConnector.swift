@@ -179,6 +179,160 @@ private struct MCPToolExecutor: ToolExecutor {
     }
 }
 
+/// What the HTTP transport needs from its network layer, so tests can fake it.
+public protocol MCPHTTPPerforming: Sendable {
+    func data(for request: URLRequest) async throws -> (HTTPURLResponse, Data)
+    func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>)
+}
+
+public struct URLSessionMCPHTTP: MCPHTTPPerforming {
+    private let session: URLSession
+    public init(session: URLSession = .shared) { self.session = session }
+    public func data(for request: URLRequest) async throws -> (HTTPURLResponse, Data) {
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw MCPError(code: -32000, message: "non-HTTP response")
+        }
+        return (http, data)
+    }
+    public func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>) {
+        try await URLSessionLineStreaming(session: session).lines(for: request)
+    }
+}
+
+/// Streamable-HTTP MCP transport ("user adds a URL"): POST JSON-RPC to one
+/// endpoint; the response is either a single JSON message or an SSE stream
+/// ended by the message matching the request id. Honors `Mcp-Session-Id`.
+public actor HTTPMCPTransport: MCPTransport {
+    private let endpoint: URL
+    private let performer: any MCPHTTPPerforming
+    private let headers: [String: String]
+    private var sessionID: String?
+    private var nextID = 0
+    private var closed = false
+
+    public init(
+        endpoint: URL,
+        headers: [String: String] = [:],
+        performer: any MCPHTTPPerforming = URLSessionMCPHTTP()
+    ) throws {
+        try NetworkEndpointPolicy.requireSafe(endpoint)
+        self.endpoint = endpoint
+        self.performer = performer
+        self.headers = headers
+    }
+
+    public func request(method: String, params: JSONValue?) async throws -> JSONValue {
+        guard !closed else { throw MCPError(code: -32000, message: "transport closed") }
+        nextID += 1
+        let id = nextID
+        var fields: [String: JSONValue] = [
+            "jsonrpc": .string("2.0"),
+            "id": .number(Double(id)),
+            "method": .string(method),
+        ]
+        if let params { fields["params"] = params }
+        let response = try await post(.object(fields))
+        guard let messageID = response["id"]?.doubleValue.map(Int.init), messageID == id else {
+            throw MCPError(code: -32000, message: "MCP response id mismatch")
+        }
+        if let error = response["error"] {
+            throw MCPError(
+                code: Int(error["code"]?.doubleValue ?? -32603),
+                message: error["message"]?.stringValue ?? "MCP error"
+            )
+        }
+        return response["result"] ?? .object([:])
+    }
+
+    public func notify(method: String, params: JSONValue?) async throws {
+        guard !closed else { return }
+        var fields: [String: JSONValue] = [
+            "jsonrpc": .string("2.0"),
+            "method": .string(method),
+        ]
+        if let params { fields["params"] = params }
+        // Notifications get a 202 (or a JSON response we discard).
+        _ = try? await post(.object(fields))
+    }
+
+    public func close() async {
+        closed = true
+        guard sessionID != nil else { return }
+        var request = baseRequest()
+        request.httpMethod = "DELETE"
+        _ = try? await performer.data(for: request)
+        sessionID = nil
+    }
+
+    private func baseRequest() -> URLRequest {
+        var request = URLRequest(url: endpoint)
+        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(MCPServer.protocolVersion, forHTTPHeaderField: "MCP-Protocol-Version")
+        if let sessionID {
+            request.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
+        }
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.timeoutInterval = 120
+        return request
+    }
+
+    /// POSTs one message and returns the response message. Handles both
+    /// `application/json` and `text/event-stream` bodies; in the SSE case the
+    /// matching `id` message ends the exchange per the MCP spec.
+    private func post(_ message: JSONValue) async throws -> JSONValue {
+        var request = baseRequest()
+        request.httpMethod = "POST"
+        request.httpBody = try message.data()
+        let wantsID = message["id"]?.doubleValue.map(Int.init)
+
+        // Peek at the content type with a streaming read; short JSON bodies
+        // still arrive fine as lines.
+        let (response, lines) = try await performer.lines(for: request)
+        if let session = response.value(forHTTPHeaderField: "Mcp-Session-Id"), !session.isEmpty {
+            sessionID = session
+        }
+        guard (200..<300).contains(response.statusCode) else {
+            throw MCPError(code: -32000, message: "MCP HTTP \(response.statusCode)")
+        }
+        let isSSE = response.value(forHTTPHeaderField: "Content-Type")?
+            .lowercased().contains("text/event-stream") ?? false
+
+        var parser = SSEParser()
+        var jsonBody = ""
+        for try await line in lines {
+            if isSSE {
+                guard let event = parser.feed(line: line) else { continue }
+                guard let parsed = try? JSONValue(parsing: Data(event.data.utf8)) else { continue }
+                if wantsID == nil {
+                    return parsed // notification exchange: first message ends it
+                }
+                if parsed["id"]?.doubleValue.map(Int.init) == wantsID {
+                    return parsed
+                }
+            } else {
+                jsonBody += line
+            }
+        }
+        if !isSSE {
+            if jsonBody.isEmpty { return .object([:]) }  // 202-style empty body
+            if let parsed = try? JSONValue(parsing: Data(jsonBody.utf8)) {
+                return parsed
+            }
+            throw MCPError(code: -32000, message: "malformed MCP response body")
+        }
+        if let event = parser.finish(),
+           let parsed = try? JSONValue(parsing: Data(event.data.utf8)),
+           parsed["id"]?.doubleValue.map(Int.init) == wantsID {
+            return parsed
+        }
+        throw MCPError(code: -32000, message: "MCP stream ended without a matching response")
+    }
+}
+
 /// NDJSON MCP transport over a child process's stdio. Requests are matched
 /// to responses by `id`; a process exit fails every pending call.
 public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {

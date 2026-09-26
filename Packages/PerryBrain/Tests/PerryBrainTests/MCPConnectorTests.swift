@@ -210,6 +210,137 @@ final class MCPConnectorTests: XCTestCase {
     }
 }
 
+/// Canned HTTP performer: each request gets the queued (contentType, body)
+/// response; requests are recorded.
+private final class FakeHTTPPerformer: MCPHTTPPerforming, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var requests: [URLRequest] = []
+    var responses: [(status: Int, contentType: String, body: String, sessionID: String?)] = []
+
+    func data(for request: URLRequest) async throws -> (HTTPURLResponse, Data) {
+        lock.withLock { requests.append(request) }
+        let http = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        return (http, Data())
+    }
+
+    func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>) {
+        lock.withLock { requests.append(request) }
+        let canned = lock.withLock { () -> (status: Int, contentType: String, body: String, sessionID: String?) in
+            responses.isEmpty ? (200, "application/json", "", nil) : responses.removeFirst()
+        }
+        var fields: [String: String] = ["Content-Type": canned.contentType]
+        if let sessionID = canned.sessionID { fields["Mcp-Session-Id"] = sessionID }
+        let http = HTTPURLResponse(
+            url: request.url!, statusCode: canned.status, httpVersion: nil, headerFields: fields
+        )!
+        let body = canned.body
+        let stream = AsyncThrowingStream<String, Error> { continuation in
+            body.split(separator: "\n", omittingEmptySubsequences: false).forEach {
+                continuation.yield(String($0))
+            }
+            continuation.finish()
+        }
+        return (http, stream)
+    }
+}
+
+private func jsonResponse(_ result: JSONValue, id: Double) -> String {
+    let message = JSONValue.object(["jsonrpc": .string("2.0"), "id": .number(id), "result": result])
+    return String(data: try! message.data(), encoding: .utf8)!
+}
+
+final class HTTPMCPTransportTests: XCTestCase {
+    private let endpoint = URL(string: "http://127.0.0.1:9999/mcp")!
+
+    func testPlainJSONRoundTrip() async throws {
+        let performer = FakeHTTPPerformer()
+        performer.responses = [
+            (200, "application/json", jsonResponse(fakeInitializeResult(), id: 1), "sess-1"),
+            (202, "application/json", "", nil), // notifications/initialized
+            (200, "application/json", jsonResponse(.object(["tools": .array([])]), id: 2), nil),
+        ]
+        let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
+        let conn = MCPConnector(transport: transport, clientVersion: "test")
+        try await conn.initialize()
+        _ = try await conn.listTools()
+
+        // Requests after initialize carry the captured session id.
+        XCTAssertEqual(performer.requests.count, 3)
+        let listRequest = performer.requests[2]
+        XCTAssertEqual(listRequest.value(forHTTPHeaderField: "Mcp-Session-Id"), "sess-1")
+        XCTAssertEqual(
+            listRequest.value(forHTTPHeaderField: "Accept"),
+            "application/json, text/event-stream"
+        )
+    }
+
+    func testSSEResponseEndsOnMatchingID() async throws {
+        let performer = FakeHTTPPerformer()
+        // Server interleaves a notification before the real response.
+        let sse = """
+        event: message
+        data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"n":1}}
+
+        event: message
+        data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"t1","description":"x","inputSchema":{"type":"object"}}]}}
+
+        """
+        performer.responses = [
+            (200, "application/json", jsonResponse(fakeInitializeResult(), id: 1), nil),
+            (202, "application/json", "", nil), // notifications/initialized
+            (200, "text/event-stream", sse, nil), // tools/list (request id 2)
+        ]
+        let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
+        let conn = MCPConnector(transport: transport, clientVersion: "test")
+        try await conn.initialize()
+        let tools = try await conn.listTools()
+        XCTAssertEqual(tools.map(\.name), ["t1"])
+    }
+
+    func testSSENoMatchingIDThrows() async throws {
+        let performer = FakeHTTPPerformer()
+        let sse = "data: {\"jsonrpc\":\"2.0\",\"id\":99,\"result\":{}}\n\n"
+        performer.responses = [(200, "text/event-stream", sse, nil)]
+        let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
+        await XCTAssertThrowsErrorAsyncVoid(
+            try await transport.request(method: "tools/list", params: nil)
+        )
+    }
+
+    func testErrorAndStatusPropagation() async throws {
+        let performer = FakeHTTPPerformer()
+        performer.responses = [
+            (200, "application/json",
+             #"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"nope"}}"#, nil),
+            (503, "application/json", "{}", nil),
+        ]
+        let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
+        do {
+            _ = try await transport.request(method: "x", params: nil)
+            XCTFail()
+        } catch let error as MCPError {
+            XCTAssertEqual(error.code, -32601)
+        }
+        do {
+            _ = try await transport.request(method: "y", params: nil)
+            XCTFail()
+        } catch let error as MCPError {
+            XCTAssertTrue(error.message.contains("503"))
+        }
+    }
+
+    func testLoopbackPolicy() {
+        XCTAssertThrowsError(
+            try HTTPMCPTransport(endpoint: URL(string: "http://example.com/mcp")!)
+        )
+        XCTAssertNoThrow(
+            try HTTPMCPTransport(endpoint: URL(string: "https://mcp.example.com/mcp")!)
+        )
+    }
+}
+
 private extension XCTestCase {
     func XCTAssertThrowsErrorAsyncVoid<T>(
         _ expression: @autoclosure () async throws -> T,
