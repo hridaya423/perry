@@ -134,7 +134,7 @@ final class ToolExecutorCoreTests: XCTestCase {
 
         let approved = await host.handle(
             call("files.trash", ["path": .string("victim.txt")]),
-            context: ToolContext(surface: .agent, approve: { _, _ in true })
+            context: ToolContext(surface: .agent, approve: { _, _ in .approvedOnce })
         )
         XCTAssertFalse(approved.isError)
         let afterApprove = try await backend.list(path: ".")
@@ -243,7 +243,7 @@ final class ToolExecutorCoreTests: XCTestCase {
             call("integrations.write", [
                 "service": .string("notion"), "operation": .string("create_page"),
             ]),
-            context: ToolContext(surface: .agent, approve: { _, _ in true })
+            context: ToolContext(surface: .agent, approve: { _, _ in .approvedOnce })
         )
         XCTAssertTrue(off.isError)
         XCTAssertEqual(calls.all.count, 0)
@@ -263,7 +263,7 @@ final class ToolExecutorCoreTests: XCTestCase {
             call("integrations.write", [
                 "service": .string("notion"), "operation": .string("create_page"),
             ]),
-            context: ToolContext(surface: .agent, approve: { _, _ in true })
+            context: ToolContext(surface: .agent, approve: { _, _ in .approvedOnce })
         )
         XCTAssertFalse(approved.isError)
         XCTAssertEqual(calls.all.map { $0.1 }, ["create_page"])

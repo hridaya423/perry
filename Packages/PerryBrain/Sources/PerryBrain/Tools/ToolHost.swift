@@ -18,19 +18,27 @@ public struct ToolResult: Sendable, Equatable {
     }
 }
 
+/// What the approval surface decided. `.approvedTyped` means the surface
+/// itself collected the red-tier typed confirmation (the intent card enforces
+/// the phrase before its approve button enables); `.approvedOnce` is a plain
+/// yes without typing.
+public enum ToolApproval: Sendable, Equatable {
+    case denied, approvedOnce, approvedTyped
+}
+
 public struct ToolContext: Sendable {
     public var surface: ToolSurface
     public var threadID: String?
     /// Set by the UI only after the user typed the confirmation phrase for this call.
     public var redConfirmed: Bool
     /// App-injected approval for orange/red intent cards; nil means nobody is there to ask.
-    public var approve: (@Sendable (ToolCall, ToolSpec) async -> Bool)?
+    public var approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)?
 
     public init(
         surface: ToolSurface,
         threadID: String? = nil,
         redConfirmed: Bool = false,
-        approve: (@Sendable (ToolCall, ToolSpec) async -> Bool)? = nil
+        approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)? = nil
     ) {
         self.surface = surface
         self.threadID = threadID
@@ -109,12 +117,24 @@ public final class PerryToolHost: Sendable {
             guard let approve = context.approve else {
                 return fail(.confirmationRequired(name: call.name, tier: spec.tier))
             }
-            guard await approve(call, spec) else { return fail(.approvalDenied(name: call.name)) }
+            guard await approve(call, spec) != .denied else {
+                return fail(.approvalDenied(name: call.name))
+            }
         case .red:
-            guard let approve = context.approve, context.redConfirmed else {
+            // Red needs typed confirmation: either the caller preflighted it
+            // (`redConfirmed`) plus an approve, or the approval surface
+            // collected the phrase itself and answered `.approvedTyped`.
+            guard let approve = context.approve else {
                 return fail(.confirmationRequired(name: call.name, tier: spec.tier))
             }
-            guard await approve(call, spec) else { return fail(.approvalDenied(name: call.name)) }
+            let approval = await approve(call, spec)
+            let typed = approval == .approvedTyped
+                || (approval == .approvedOnce && context.redConfirmed)
+            guard approval != .denied, typed else {
+                return fail(approval == .denied
+                    ? .approvalDenied(name: call.name)
+                    : .confirmationRequired(name: call.name, tier: spec.tier))
+            }
         }
         do {
             return try await executor.run(call, context: context)

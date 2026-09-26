@@ -19,11 +19,11 @@ enum ToolApprovalPresenter {
         spec: ToolSpec,
         consentScope: String? = nil,
         consentStore: AgentConsentStore = .shared
-    ) async -> Bool {
+    ) async -> ToolApproval {
         if let consentScope,
            spec.tier < .red,
            consentStore.isGranted(scope: consentScope, tool: spec.name) {
-            return true
+            return .approvedOnce
         }
         return await withCheckedContinuation { continuation in
             let summary = targetSummary(call)
@@ -42,7 +42,14 @@ enum ToolApprovalPresenter {
                     { consentStore.grant(scope: scope, tool: spec.name) }
                 }
             ) { decision in
-                continuation.resume(returning: decision == .run || decision == .stepThrough)
+                switch decision {
+                case .run, .stepThrough:
+                    // The card only enables Approve once the typed phrase
+                    // matches on red cards — so a red run IS the typed answer.
+                    continuation.resume(returning: spec.tier >= .red ? .approvedTyped : .approvedOnce)
+                default:
+                    continuation.resume(returning: .denied)
+                }
             }
             window.showNearCursor()
         }

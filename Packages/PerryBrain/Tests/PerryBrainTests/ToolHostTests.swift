@@ -92,7 +92,7 @@ final class ToolHostTests: XCTestCase {
         var asked = false
         let allowed = await host.handle(call("files.delete"), context: ToolContext(
             surface: .agent,
-            approve: { _, _ in asked = true; return true }
+            approve: { _, _ in asked = true; return .approvedOnce }
         ))
         XCTAssertFalse(allowed.isError)
         XCTAssertTrue(asked)
@@ -102,7 +102,7 @@ final class ToolHostTests: XCTestCase {
     func testApprovalDenied() async {
         let (host, executors) = host([("files.delete", .orange, [.agent])])
         let result = await host.handle(call("files.delete"), context: ToolContext(
-            surface: .agent, approve: { _, _ in false }
+            surface: .agent, approve: { _, _ in .denied }
         ))
         XCTAssertTrue(result.isError)
         XCTAssertEqual(executors[0].callCount, 0)
@@ -112,7 +112,7 @@ final class ToolHostTests: XCTestCase {
         let (host, executors) = host([("files.emptyTrash", .red, [.agent])])
         // Approver allows but no typed confirmation.
         let noTyped = await host.handle(call("files.emptyTrash"), context: ToolContext(
-            surface: .agent, approve: { _, _ in true }
+            surface: .agent, approve: { _, _ in .approvedOnce }
         ))
         XCTAssertTrue(noTyped.isError)
         // Typed confirmation with no approver still fails closed.
@@ -122,10 +122,17 @@ final class ToolHostTests: XCTestCase {
         XCTAssertTrue(noApprover.isError)
         // Both present → runs.
         let ok = await host.handle(call("files.emptyTrash"), context: ToolContext(
-            surface: .agent, redConfirmed: true, approve: { _, _ in true }
+            surface: .agent, redConfirmed: true, approve: { _, _ in .approvedOnce }
         ))
         XCTAssertFalse(ok.isError)
         XCTAssertEqual(executors[0].callCount, 1)
+        // A surface that collects the typed phrase itself (intent card)
+        // answers .approvedTyped and needs no preflighted flag.
+        let cardPath = await host.handle(call("files.emptyTrash"), context: ToolContext(
+            surface: .agent, approve: { _, _ in .approvedTyped }
+        ))
+        XCTAssertFalse(cardPath.isError)
+        XCTAssertEqual(executors[0].callCount, 2)
     }
 
     func testExecutorThrowBecomesErrorResult() async {

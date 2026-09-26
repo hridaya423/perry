@@ -124,8 +124,8 @@ final class PerryMCPSocket: @unchecked Sendable {
 struct AppMCPBridge: MCPBridge {
     let host: PerryToolHost
     /// Approval hook injected by AgentCoordinator (intent cards). nil →
-    /// orange/red calls fail closed, which is correct until Phase 7b lands it.
-    var approve: (@Sendable (ToolCall, ToolSpec) async -> Bool)?
+    /// orange/red calls fail closed.
+    var approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)?
 
     func tools() async throws -> [ToolSpec] {
         host.specs(for: .agent)

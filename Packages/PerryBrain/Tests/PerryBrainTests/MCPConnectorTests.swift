@@ -149,7 +149,7 @@ final class MCPConnectorTests: XCTestCase {
 
         let approved = await host.handle(
             ToolCall(id: "c3", name: "mcp.fake-tools.mutate", arguments: .object([:])),
-            context: ToolContext(surface: .agent, approve: { _, _ in true })
+            context: ToolContext(surface: .agent, approve: { _, _ in .approvedOnce })
         )
         XCTAssertFalse(approved.isError)
         guard case .text(let text)? = approved.content.first else { return XCTFail() }
