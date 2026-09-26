@@ -11,14 +11,18 @@ struct DictationInputDevice: Equatable, Identifiable, Sendable {
 }
 
 enum DictationRecognitionEvent {
-    case transcript(String, isFinal: Bool)
+    case transcript(String, isFinal: Bool, segments: [SFTranscriptionSegment])
     case failure(Error)
 
     init?(result: SFSpeechRecognitionResult?, error: Error?) {
         if let error {
             self = .failure(error)
         } else if let result {
-            self = .transcript(result.bestTranscription.formattedString, isFinal: result.isFinal)
+            self = .transcript(
+                result.bestTranscription.formattedString,
+                isFinal: result.isFinal,
+                segments: result.bestTranscription.segments
+            )
         } else {
             return nil
         }
@@ -104,6 +108,7 @@ final class DictationController {
     private let onFailure: (Error) -> Void
     private let onFallback: () -> Void
     private let onLanguageDetected: (String?) -> Void
+    private let onSegments: ([SFTranscriptionSegment]) -> Void
     private let selectFallbackInput: (AVAudioEngine) -> Bool
     private let audioEngine = AVAudioEngine()
     private var recognizer: SFSpeechRecognizer?
@@ -131,6 +136,9 @@ final class DictationController {
         onFailure: @escaping (Error) -> Void = { _ in },
         onFallback: @escaping () -> Void = {},
         onLanguageDetected: @escaping (String?) -> Void = { _ in },
+        /// Word-timestamped segments per recognition event — the Talk loop's
+        /// deixis alignment input. Not used by plain dictation.
+        onSegments: @escaping ([SFTranscriptionSegment]) -> Void = { _ in },
         selectFallbackInput: @escaping (AVAudioEngine) -> Bool = {
             MicrophoneDeviceSelector.select(on: $0.inputNode)
         }
@@ -140,6 +148,7 @@ final class DictationController {
         self.onFailure = onFailure
         self.onFallback = onFallback
         self.onLanguageDetected = onLanguageDetected
+        self.onSegments = onSegments
         self.selectFallbackInput = selectFallbackInput
         recognizer = Self.makeRecognizer(for: .automatic)
     }
@@ -340,7 +349,8 @@ final class DictationController {
     func handleRecognition(_ event: DictationRecognitionEvent, generation: Int) {
         guard recognitionGate.accepts(generation) else { return }
         switch event {
-        case .transcript(let transcript, isFinal: true):
+        case .transcript(let transcript, isFinal: true, let segments):
+            onSegments(segments)
             guard !transcript.isEmpty else {
                 abortRecognition()
                 onFailure(DictationError.unavailable)
@@ -367,7 +377,8 @@ final class DictationController {
                 return
             }
             deliverTranscript(transcript, generation: generation)
-        case .transcript(let transcript, isFinal: false):
+        case .transcript(let transcript, isFinal: false, let segments):
+            onSegments(segments)
             if !transcript.isEmpty {
                 onPartial(transcript)
             }
@@ -428,7 +439,8 @@ final class DictationController {
     ) {
         guard recognitionGate.accepts(generation) else { return }
         switch event {
-        case .transcript(let transcript, isFinal: true):
+        case .transcript(let transcript, isFinal: true, let segments):
+            onSegments(segments)
             rerouting = false
             detectedLanguageIdentifier = detectedIdentifier
             onLanguageDetected(detectedIdentifier)
@@ -438,7 +450,8 @@ final class DictationController {
                 return
             }
             deliverTranscript(transcript, generation: generation)
-        case .transcript(let transcript, isFinal: false):
+        case .transcript(let transcript, isFinal: false, let segments):
+            onSegments(segments)
             if !transcript.isEmpty { onPartial(transcript) }
         case .failure(let error):
             abortRecognition()

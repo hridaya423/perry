@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 import SwiftUI
+import PerryBrain
 import PerryCore
 import PerryOverlay
 import PerryCapture
@@ -68,10 +69,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }()
     private var statusItem: NSStatusItem?
     private var panel: NSPanel?
-    private var settingsWindow: NSWindow?
     private var intentCardWindow: IntentCardWindow?
-    private var historyWindow: HistoryWindow?
-    private var backgroundTasksWindow: BackgroundTasksWindow?
     private lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
@@ -172,6 +170,37 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 )
             }
         }
+    )
+    private let talkTargetStore = CuaGuideTargetStore()
+    private lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: storageDirectory)
+    private var talkSessionStarted = false
+    lazy var talkSession = TalkSession(
+        sessionController: sessionController,
+        overlayState: overlayState,
+        output: self,
+        services: TalkSession.Services(
+            makeInput: { SFSpeechInput() },
+            output: SystemVoiceOutput(),
+            capture: { [weak self] in
+                guard let self else { throw CancellationError() }
+                return try await self.captureTalkObservation()
+            },
+            route: { [weak self] requirement in
+                guard let self else { throw CancellationError() }
+                return try await self.brain.route(requirement)
+            },
+            skill: { [weak self] observation in
+                self?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
+            }
+        )
+    )
+    private lazy var modifierHoldMonitor = ModifierHoldMonitor(
+        onHoldStart: { [weak self] in
+            self?.talkSessionStarted = true
+            self?.talkSession.keyDown()
+        },
+        onHoldEnd: { [weak self] in self?.talkSession.keyUp() },
+        onComposer: { [weak self] in self?.toggleSession() }
     )
     lazy var voice = VoiceController(
         overlayState: overlayState,
@@ -293,6 +322,37 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         activityLog: activityLog
     )
     private lazy var notchStatus = NotchStatusController()
+    private lazy var homeController: HomeController = {
+        let controller = HomeController()
+        if let storageDirectory {
+            controller.threadStore = ThreadStore(
+                directory: storageDirectory.appendingPathComponent("Threads", isDirectory: true)
+            )
+        }
+        controller.answerProvider = { [weak self] prompt in
+            guard let client = self?.runtimes.makeProviderClient() else { return "" }
+            return try await client.complete(prompt: prompt)
+        }
+        controller.configure(deps: HomeModel.Deps(
+            transcriptStore: transcriptStore,
+            activityLog: activityLog,
+            undoableEntryIDs: { [backgroundTasks] in
+                await backgroundTasks.reloadRecords()
+                return Set(backgroundTasks.records.compactMap { record -> UUID? in
+                    guard !backgroundTasks.undoableDescriptions(for: record).isEmpty else { return nil }
+                    if case .executable(let plan) = record.plan { return plan.planID }
+                    return UUID(uuidString: record.id.rawValue)
+                })
+            },
+            backgroundTasks: backgroundTasks,
+            runtimes: runtimes,
+            fileRoots: (storageDirectory.map {
+                [$0.appendingPathComponent("PracticeSandbox", isDirectory: true),
+                 $0.appendingPathComponent("Files", isDirectory: true)]
+            } ?? [])
+        ))
+        return controller
+    }()
     private var lastBackgroundCount = 0
     private var lastAwaitingApprovalCount = 0
     private lazy var routineLibrary = RoutineLibraryController(
@@ -308,6 +368,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 backgroundCount: self?.lastBackgroundCount ?? 0,
                 awaitingApproval: self?.lastAwaitingApprovalCount ?? 0
             )
+            self?.updateHomePeek(isRecording: recording)
         },
         providerCompleter: { [weak self] in
             guard let client = self?.runtimes.makeProviderClient() else { return nil }
@@ -329,6 +390,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                     backgroundCount: active,
                     awaitingApproval: awaiting
                 )
+                self?.updateHomePeek(isRecording: self?.routineLibrary.isRecording ?? false)
             }
         )
 #if DEBUG
@@ -375,7 +437,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             roots: erasurePaths.completeErasureRoots
         )
     )
-    private var onboardingFlow: OnboardingFlow?
+    private var onboardingDirector: OnboardingDirector?
+    private lazy var onboardingSpeech = SystemVoiceOutput()
+    private lazy var practiceWindow = PracticeWindow()
     private var memoryMenuItem: NSMenuItem?
     private var notchStatusMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
@@ -541,6 +605,24 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionStateObservation = sessionController.$state.sink { [weak self] state in
             guard let self else { return }
             self.foreground.handleSessionState(state)
+            if self.talkSessionStarted, !state.isTalkingSession {
+                self.talkSession.cancel()
+            }
+            // Onboarding practice beat: a finished Guide run completes the
+            // guide sub-step when one was active.
+            if let director = self.onboardingDirector,
+               director.beat == .practice,
+               director.practiceStep == .guide,
+               case .idle = state {
+                director.notePracticeStepCompleted()
+            }
+            // Last answer feeds the Home peek's preview line.
+            if case .asking(let ask) = state, let text = ask.answerText {
+                self.homeController.noteAnswer(text)
+            }
+            if case .talking(let talk) = state, let text = talk.answerText {
+                self.homeController.noteAnswer(text)
+            }
             self.objectWillChange.send()
         }
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -592,6 +674,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // A companion that gets terminated mid-setup loses the user's trust
+        // (HeyClicky lost first-run setups to this). Opt out explicitly.
+        ProcessInfo.processInfo.disableAutomaticTermination(
+            "Perry is a session-ready companion"
+        )
 #if DEBUG
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == .backgroundTasksStorageError {
@@ -617,6 +704,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installStatusItem()
         installHotkey()
         voice.startInputListeners()
+        modifierHoldMonitor.start()
+        homeController.start()
 #if DEBUG
         if debugSurface == nil {
             runOnboardingIfNeeded()
@@ -1019,6 +1108,29 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
+    /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
+    /// *that* something is running; the peek says *what* — a live step line
+    /// per active agent.
+    private func updateHomePeek(isRecording: Bool) {
+        var lines: [String] = []
+        for record in backgroundTasks.records where !record.isTerminal {
+            if case .executable(let plan) = record.plan, !plan.actions.isEmpty {
+                let step = min(record.checkpoint.nextStepIndex + 1, plan.actions.count)
+                lines.append("\(record.goal) — step \(step) of \(plan.actions.count)")
+            } else {
+                lines.append(record.goal)
+            }
+        }
+        if lines.isEmpty && lastBackgroundCount > 0 {
+            lines.append(lastBackgroundCount == 1 ? "1 background task" : "\(lastBackgroundCount) background tasks")
+        }
+        homeController.updateStatus(
+            isRecording: isRecording,
+            agentLines: lines,
+            unreadCount: lastAwaitingApprovalCount
+        )
+    }
+
     @objc private func runRoutineAction(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let id = UUID(uuidString: raw),
@@ -1231,31 +1343,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc private func settingsAction() {
-        if settingsWindow == nil {
-#if DEBUG
-            let rootView = PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(to: SettingsView())
-#else
-            let rootView = SettingsView()
-#endif
-            let window = NSWindow(
-                contentRect: NSRect(
-                    x: 0,
-                    y: 0,
-                    width: PerryTheme.Sizing.settingsWidth,
-                    height: PerryTheme.Sizing.settingsHeight
-                ),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Perry Settings"
-            window.contentView = NSHostingView(rootView: rootView)
-            window.isReleasedWhenClosed = false
-            window.center()
-            settingsWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        homeController.openHome(selection: .settings)
     }
 
     @objc private func toggleMemoryAction() {
@@ -1346,6 +1434,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         backgroundTasks.closeControls()
         askController.cancel()
         notchStatus.hide()
+        homeController.stop()
         routineLibrary.stop()
         guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
@@ -1369,6 +1458,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         demoDirector.cancel()
         askController.cancel()
         notchStatus.hide()
+        homeController.stop()
         routineLibrary.stop()
         await guideCoordinator.stopForErasure()
         spatialMonitor.stop()
@@ -1447,16 +1537,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func showBackgroundTasks() {
         runtimes.refreshChoices()
-        backgroundTasksWindow?.close()
-        backgroundTasksWindow = BackgroundTasksWindow(backgroundTasks: backgroundTasks, runtimes: runtimes)
-        backgroundTasksWindow?.show()
+        homeController.openHome(selection: .tasks)
     }
 
 #if DEBUG
     private func showDebugBackgroundTasksStorageError() {
-        backgroundTasksWindow?.close()
-        backgroundTasksWindow = BackgroundTasksWindow(backgroundTasks: backgroundTasks, runtimes: runtimes)
-        backgroundTasksWindow?.show()
+        runtimes.refreshChoices()
+        homeController.openHome(selection: .tasks)
     }
 #endif
 
@@ -1638,7 +1725,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func showWhatsNew() {
-        WhatsNewWindow.show()
+        homeController.openHome(selection: .whatsNew)
     }
 
     private func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {
@@ -1716,16 +1803,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func showHistory() {
-        historyWindow?.close()
-        historyWindow = HistoryWindow(store: transcriptStore, activityLog: activityLog) { [backgroundTasks] in
-            await backgroundTasks.reloadRecords()
-            return Set(backgroundTasks.records.compactMap { record -> UUID? in
-                guard !backgroundTasks.undoableDescriptions(for: record).isEmpty else { return nil }
-                if case .executable(let plan) = record.plan { return plan.planID }
-                return UUID(uuidString: record.id.rawValue)
-            })
-        }
-        historyWindow?.show()
+        homeController.openHome(selection: .history)
     }
 
     func exportActivityLog() {
@@ -1853,18 +1931,166 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func runOnboarding(force: Bool) {
-        if onboardingFlow != nil && !force { return }
-        let flow = OnboardingFlow()
-        onboardingFlow = flow
-        OnboardingWindow.show(
-            flow: flow,
-            controller: self,
-            onClose: { self.onboardingFlow = nil },
-            onFinish: {
-                UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
-                self.onboardingFlow = nil
+        if onboardingDirector != nil && !force { return }
+        startOnboarding(effects: OnboardingDirector.Effects())
+    }
+
+    /// Drives the Phase-4 beat script: greet → first talk → live-detected
+    /// permissions → brain choice → sandbox practice → tuck into the notch.
+    /// All UI goes through the overlay cursor + captions + TTS; the only
+    /// real window is the bundled practice surface.
+    private func startOnboarding(effects overrides: OnboardingDirector.Effects) {
+        var effects = overrides
+        effects.speak = { [weak self] line in
+            self?.overlayState.taskBubbleText = line
+            self?.onboardingSpeech.speak(line)
+        }
+        effects.openScreenAccessSettings = {
+            if let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            ) {
+                NSWorkspace.shared.open(url)
             }
+        }
+        effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
+        effects.finish = { [weak self] in self?.finishOnboarding() }
+        let director = OnboardingDirector(effects: effects)
+        director.onBeatChanged = { [weak self] beat, _ in
+            guard let self else { return }
+            switch beat {
+            case .brainChoice:
+                self.presentBrainChoices()
+            case .screenAccess:
+                self.pointAtSystemSettingsWindow()
+            default:
+                self.clearOnboardingMarks()
+            }
+        }
+        onboardingDirector = director
+        talkSession.onTurnCompleted = { [weak director] in
+            director?.noteTalkTurnCompleted()
+        }
+        practiceWindow.onEvent = { [weak director] _ in
+            director?.notePracticeStepCompleted()
+        }
+        if PerryPermissionProbe.checkMicrophone() == .denied {
+            director.noteMicrophoneDenied()
+        }
+        director.start()
+    }
+
+    /// Brain choice (§4.1.4): a popup menu at the cursor — no new window for
+    /// a consequential one-click decision.
+    private func presentBrainChoices() {
+        let menu = NSMenu()
+        let chatGPT = NSMenuItem(
+            title: "Use my ChatGPT account — one click, no keys",
+            action: #selector(brainChoiceChatGPT), keyEquivalent: ""
         )
+        let onDevice = NSMenuItem(
+            title: "Use this Mac (on-device model)",
+            action: #selector(brainChoiceOnDevice), keyEquivalent: ""
+        )
+        let byok = NSMenuItem(
+            title: "I have a key or local model…",
+            action: #selector(brainChoiceBYOK), keyEquivalent: ""
+        )
+        let skip = NSMenuItem(title: "Skip", action: #selector(brainChoiceSkip), keyEquivalent: "")
+        for item in [chatGPT, onDevice, byok, skip] {
+            item.target = self
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    @objc private func brainChoiceChatGPT() {
+        brain.signInWithChatGPT()
+        onboardingDirector?.noteBrainChoiceMade()
+    }
+
+    @objc private func brainChoiceOnDevice() {
+        onboardingDirector?.noteBrainChoiceMade()
+    }
+
+    @objc private func brainChoiceBYOK() {
+        settingsAction()
+        onboardingDirector?.noteBrainChoiceMade()
+    }
+
+    @objc private func brainChoiceSkip() {
+        onboardingDirector?.noteBrainChoiceMade()
+    }
+
+    /// Onboarding marks (kept separate so a beat change clears only ours).
+    private var onboardingMarkIDs: Set<UUID> = []
+
+    /// §4.1.3: while the permission beat is active, point at the System
+    /// Settings window with an ink arrow + caption. Window bounds come from
+    /// CGWindowList — readable without any permission — while the deep link
+    /// is what lands the user on the right pane. Precise toggle pointing
+    /// needs AX on System Settings (granted by this very beat).
+    private func pointAtSystemSettingsWindow() {
+        clearOnboardingMarks()
+        Task { @MainActor [weak self] in
+            for _ in 0..<40 {
+                guard let self, self.onboardingDirector?.beat == .screenAccess else { return }
+                if let frame = self.systemSettingsWindowFrame() {
+                    let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+                    let windowBL = CGRect(
+                        x: frame.minX, y: primaryMaxY - frame.maxY,
+                        width: frame.width, height: frame.height
+                    )
+                    let overlay = PerryGuidanceOverlay.scribble(
+                        points: [
+                            CGPoint(x: windowBL.minX - 60, y: windowBL.midY + 30),
+                            CGPoint(x: windowBL.minX - 8, y: windowBL.midY),
+                        ],
+                        accentHex: "#34D399", lineWidth: 5,
+                        caption: "Turn on Perry here — I'll notice.",
+                        duration: 120
+                    )
+                    self.overlayState.visualGuidanceOverlays.append(overlay)
+                    self.onboardingMarkIDs.insert(overlay.id)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+    }
+
+    private func clearOnboardingMarks() {
+        guard !onboardingMarkIDs.isEmpty else { return }
+        overlayState.visualGuidanceOverlays.removeAll { onboardingMarkIDs.contains($0.id) }
+        onboardingMarkIDs = []
+    }
+
+    /// On-screen bounds of the System Settings window (CG top-left space),
+    /// matched by owner PID — window names need Screen Recording, bounds don't.
+    private func systemSettingsWindowFrame() -> CGRect? {
+        guard let app = NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.systempreferences"
+        ).first,
+              let list = CGWindowListCopyWindowInfo(
+                  [.optionOnScreenOnly], kCGNullWindowID
+              ) as? [[String: Any]] else { return nil }
+        for info in list {
+            guard (info[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
+                  (info[kCGWindowLayer as String] as? Int) == 0,
+                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
+                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  frame.width > 200, frame.height > 200 else { continue }
+            return frame
+        }
+        return nil
+    }
+
+    private func finishOnboarding() {
+        practiceWindow.close()
+        clearOnboardingMarks()
+        overlayState.taskBubbleText = nil
+        talkSession.onTurnCompleted = nil
+        UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
+        onboardingDirector = nil
     }
 
 #if DEBUG
@@ -1875,23 +2101,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func runDebugOnboarding() {
-        let denied = PerryPermissionSnapshot(
-            accessibility: false,
-            screenRecording: .denied,
-            microphone: .denied
-        )
-        let flow = OnboardingFlow(
-            probe: { denied },
-            cliDetector: { URL(fileURLWithPath: "/usr/bin/false") },
-            codexDetector: { URL(fileURLWithPath: "/usr/bin/codex") }
-        )
-        onboardingFlow = flow
-        OnboardingWindow.show(
-            flow: flow,
-            controller: self,
-            onClose: { self.onboardingFlow = nil },
-            permissionProbe: { denied }
-        )
+        var effects = OnboardingDirector.Effects()
+        effects.permissionProbe = {
+            PerryPermissionSnapshot(
+                accessibility: false,
+                screenRecording: .denied,
+                microphone: .denied
+            )
+        }
+        startOnboarding(effects: effects)
     }
 
     /// Seeds three deterministic transcript entries (two days, mixed
@@ -2101,6 +2319,21 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
 
     func guideSpatialRegionDescription() -> String? {
         activeSpatialSelection?.description
+    }
+
+    /// Talk's screen capture: same worker/target-store path Ask uses, with its
+    /// own store so Talk and Ask hint caches never cross. The observation's
+    /// screenshot stays in memory for the turn only.
+    func captureTalkObservation() async throws -> GuideObservation {
+        let hint = guideTargetHint()
+        await talkTargetStore.set(hint)
+        var resources = Set<BackgroundTaskResource>()
+        if let bundleID = guideAppBundleID(for: hint) {
+            resources.insert(.application(bundleID))
+        }
+        return try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
+            try await CuaGuideTreeReader(worker: worker, targetStore: self.talkTargetStore).observe()
+        }
     }
 }
 

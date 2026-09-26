@@ -34,11 +34,11 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Perry drives apps you ask it to drive.</string>
+	<string>Perry can drive the app you're pointing at — only for a task you asked it to do, and you can undo or stop it.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Perry uses the microphone only while you hold a session open, for speech recognition and optional realtime voice.</string>
+	<string>Perry hears you only while you hold the talk key — it never listens in the background.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Perry uses Apple Speech to transcribe requests you speak.</string>
+	<string>Perry transcribes what you say with Apple Speech, on this Mac, so it can answer. Nothing leaves the Mac for speech.</string>
 	<key>PerryIssuesURL</key>
 	<string>$(PERRY_ISSUES_URL)</string>
 	<key>SUEnableAutomaticChecks</key>

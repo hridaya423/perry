@@ -5,32 +5,28 @@ import PerryCore
 
 @MainActor
 final class InteractivePanelTests: XCTestCase {
-    func testBackgroundTasksPanelCanActivateForKeyboardInput() {
-        let window = BackgroundTasksWindow(
-            backgroundTasks: AppController.shared.backgroundTasks,
-            runtimes: AppController.shared.runtimes
-        )
+    /// Phase 5: History, Background Tasks and What's New all live inside the
+    /// Home window, so the single interactive surface carries the properties
+    /// the per-feature panels used to be tested for.
+    func testHomeWindowCanActivateForKeyboardInputAndResize() {
+        let controller = HomeController()
+        controller.openHome(selection: .tasks)
 
-        XCTAssertTrue(window.canBecomeKey)
-        XCTAssertFalse(window.styleMask.contains(.nonactivatingPanel))
-        XCTAssertTrue(window.styleMask.contains(.resizable))
+        let window = controller.homeWindow
+        XCTAssertNotNil(window)
+        XCTAssertTrue(window?.canBecomeKey ?? false)
+        XCTAssertFalse(window?.styleMask.contains(.nonactivatingPanel) ?? true)
+        XCTAssertTrue(window?.styleMask.contains(.resizable) ?? false)
+        controller.closeHome()
     }
 
-    func testHistoryPanelCanActivateForSearchAndExport() {
-        let window = HistoryWindow(store: TranscriptStore(directory: nil), activityLog: ActivityLog(storageDirectory: nil))
-
-        XCTAssertTrue(window.canBecomeKey)
-        XCTAssertFalse(window.styleMask.contains(.nonactivatingPanel))
-        XCTAssertTrue(window.styleMask.contains(.resizable))
-    }
-
-    func testWhatsNewPanelCanActivateAndGrowWithContent() {
-        let window = WhatsNewWindow()
-
-        XCTAssertTrue(window.canBecomeKey)
-        XCTAssertFalse(window.styleMask.contains(.nonactivatingPanel))
-        XCTAssertTrue(window.styleMask.contains(.resizable))
-        XCTAssertEqual(window.minSize, NSSize(width: 440, height: 360))
+    func testHomeOpensEachMigratedPage() {
+        let controller = HomeController()
+        for selection in [HomeModel.Selection.history, .tasks, .settings, .whatsNew] {
+            controller.openHome(selection: selection)
+            XCTAssertTrue(controller.homeWindow?.isVisible ?? false)
+        }
+        controller.closeHome()
     }
 
     func testCompleteErasureRequiresTheDestructiveButtonResponse() {

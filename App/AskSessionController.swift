@@ -85,7 +85,7 @@ final class AskSessionController {
             activeAskID = askID
             output?.guideShowOverlay()
             start(question: question, askID: askID)
-        case .guiding, .executing, .reporting, .failed:
+        case .guiding, .executing, .reporting, .failed, .talking:
             output?.guideSetStatus("Finish or dismiss the current session before asking.")
         }
     }

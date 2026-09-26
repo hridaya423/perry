@@ -69,9 +69,9 @@ targets:
         PerryIssuesURL: "$(PERRY_ISSUES_URL)"
         SUEnableAutomaticChecks: true
         LSUIElement: true
-        NSMicrophoneUsageDescription: "Perry uses the microphone only while you hold a session open, for speech recognition and optional realtime voice."
-        NSSpeechRecognitionUsageDescription: "Perry uses Apple Speech to transcribe requests you speak."
-        NSAppleEventsUsageDescription: "Perry drives apps you ask it to drive."
+        NSMicrophoneUsageDescription: "Perry hears you only while you hold the talk key — it never listens in the background."
+        NSSpeechRecognitionUsageDescription: "Perry transcribes what you say with Apple Speech, on this Mac, so it can answer. Nothing leaves the Mac for speech."
+        NSAppleEventsUsageDescription: "Perry can drive the app you're pointing at — only for a task you asked it to do, and you can undo or stop it."
         CFBundleURLTypes:
           - CFBundleURLName: "dev.perry.oauth"
             CFBundleURLSchemes:

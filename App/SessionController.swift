@@ -37,6 +37,18 @@ struct AskSessionState: Equatable {
     var isWorking = false
 }
 
+/// Voice-led point-and-talk session. Talk observes, draws, and speaks; it can
+/// never act — the .talk tool surface only admits observe + draw tools.
+struct TalkSessionState: Equatable {
+    let id: UUID
+    let startedAt: Date
+    var transcript: String
+    var answerText: String?
+    var turnCount = 0
+    var isListening = false
+    var isWorking = false
+}
+
 enum ExecutionPhase: Equatable {
     case starting
     case running
@@ -251,6 +263,7 @@ enum SessionState: Equatable {
     case invoking(InvocationState)
     case guiding(GuideSessionState)
     case asking(AskSessionState)
+    case talking(TalkSessionState)
     case executing(ExecutionSessionState)
     case reporting(ReportState)
     case failed(SessionFailure)
@@ -259,6 +272,13 @@ enum SessionState: Equatable {
 enum DismissalDirective: Equatable {
     case dismiss
     case stopExecution
+}
+
+extension SessionState {
+    var isTalkingSession: Bool {
+        if case .talking = self { return true }
+        return false
+    }
 }
 
 struct IllegalSessionTransitionError: Error, Equatable {
@@ -343,6 +363,25 @@ final class SessionController: ObservableObject {
         guard case .asking(var ask) = state else { return }
         update(&ask)
         state = .asking(ask)
+    }
+
+    func startTalk(_ talk: TalkSessionState) throws {
+        try startTalk(talk, attemptID: try invokingAttemptID())
+    }
+
+    func startTalk(_ talk: TalkSessionState, attemptID: UUID) throws {
+        guard case .invoking(let invocation) = state, invocation.id == attemptID else {
+            throw IllegalSessionTransitionError(state: state, operation: "start talk")
+        }
+        state = .talking(talk)
+    }
+
+    /// Mutates the live talk session. No-op outside `.talking` so late provider
+    /// callbacks cannot resurrect a dismissed session.
+    func updateTalk(_ update: (inout TalkSessionState) -> Void) {
+        guard case .talking(var talk) = state else { return }
+        update(&talk)
+        state = .talking(talk)
     }
 
     func startExecution(_ execution: ExecutionSessionState, attemptID: UUID) throws {
@@ -603,7 +642,7 @@ final class SessionController: ObservableObject {
 
     func fail(_ failure: SessionFailure) throws {
         switch state {
-        case .invoking, .guiding, .asking, .executing:
+        case .invoking, .guiding, .asking, .talking, .executing:
             state = .failed(failure)
         case .idle, .reporting, .failed:
             throw IllegalSessionTransitionError(state: state, operation: "fail")
@@ -646,7 +685,7 @@ final class SessionController: ObservableObject {
             state = .idle
         case .executing:
             throw IllegalSessionTransitionError(state: state, operation: "complete dismissal")
-        case .idle, .invoking, .guiding, .asking:
+        case .idle, .invoking, .guiding, .asking, .talking:
             state = .idle
         }
     }

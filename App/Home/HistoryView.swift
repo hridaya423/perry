@@ -2,32 +2,6 @@ import AppKit
 import SwiftUI
 import PerryCore
 
-@MainActor
-final class HistoryWindow: NSPanel {
-    override var canBecomeKey: Bool { true }
-
-    init(store: TranscriptStore, activityLog: ActivityLog, undoableEntryIDs: (@MainActor () async -> Set<UUID>)? = nil) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        title = "Perry history"
-        isFloatingPanel = true
-        level = .floating
-        contentView = NSHostingView(rootView: HistoryView(store: store, activityLog: activityLog, undoableEntryIDs: undoableEntryIDs))
-    }
-
-    func show() {
-        if let screen = NSScreen.main?.visibleFrame {
-            setFrameOrigin(NSPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        makeKeyAndOrderFront(nil)
-    }
-}
-
 struct HistoryView: View {
     let store: TranscriptStore
     let activityLog: ActivityLog

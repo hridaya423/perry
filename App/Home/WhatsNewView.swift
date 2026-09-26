@@ -1,42 +1,6 @@
 import AppKit
 import SwiftUI
 
-@MainActor
-final class WhatsNewWindow: NSPanel {
-    static var active: WhatsNewWindow?
-    override var canBecomeKey: Bool { true }
-
-    static func show() {
-        active?.close()
-        let window = WhatsNewWindow()
-        active = window
-        if let screen = NSScreen.main?.visibleFrame {
-            window.setFrameOrigin(
-                NSPoint(x: screen.midX - 220, y: screen.midY - 180)
-            )
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 360),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        title = "What’s New in Perry"
-        minSize = NSSize(width: 440, height: 360)
-        isFloatingPanel = true
-        level = .floating
-        contentView = NSHostingView(rootView: WhatsNewView {
-            Self.active?.close()
-            Self.active = nil
-        })
-    }
-}
-
 struct WhatsNewView: View {
     let onDone: () -> Void
 

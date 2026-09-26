@@ -4,32 +4,6 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-@MainActor
-final class BackgroundTasksWindow: NSPanel {
-    override var canBecomeKey: Bool { true }
-
-    init(backgroundTasks: BackgroundTaskController, runtimes: RuntimeCatalog) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 460),
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        title = "Perry background tasks"
-        isFloatingPanel = true
-        level = .floating
-        contentView = NSHostingView(rootView: BackgroundTasksView(backgroundTasks: backgroundTasks, runtimes: runtimes))
-    }
-
-    func show() {
-        if let screen = NSScreen.main?.visibleFrame {
-            setFrameOrigin(NSPoint(x: screen.midX - frame.width / 2, y: screen.midY - frame.height / 2))
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        makeKeyAndOrderFront(nil)
-    }
-}
-
 struct BackgroundTasksView: View {
     @ObservedObject var backgroundTasks: BackgroundTaskController
     let runtimes: RuntimeCatalog

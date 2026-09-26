@@ -8,19 +8,37 @@ final class SemanticTypographyTests: XCTestCase {
             .deletingLastPathComponent()
         let files = [
             "AgentActivityStrip.swift",
-            "BackgroundTasksWindow.swift",
-            "HistoryWindow.swift",
             "IntegrationRow.swift",
             "IntentCardWindow.swift",
-            "OnboardingWindow.swift",
             "PerryTheme.swift",
             "SettingsView.swift",
-            "WhatsNewWindow.swift"
+        ]
+        // Phase 5: History/BackgroundTasks/WhatsNew moved into Home pages.
+        let homeFiles = [
+            "BackgroundTasksView.swift",
+            "HistoryView.swift",
+            "HomePeekView.swift",
+            "HomeView.swift",
+            "WhatsNewView.swift"
         ]
 
         for file in files {
             let source = try String(
                 contentsOf: repository.appendingPathComponent("App/\(file)"),
+                encoding: .utf8
+            )
+            XCTAssertFalse(
+                source.contains(".font(.system(size:"),
+                "\(file) uses fixed point typography instead of a semantic text style"
+            )
+            XCTAssertFalse(
+                file == "PerryTheme.swift" && source.contains("Font.system(size:"),
+                "PerryTheme typography tokens must use semantic text styles"
+            )
+        }
+        for file in homeFiles {
+            let source = try String(
+                contentsOf: repository.appendingPathComponent("App/Home/\(file)"),
                 encoding: .utf8
             )
             XCTAssertFalse(
