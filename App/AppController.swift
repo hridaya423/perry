@@ -44,6 +44,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private var hotkey: HotkeyController?
     private let overlayState = PerryCursorState()
+    let brain = BrainController()
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
@@ -915,6 +916,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         menu.addItem(watchItem)
 #if DEBUG
         menu.addItem(withTitle: "Run live Perry demo", action: #selector(demoAction), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Brain smoke test", action: #selector(brainSmokeTestAction), keyEquivalent: "").target = self
         let drills = NSMenuItem(title: "Failure drills", action: nil, keyEquivalent: "")
         let drillMenu = NSMenu()
         for drill in FailureDrill.allCases {
@@ -1161,6 +1163,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
 #if DEBUG
+    @objc private func brainSmokeTestAction() {
+        brain.smokeTest { [weak self] status in self?.sessionStatus = status }
+    }
+
     @objc private func failureDrillAction(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let drill = FailureDrill(rawValue: rawValue) else { return }

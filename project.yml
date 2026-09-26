@@ -23,6 +23,8 @@ packages:
     path: Packages/PerryCapture
   PerryGuide:
     path: Packages/PerryGuide
+  PerryBrain:
+    path: Packages/PerryBrain
 targets:
   Perry:
     type: application
@@ -49,6 +51,8 @@ targets:
       - package: PerryOverlay
       - package: PerryCapture
       - package: PerryGuide
+      - package: PerryBrain
+        product: PerryBrain
     preBuildScripts:
       - path: scripts/fetch-codex-runtime.sh
         name: FetchCodexRuntime
