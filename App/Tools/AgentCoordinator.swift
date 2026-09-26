@@ -31,11 +31,20 @@ final class AgentCoordinator: ObservableObject {
 
     /// Starts an agent turn for `goal` on `threadID` and streams its events.
     /// The finished turn (goal + final text + actuation labels) is appended to
-    /// the thread automatically.
-    func run(threadID: UUID, goal: String, perryID: String? = nil) -> AsyncStream<AgentLoopEvent> {
+    /// the thread automatically unless `persistTurn` is false — for callers
+    /// that persist the turn themselves.
+    func run(
+        threadID: UUID,
+        goal: String,
+        perryID: String? = nil,
+        persistTurn: Bool = true
+    ) -> AsyncStream<AgentLoopEvent> {
         AsyncStream { continuation in
             let task = Task { [weak self] in
-                await self?.execute(threadID: threadID, goal: goal, perryID: perryID, sink: continuation)
+                await self?.execute(
+                    threadID: threadID, goal: goal, perryID: perryID,
+                    persistTurn: persistTurn, sink: continuation
+                )
             }
             continuation.onTermination = { _ in task.cancel() }
         }
@@ -60,6 +69,7 @@ final class AgentCoordinator: ObservableObject {
         threadID: UUID,
         goal: String,
         perryID: String?,
+        persistTurn: Bool,
         sink: AsyncStream<AgentLoopEvent>.Continuation
     ) async {
         guard !Task.isCancelled else { sink.finish(); return }
@@ -100,12 +110,14 @@ final class AgentCoordinator: ObservableObject {
                     actuationLabels.append(label)
                 }
             case .finished:
-                await threads.appendTurn(
-                    to: threadID,
-                    question: goal,
-                    answer: text,
-                    elementLabels: Array(actuationLabels.prefix(20))
-                )
+                if persistTurn {
+                    await threads.appendTurn(
+                        to: threadID,
+                        question: goal,
+                        answer: text,
+                        elementLabels: Array(actuationLabels.prefix(20))
+                    )
+                }
             case .toolCallStarted, .note:
                 break
             }

@@ -61,6 +61,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 }
             ).executors
             + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + AppTools().executors
             + packageExecutors()
         )
     }()
@@ -398,16 +399,32 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         activityLog: activityLog
     )
     private lazy var notchStatus = NotchStatusController()
+    private lazy var homeThreadStore = ThreadStore(
+        directory: (storageDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory()))
+            .appendingPathComponent("Threads", isDirectory: true)
+    )
+    lazy var agentCoordinator = AgentCoordinator(
+        brain: brain, host: toolHost, threads: homeThreadStore
+    )
     private lazy var homeController: HomeController = {
         let controller = HomeController()
-        if let storageDirectory {
-            controller.threadStore = ThreadStore(
-                directory: storageDirectory.appendingPathComponent("Threads", isDirectory: true)
-            )
-        }
-        controller.answerProvider = { [weak self] prompt in
-            guard let client = self?.runtimes.makeProviderClient() else { return "" }
-            return try await client.complete(prompt: prompt)
+        controller.threadStore = homeThreadStore
+        controller.answerProvider = { [weak self] threadID, prompt in
+            guard let self else { return "" }
+            // Agent path first: the deep route drives observe/act/verify tool
+            // calls; a provider failure or silent run falls back to the plain
+            // completer so a thread reply never dead-ends.
+            var text = ""
+            var agentFailed = false
+            for await event in agentCoordinator.run(threadID: threadID, goal: prompt, persistTurn: false) {
+                if case .textDelta(let delta) = event { text += delta }
+                if case .finished(.providerError) = event { agentFailed = true }
+            }
+            if agentFailed || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                guard let client = runtimes.makeProviderClient() else { return text }
+                return (try? await client.complete(prompt: prompt)) ?? text
+            }
+            return text
         }
         controller.configure(deps: HomeModel.Deps(
             transcriptStore: transcriptStore,

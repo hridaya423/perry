@@ -32,9 +32,9 @@ final class HomeController {
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     var threadStore: ThreadStore?
-    /// Injected by AppController: single-shot provider completion for Home
-    /// thread replies (same completer background routines use).
-    var answerProvider: ((String) async throws -> String)?
+    /// `(threadID, prompt) -> answer`. Runs the agent loop when the owner
+    /// wires it; the turn is persisted by `onSend` below.
+    var answerProvider: ((UUID, String) async throws -> String)?
 
     // MARK: - Lifecycle
 
@@ -329,7 +329,7 @@ final class HomeController {
             Task {
                 var answer = ""
                 if let provider = self.answerProvider {
-                    answer = (try? await provider(text)) ?? ""
+                    answer = (try? await provider(threadID, text)) ?? ""
                 }
                 _ = await self.threadStore?.appendTurn(to: threadID, question: text, answer: answer)
                 await self.refreshThreads()
