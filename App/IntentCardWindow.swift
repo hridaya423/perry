@@ -17,7 +17,14 @@ final class IntentCardWindow: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    init(approvalID: UUID = UUID(), card: IntentCard, allowsStepThrough: Bool = false, completion: @escaping (PlanDecision) -> Void) {
+    init(
+        approvalID: UUID = UUID(),
+        card: IntentCard,
+        allowsStepThrough: Bool = false,
+        alwaysAllowLabel: String? = nil,
+        onAlwaysAllow: (() -> Void)? = nil,
+        completion: @escaping (PlanDecision) -> Void
+    ) {
         self.approvalID = approvalID
         self.card = card
         self.allowsStepThrough = allowsStepThrough
@@ -31,7 +38,12 @@ final class IntentCardWindow: NSPanel {
         isFloatingPanel = true
         level = .modalPanel
         hidesOnDeactivate = false
-        let hostingView = NSHostingView(rootView: IntentCardView(card: card, allowsStepThrough: allowsStepThrough) { [weak self] decision in
+        let hostingView = NSHostingView(rootView: IntentCardView(
+            card: card,
+            allowsStepThrough: allowsStepThrough,
+            alwaysAllowLabel: alwaysAllowLabel,
+            onAlwaysAllow: onAlwaysAllow
+        ) { [weak self] decision in
             self?.finish(decision)
         })
         contentView = hostingView
@@ -77,6 +89,10 @@ final class IntentCardWindow: NSPanel {
 struct IntentCardView: View {
     let card: IntentCard
     var allowsStepThrough: Bool = false
+    /// When set (orange-tier tool approvals), a third choice grants the tool
+    /// for the rest of this thread's session, then counts as run.
+    var alwaysAllowLabel: String?
+    var onAlwaysAllow: (() -> Void)?
     let onAnswer: (PlanDecision) -> Void
 
     @State private var typedConfirmation: String = ""
@@ -145,6 +161,13 @@ struct IntentCardView: View {
                     .keyboardShortcut("s", modifiers: .command)
                     .disabled(!isTypedConfirmationValid)
                     .accessibilityHint("Run the plan one action at a time, confirming each step")
+                }
+                if let alwaysAllowLabel, let onAlwaysAllow, card.tier < .red {
+                    Button(alwaysAllowLabel) {
+                        onAlwaysAllow()
+                        onAnswer(.run)
+                    }
+                    .accessibilityHint("Approve this and future calls of the same tool for this thread")
                 }
                 Button(approveButtonTitle) {
                     guard isTypedConfirmationValid else {

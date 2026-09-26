@@ -100,7 +100,10 @@ final class PerryMCPSocket: @unchecked Sendable {
                   SocketAuth.authorize(token, in: directory) else { return }
 
             let server = MCPServer(
-                bridge: AppMCPBridge(host: host),
+                bridge: AppMCPBridge(
+                    host: host,
+                    approve: { call, spec in await ToolApprovalPresenter.present(call: call, spec: spec) }
+                ),
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
             )
             while let line = nextLine() {

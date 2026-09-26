@@ -48,3 +48,20 @@ client (`perry-mcp` pump) now use raw POSIX `recv`/`send`.
 - `PerryToolHost(executors: [])` — real Screen/Draw/UI/Browser/File/Integration/Memory/Perry executors
 - `AgentCoordinator`, intent-card approval wiring (`AppMCPBridge.approve`)
 - Foreground/Background controller consolidation
+
+## App executors live (second drill, same day)
+
+`App/Tools/`: `AgentObservationStore` (per-thread element index from the last
+observe), `DrawTools` (7 verbs), `ScreenTools` (observe/desktop/zoom/clipboard),
+`UITools` (8 actuation tools, agent surface only), `BrowserTools`
+(`browser.read`). `AppController.toolHost` is now lazy so executors bind
+`workers` + `overlayState`.
+
+Live through `perry-mcp` against the fresh app (pid 7231):
+
+- `tools/list` → 20 tools (was `[]`)
+- `clear` → `"cleared"`
+- `clipboard.read` → real clipboard read
+- `ui.drag` → `isError: "ui.drag needs orange confirmation"` — tier
+  enforcement fails closed until intent-card approvals land
+- Perry stayed alive throughout
