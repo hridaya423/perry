@@ -33,9 +33,9 @@ final class HomeController {
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     var threadStore: ThreadStore?
-    /// `(threadID, prompt) -> answer`. Runs the agent loop when the owner
-    /// wires it; the turn is persisted by `onSend` below.
-    var answerProvider: ((UUID, String) async throws -> String)?
+    /// `(threadID, prompt, onPartial) -> answer`. `onPartial` receives the
+    /// cumulative answer as it streams; the turn is persisted by `onSend`.
+    var answerProvider: ((UUID, String, @MainActor @Sendable (String) -> Void) async throws -> String)?
 
     /// Owner binds the coordinator's running set → composer's working row.
     func bindWorkingThreads(_ publisher: some Publisher<Set<UUID>, Never>) -> AnyCancellable {
@@ -335,10 +335,15 @@ final class HomeController {
         homeModel.onSend = { [weak self] threadID, text in
             guard let self else { return }
             Task {
+                let onPartial: @MainActor @Sendable (String) -> Void = { [weak self] partial in
+                    self?.homeModel.streamingAnswers[threadID] = partial
+                }
                 var answer = ""
                 if let provider = self.answerProvider {
-                    answer = (try? await provider(threadID, text)) ?? ""
+                    answer = (try? await provider(threadID, text, onPartial)) ?? ""
                 }
+                self.homeModel.streamingAnswers[threadID] = nil
+                guard !Task.isCancelled else { return }
                 _ = await self.threadStore?.appendTurn(to: threadID, question: text, answer: answer)
                 await self.refreshThreads()
             }

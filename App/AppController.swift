@@ -411,7 +411,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var homeController: HomeController = {
         let controller = HomeController()
         controller.threadStore = homeThreadStore
-        controller.answerProvider = { [weak self] threadID, prompt in
+        controller.answerProvider = { [weak self] threadID, prompt, onPartial in
             guard let self else { return "" }
             // Agent path first: the deep route drives observe/act/verify tool
             // calls; a provider failure or silent run falls back to the plain
@@ -419,7 +419,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             var text = ""
             var agentFailed = false
             for await event in agentCoordinator.run(threadID: threadID, goal: prompt, persistTurn: false) {
-                if case .textDelta(let delta) = event { text += delta }
+                if case .textDelta(let delta) = event {
+                    text += delta
+                    await onPartial(text)
+                }
                 if case .finished(.providerError) = event { agentFailed = true }
             }
             if agentFailed || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

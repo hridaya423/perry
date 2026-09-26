@@ -118,6 +118,11 @@ private struct ThreadDetailView: View {
                             }
                         }
                     }
+                    if let partial = model.streamingAnswers[thread.id], !partial.isEmpty {
+                        Text(partial)
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(16)
             }
@@ -256,6 +261,8 @@ final class HomeModel: ObservableObject {
     @Published var sidebarSelection: Selection?
     /// Threads with an agent turn in flight — drives the working row.
     @Published var workingThreads: Set<UUID> = []
+    /// In-flight answers by thread, rendered as they stream in.
+    @Published var streamingAnswers: [UUID: String] = [:]
     var deps = Deps()
 
     var onDraftChanged: ((UUID, String) -> Void)?
