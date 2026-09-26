@@ -1,0 +1,6 @@
+data: {"choices":[{"index":0,"delta":{"content":"trunc"}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}
+
+data: [DONE]
+

@@ -1,0 +1,15 @@
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"get_weather","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"item_1","delta":"{\"city\":"}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"item_1","delta":" \"Paris\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"item_1","type":"function_call","call_id":"call_1","name":"get_weather","arguments":"{\"city\": \"Paris\"}"}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"usage":{"input_tokens":40,"output_tokens":11}}}
+

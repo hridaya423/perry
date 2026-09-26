@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""}}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"Hello"}}]}
+
+data: {"choices":[{"index":0,"delta":{"content":" there"}}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}
+
+data: [DONE]
+

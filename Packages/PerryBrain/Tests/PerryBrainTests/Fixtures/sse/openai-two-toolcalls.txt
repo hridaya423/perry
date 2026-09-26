@@ -1,0 +1,21 @@
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"item_a","type":"function_call","call_id":"call_a","name":"get_weather","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"item_a","delta":"{\"city\":\"Paris\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"item_a","type":"function_call","call_id":"call_a","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","item":{"id":"item_b","type":"function_call","call_id":"call_b","name":"get_time","arguments":""}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","item_id":"item_b","delta":"{\"tz\":\"UTC\"}"}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","item":{"id":"item_b","type":"function_call","call_id":"call_b","name":"get_time","arguments":"{\"tz\":\"UTC\"}"}}
+
+event: response.completed
+data: {"type":"response.completed","response":{"usage":{"input_tokens":50,"output_tokens":20}}}
+

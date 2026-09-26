@@ -87,6 +87,14 @@ public struct SSEParser { public mutating func feed(line: String) -> SSEEvent? }
 
 Non-2xx: read up to 8 KiB body, map 401/403 → `.unauthenticated`, 429 → `.rateLimited(resetAt:)` (parse `retry-after` / `x-ratelimit-reset-requests`), else `.http(code)`. Every provider calls `NetworkEndpointPolicy.requireSafe(baseURL)` before any request. Cancellation of the consuming task cancels the URLSession task and yields `.done(.cancelled)` is NOT emitted — the stream just finishes with `CancellationError`.
 
+## Phase 0 spike facts (authoritative — see docs/evidence/phase-0/spikes.md)
+
+- Framing is newline-delimited JSON-RPC over stdio; `scripts/lab/codex-appserver-spike.swift` is a working reference for initialize → account/read → model/list → thread/start → turn/start. Reuse its message shapes.
+- Under ChatGPT auth only `gpt-5.5` runs (gpt-5.4 / -mini rejected). So Codex tier mapping = same model, `effort: "low"` for `.fast`, default for `.deep`; `minimal` is rejected while built-in tools are attached. Resolve models from `model/list` but fall back to the first model that the account accepts; surface the rejection message as `.unavailable` rather than retrying blindly.
+- Image input: `localImage` (a file path) is accepted. Write the JPEG to a Perry-owned temp dir with 0600 perms, pass the path, delete it when the turn ends (success, error, or cancel). Data-URL `image` also appears in schema — prefer it if it works in the fake/real server, since it avoids touching disk.
+- `thread/start` has no top-level `dynamicTools` in 0.132.0; send `capabilities.experimentalApi: true` in initialize and check the `--experimental` schema for the exact field. If absent, `.tools` is omitted from capabilities.
+- First-delta is 6–34 s → Codex is the "deep" brain, never the Talk fast path. Router must therefore prefer a fast provider (BYOK fast model, local, or Apple FM) for `.fast` requirements and use Codex for `.fast` only when nothing else exists (explanation says so).
+
 ## Providers (one file each, in `Sources/PerryBrain/Providers/`)
 
 1. **`OpenAIResponsesProvider`** — `POST {base}/v1/responses`, `stream: true`, `instructions` = system, `input` items (`input_text`, `input_image` with data URL, `function_call` / `function_call_output` for history), `tools: [{type:"function", name, description, parameters}]`, `max_output_tokens`. Events: `response.output_text.delta` → textDelta; `response.output_item.added` (type function_call → start buffer by item id, capture call_id+name); `response.function_call_arguments.delta` → append; `response.output_item.done` (function_call) → parse args → toolCall; `response.completed` → usage + done(toolUse if any tool calls else endTurn); `response.incomplete` with max_output_tokens → done(.maxTokens); `error` / `response.failed` → throw malformed/http. Models: fast/deep configurable, defaults read from `BrainModelDefaults.openAI` (fast `gpt-5-mini`, deep `gpt-5`) — overridable in settings.
@@ -122,7 +130,7 @@ public actor ProviderRouter {
 }
 ```
 
-Order: user preference list first, then default order `codex, openAI, anthropic, gemini, openRouter, local, apple`. Skip unhealthy/unqualified. Explanation names the chosen provider and why earlier preferred ones were skipped (≤80 chars).
+Order: user preference list first, then default order by tier — `.fast`: `openAI, anthropic, gemini, openRouter, local, apple, codex`; `.deep`: `codex, openAI, anthropic, gemini, openRouter, local, apple`. Skip unhealthy/unqualified. Explanation names the chosen provider and why earlier preferred ones were skipped (≤80 chars).
 
 `Router/TierClassifier.swift`: pure `static func tier(question: String, bindingCount: Int, elementCount: Int) -> ModelTier` — deep if question > 160 chars, or contains why/how-do/explain/compare/step/write/draft (+ multilingual basics), or elementCount > 400, or bindingCount > 2; else fast. (Foundation Models classifier is a Phase 2 enhancement.)
 
