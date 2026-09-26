@@ -43,11 +43,50 @@ client (`perry-mcp` pump) now use raw POSIX `recv`/`send`.
 - `PERRY_MCP_SOCKET` env override for the socket path (used for the echo-server isolation test)
 - `PERRY_MCP_DEBUG` env → stderr trace
 
-## Not yet done (Phase 7b+)
+## Not yet done
 
-- `PerryToolHost(executors: [])` — real Screen/Draw/UI/Browser/File/Integration/Memory/Perry executors
-- `AgentCoordinator`, intent-card approval wiring (`AppMCPBridge.approve`)
-- Foreground/Background controller consolidation
+- Foreground/Background controller consolidation (typed-plan retirement)
+- `files.trash` hangs with a locked display (FileManager.trashItem waits on
+  session UI — Finder XPC); observed live, app survives, connection stalls
+
+## Full catalog live (third drill, same day)
+
+Package executor cores bound in `AppController.packageExecutors()`:
+`LocalWorkspaceFiles` (root `…/Perry/workspace`, auto-created),
+`MemoryFiles` (`…/Perry/memory`), `AppIntegrationBackend` (OAuth stack:
+quick-action reads + typed write params + credential-layer approval records),
+`PerryStore` (`…/Perry/perrys`), `AppTools` (`app.launch`, orange).
+
+Live through the socket (pid fresh launch):
+
+- `tools/list` → **37 tools**: draw 7 + screen 4 + ui 8 + browser 1 +
+  files 7 + memory 2 + integrations 3 + perry 4 + app.launch
+- `files.list` → `{"entries":[]}` (fresh workspace)
+- `files.write` → `{"created":true,…,"undo":{"tool":"files.trash",…}}`
+- `files.read` → round-trips the written bytes
+- `files.read ../../etc/hosts` → refused: "path escapes the workspace"
+- `memory.write` without `section` → schema violation (validation live)
+- `integrations.list` → notion/slack/linear/google-workspace with real
+  operation lists, `connected:false` (no OAuth creds — honest)
+- `perry.list` → `{"perrys":[]}`
+- `app.launch {}` → orange tier → intent card presented (locked display:
+  card stayed pending, connection waited — fail-closed, app healthy)
+
+## Approvals + coordination landed
+
+- `AppMCPBridge.approve` → `ToolApprovalPresenter` → IntentCardWindow
+  near cursor; orange = approve/stop, red = typed phrase (enforced by the
+  card before Approve enables).
+- `approve` returns `ToolApproval` (denied/approvedOnce/approvedTyped) —
+  red passes only via typed answer or preflighted `redConfirmed`.
+- `AgentConsentStore`: "Always allow" grants per thread (UserDefaults),
+  orange only; red never auto-approves.
+- `AgentCoordinator`: AgentLoop per thread (deep+tools+vision route),
+  steer/pause/stop, turn persisted to ThreadStore; Home composer is the
+  entry point (completer fallback on provider failure); `runningThreads`
+  drives a "Perry is working" row + Send disabled.
+- Ghost cursor: ui.* actuation points publish a `PerryExternalCursor`
+  (green) on the overlay — the real pointer never moves.
 
 ## App executors live (second drill, same day)
 
