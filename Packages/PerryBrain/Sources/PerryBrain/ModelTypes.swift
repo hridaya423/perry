@@ -1,4 +1,5 @@
 import Foundation
+import PerryCore
 
 public struct ModelCapabilities: OptionSet, Sendable, Hashable {
     public let rawValue: Int
@@ -47,10 +48,21 @@ public struct ToolSpec: Sendable, Equatable {
     public let name: String
     public let description: String
     public let inputSchema: JSONValue
-    public init(name: String, description: String, inputSchema: JSONValue) {
+    /// Minimum trust tier, claimed by the spec author. The model cannot lower it per-call.
+    public let tier: TrustTier
+    public let surfaces: Set<ToolSurface>
+    public init(
+        name: String,
+        description: String,
+        inputSchema: JSONValue,
+        tier: TrustTier = .green,
+        surfaces: Set<ToolSurface> = [.talk, .guide, .agent]
+    ) {
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
+        self.tier = tier
+        self.surfaces = surfaces
     }
 }
 
