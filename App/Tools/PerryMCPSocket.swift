@@ -9,12 +9,14 @@ import PerryBrain
 final class PerryMCPSocket: @unchecked Sendable {
     private let host: PerryToolHost
     private let directory: URL
+    private let toolConsent: ToolConsentStore
     private var listenerFD: Int32 = -1
     private var acceptThread: Thread?
 
     init(host: PerryToolHost, directory: URL) {
         self.host = host
         self.directory = directory
+        self.toolConsent = ToolConsentStore(directory: directory)
     }
 
     private var socketPath: String {
@@ -102,7 +104,12 @@ final class PerryMCPSocket: @unchecked Sendable {
             let server = MCPServer(
                 bridge: AppMCPBridge(
                     host: host,
-                    approve: { call, spec in await ToolApprovalPresenter.present(call: call, spec: spec) }
+                    approve: { [toolConsent] call, spec in
+                        // MCP calls carry no thread — once-only cards, no consent scope.
+                        await ToolApprovalPresenter.present(
+                            call: call, spec: spec, consentStore: toolConsent
+                        )
+                    }
                 ),
                 version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
             )

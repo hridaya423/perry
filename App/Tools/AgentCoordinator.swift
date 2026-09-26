@@ -14,14 +14,14 @@ final class AgentCoordinator: ObservableObject {
     private let brain: BrainController
     private let host: PerryToolHost
     private let threads: ThreadStore
-    private let consent: AgentConsentStore
+    private let consent: ToolConsentStore
     private var loops: [UUID: AgentLoop] = [:]
 
     init(
         brain: BrainController,
         host: PerryToolHost,
         threads: ThreadStore,
-        consent: AgentConsentStore = .shared
+        consent: ToolConsentStore
     ) {
         self.brain = brain
         self.host = host
@@ -87,7 +87,9 @@ final class AgentCoordinator: ObservableObject {
             surface: .agent,
             threadID: threadID.uuidString,
             approve: { call, spec in
-                await ToolApprovalPresenter.present(call: call, spec: spec, consentScope: scope)
+                await ToolApprovalPresenter.present(
+                    call: call, spec: spec, consentScope: scope, consentStore: self.consent
+                )
             }
         )
         let loop = AgentLoop(provider: provider, host: host)
@@ -100,7 +102,8 @@ final class AgentCoordinator: ObservableObject {
 
         var text = ""
         var actuationLabels: [String] = []
-        for await event in loop.run(system: Self.systemPrompt, messages: [.user([.text(goal)])], context: context) {
+        let system = AgentPrompt.system(workspacePath: Self.workspacePath)
+        for await event in loop.run(system: system, messages: [.user([.text(goal)])], context: context) {
             sink.yield(event)
             switch event {
             case .textDelta(let delta):
@@ -133,12 +136,11 @@ final class AgentCoordinator: ObservableObject {
         }.first
     }
 
-    private static let systemPrompt = """
-        You are Perry, acting on the user's Mac. Work in observe-act-verify \
-        cycles: call screen.observe to see the current UI, act with ui.* tools, \
-        then observe again to confirm. Refer to elements by their compact id or \
-        label from the latest observation. Keep replies short — one or two \
-        sentences of narration between actions. If a step needs something you \
-        cannot see or reach, say so plainly and stop.
-        """
+    /// Matches the root `LocalWorkspaceFiles` was given in AppController —
+    /// AgentPrompt tells the model where files.* lives.
+    static var workspacePath: String? {
+        try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+        ).appendingPathComponent("Perry/workspace", isDirectory: true).path
+    }
 }

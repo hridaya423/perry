@@ -84,20 +84,20 @@ final class ToolConsentStoreTests: XCTestCase {
         var asked = 0
         let approve = await store.approving(threadID: "t1") { _, _ in
             asked += 1
-            return true
+            return .approvedOnce
         }
         let granted = await approve(
             ToolCall(id: "1", name: "files.move", arguments: .object([:])),
             ToolSpec(name: "files.move", description: "", inputSchema: .object([:]))
         )
-        XCTAssertTrue(granted)
+        XCTAssertEqual(granted, .approvedOnce)
         XCTAssertEqual(asked, 0)
 
         let ungranted = await approve(
             ToolCall(id: "2", name: "files.trash", arguments: .object([:])),
             ToolSpec(name: "files.trash", description: "", inputSchema: .object([:]))
         )
-        XCTAssertTrue(ungranted)
+        XCTAssertEqual(ungranted, .approvedOnce)
         XCTAssertEqual(asked, 1)
     }
 
@@ -106,13 +106,13 @@ final class ToolConsentStoreTests: XCTestCase {
         var asked = false
         let approve = await store.approving(threadID: nil) { _, _ in
             asked = true
-            return false
+            return .denied
         }
         let result = await approve(
             ToolCall(id: "1", name: "x", arguments: .object([:])),
             ToolSpec(name: "x", description: "", inputSchema: .object([:]))
         )
-        XCTAssertFalse(result)
+        XCTAssertEqual(result, .denied)
         XCTAssertTrue(asked)
     }
 }

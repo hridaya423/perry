@@ -18,11 +18,11 @@ enum ToolApprovalPresenter {
         call: ToolCall,
         spec: ToolSpec,
         consentScope: String? = nil,
-        consentStore: AgentConsentStore = .shared
+        consentStore: ToolConsentStore
     ) async -> ToolApproval {
         if let consentScope,
            spec.tier < .red,
-           consentStore.isGranted(scope: consentScope, tool: spec.name) {
+           await consentStore.isGranted(tool: spec.name, threadID: consentScope) {
             return .approvedOnce
         }
         return await withCheckedContinuation { continuation in
@@ -39,7 +39,7 @@ enum ToolApprovalPresenter {
                 allowsStepThrough: false,
                 alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always allow" : nil,
                 onAlwaysAllow: consentScope.map { scope in
-                    { consentStore.grant(scope: scope, tool: spec.name) }
+                    { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
                 }
             ) { decision in
                 switch decision {

@@ -42,15 +42,18 @@ public actor ToolConsentStore {
         try persist()
     }
 
-    /// Wrap an approval prompt: remembered grants auto-approve, everything
-    /// else falls through to the intent card.
+    /// Wrap an approval prompt: remembered grants auto-approve (orange and
+    /// below — red always asks; the card collects the typed phrase),
+    /// everything else falls through to the intent card.
     public func approving(
         threadID: String?,
-        ask: @escaping @Sendable (ToolCall, ToolSpec) async -> Bool
-    ) -> @Sendable (ToolCall, ToolSpec) async -> Bool {
+        ask: @escaping @Sendable (ToolCall, ToolSpec) async -> ToolApproval
+    ) -> @Sendable (ToolCall, ToolSpec) async -> ToolApproval {
         { call, spec in
-            if let threadID, await self.isGranted(tool: call.name, threadID: threadID) {
-                return true
+            if spec.tier < .red,
+               let threadID,
+               await self.isGranted(tool: call.name, threadID: threadID) {
+                return .approvedOnce
             }
             return await ask(call, spec)
         }
