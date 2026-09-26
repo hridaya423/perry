@@ -122,6 +122,8 @@ class OverlayWindow: NSWindow {
         // itself must ignore events to stay transparent.
         self.isOpaque = false
         self.backgroundColor = .clear
+        // Perry's overlay must never appear in screenshots or screen shares.
+        self.sharingType = .none
         PerryWindowLevels.applyCursorOverlayLevel(to: self)
         self.ignoresMouseEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
@@ -233,13 +235,11 @@ struct PerryBuddyView: View {
         _isCursorOnThisScreen = State(initialValue: screenFrame.contains(mouseLocation))
     }
     @State private var welcomeTypingTimer: Timer?
-    /// High-priority background timer that drives cursor tracking. Held
-    /// as a strong reference so the source isn't deallocated mid-tick.
-    /// We sample on a `userInteractive` queue (not @MainActor) so the
-    /// buddy stays smooth even when the main thread is busy with SwiftUI
-    /// animation work or LLM streaming. Hops to main only when the cursor
-    /// has actually moved.
-    @State private var cursorTrackingTimer: DispatchSourceTimer?
+    /// Event-driven cursor follow (§5): mouse-moved/dragged monitors write
+    /// the position in the same turn the event arrives — no polling timer,
+    /// so an idle Perry keeps zero timers ticking. The global monitor covers
+    /// events aimed at other apps; the local monitor covers our own.
+    @State private var cursorMoveMonitors: [Any] = []
     @State private var welcomeText: String = ""
     @State private var showWelcome: Bool = true
     @State private var bubbleSize: CGSize = .zero
@@ -443,7 +443,13 @@ struct PerryBuddyView: View {
                         reduceMotion: accessibilityReduceMotion
                     )
                 } else {
-                    PerryGlassCursorView(animation: petAnimationState, size: 52)
+                    PerryGlassCursorView(
+                        animation: petAnimationState,
+                        size: 52,
+                        morph: cursorMorph,
+                        micLevel: cursorState.currentAudioPowerLevel,
+                        sessionActive: cursorState.voiceState != .idle || cursorState.buddyState != .idle
+                    )
                 }
             }
                 .frame(
@@ -509,8 +515,7 @@ struct PerryBuddyView: View {
         }
         .onDisappear {
             welcomeTypingTimer?.invalidate()
-            cursorTrackingTimer?.cancel()
-            cursorTrackingTimer = nil
+            stopTrackingCursor()
             navigationAnimationTimer?.invalidate()
         }
         .onChange(of: cursorState.detectedElementScreenLocation) { _, newLocation in
@@ -533,6 +538,23 @@ struct PerryBuddyView: View {
         }
 
         startNavigatingToElement(screenLocation: screenLocation)
+    }
+
+    /// §5 morph grammar for the main cursor: voice state wins (listening ring,
+    /// thinking orbit), then semantic buddy state (amber hold, settle tick),
+    /// else the resting pointer that breathes only while a session is active.
+    private var cursorMorph: PerryCursorMorph {
+        switch cursorState.voiceState {
+        case .listening: return .listening
+        case .processing: return .thinking
+        case .idle, .responding: break
+        }
+        switch cursorState.buddyState {
+        case .blocked, .awaitingApproval: return .blocked
+        case .success: return .settle
+        case .acting: return .ghost
+        default: return .pointer
+        }
     }
 
     private var buddyIsVisibleOnThisScreen: Bool {
@@ -663,12 +685,50 @@ struct PerryBuddyView: View {
 
             if let caption = overlay.style.caption?.trimmingCharacters(in: .whitespacesAndNewlines),
                !caption.isEmpty {
-                externalCaption(caption, at: captionAnchor(for: overlay), color: color)
+                guidanceCaption(caption, for: overlay, color: color)
             }
         }
         .transition(accessibilityReduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
         .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.18), value: overlay.id)
         .allowsHitTesting(false)
+    }
+
+    /// Caption next to a guidance mark (§5): CaptionPlacer picks a slot that
+    /// doesn't cover the marked element and stays inside the visible frame
+    /// (clear of menu bar / Dock / notch).
+    @ViewBuilder
+    private func guidanceCaption(_ caption: String, for overlay: PerryGuidanceOverlay, color: Color) -> some View {
+        let bubbleSize = estimatedExternalCaptionBubbleSize(for: caption, providerBadge: nil)
+        let targetBL = overlay.screenBounds
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? screenFrame.maxY
+        // AppKit bottom-left → CG top-left for the solver.
+        let anchorCG = CGRect(
+            x: targetBL.minX, y: primaryMaxY - targetBL.maxY,
+            width: targetBL.width, height: targetBL.height
+        )
+        let visibleBL = NSScreen.screens
+            .first(where: { $0.frame == screenFrame })?.visibleFrame ?? screenFrame
+        let screenCG = CGRect(
+            x: visibleBL.minX, y: primaryMaxY - visibleBL.maxY,
+            width: visibleBL.width, height: visibleBL.height
+        )
+        let placed = targetBL.isNull
+            ? CGRect(
+                x: captionAnchor(for: overlay).x - bubbleSize.width / 2,
+                y: captionAnchor(for: overlay).y - bubbleSize.height / 2,
+                width: bubbleSize.width, height: bubbleSize.height
+            )
+            : CaptionPlacer.place(
+                size: bubbleSize, anchor: anchorCG, in: screenCG
+            )
+        let centerBL = targetBL.isNull
+            ? captionAnchor(for: overlay)
+            : CGPoint(x: placed.midX, y: primaryMaxY - placed.midY)
+        let local = targetBL.isNull
+            ? centerBL
+            : convertScreenPointToSwiftUICoordinates(centerBL)
+
+        captionBubble(caption, at: local, color: color)
     }
 
     @ViewBuilder
@@ -717,7 +777,9 @@ struct PerryBuddyView: View {
         let position = CGPoint(x: local.x + 35, y: local.y + 25)
         let color = colorFromHex(cursor.accentHex) ?? PerryOverlayTheme.Colors.accent
         ZStack {
-            PerryGlassCursorView(size: 30)
+            // §5 ghost morph: another agent's pointer is a dashed outline,
+            // never filled — reads as Perry's, not the user's.
+            PerryGlassCursorView(size: 30, morph: .ghost)
                 .shadow(color: color.opacity(0.90), radius: 10, x: 0, y: 0)
                 .position(position)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
@@ -738,7 +800,11 @@ struct PerryBuddyView: View {
             horizontalOffset: 12,
             verticalOffset: 20
         )
+        captionBubble(caption, at: bubblePosition, color: color)
+    }
 
+    @ViewBuilder
+    private func captionBubble(_ caption: String, at position: CGPoint, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(caption)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -755,7 +821,7 @@ struct PerryBuddyView: View {
         )
         .frame(maxWidth: 340, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .position(x: bubblePosition.x, y: bubblePosition.y)
+        .position(x: position.x, y: position.y)
         .transition(.opacity)
         .transaction { transaction in
             transaction.animation = nil
@@ -813,31 +879,28 @@ struct PerryBuddyView: View {
     // MARK: - Cursor Tracking
 
     private func startTrackingCursor() {
-        cursorTrackingTimer?.cancel()
-
-        let queue = DispatchQueue(label: "dev.perry.perry.cursor.tracker", qos: .userInteractive)
-        let dispatchTimer = DispatchSource.makeTimerSource(queue: queue)
-        dispatchTimer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(3))
-        var lastSampledPoint: CGPoint = .zero
-        var updateQueuedOnMain = false
-
-        dispatchTimer.setEventHandler {
-            let mouseLocation = NSEvent.mouseLocation
-            guard mouseLocation != lastSampledPoint else { return }
-            lastSampledPoint = mouseLocation
-
-            guard !updateQueuedOnMain else { return }
-            updateQueuedOnMain = true
-
-            DispatchQueue.main.async {
-                updateCursorTracking()
-                queue.async {
-                    updateQueuedOnMain = false
-                }
-            }
+        stopTrackingCursor()
+        let mask: NSEvent.EventTypeMask = [
+            .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
+        ]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { _ in
+            // Global-monitor callbacks arrive on a background thread; the
+            // state write still lands inside the frame the event produced.
+            DispatchQueue.main.async { updateCursorTracking() }
+        }) {
+            cursorMoveMonitors.append(global)
         }
-        dispatchTimer.resume()
-        cursorTrackingTimer = dispatchTimer
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+            updateCursorTracking()
+            return event
+        }) {
+            cursorMoveMonitors.append(local)
+        }
+    }
+
+    private func stopTrackingCursor() {
+        for monitor in cursorMoveMonitors { NSEvent.removeMonitor(monitor) }
+        cursorMoveMonitors = []
     }
 
     private func updateCursorTracking() {
@@ -1217,18 +1280,14 @@ private struct PerryGuidanceScribbleView: View {
 
     var body: some View {
         let clampedProgress = min(max(drawProgress, 0), 1)
+        // Hand-inked mark (§5): Catmull-Rom resample + seeded wobble +
+        // tapered variable-width outline, drawn on over drawingDuration.
+        let samples = InkStroke.sampled(through: points)
+        let widths = InkStroke.widths(count: samples.count, baseWidth: lineWidth)
 
         ZStack(alignment: .topLeading) {
-            PerrySmoothScribblePath(points: points)
-                .trim(from: 0, to: clampedProgress)
-                .stroke(
-                    color,
-                    style: StrokeStyle(
-                        lineWidth: lineWidth,
-                        lineCap: .round,
-                        lineJoin: .round
-                    )
-                )
+            InkStrokeShape(samples: samples, widths: widths, progress: clampedProgress)
+                .fill(color)
                 .shadow(
                     color: color.opacity(reduceMotion ? 0.30 : 0.68),
                     radius: reduceMotion ? 2 : 7,
@@ -1237,9 +1296,9 @@ private struct PerryGuidanceScribbleView: View {
                 )
 
             if !reduceMotion,
-               let cursorPoint = PerrySmoothScribblePath.point(on: points, progress: clampedProgress),
+               let cursorPoint = InkStroke.point(on: samples, progress: clampedProgress),
                clampedProgress < 0.995 {
-                PerryGlassCursorView(size: 24, variant: .faceted)
+                PerryGlassCursorView(size: 24, morph: .pen)
                     .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                     .position(cursorPoint)
             }
@@ -1403,21 +1462,18 @@ private struct PerryGuidanceRectangleView: View {
             let size = geometry.size
             let clampedProgress = min(max(drawProgress, 0), 1)
 
+            let inkRect = CGRect(origin: .zero, size: size)
+                .insetBy(dx: lineWidth, dy: lineWidth)
+            let samples = InkStroke.rectangle(in: inkRect)
+            let widths = InkStroke.widths(count: samples.count, baseWidth: lineWidth)
+
             ZStack(alignment: .topLeading) {
                 Rectangle()
                     .fill(color.opacity(fillOpacity * Double(clampedProgress)))
 
-                PerryTopLeftRectangleOutline()
-                    .trim(from: 0, to: clampedProgress)
-                    .stroke(
-                        color,
-                        style: StrokeStyle(
-                            lineWidth: lineWidth,
-                            lineCap: .round,
-                            lineJoin: .round,
-                            dash: [lineWidth * 2.4, lineWidth * 1.7]
-                        )
-                    )
+                // Inked perimeter (§5): hand-drawn loop, not a crisp rect.
+                InkStrokeShape(samples: samples, widths: widths, progress: clampedProgress)
+                    .fill(color)
                     .shadow(
                         color: color.opacity(reduceMotion ? 0.30 : 0.70),
                         radius: reduceMotion ? 2 : 9,
@@ -1425,13 +1481,11 @@ private struct PerryGuidanceRectangleView: View {
                         y: 0
                     )
 
-                if !reduceMotion && clampedProgress < 0.995 {
-                    PerryGlassCursorView(size: 24, variant: .faceted)
+                if !reduceMotion && clampedProgress < 0.995,
+                   let tip = InkStroke.point(on: samples, progress: clampedProgress) {
+                    PerryGlassCursorView(size: 24, morph: .pen)
                         .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
-                        .position(
-                            x: max(0, min(size.width, size.width * clampedProgress)),
-                            y: max(0, min(size.height, size.height * clampedProgress))
-                        )
+                        .position(tip)
                 }
             }
             .onAppear {
@@ -1447,18 +1501,6 @@ private struct PerryGuidanceRectangleView: View {
                 }
             }
         }
-    }
-}
-
-private struct PerryTopLeftRectangleOutline: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        return path
     }
 }
 

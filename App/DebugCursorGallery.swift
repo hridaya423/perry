@@ -53,16 +53,51 @@ private struct DebugCursorGallery: View {
 
     private let variants = PerryGlassCursorVariant.allCases
 
+    private let morphs = PerryCursorMorph.allCases
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 section(title: "Light", background: Color(white: 0.96), scheme: .light)
                 section(title: "Dark", background: Color(white: 0.14), scheme: .dark)
                 section(title: "Busy", background: nil, scheme: .dark)
+                morphSection(title: "Morphs (light)", background: Color(white: 0.96), scheme: .light)
+                morphSection(title: "Morphs (dark)", background: Color(white: 0.14), scheme: .dark)
             }
             .padding(24)
         }
         .frame(minWidth: 1180, minHeight: 560)
+    }
+
+    /// Every §5 morph on the section background — snapshot evidence for the
+    /// morph grammar (listening shown mid-level so the ring reads).
+    @ViewBuilder
+    private func morphSection(title: String, background: Color, scheme: ColorScheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+            HStack(alignment: .top, spacing: 18) {
+                ForEach(morphs, id: \.rawValue) { morph in
+                    VStack(spacing: 8) {
+                        Text(morph.rawValue)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .frame(height: 14)
+                        PerryGlassCursorView(
+                            size: 44,
+                            morph: morph,
+                            micLevel: morph == .listening ? 0.7 : 0,
+                            sessionActive: morph == .pointer
+                        )
+                        .frame(width: 64, height: 64)
+                    }
+                }
+            }
+            .padding(16)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .environment(\.colorScheme, scheme)
+        }
     }
 
     @ViewBuilder

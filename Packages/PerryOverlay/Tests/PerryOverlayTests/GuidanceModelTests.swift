@@ -57,6 +57,23 @@ struct PerryGuidanceOverlayTests {
         #expect(!singlePoint.isRenderable)
     }
 
+    @Test func translatedShiftsRectAndPoints() {
+        let delta = CGPoint(x: 10, y: -20)
+
+        let rect = PerryGuidanceOverlay.rectangle(
+            rect: CGRect(x: 100, y: 200, width: 40, height: 30)
+        ).translated(by: delta)
+        #expect(rect.rect == PerryGuidanceRect(x: 110, y: 180, width: 40, height: 30))
+
+        let scribble = PerryGuidanceOverlay.scribble(
+            points: [CGPoint(x: 1, y: 2), CGPoint(x: 3, y: 4)]
+        ).translated(by: delta)
+        #expect(scribble.points.map(\.cgPoint) == [
+            CGPoint(x: 11, y: -18),
+            CGPoint(x: 13, y: -16),
+        ])
+    }
+
     @Test func hexColorParsingAcceptsDynamicModelOutput() {
         #expect(Color(optionalHex: "#34D399") != nil)
         #expect(Color(optionalHex: "F59E0B") != nil)

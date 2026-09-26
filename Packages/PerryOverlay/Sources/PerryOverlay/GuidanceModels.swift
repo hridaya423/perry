@@ -146,6 +146,22 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
             return normalized.width > 1 && normalized.height > 1
         }
     }
+
+    /// A copy shifted by `delta` (AppKit bottom-left screen points). Used by
+    /// the reanchor poller to keep marks glued to a window the user moved.
+    public func translated(by delta: CGPoint) -> PerryGuidanceOverlay {
+        var copy = self
+        copy.points = points.map {
+            PerryGuidancePoint(x: $0.x + Double(delta.x), y: $0.y + Double(delta.y))
+        }
+        if let rect {
+            copy.rect = PerryGuidanceRect(
+                x: rect.x + Double(delta.x), y: rect.y + Double(delta.y),
+                width: rect.width, height: rect.height
+            )
+        }
+        return copy
+    }
 }
 
 extension PerryGuidanceOverlay {

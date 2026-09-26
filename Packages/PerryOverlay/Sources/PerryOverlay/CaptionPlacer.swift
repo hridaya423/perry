@@ -1,0 +1,93 @@
+import CoreGraphics
+
+/// Caption placement solver (§5/§7 Phase 3.4): positions a caption rect next
+/// to its anchor while avoiding the target itself, the caret, other marks,
+/// the menu bar, and the Dock. Pure geometry in screen coordinates — works
+/// with multi-display negative origins because nothing assumes (0,0).
+public enum CaptionPlacer {
+    public static let defaultMargin: CGFloat = 10
+    public static let defaultGap: CGFloat = 8
+
+    /// Ordered preference: below, above, right, left, then the four screen
+    /// corners as last-resort placements. First wins on ties.
+    private static func candidates(
+        size: CGSize, anchor: CGRect, screen: CGRect, margin: CGFloat, gap: CGFloat
+    ) -> [CGRect] {
+        let w = size.width
+        let h = size.height
+        var slots: [CGRect] = [
+            CGRect(x: anchor.midX - w / 2, y: anchor.maxY + gap, width: w, height: h),
+            CGRect(x: anchor.midX - w / 2, y: anchor.minY - gap - h, width: w, height: h),
+            CGRect(x: anchor.maxX + gap, y: anchor.midY - h / 2, width: w, height: h),
+            CGRect(x: anchor.minX - gap - w, y: anchor.midY - h / 2, width: w, height: h),
+        ]
+        let inset = screen.insetBy(dx: margin, dy: margin)
+        slots.append(contentsOf: [
+            CGRect(x: inset.minX, y: inset.minY, width: w, height: h),
+            CGRect(x: inset.maxX - w, y: inset.minY, width: w, height: h),
+            CGRect(x: inset.minX, y: inset.maxY - h, width: w, height: h),
+            CGRect(x: inset.maxX - w, y: inset.maxY - h, width: w, height: h),
+        ])
+        return slots
+    }
+
+    /// Overlap area between two rects; zero when disjoint or either is null.
+    static func overlapArea(_ a: CGRect, _ b: CGRect) -> CGFloat {
+        guard !a.isNull, !b.isNull else { return 0 }
+        let intersection = a.intersection(b)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
+    }
+
+    /// Area of `rect` lying outside `screen`.
+    static func overflowArea(_ rect: CGRect, in screen: CGRect) -> CGFloat {
+        rect.width * rect.height - overlapArea(rect, screen)
+    }
+
+    /// Picks the slot with least total overlap against `avoiding` + the
+    /// anchor, breaking ties by overflow, then by preference order. The
+    /// winner is clamped into `screen` (minus `margin`) so a caption is
+    /// never half-off-screen even when every slot overlaps something.
+    public static func place(
+        size: CGSize,
+        anchor: CGRect,
+        avoiding: [CGRect] = [],
+        in screen: CGRect,
+        margin: CGFloat = defaultMargin,
+        gap: CGFloat = defaultGap
+    ) -> CGRect {
+        let obstacles = [anchor] + avoiding
+        let bounds = screen.insetBy(dx: margin, dy: margin)
+
+        var best: (rect: CGRect, score: CGFloat)?
+        for slot in candidates(size: size, anchor: anchor, screen: screen,
+                               margin: margin, gap: gap) {
+            let clamped = clamp(slot, into: bounds)
+            let overlap = obstacles.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) }
+            // Overflow dominates: an off-screen caption is worse than overlap.
+            let score = overlap + 4 * overflowArea(clamped, in: screen)
+            if best == nil || score < best!.score {
+                best = (clamped, score)
+            }
+        }
+        return best?.rect
+            ?? clamp(CGRect(origin: .zero, size: size), into: bounds)
+    }
+
+    /// Moves `rect` the minimum distance to fit inside `bounds`; a rect
+    /// larger than `bounds` is centered on it.
+    static func clamp(_ rect: CGRect, into bounds: CGRect) -> CGRect {
+        var r = rect
+        if r.width > bounds.width {
+            r.origin.x = bounds.midX - r.width / 2
+        } else {
+            r.origin.x = min(max(r.minX, bounds.minX), bounds.maxX - r.width)
+        }
+        if r.height > bounds.height {
+            r.origin.y = bounds.midY - r.height / 2
+        } else {
+            r.origin.y = min(max(r.minY, bounds.minY), bounds.maxY - r.height)
+        }
+        return r
+    }
+}

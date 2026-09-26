@@ -5,6 +5,8 @@ public enum PerryOverlayTheme {
         public static let accent = Color(red: 0.204, green: 0.827, blue: 0.600)
         public static let ink = Color(white: 0.16)
         public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
+        /// Amber hold — the §5 blocked morph. Distinct from failure red.
+        public static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
         public static let labelForeground = Color.white
         public static let labelBackground = Color.black.opacity(0.72)
         public static let eyeHighlight = Color.white
