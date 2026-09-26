@@ -46,6 +46,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var hotkey: HotkeyController?
     private let overlayState = PerryCursorState()
     let brain = BrainController()
+    /// Model→world dispatch; executors register in Phase 7b.
+    let toolHost = PerryToolHost(executors: [])
+    private var mcpSocket: PerryMCPSocket?
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
@@ -706,6 +709,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.startInputListeners()
         modifierHoldMonitor.start()
         homeController.start()
+        // Helper socket after first idle — never a launch blocker.
+        if let dir = Self.supportDirectory {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                guard let self else { return }
+                let socket = PerryMCPSocket(host: self.toolHost, directory: dir)
+                try? socket.start()
+                self.mcpSocket = socket
+            }
+        }
 #if DEBUG
         if debugSurface == nil {
             runOnboardingIfNeeded()

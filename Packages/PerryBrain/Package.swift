@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "PerryBrain", targets: ["PerryBrain"]),
         .executable(name: "perry-brain-smoke", targets: ["perry-brain-smoke"]),
+        .executable(name: "perry-mcp", targets: ["perry-mcp"]),
     ],
     dependencies: [
         .package(path: "../PerryCore"),
@@ -21,6 +22,11 @@ let package = Package(
             name: "perry-brain-smoke",
             dependencies: ["PerryBrain"],
             path: "Sources/perry-brain-smoke"
+        ),
+        .executableTarget(
+            name: "perry-mcp",
+            dependencies: ["PerryBrain"],
+            path: "Sources/perry-mcp"
         ),
         .testTarget(
             name: "PerryBrainTests",
