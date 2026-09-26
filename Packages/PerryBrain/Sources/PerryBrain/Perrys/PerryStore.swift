@@ -102,10 +102,28 @@ public actor PerryStore {
 
     public func remove(id: UUID) throws {
         try FileManager.default.removeItem(at: fileURL(for: id))
+        try? FileManager.default.removeItem(at: memoryURL(for: id))
+    }
+
+    /// Each Perry has its own inspectable memory file, `<id>.memory.md`,
+    /// separate from the global PROFILE.md/CONTEXT.md.
+    public func memory(for id: UUID) -> String {
+        (try? String(contentsOf: memoryURL(for: id), encoding: .utf8)) ?? ""
+    }
+
+    public func setMemory(_ text: String, for id: UUID) throws {
+        let url = memoryURL(for: id)
+        let tmp = directory.appendingPathComponent(".\(id.uuidString).memory.tmp")
+        try text.write(to: tmp, atomically: true, encoding: .utf8)
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
     }
 
     private func fileURL(for id: UUID) -> URL {
         directory.appendingPathComponent("\(id.uuidString).json")
+    }
+
+    private func memoryURL(for id: UUID) -> URL {
+        directory.appendingPathComponent("\(id.uuidString).memory.md")
     }
 
     private func write(_ perry: Perry) throws {
