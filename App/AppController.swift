@@ -426,6 +426,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
             return text
         }
+        agentRunningObservation = controller.bindWorkingThreads(agentCoordinator.$runningThreads)
         controller.configure(deps: HomeModel.Deps(
             transcriptStore: transcriptStore,
             activityLog: activityLog,
@@ -558,6 +559,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private let sessionController: SessionController
     private var sessionStateObservation: AnyCancellable?
     private var runtimeChoicesObservation: AnyCancellable?
+    private var agentRunningObservation: AnyCancellable?
 
     override init() {
 #if DEBUG

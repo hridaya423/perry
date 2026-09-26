@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import PerryBrain
 
@@ -35,6 +36,13 @@ final class HomeController {
     /// `(threadID, prompt) -> answer`. Runs the agent loop when the owner
     /// wires it; the turn is persisted by `onSend` below.
     var answerProvider: ((UUID, String) async throws -> String)?
+
+    /// Owner binds the coordinator's running set → composer's working row.
+    func bindWorkingThreads(_ publisher: some Publisher<Set<UUID>, Never>) -> AnyCancellable {
+        publisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.workingThreads, on: homeModel)
+    }
 
     // MARK: - Lifecycle
 

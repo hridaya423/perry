@@ -121,6 +121,15 @@ private struct ThreadDetailView: View {
                 }
                 .padding(16)
             }
+            if model.workingThreads.contains(thread.id) {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Perry is working — it can act on your screen")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+            }
             HStack {
                 TextField("Reply…", text: $draft)
                     .textFieldStyle(.roundedBorder)
@@ -128,6 +137,7 @@ private struct ThreadDetailView: View {
                     .onChange(of: draft) { model.draftChanged(threadID: thread.id, draft: $0) }
                 Button("Send") { send() }
                     .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(model.workingThreads.contains(thread.id))
             }
             .padding(12)
         }
@@ -244,6 +254,8 @@ final class HomeModel: ObservableObject {
     @Published var threads: [PerryThread] = []
     @Published var perryNames: [String] = []
     @Published var sidebarSelection: Selection?
+    /// Threads with an agent turn in flight — drives the working row.
+    @Published var workingThreads: Set<UUID> = []
     var deps = Deps()
 
     var onDraftChanged: ((UUID, String) -> Void)?
