@@ -27,9 +27,9 @@ functioning features that beat HeyClicky (`https://www.heyclicky.com/`).
 | `7753e09` | Phase 0 laboratory: lab scripts, perf markers, probes, spikes doc |
 | `87f922a` | Phase 1 PerryBrain: streaming providers, confined Codex brain, router |
 | `35ea3b6` | Phase 1 app wiring: `BrainController`, package link, debug smoke test |
-| (see log) | Phase 2a Talk core (DeixisResolver, InlineMarkupParser, ToolGate, SentenceChunker, TalkPrompt + tests) |
-| (see log) | Phase 3 overlay: InkStroke, CaptionPlacer, cursor morphs, DebugCursorGallery |
-| (see log) | Phases 2b/4/5 app wiring: `App/Talk/`, `App/Onboarding/`, `App/Home/`, ThreadStore |
+| `0c59072` | Phase 2a Talk core (DeixisResolver, InlineMarkupParser, ToolGate, SentenceChunker, TalkPrompt + tests) |
+| `e7fd2df` | Phase 3 overlay: InkStroke, CaptionPlacer, cursor morphs, DebugCursorGallery |
+| `0b3aa4d` + `201140f` | Phases 2b/4/5 app wiring: `App/Talk/`, `App/Onboarding/`, `App/Home/`, ThreadStore; OnboardingFlow deleted |
 
 **Verification at handoff:** `xcodebuild` Debug build **succeeded**;
 `swift test` all packages green — PerryBrain 122, PerryOverlay 18,
