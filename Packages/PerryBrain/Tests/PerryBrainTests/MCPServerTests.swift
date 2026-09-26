@@ -83,6 +83,39 @@ final class MCPServerTests: XCTestCase {
         let response = try await parse(server.handle(#"{"jsonrpc":"2.0","id":5,"method":"nope"}"#))
         XCTAssertEqual(response["error"]?["code"], .number(-32601))
     }
+
+    func testEmptyResourceAndPromptLists() async throws {
+        let server = MCPServer(bridge: StubBridge(), version: "1.0")
+        for (method, key) in [
+            ("resources/list", "resources"),
+            ("resources/templates/list", "resourceTemplates"),
+            ("prompts/list", "prompts"),
+        ] {
+            let response = try await parse(server.handle(
+                #"{"jsonrpc":"2.0","id":9,"method":"\#(method)"}"#
+            ))
+            XCTAssertEqual(response["result"]?[key]?.arrayValue, [])
+        }
+        let log = try await parse(server.handle(
+            #"{"jsonrpc":"2.0","id":10,"method":"logging/setLevel","params":{"level":"debug"}}"#
+        ))
+        XCTAssertEqual(log["result"], .object([:]))
+    }
+
+    func testToolsListEmitsAnnotations() async throws {
+        let spec = ToolSpec(
+            name: "files.read", description: "read",
+            inputSchema: .object(["type": .string("object")]),
+            tier: .green, readOnly: true
+        )
+        let server = MCPServer(bridge: StubBridge(specs: [spec]), version: "1.0")
+        let response = try await parse(server.handle(
+            #"{"jsonrpc":"2.0","id":11,"method":"tools/list"}"#
+        ))
+        let annotations = response["result"]?["tools"]?.arrayValue?.first?["annotations"]
+        XCTAssertEqual(annotations?["readOnlyHint"], .bool(true))
+        XCTAssertEqual(annotations?["destructiveHint"], .bool(false))
+    }
 }
 
 final class SocketAuthTests: XCTestCase {

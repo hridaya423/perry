@@ -51,18 +51,22 @@ public struct ToolSpec: Sendable, Equatable {
     /// Minimum trust tier, claimed by the spec author. The model cannot lower it per-call.
     public let tier: TrustTier
     public let surfaces: Set<ToolSurface>
+    /// True when the tool cannot change anything (feeds MCP readOnlyHint).
+    public let readOnly: Bool
     public init(
         name: String,
         description: String,
         inputSchema: JSONValue,
         tier: TrustTier = .green,
-        surfaces: Set<ToolSurface> = [.talk, .guide, .agent]
+        surfaces: Set<ToolSurface> = [.talk, .guide, .agent],
+        readOnly: Bool = false
     ) {
         self.name = name
         self.description = description
         self.inputSchema = inputSchema
         self.tier = tier
         self.surfaces = surfaces
+        self.readOnly = readOnly
     }
 }
 
