@@ -61,6 +61,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 }
             ).executors
             + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + DocumentTools(workers: workers, observations: AgentObservationStore.shared).executors
             + AppTools().executors
             + packageExecutors()
         )
@@ -403,8 +404,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         directory: (storageDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory()))
             .appendingPathComponent("Threads", isDirectory: true)
     )
+    private lazy var toolConsent = ToolConsentStore(directory: Self.supportDirectory)
     lazy var agentCoordinator = AgentCoordinator(
-        brain: brain, host: toolHost, threads: homeThreadStore
+        brain: brain, host: toolHost, threads: homeThreadStore, consent: toolConsent
     )
     private lazy var homeController: HomeController = {
         let controller = HomeController()
