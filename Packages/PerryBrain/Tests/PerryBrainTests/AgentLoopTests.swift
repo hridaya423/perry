@@ -122,7 +122,7 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(finishReason(events), .budgetToolCalls)
     }
 
-    func testPauseAtBoundary() async {
+    func testPauseHoldsAtBoundaryUntilResumed() async {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         let provider = ScriptedProvider(responses: [
             [.toolCall(call), .toolCall(call), .done(.toolUse)],
@@ -137,8 +137,35 @@ final class AgentLoopTests: XCTestCase {
         let task = Task { await collect(loop.run(system: "s", messages: [], context: context)) }
         try? await Task.sleep(nanoseconds: 20_000_000)
         await loop.pause()
+        // Suspended, not finished: give the loop a moment, then resume —
+        // the run must complete the second call rather than end paused.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await loop.resume()
         let events = await task.value
-        XCTAssertEqual(finishReason(events), .paused)
+        XCTAssertEqual(finishReason(events), .completed)
+        XCTAssertTrue(events.contains { if case .note(let s) = $0 { return s.hasPrefix("paused after") } ; return false })
+        XCTAssertEqual(executor.callCount, 2)
+    }
+
+    func testInterruptWhilePausedFinishesInterrupted() async {
+        let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
+        let provider = ScriptedProvider(responses: [
+            [.toolCall(call), .toolCall(call), .done(.toolUse)],
+        ])
+        let executor = RecordingExecutor(spec: ToolSpec(name: "ui.click", description: "c", inputSchema: toolSchema([:])))
+        executor.body = { call in
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            return .text(call.id, "ok")
+        }
+        let host = PerryToolHost(executors: [executor])
+        let loop = AgentLoop(provider: provider, host: host)
+        let task = Task { await collect(loop.run(system: "s", messages: [], context: context)) }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        await loop.pause()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        await loop.interrupt()
+        let events = await task.value
+        XCTAssertEqual(finishReason(events), .interrupted)
     }
 
     func testProviderErrorFinishesCleanly() async {

@@ -40,7 +40,10 @@ public actor AgentLoop {
     }
 
     public func steer(_ text: String) { steerQueue.append(text) }
+    /// Yields at the next tool boundary and holds there until `resume()`
+    /// or `interrupt()` — the run's message history is preserved.
     public func pause() { pauseRequested = true }
+    public func resume() { pauseRequested = false }
     public func interrupt() {
         pauseRequested = false
         steerQueue.removeAll()
@@ -87,10 +90,10 @@ public actor AgentLoop {
                 sink.yield(.note("steer: \(steer)"))
             }
             if pauseRequested {
-                clearPause()
                 sink.yield(.note("paused after \(toolCallCount) tool calls"))
-                finish(.paused)
-                return
+                await suspendUntilResumed()
+                if Task.isCancelled { finish(.interrupted); return }
+                sink.yield(.note("resumed"))
             }
             if Date() > deadline { finish(.budgetTime); return }
 
@@ -119,10 +122,10 @@ public actor AgentLoop {
             for call in calls {
                 if Task.isCancelled { finish(.interrupted); return }
                 if pauseRequested {
-                    clearPause()
                     sink.yield(.note("paused after \(toolCallCount) tool calls"))
-                    finish(.paused)
-                    return
+                    await suspendUntilResumed()
+                    if Task.isCancelled { finish(.interrupted); return }
+                    sink.yield(.note("resumed"))
                 }
                 toolCallCount += 1
                 if toolCallCount > budgets.maxToolCalls { finish(.budgetToolCalls); return }
@@ -134,11 +137,17 @@ public actor AgentLoop {
         }
     }
 
+    /// Holds at a tool boundary until resumed or interrupted. Steers queued
+    /// while paused are delivered to the model on the next loop iteration.
+    private func suspendUntilResumed() async {
+        while pauseRequested, !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
     private func drainSteers() -> [String] {
         let steers = steerQueue
         steerQueue.removeAll()
         return steers
     }
-
-    private func clearPause() { pauseRequested = false }
 }

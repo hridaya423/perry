@@ -60,6 +60,11 @@ final class AgentCoordinator: ObservableObject {
         Task { await loop?.pause() }
     }
 
+    func resume(threadID: UUID) {
+        let loop = loops[threadID]
+        Task { await loop?.resume() }
+    }
+
     func stop(threadID: UUID) {
         let loop = loops[threadID]
         Task { await loop?.interrupt() }
