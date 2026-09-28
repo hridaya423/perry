@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PerryBrain
+import PerryCore
 
 /// Phase 7: runs agent turns through `AgentLoop` against the app's tool host.
 /// One loop per thread; steer/pause/stop target the loop. Approvals go through
@@ -68,6 +69,11 @@ final class AgentCoordinator: ObservableObject {
     func stop(threadID: UUID) {
         let loop = loops[threadID]
         Task { await loop?.interrupt() }
+    }
+
+    /// The host's trust tier for a tool — used to grade strip step rows.
+    func toolTier(named name: String) -> TrustTier? {
+        host.spec(named: name)?.tier
     }
 
     private func execute(

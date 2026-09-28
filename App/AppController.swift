@@ -49,19 +49,24 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Model→world dispatch. Executors bind the app's real services (Cua
     /// workers, overlay ink, memory, Perrys); package-level executor cores
     /// (file/memory/integration/perry) plug in alongside these.
+    /// The active foreground Do run lends its worker to tool executors so
+    /// agent calls share the session's app lock instead of colliding with it.
+    let foregroundWorkerLease = ForegroundWorkerLease()
+
     lazy var toolHost: PerryToolHost = {
         PerryToolHost(executors:
             DrawTools(overlayState: overlayState, observations: AgentObservationStore.shared).executors
-            + ScreenTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + ScreenTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
             + UITools(
                 workers: workers,
+                lease: foregroundWorkerLease,
                 observations: AgentObservationStore.shared,
                 onActuation: { [weak self] point, label in
                     Task { @MainActor in self?.agentDidAct(at: point, label: label) }
                 }
             ).executors
-            + BrowserTools(workers: workers, observations: AgentObservationStore.shared).executors
-            + DocumentTools(workers: workers, observations: AgentObservationStore.shared).executors
+            + BrowserTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
+            + DocumentTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
             + AppTools().executors
             + packageExecutors()
         )
@@ -358,7 +363,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             makeConfirmer: { [weak self] in self?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) }
         )
 #if DEBUG
-        return ForegroundTaskController(
+        let controller = ForegroundTaskController(
             sessionController: sessionController,
             workers: workers,
             probe: probe,
@@ -377,7 +382,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             workspaceCoordinator: backgroundTaskCoordinator
         )
 #else
-        return ForegroundTaskController(
+        let controller = ForegroundTaskController(
             sessionController: sessionController,
             workers: workers,
             probe: probe,
@@ -392,6 +397,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             hooks: hooks
         )
 #endif
+        // Open-ended Do goals route through the agent loop; its tools run on
+        // the session's claimed worker, not a competing background one.
+        controller.agentCoordinator = agentCoordinator
+        controller.workerLease = foregroundWorkerLease
+        return controller
     }()
     private lazy var backgroundTaskCoordinator = TaskCoordinator(storageDirectory: storageDirectory)
     private lazy var backgroundTaskRunner = ResumableTaskRunner(

@@ -8,6 +8,7 @@ import PerryCore
 /// last `screen.observe` (compact element id), a label, or raw coordinates.
 struct UITools {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     /// Ghost cursor hook: called with the AX-space point each ui.* tool acts
     /// on, so the overlay can show where the agent is working without ever
@@ -16,14 +17,14 @@ struct UITools {
 
     var executors: [any ToolExecutor] {
         [
-            UIActionExecutor(kind: .click, workers: workers, observations: observations, onActuation: onActuation),
-            UIActionExecutor(kind: .doubleClick, workers: workers, observations: observations, onActuation: onActuation),
-            UIActionExecutor(kind: .rightClick, workers: workers, observations: observations, onActuation: onActuation),
-            UITypeExecutor(workers: workers, observations: observations, onActuation: onActuation),
-            UIScrollExecutor(workers: workers, observations: observations, onActuation: onActuation),
-            UIKeyExecutor(workers: workers, observations: observations, onActuation: onActuation),
-            UIHotkeyExecutor(workers: workers),
-            UIDragExecutor(workers: workers, onActuation: onActuation),
+            UIActionExecutor(kind: .click, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIActionExecutor(kind: .doubleClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIHotkeyExecutor(workers: workers, lease: lease),
+            UIDragExecutor(workers: workers, lease: lease, onActuation: onActuation),
         ]
     }
 }
@@ -103,6 +104,7 @@ private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource>
 private struct UIActionExecutor: ToolExecutor {
     let kind: UIClickKind
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
@@ -130,7 +132,7 @@ private struct UIActionExecutor: ToolExecutor {
         case .rightClick: .rightClick(resolved.target)
         }
         let action = ComputerAction(stepID: call.id, operation: operation)
-        return try await workers.withWorker(scope: .background, resources: targetResources(resolved.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
@@ -142,6 +144,7 @@ private struct UIActionExecutor: ToolExecutor {
 
 private struct UITypeExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
@@ -170,7 +173,7 @@ private struct UITypeExecutor: ToolExecutor {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
         let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: resolved.target))
-        return try await workers.withWorker(scope: .background, resources: targetResources(resolved.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
@@ -182,6 +185,7 @@ private struct UITypeExecutor: ToolExecutor {
 
 private struct UIScrollExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
@@ -215,7 +219,7 @@ private struct UIScrollExecutor: ToolExecutor {
             stepID: call.id,
             operation: .scroll(direction: direction, amount: amount, by: nil, target: target?.target)
         )
-        return try await workers.withWorker(scope: .background, resources: targetResources(target?.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
@@ -227,6 +231,7 @@ private struct UIScrollExecutor: ToolExecutor {
 
 private struct UIKeyExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
@@ -258,7 +263,7 @@ private struct UIKeyExecutor: ToolExecutor {
             stepID: call.id,
             operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target?.target)
         )
-        return try await workers.withWorker(scope: .background, resources: targetResources(target?.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
@@ -270,6 +275,7 @@ private struct UIKeyExecutor: ToolExecutor {
 
 private struct UIHotkeyExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -295,7 +301,7 @@ private struct UIHotkeyExecutor: ToolExecutor {
         }
         let bundleID = call.arguments["bundleID"]?.stringValue
         let action = ComputerAction(stepID: call.id, operation: .hotkey(keys: keys.map { $0.lowercased() }, target: nil))
-        return try await workers.withWorker(scope: .background, resources: targetResources(bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             return .text(call.id, result.message, isError: !result.success)
         }
@@ -304,6 +310,7 @@ private struct UIHotkeyExecutor: ToolExecutor {
 
 private struct UIDragExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
@@ -342,7 +349,7 @@ private struct UIDragExecutor: ToolExecutor {
             )
         )
         let bundleID = args["bundleID"]?.stringValue
-        return try await workers.withWorker(scope: .background, resources: targetResources(bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success {
                 onActuation?(CGPoint(x: toX, y: toY), nil)

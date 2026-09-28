@@ -9,13 +9,14 @@ import PerryGuide
 /// Cua worker.
 struct ScreenTools {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
     var executors: [any ToolExecutor] {
         [
-            ScreenObserveExecutor(workers: workers, observations: observations),
-            ScreenDesktopExecutor(workers: workers),
-            ScreenZoomExecutor(workers: workers),
+            ScreenObserveExecutor(workers: workers, lease: lease, observations: observations),
+            ScreenDesktopExecutor(workers: workers, lease: lease),
+            ScreenZoomExecutor(workers: workers, lease: lease),
             ClipboardReadExecutor(),
         ]
     }
@@ -27,6 +28,7 @@ private extension ToolContext {
 
 private struct ScreenObserveExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
     var spec: ToolSpec {
@@ -50,7 +52,7 @@ private struct ScreenObserveExecutor: ToolExecutor {
         let hint = CuaTargetHint(bundleID: bundleID, windowTitle: windowTitle)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await workers.withWorker(scope: .background, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
                 .filter { $0.sensitivity != .secure }
@@ -113,6 +115,7 @@ private struct ScreenObserveExecutor: ToolExecutor {
 
 private struct ScreenDesktopExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -124,7 +127,7 @@ private struct ScreenDesktopExecutor: ToolExecutor {
     }
 
     func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
-        try await workers.withWorker(scope: .background, resources: []) { worker in
+        try await withCuaWorker(workers, lease: lease, resources: []) { worker in
             let captured = try await worker.capture(target: nil)
             return ToolResult(
                 callID: call.id,
@@ -139,6 +142,7 @@ private struct ScreenDesktopExecutor: ToolExecutor {
 
 private struct ScreenZoomExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -169,7 +173,7 @@ private struct ScreenZoomExecutor: ToolExecutor {
         let hint = CuaTargetHint(bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await workers.withWorker(scope: .background, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             guard let image = NSImage(data: captured.screenshotData)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
                   let cropped = image.cropping(to: CGRect(x: x, y: y, width: w, height: h)) else {

@@ -6,15 +6,17 @@ import PerryGuide
 /// (editors, notes, PDFs) via its accessibility tree. Read-only.
 struct DocumentTools {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
     var executors: [any ToolExecutor] {
-        [DocumentReadExecutor(workers: workers)]
+        [DocumentReadExecutor(workers: workers, lease: lease)]
     }
 }
 
 private struct DocumentReadExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
 
     private static let maxChars = 20_000
     /// AX role strings that carry document text; AXElement.Role is coarser.
@@ -43,7 +45,7 @@ private struct DocumentReadExecutor: ToolExecutor {
         let hint = CuaTargetHint(bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await workers.withWorker(scope: .background, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             let elements = captured.accessibilitySnapshotModel?.elements ?? []
             let best = elements

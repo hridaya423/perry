@@ -88,6 +88,10 @@ public final class PerryToolHost: Sendable {
         self.specsByName = specs
     }
 
+    public func spec(named name: String) -> ToolSpec? {
+        specsByName[name]
+    }
+
     public func specs(for surface: ToolSurface) -> [ToolSpec] {
         specsByName.values
             .filter { $0.surfaces.contains(surface) && ToolGate.allows($0.name, on: surface) }

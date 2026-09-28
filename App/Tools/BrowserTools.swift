@@ -6,10 +6,11 @@ import PerryGuide
 /// alongside the element index. Read-only; safe on every surface.
 struct BrowserTools {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
     var executors: [any ToolExecutor] {
-        [BrowserReadExecutor(workers: workers, observations: observations)]
+        [BrowserReadExecutor(workers: workers, lease: lease, observations: observations)]
     }
 
     /// Browsers Perry knows how to find for a bare `browser.read`.
@@ -25,6 +26,7 @@ struct BrowserTools {
 
 private struct BrowserReadExecutor: ToolExecutor {
     let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
     var spec: ToolSpec {
@@ -46,7 +48,7 @@ private struct BrowserReadExecutor: ToolExecutor {
         let hint = CuaTargetHint(bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await workers.withWorker(scope: .background, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             guard BrowserTools.knownBrowserBundleIDs.contains(captured.target.bundleID) || bundleID != nil else {
                 return .text(
