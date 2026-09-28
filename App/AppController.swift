@@ -216,6 +216,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
     private let debugStorageDirectory: URL?
 #endif
+    /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
+    /// Production always does; the DEBUG harness init defaults to the typed
+    /// plan path so fixtures stay deterministic without a provider.
+    private let foregroundUsesAgentRunner: Bool
     private var storageDirectory: URL? {
 #if DEBUG
         return debugStorageDirectory ?? Self.supportDirectory
@@ -438,7 +442,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
         // Open-ended Do goals route through the agent loop; its tools run on
         // the session's claimed worker, not a competing background one.
-        controller.agentCoordinator = agentCoordinator
+        // Test harnesses opt out (`usesAgentRunner: false`) to keep the typed
+        // plan path deterministic.
+        controller.agentCoordinator = foregroundUsesAgentRunner ? agentCoordinator : nil
         controller.workerLease = foregroundWorkerLease
         return controller
     }()
@@ -644,6 +650,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugAskUser = nil
 #endif
         debugFinalizationPersistenceBarrier = nil
+        foregroundUsesAgentRunner = true
         let notifier = SystemNotifier()
         self.notifier = notifier
         sessionController = SessionController()
@@ -667,6 +674,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugAskUser = nil
 #endif
         debugFinalizationPersistenceBarrier = nil
+        foregroundUsesAgentRunner = false
         let notifier = SystemNotifier()
         self.notifier = notifier
         self.sessionController = sessionController
@@ -691,7 +699,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         typedVerifier: (any TypedActionVerifier)? = nil,
         notifier: (any AppNotificationClient)? = nil,
         confirmer: (any Confirmer)? = nil,
-        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil
+        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
+        usesAgentRunner: Bool = false
     ) {
         self.debugStorageDirectory = debugStorageDirectory
         self.debugRuntimeInventoryLoader = runtimeInventoryLoader
@@ -706,6 +715,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         self.debugTypedVerifier = typedVerifier
         self.debugConfirmer = confirmer
         self.debugAskUser = askUser
+        foregroundUsesAgentRunner = usesAgentRunner
         self.notifier = notifier ?? SystemNotifier()
         self.sessionController = sessionController ?? SessionController()
         super.init()
