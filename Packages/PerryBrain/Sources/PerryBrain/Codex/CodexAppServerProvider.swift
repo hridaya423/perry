@@ -240,6 +240,17 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         lock.withLock { turns[threadID] }
     }
 
+    /// Codex turn failures arrive as free text — a rate-limit failure asks
+    /// `account/rateLimits/read` for the reset time so callers can name it.
+    private func classify(_ message: String) async -> ModelProviderError {
+        let lower = message.lowercased()
+        guard lower.contains("rate limit") || lower.contains("rate_limit") || lower.contains("429") else {
+            return ModelProviderError(kind: .unavailable, provider: id, message: message)
+        }
+        let resetAt = try? await CodexAccount(process: process).rateLimits()?.primaryResetsAt
+        return ModelProviderError(kind: .rateLimited(resetAt: resetAt), provider: id, message: message)
+    }
+
     private func handleNotification(_ note: JSONRPCNotification) async {
         guard let threadID = note.params["threadId"]?.stringValue else { return }
         switch note.method {
@@ -265,7 +276,7 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
                 context.continuation.finish()
             case "failed":
                 let message = turn["error"]?["message"]?.stringValue ?? "turn failed"
-                context.continuation.finish(throwing: ModelProviderError(kind: .unavailable, provider: id, message: message))
+                context.continuation.finish(throwing: await classify(message))
             default:
                 break
             }
@@ -273,7 +284,7 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
             let willRetry = note.params["willRetry"]?.boolValue ?? false
             if !willRetry {
                 let message = note.params["error"]?["message"]?.stringValue ?? "turn error"
-                context(for: threadID)?.continuation.finish(throwing: ModelProviderError(kind: .unavailable, provider: id, message: message))
+                context(for: threadID)?.continuation.finish(throwing: await classify(message))
             }
         default:
             break

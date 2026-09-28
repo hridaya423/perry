@@ -282,7 +282,9 @@ final class TalkSession {
             overlayState.voiceState = .idle
             overlayState.buddyState = .blocked
             output?.guideSetStatus(
-                (error as? LocalizedError)?.errorDescription ?? "Perry couldn't answer that."
+                (error as? ModelProviderError).map { AgentLoop.describe($0) }
+                    ?? (error as? LocalizedError)?.errorDescription
+                    ?? "Perry couldn't answer that."
             )
             phase = .idle
         }

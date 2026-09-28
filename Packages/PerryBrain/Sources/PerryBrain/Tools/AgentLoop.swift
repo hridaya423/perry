@@ -111,6 +111,9 @@ public actor AgentLoop {
                     case .usage, .done: break
                     }
                 }
+            } catch let error as ModelProviderError {
+                finish(.providerError(Self.describe(error)))
+                return
             } catch {
                 finish(.providerError(error.localizedDescription))
                 return
@@ -150,4 +153,25 @@ public actor AgentLoop {
         steerQueue.removeAll()
         return steers
     }
+
+    /// User-facing failure text — a rate limit names its reset time so the
+    /// voice line and status card both carry it, not a bare "429".
+    public static func describe(_ error: ModelProviderError) -> String {
+        switch error.kind {
+        case .rateLimited(let resetAt):
+            let reset = resetAt.map {
+                " — resets \(Self.timeFormatter.string(from: $0))"
+            } ?? ""
+            return "\(error.provider.rawValue) is rate limited\(reset)."
+        default:
+            return error.localizedDescription
+        }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
 }
