@@ -74,6 +74,15 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertTrue(entries.isEmpty)
     }
 
+    func testTrashIsRestorableViaMove() async throws {
+        try await backend.write(path: "keep.txt", contents: "x")
+        let trashedTo = try await backend.trash(path: "keep.txt")
+        XCTAssertTrue(trashedTo.hasPrefix(".trash/"))
+        try await backend.move(source: trashedTo, destination: "keep.txt")
+        let restored = try await backend.read(path: "keep.txt", maxBytes: 10)
+        XCTAssertEqual(restored.text, "x")
+    }
+
     func testEscapesRejected() async throws {
         await XCTAssertThrowsErrorAsync(try await backend.read(path: "../outside.txt", maxBytes: 10))
         await XCTAssertThrowsErrorAsync(try await backend.read(path: "/etc/hosts", maxBytes: 10))

@@ -32,7 +32,8 @@ public protocol WorkspaceFileBackend: Sendable {
     func makeDirectory(path: String) async throws
     /// Move/rename; destination must not exist. Both sides confined.
     func move(source: String, destination: String) async throws
-    /// Move to the real Trash; returns the trashed entry's location.
+    /// Move into the workspace's `.trash/` (reversible via `move`); returns
+    /// the trashed path relative to the root.
     func trash(path: String) async throws -> String
 }
 
@@ -211,9 +212,24 @@ public struct LocalWorkspaceFiles: WorkspaceFileBackend {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw WorkspaceFileError("no such file: \(path)")
         }
-        var trashed: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &trashed)
-        return (trashed as URL?)?.path ?? url.lastPathComponent
+        let rel = relativePath(of: url)
+        guard rel != ".trash", !rel.hasPrefix(".trash/") else {
+            throw WorkspaceFileError("already in trash: \(path)")
+        }
+        // Workspace-local .trash: FileManager.trashItem blocks on Finder/
+        // session UI (hangs on a locked display); a move is instant and
+        // restores through files.move.
+        let trashDir = rootURL.appendingPathComponent(".trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trashDir, withIntermediateDirectories: true)
+        let stamp = Int(Date().timeIntervalSince1970 * 1000)
+        var candidate = trashDir.appendingPathComponent("\(stamp)-\(url.lastPathComponent)")
+        var counter = 1
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            counter += 1
+            candidate = trashDir.appendingPathComponent("\(stamp)-\(counter)-\(url.lastPathComponent)")
+        }
+        try FileManager.default.moveItem(at: url, to: candidate)
+        return relativePath(of: candidate)
     }
 }
 
@@ -412,7 +428,7 @@ public enum FileToolExecutors {
         let backend: any WorkspaceFileBackend
         let spec = ToolSpec(
             name: "files.trash",
-            description: "Move a workspace file or folder to the Trash.",
+            description: "Move a workspace file or folder to the workspace .trash (restorable via files.move).",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object(["path": .object(["type": .string("string")])]),
@@ -425,6 +441,9 @@ public enum FileToolExecutors {
             let trashedTo = try await backend.trash(path: path)
             return FileToolExecutors.json(call, [
                 "path": .string(path), "trashedTo": .string(trashedTo),
+                "undo": FileToolExecutors.undo("files.move", [
+                    "source": .string(trashedTo), "destination": .string(path),
+                ]),
             ])
         }
     }
