@@ -82,7 +82,20 @@ final class AgentCoordinator: ObservableObject {
             return
         }
 
-        let scope = perryID ?? threadID.uuidString
+        // Consent scope is the Perry the thread belongs to, not the thread —
+        // "Always for this Perry" survives across the Perry's whole thread.
+        // A caller-supplied perryID is stamped onto the thread so later turns
+        // keep it; a stored binding wins over a caller's guess.
+        var scope = perryID ?? threadID.uuidString
+        if let stored = await threads.thread(id: threadID) {
+            if let bound = stored.perryID {
+                scope = bound
+            } else if let perryID {
+                var stamped = stored
+                stamped.perryID = perryID
+                _ = await threads.upsert(stamped)
+            }
+        }
         let context = ToolContext(
             surface: .agent,
             threadID: threadID.uuidString,
