@@ -47,6 +47,8 @@ struct HomeView: View {
                         .tag(HomeModel.Selection.history)
                     Label("Background tasks", systemImage: "tray.full")
                         .tag(HomeModel.Selection.tasks)
+                    Label("Routines", systemImage: "repeat")
+                        .tag(HomeModel.Selection.routines)
                     Label("Files", systemImage: "doc.on.doc")
                         .tag(HomeModel.Selection.files)
                 }
@@ -87,6 +89,8 @@ struct HomeView: View {
             } else {
                 placeholder("Background tasks unavailable")
             }
+        case .routines:
+            RoutinesView(model: model)
         case .files:
             FilesPage(roots: model.deps.fileRoots)
         case .settings:
@@ -202,6 +206,44 @@ private struct SuggestionsView: View {
     }
 }
 
+/// Learned routines (Phase 9): replay goes through the foreground path, so
+/// Run kicks off a typed-plan run exactly like the menu command.
+private struct RoutinesView: View {
+    @ObservedObject var model: HomeModel
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(model.routines) { routine in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(routine.name).font(.headline)
+                            Text("\(routine.steps.count) steps · \(routine.appBundleIDs.joined(separator: ", "))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Run") { model.onRoutineRun?(routine) }
+                            .controlSize(.small)
+                        Button(role: .destructive) { model.onRoutineRemove?(routine) } label: {
+                            Image(systemName: "trash")
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(10)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                }
+                if model.routines.isEmpty {
+                    Text("No routines yet — record a demonstration and Perry learns it.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+        }
+    }
+}
+
 /// Files Perry owns, grouped into one pile per root directory. Rows drag
 /// out as real file URLs (Finder/Desktop drops work via `Transferable`
 /// URL), double-click opens, ⌥-click reveals.
@@ -285,6 +327,7 @@ final class HomeModel: ObservableObject {
         case history
         case tasks
         case files
+        case routines
         case suggestions
         case settings
         case whatsNew
@@ -312,6 +355,8 @@ final class HomeModel: ObservableObject {
     @Published var streamingAnswers: [UUID: String] = [:]
     /// Morning suggestion cards (Phase 9), newest run's ranked set.
     @Published var suggestions: [SuggestionCard] = []
+    /// Learned routines for the sidebar's Routines section.
+    @Published var routines: [LearnedRoutine] = []
     var deps = Deps()
 
     var onDraftChanged: ((UUID, String) -> Void)?
@@ -322,6 +367,9 @@ final class HomeModel: ObservableObject {
     /// Card actions route to the owner: `act` runs the card's body as a goal.
     var onSuggestionAct: ((SuggestionCard) -> Void)?
     var onSuggestionDismiss: ((SuggestionCard) -> Void)?
+    /// Routine actions route to RoutineLibraryController via the owner.
+    var onRoutineRun: ((LearnedRoutine) -> Void)?
+    var onRoutineRemove: ((LearnedRoutine) -> Void)?
 
     func draftChanged(threadID: UUID, draft: String) {
         onDraftChanged?(threadID, draft)

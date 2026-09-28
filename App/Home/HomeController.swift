@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import SwiftUI
 import PerryBrain
+import PerryGuide
 
 /// Notch Home (Phase 5 §4.7): a resting strip in the notch, a hover peek,
 /// and the full Home window. Event-driven only — pointer position arrives
@@ -110,8 +111,17 @@ final class HomeController {
     /// Owns card lifecycle (act/dismiss bookkeeping); injected by the owner.
     var suggestionController: SuggestionController?
 
+    /// Sidebar routines — injected so the view never touches RoutineStore.
+    var routineListProvider: (() -> [LearnedRoutine])?
+    var onRoutineRun: ((LearnedRoutine) -> Void)?
+    var onRoutineRemove: ((LearnedRoutine) -> Void)?
+
     func updateSuggestions(_ cards: [SuggestionCard]) {
         homeModel.suggestions = cards
+    }
+
+    func refreshRoutines() {
+        homeModel.routines = routineListProvider?() ?? []
     }
 
     func noteAnswer(_ text: String) {
@@ -309,6 +319,7 @@ final class HomeController {
         }
         let window = homeWindow ?? makeHomeWindow()
         homeWindow = window
+        refreshRoutines()
         Task {
             await refreshThreads()
             if let perryListProvider {
@@ -384,6 +395,14 @@ final class HomeController {
         }
         homeModel.onSuggestionDismiss = { [weak self] card in
             self?.suggestionController?.dismiss(card)
+        }
+        homeModel.onRoutineRun = { [weak self] routine in
+            self?.onRoutineRun?(routine)
+        }
+        homeModel.onRoutineRemove = { [weak self] routine in
+            guard let self else { return }
+            self.onRoutineRemove?(routine)
+            self.refreshRoutines()
         }
         homeModel.onPerrySelected = { [weak self] perry in
             guard let self, let uuid = UUID(uuidString: perry.threadID) else { return }

@@ -485,6 +485,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             await self?.perryStore?.list() ?? []
         }
         controller.suggestionController = suggestionController
+        controller.routineListProvider = { [weak self] in
+            self?.routineLibrary.routines() ?? []
+        }
+        controller.onRoutineRun = { [weak self] routine in
+            self?.routineLibrary.run(routine)
+        }
+        controller.onRoutineRemove = { [weak self] routine in
+            self?.routineLibrary.remove(routine)
+        }
         controller.configure(deps: HomeModel.Deps(
             transcriptStore: transcriptStore,
             activityLog: activityLog,
