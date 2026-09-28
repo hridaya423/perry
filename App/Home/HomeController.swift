@@ -97,10 +97,21 @@ final class HomeController {
         peekView.update(peekContent)
     }
 
-    func updatePinnedPerrys(_ names: [String]) {
-        peekContent.pinnedPerryNames = names
-        homeModel.perryNames = names
+    func updatePerrys(_ perrys: [Perry]) {
+        peekContent.pinnedPerryNames = perrys.map(\.name)
+        homeModel.perrys = perrys
         peekView.update(peekContent)
+    }
+
+    /// Refreshes the sidebar's Perry list — injected by AppController so the
+    /// view never touches `PerryStore` directly.
+    var perryListProvider: (() async -> [Perry])?
+
+    /// Owns card lifecycle (act/dismiss bookkeeping); injected by the owner.
+    var suggestionController: SuggestionController?
+
+    func updateSuggestions(_ cards: [SuggestionCard]) {
+        homeModel.suggestions = cards
     }
 
     func noteAnswer(_ text: String) {
@@ -298,7 +309,12 @@ final class HomeController {
         }
         let window = homeWindow ?? makeHomeWindow()
         homeWindow = window
-        Task { await refreshThreads() }
+        Task {
+            await refreshThreads()
+            if let perryListProvider {
+                homeModel.perrys = await perryListProvider()
+            }
+        }
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         apply(intent.setHomeOpen(true))
@@ -351,6 +367,37 @@ final class HomeController {
         homeModel.onDraftChanged = { [weak self] id, draft in
             guard let self else { return }
             Task { await self.threadStore?.setDraft(draft, for: id) }
+        }
+        homeModel.onSuggestionAct = { [weak self] card in
+            self?.suggestionController?.act(on: card) { card in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let threadID = UUID()
+                    _ = await self.threadStore?.upsert(
+                        PerryThread(id: threadID, title: card.title)
+                    )
+                    await self.refreshThreads()
+                    self.homeModel.sidebarSelection = .thread(threadID)
+                    self.homeModel.send(threadID: threadID, text: card.body)
+                }
+            }
+        }
+        homeModel.onSuggestionDismiss = { [weak self] card in
+            self?.suggestionController?.dismiss(card)
+        }
+        homeModel.onPerrySelected = { [weak self] perry in
+            guard let self, let uuid = UUID(uuidString: perry.threadID) else { return }
+            Task {
+                // The Perry's thread is created on first open, stamped with
+                // perryID so tool consent scopes to the Perry, not the turn.
+                if await self.threadStore?.thread(id: uuid) == nil {
+                    _ = await self.threadStore?.upsert(
+                        PerryThread(id: uuid, title: perry.name, perryID: perry.id.uuidString)
+                    )
+                }
+                await self.refreshThreads()
+                self.homeModel.sidebarSelection = .thread(uuid)
+            }
         }
         return window
     }

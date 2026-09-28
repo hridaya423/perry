@@ -89,30 +89,69 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         executors += MemoryToolExecutors.make(
             files: MemoryFiles(directory: support.appendingPathComponent("memory", isDirectory: true))
         )
-        executors += IntegrationToolExecutors.make(backend: AppIntegrationBackend(
-            client: integrationClient,
-            oauth: oauthCoordinator,
-            permissionStore: remoteIntegrationPermissions
-        ))
-        executors += PerryToolExecutors.make(
-            store: PerryStore(directory: support.appendingPathComponent("perrys", isDirectory: true)),
-            openSettings: { [weak self] page in
-                Task { @MainActor in
-                    // perry.settings.open pages → nearest SettingsTab.
-                    let tab: SettingsTab = switch page {
-                    case "voice": .voice
-                    case "apps": .integrations
-                    case "memory": .memory
-                    case "brain", "perrys": .runtimes
-                    case "shortcuts", "about": .general
-                    default: .general
+        executors += IntegrationToolExecutors.make(backend: integrationBackend)
+        if let perryStore {
+            executors += PerryToolExecutors.make(
+                store: perryStore,
+                openSettings: { [weak self] page in
+                    Task { @MainActor in
+                        // perry.settings.open pages → nearest SettingsTab.
+                        let tab: SettingsTab = switch page {
+                        case "voice": .voice
+                        case "apps": .integrations
+                        case "memory": .memory
+                        case "brain", "perrys": .runtimes
+                        case "shortcuts", "about": .general
+                        default: .general
+                        }
+                        self?.openSettings(tab: tab)
                     }
-                    self?.openSettings(tab: tab)
                 }
-            }
-        )
+            )
+        }
         return executors
     }
+
+    /// The shared Perry registry — agent tools, the scheduler, and Home's
+    /// sidebar all read the same directory.
+    private lazy var perryStore: PerryStore? = Self.supportDirectory.map {
+        PerryStore(directory: $0.appendingPathComponent("perrys", isDirectory: true))
+    }
+
+    /// The integration tool backend, shared with the morning researcher.
+    private lazy var integrationBackend = AppIntegrationBackend(
+        client: integrationClient,
+        oauth: oauthCoordinator,
+        permissionStore: remoteIntegrationPermissions
+    )
+
+    /// Phase 9: morning suggestion researcher over connected apps.
+    private lazy var suggestionController: SuggestionController = {
+        let controller = SuggestionController(
+            coordinator: agentCoordinator,
+            backend: integrationBackend,
+            isBusy: { [weak self] in self?.foreground.supervisorActive ?? false }
+        )
+        controller.onSuggestionsChanged = { [weak self] cards in
+            self?.homeController.updateSuggestions(cards)
+        }
+        return controller
+    }()
+
+    /// Phase 9: fires scheduled Perrys into the agent loop and publishes the
+    /// Perry list for Home's sidebar.
+    private lazy var perryScheduler: PerrySchedulerController? = {
+        guard let perryStore else { return nil }
+        let scheduler = PerrySchedulerController(
+            store: perryStore,
+            coordinator: agentCoordinator,
+            isBusy: { [weak self] in self?.foreground.supervisorActive ?? false }
+        )
+        scheduler.onPerrysChanged = { [weak self] perrys in
+            self?.homeController.updatePerrys(perrys)
+        }
+        return scheduler
+    }()
 
     /// Ghost cursor for agent work: a Perry cursor tracks each ui.* actuation
     /// point so the user can watch without their real pointer ever moving.
@@ -442,6 +481,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             return text
         }
         agentRunningObservation = controller.bindWorkingThreads(agentCoordinator.$runningThreads)
+        controller.perryListProvider = { [weak self] in
+            await self?.perryStore?.list() ?? []
+        }
+        controller.suggestionController = suggestionController
         controller.configure(deps: HomeModel.Deps(
             transcriptStore: transcriptStore,
             activityLog: activityLog,
@@ -816,6 +859,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.startInputListeners()
         modifierHoldMonitor.start()
         homeController.start()
+        perryScheduler?.start()
+        suggestionController.start()
         // Helper socket after first idle — never a launch blocker.
         if let dir = Self.supportDirectory {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -1554,6 +1599,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         askController.cancel()
         notchStatus.hide()
         homeController.stop()
+        perryScheduler?.stop()
+        suggestionController.stop()
         routineLibrary.stop()
         guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()

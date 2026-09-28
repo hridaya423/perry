@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SuggestionCard: Sendable, Equatable, Identifiable {
+public struct SuggestionCard: Sendable, Equatable, Identifiable, Codable {
     public var id: UUID
     public var title: String
     public var body: String

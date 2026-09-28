@@ -19,10 +19,13 @@ struct HomeView: View {
         NavigationSplitView {
             List(selection: $model.sidebarSelection) {
                 Section("Perrys") {
-                    ForEach(model.perryNames, id: \.self) { name in
-                        Label(name, systemImage: "sparkle")
+                    ForEach(model.perrys) { perry in
+                        Button { model.onPerrySelected?(perry) } label: {
+                            Label(perry.name, systemImage: "sparkle")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    if model.perryNames.isEmpty {
+                    if model.perrys.isEmpty {
                         Text("No Perrys yet").foregroundStyle(.secondary)
                     }
                 }
@@ -37,6 +40,9 @@ struct HomeView: View {
                     }
                 }
                 Section("Work") {
+                    Label("Suggestions", systemImage: "lightbulb")
+                        .badge(model.suggestions.isEmpty ? 0 : model.suggestions.count)
+                        .tag(HomeModel.Selection.suggestions)
                     Label("History", systemImage: "clock.arrow.circlepath")
                         .tag(HomeModel.Selection.history)
                     Label("Background tasks", systemImage: "tray.full")
@@ -67,6 +73,8 @@ struct HomeView: View {
             } else {
                 placeholder("Pick a thread")
             }
+        case .suggestions:
+            SuggestionsView(model: model)
         case .history:
             if let store = model.deps.transcriptStore, let log = model.deps.activityLog {
                 HistoryView(store: store, activityLog: log, undoableEntryIDs: model.deps.undoableEntryIDs)
@@ -156,6 +164,44 @@ private struct ThreadDetailView: View {
     }
 }
 
+/// Morning suggestion cards (Phase 9 §4.6): read-only research over connected
+/// apps, ranked; "Do it" runs the card's action as a goal on a new thread.
+private struct SuggestionsView: View {
+    @ObservedObject var model: HomeModel
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(model.suggestions) { card in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(card.title).font(.headline)
+                        Text(card.body)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Button("Do it") { model.onSuggestionAct?(card) }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                            Button("Next") { model.onSuggestionDismiss?(card) }
+                                .controlSize(.small)
+                            Button("Adjust") { model.onSuggestionDismiss?(card) }
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                }
+                if model.suggestions.isEmpty {
+                    Text("Nothing to suggest — Perry checks your connected apps each morning.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+        }
+    }
+}
+
 /// Files Perry owns, grouped into one pile per root directory. Rows drag
 /// out as real file URLs (Finder/Desktop drops work via `Transferable`
 /// URL), double-click opens, ⌥-click reveals.
@@ -239,6 +285,7 @@ final class HomeModel: ObservableObject {
         case history
         case tasks
         case files
+        case suggestions
         case settings
         case whatsNew
     }
@@ -257,16 +304,24 @@ final class HomeModel: ObservableObject {
     }
 
     @Published var threads: [PerryThread] = []
-    @Published var perryNames: [String] = []
+    @Published var perrys: [Perry] = []
     @Published var sidebarSelection: Selection?
     /// Threads with an agent turn in flight — drives the working row.
     @Published var workingThreads: Set<UUID> = []
     /// In-flight answers by thread, rendered as they stream in.
     @Published var streamingAnswers: [UUID: String] = [:]
+    /// Morning suggestion cards (Phase 9), newest run's ranked set.
+    @Published var suggestions: [SuggestionCard] = []
     var deps = Deps()
 
     var onDraftChanged: ((UUID, String) -> Void)?
     var onSend: ((UUID, String) -> Void)?
+    /// Selecting a Perry row opens its bound thread — created on demand by
+    /// the owner so `perryID` rides along for consent scoping.
+    var onPerrySelected: ((Perry) -> Void)?
+    /// Card actions route to the owner: `act` runs the card's body as a goal.
+    var onSuggestionAct: ((SuggestionCard) -> Void)?
+    var onSuggestionDismiss: ((SuggestionCard) -> Void)?
 
     func draftChanged(threadID: UUID, draft: String) {
         onDraftChanged?(threadID, draft)
