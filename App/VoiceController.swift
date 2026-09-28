@@ -51,6 +51,8 @@ final class VoiceController: NSObject, ObservableObject {
     private var dictationAttemptID: UUID?
     private var dictationWorkerTask: Task<Void, Never>?
     private var dictationInsertionID: UUID?
+    /// Post-insert edit watch for learn-on-edit (see scheduleDictationLearnChecks).
+    private var dictationLearnCheckTask: Task<Void, Never>?
     private var voiceInvocation = VoiceInvocationGate()
     private var dictationSpeechEndedAt: UInt64?
     private var dictationTargetApplication: NSRunningApplication?
@@ -500,6 +502,7 @@ final class VoiceController: NSObject, ObservableObject {
         dictationTargetApplication = nil
         dictationInsertionID = nil
         dictationWorkerTask?.cancel()
+        dictationLearnCheckTask?.cancel()
         realtimeVoiceSession?.stop()
         realtimeVoiceSession = nil
         realtimeTranscriptBuffer = ""
@@ -510,6 +513,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     /// Waits for in-flight dictation insertion work; used before worker shutdown.
     func joinInputWork() async {
+        dictationLearnCheckTask?.cancel()
         await dictationWorkerTask?.value
     }
 
@@ -700,10 +704,12 @@ final class VoiceController: NSObject, ObservableObject {
         }
         let speechEndedAt = dictationSpeechEndedAt
         dictationSpeechEndedAt = nil
+        let language = lastDictationLanguageIdentifier
         let targetHint = CuaTargetHint(bundleID: bundleID, processID: target.processIdentifier)
         let insertionID = UUID()
         let previousTask = dictationWorkerTask
         dictationInsertionID = insertionID
+        dictationLearnCheckTask?.cancel()
         previousTask?.cancel()
         hooks.setStatus("Typing through Cua…")
         let task = Task { @MainActor [weak self] in
@@ -748,6 +754,10 @@ final class VoiceController: NSObject, ObservableObject {
                 self.dictationInsertionID = nil
                 self.dictationWorkerTask = nil
                 self.deliverVoiceReply("Typed it.")
+                self.recordDictationBackup(text, language: language)
+                self.scheduleDictationLearnChecks(
+                    inserted: text, target: targetHint, bundleID: bundleID, insertedAt: Date()
+                )
             } catch {
                 guard self.dictationInsertionID == insertionID else {
                     if self.dictationInsertionID == nil {
@@ -763,6 +773,73 @@ final class VoiceController: NSObject, ObservableObject {
             }
         }
         dictationWorkerTask = task
+    }
+
+    /// Phase 8: every delivered dictation lands in the 7-day rolling backup
+    /// (text only — audio is never stored).
+    private func recordDictationBackup(_ text: String, language: String?) {
+        guard let support = supportDirectory() else { return }
+        try? DictationBackupStore(
+            directory: support.appendingPathComponent("dictation-backup", isDirectory: true)
+        ).record(text: text, language: language)
+    }
+
+    /// Learn-on-edit: re-read the target window ~8s and ~17s after insertion
+    /// and, if the field the text landed in has been edited, merge the
+    /// word substitutions into the voice dictionary. Token-count equality
+    /// inside `PersonalDictionaryLearner` keeps unrelated edits from
+    /// teaching anything.
+    private func scheduleDictationLearnChecks(
+        inserted text: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
+    ) {
+        dictationLearnCheckTask?.cancel()
+        dictationLearnCheckTask = Task { @MainActor [weak self] in
+            for delay in [8.0, 9.0] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled else { return }
+                await self.learnDictationEdits(
+                    inserted: text, target: target, bundleID: bundleID, insertedAt: insertedAt
+                )
+            }
+        }
+    }
+
+    private static let dictationTextRoles: Set<String> = [
+        "AXTextArea", "AXTextField", "AXWebArea", "AXScrollArea", "AXStaticText", "AXComboBox",
+    ]
+
+    private func learnDictationEdits(
+        inserted: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
+    ) async {
+        let insertedTokens = DictationCleanupGuard.tokens(inserted)
+        guard !insertedTokens.isEmpty else { return }
+        do {
+            let captured = try await workers.withWorker(
+                scope: .dictation, resources: [.application(bundleID)]
+            ) { worker in
+                try await worker.capture(target: target)
+            }
+            let candidates = (captured.accessibilitySnapshotModel?.elements ?? [])
+                .filter { Self.dictationTextRoles.contains($0.rawRole ?? "") }
+                .compactMap(\.value)
+            // The element holding the insertion shares the most tokens with it.
+            let best = candidates.max {
+                DictationCleanupGuard.tokens($0).filter { Set(insertedTokens).contains($0) }.count
+                    < DictationCleanupGuard.tokens($1).filter { Set(insertedTokens).contains($0) }.count
+            }
+            guard let best else { return }
+            let learned = PersonalDictionaryLearner.learn(
+                inserted: inserted, observed: best, insertedAt: insertedAt, observedAt: Date()
+            )
+            guard !learned.isEmpty else { return }
+            for (spoken, replacement) in learned {
+                try? VoiceDictionaryStore(supportDirectory: supportDirectory())
+                    .set(spoken: spoken, replacement: replacement)
+            }
+        } catch {
+            // Best-effort: a new dictation holds the .dictation worker, and
+            // the target may have closed — nothing to learn either way.
+        }
     }
 
     // MARK: Shortcuts and wake word

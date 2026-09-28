@@ -18,7 +18,7 @@ public enum DictationCleanupGuard {
     static let fillers: Set<String> = ["um", "uh", "erm", "ah", "like", "so", "basically", "actually"]
 
     /// Word tokens: alphanumerics plus in-word apostrophes ("they're" is one token).
-    static func tokens(_ text: String) -> [String] {
+    public static func tokens(_ text: String) -> [String] {
         var separators = CharacterSet.alphanumerics.inverted
         separators.remove(charactersIn: "'’")
         return text.lowercased()

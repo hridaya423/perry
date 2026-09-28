@@ -396,7 +396,10 @@ enum PerryLiveErasureErasers {
         let transcriptFiles = PerryFileEraser(
             category: .history,
             targets: paths.supportDirectory.map {
-                [PerryFileEraser.Target(identifier: "Transcripts", url: $0.appendingPathComponent("Transcripts", isDirectory: true))]
+                [
+                    PerryFileEraser.Target(identifier: "Transcripts", url: $0.appendingPathComponent("Transcripts", isDirectory: true)),
+                    PerryFileEraser.Target(identifier: "DictationBackup", url: $0.appendingPathComponent("dictation-backup", isDirectory: true)),
+                ]
             } ?? []
         )
         return PerryClosureEraser(
