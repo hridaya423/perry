@@ -4,131 +4,119 @@ import PerryCapture
 
 @MainActor
 final class OnboardingDirectorTests: XCTestCase {
-    private let granted = PerryPermissionSnapshot(
-        accessibility: true, screenRecording: .granted, microphone: .granted
-    )
-    private let denied = PerryPermissionSnapshot(
-        accessibility: false, screenRecording: .denied, microphone: .denied
-    )
+    private let granted = PerryPermissionSnapshot(accessibility: true, screenRecording: .granted, microphone: .denied)
+    private let denied = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
 
-    private func makeDirector(
-        snapshot: PerryPermissionSnapshot? = nil,
-        spoken: NSMutableArray? = nil
-    ) -> (OnboardingDirector, NSMutableArray) {
-        let speech = spoken ?? NSMutableArray()
-        var effects = OnboardingDirector.Effects()
-        effects.permissionProbe = { snapshot ?? self.denied }
-        effects.speak = { speech.add($0) }
-        return (OnboardingDirector(effects: effects), speech)
-    }
-
-    func testTalkTurnDrivesGreetThenFirstTalk() {
-        let (director, speech) = makeDirector()
+    func testProviderReadinessPrecedesTheFirstConversation() {
+        let director = OnboardingDirector()
         director.start()
-
         XCTAssertEqual(director.beat, .greet)
-        XCTAssertEqual(speech.firstObject as? String, OnboardingDirector.scriptGreet)
-
-        director.noteTalkTurnCompleted()
-        XCTAssertEqual(director.beat, .firstTalk)
-        XCTAssertEqual(speech.lastObject as? String, OnboardingDirector.scriptTalk)
-        director.noteTalkTurnCompleted()
-        XCTAssertEqual(director.beat, .screenAccess)
-        director.stop()
-    }
-
-    func testSkipWalksEveryBeat() {
-        let (director, _) = makeDirector()
-        var beats: [OnboardingDirector.Beat?] = []
-        director.onBeatChanged = { beats.append(($0, $1).0) }
-        director.start()
-        // Greet → firstTalk → screenAccess → brainChoice → practice steps → finale.
-        director.skip() // greet → firstTalk
-        director.skip() // firstTalk → screenAccess
-        XCTAssertEqual(director.beat, .screenAccess)
-        director.skip() // screenAccess → brainChoice
-        director.skip() // brainChoice → practice
-        XCTAssertEqual(director.beat, .practice)
-        XCTAssertEqual(director.practiceStep, .pointAsk)
-        director.skip() // pointAsk → guide
-        XCTAssertEqual(director.practiceStep, .guide)
-        director.skip() // guide → renameUndo
-        director.skip() // renameUndo → dictate
-        director.skip() // dictate → finale
-        XCTAssertEqual(director.beat, .finale)
-        director.skip() // finale → done
-        XCTAssertNil(director.beat)
-        // onBeatChanged fires once per practice sub-step too.
-        XCTAssertEqual(beats, [
-            .greet, .firstTalk, .screenAccess, .brainChoice,
-            .practice, .practice, .practice, .practice,
-            .finale,
-        ])
-    }
-
-    func testDeniedMicSpeaksKeyboardVariant() {
-        let (director, speech) = makeDirector()
-        director.start()
-        director.skip() // greet → firstTalk
-        director.noteMicrophoneDenied()
-        XCTAssertTrue(director.micDenied)
-        XCTAssertEqual(speech.lastObject as? String, OnboardingDirector.scriptNoMicTalk)
-    }
-
-    func testDeniedMicBeforeFirstTalkSpeaksVariantOnEntry() {
-        let (director, speech) = makeDirector()
-        director.noteMicrophoneDenied() // denied before reaching the beat
-        director.start()
-        director.skip() // greet → firstTalk
-        XCTAssertEqual(speech.lastObject as? String, OnboardingDirector.scriptNoMicTalk)
-    }
-
-    func testPermissionGrantAutoAdvances() async {
-        let (director, _) = makeDirector(snapshot: granted)
-        director.start()
-        director.skip() // greet → firstTalk
-        director.skip() // firstTalk → screenAccess (starts polling)
-        XCTAssertEqual(director.beat, .screenAccess)
-
-        // The 500 ms poll should detect the grant and advance.
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        director.skip()
         XCTAssertEqual(director.beat, .brainChoice)
-        director.stop()
-    }
-
-    func testDeniedPermissionsKeepBeatWaiting() async {
-        let (director, _) = makeDirector(snapshot: denied)
-        director.start()
-        director.skip()
-        director.skip()
+        director.noteTalkTurnCompleted()
+        XCTAssertEqual(director.beat, .brainChoice)
+        director.noteBrainChoiceMade()
+        XCTAssertEqual(director.beat, .firstTalk)
+        director.noteTalkTurnCompleted()
         XCTAssertEqual(director.beat, .screenAccess)
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
-        XCTAssertEqual(director.beat, .screenAccess) // still waiting — no dead-end, but no advance
         director.stop()
     }
 
-    func testPracticeStepsCompleteToFinale() {
-        let (director, _) = makeDirector()
+    func testPermissionsDoNotOpenSettingsUntilRequested() async {
+        var opened = 0
+        var effects = OnboardingDirector.Effects()
+        effects.permissionProbe = { self.denied }
+        effects.openScreenAccessSettings = { opened += 1 }
+        let director = OnboardingDirector(effects: effects)
         director.start()
-        while director.beat != .practice && director.beat != nil {
-            director.skip()
-        }
+        director.skip()
+        director.skip()
+        director.skip()
+        await director.refreshPermissions()
+        XCTAssertEqual(director.beat, .screenAccess)
+        XCTAssertEqual(opened, 0)
+        director.openAccessibilitySettings()
+        XCTAssertEqual(opened, 1)
+        XCTAssertEqual(director.beat, .screenAccess)
+        director.stop()
+    }
+
+    func testScreenPermissionsAdvanceWithoutMicrophonePermission() async {
+        var effects = OnboardingDirector.Effects()
+        effects.permissionProbe = { self.granted }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        director.skip()
+        director.skip()
+        director.skip()
+        await director.refreshPermissions()
+        XCTAssertEqual(director.beat, .practice)
+        XCTAssertFalse(director.practiceStarted)
+        director.stop()
+    }
+
+    func testPracticeRequiresAnExplicitStartAndActualCompletionEvents() {
+        var starts = 0
+        var effects = OnboardingDirector.Effects()
+        effects.beginPractice = { starts += 1 }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        for _ in 0..<4 { director.skip() }
+        XCTAssertEqual(director.beat, .practice)
+        XCTAssertEqual(starts, 0)
+        director.notePracticeStepCompleted()
         XCTAssertEqual(director.practiceStep, .pointAsk)
-        director.notePracticeStepCompleted()
-        XCTAssertEqual(director.practiceStep, .guide)
-        director.notePracticeStepCompleted()
-        XCTAssertEqual(director.practiceStep, .renameUndo)
-        director.notePracticeStepCompleted()
-        XCTAssertEqual(director.practiceStep, .dictate)
+        director.startPractice()
+        XCTAssertEqual(starts, 1)
+        for expected in [OnboardingDirector.PracticeStep.guide, .renameUndo, .dictate] {
+            director.notePracticeStepCompleted()
+            XCTAssertEqual(director.practiceStep, expected)
+        }
         director.notePracticeStepCompleted()
         XCTAssertEqual(director.beat, .finale)
+        director.stop()
     }
 
-    func testEventsIgnoredOutsideTheirBeat() {
-        let (director, _) = makeDirector()
+    func testInterruptedSetupResumesAndCompletionClearsCheckpoint() throws {
+        let name = "perry.onboarding.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let first = OnboardingDirector(defaults: defaults)
+        first.start()
+        first.skip()
+        first.noteBrainChoiceMade()
+        first.stop()
+        let resumed = OnboardingDirector(defaults: defaults)
+        resumed.start()
+        XCTAssertEqual(resumed.beat, .firstTalk)
+        resumed.skip()
+        resumed.skip()
+        resumed.skip()
+        XCTAssertEqual(resumed.beat, .finale)
+        resumed.skip()
+        XCTAssertNil(resumed.beat)
+        let fresh = OnboardingDirector(defaults: defaults)
+        fresh.start()
+        XCTAssertEqual(fresh.beat, .greet)
+        fresh.stop()
+    }
+
+    func testSkippedPermissionPollCannotAdvanceAReplacementBeat() async {
+        let entered = expectation(description: "Permission probe entered")
+        var release: CheckedContinuation<PerryPermissionSnapshot, Never>?
+        var effects = OnboardingDirector.Effects()
+        effects.permissionProbe = { await withCheckedContinuation { release = $0; entered.fulfill() } }
+        let director = OnboardingDirector(effects: effects)
         director.start()
-        director.notePracticeStepCompleted() // not in practice — no-op
-        director.noteBrainChoiceMade()       // not in brainChoice — no-op
-        XCTAssertEqual(director.beat, .greet)
+        director.skip()
+        director.skip()
+        director.skip()
+        let poll = Task { await director.refreshPermissions() }
+        await fulfillment(of: [entered], timeout: 1)
+        director.skip()
+        release?.resume(returning: granted)
+        await poll.value
+        XCTAssertEqual(director.beat, .practice)
+        director.stop()
     }
 }

@@ -2,217 +2,171 @@ import AppKit
 import Foundation
 import PerryCapture
 
-/// First-run beat script (megaplan §4.1 / Phase 4): the cursor fades in and
-/// Perry *does* the tutorial with you — hold ⌃⌥, grant permissions while
-/// Guide points at the toggles, pick a brain, practice in a sandbox, tuck
-/// into the notch. Every beat is skippable and keyboard-doable; denied mic
-/// swaps to the keyboard variant so nothing dead-ends. All side effects are
-/// injected so the script is unit-testable end to end.
 @MainActor
-final class OnboardingDirector {
+final class OnboardingDirector: ObservableObject {
     enum Beat: String, CaseIterable, Sendable {
-        case greet
-        case firstTalk
-        case screenAccess
-        case brainChoice
-        case practice
-        case finale
+        case greet, brainChoice, firstTalk, screenAccess, practice, finale
     }
 
     enum PracticeStep: String, CaseIterable, Sendable {
-        case pointAsk
-        case guide
-        case renameUndo
-        case dictate
+        case pointAsk, guide, renameUndo, dictate
     }
 
     struct Effects {
-        var permissionProbe: () async -> PerryPermissionSnapshot = {
-            await PerryPermissionSnapshot.probe()
-        }
+        var permissionProbe: () async -> PerryPermissionSnapshot = { await PerryPermissionSnapshot.probe() }
         var speak: (String) -> Void = { _ in }
         var openScreenAccessSettings: () -> Void = {}
+        var openScreenRecordingSettings: () -> Void = {}
         var beginPractice: () -> Void = {}
+        var endPractice: () -> Void = {}
         var finish: () -> Void = {}
         var now: () -> Date = { Date() }
     }
 
-    /// Posted so the overlay/UI layer can render the active beat without
-    /// the director owning a window.
-    var onBeatChanged: ((Beat, PracticeStep?) -> Void)?
-
-    private(set) var beat: Beat?
-    private(set) var practiceStep: PracticeStep?
-    private(set) var micDenied = false
+    @Published private(set) var beat: Beat?
+    @Published private(set) var practiceStep: PracticeStep?
+    @Published private(set) var practiceStarted = false
+    @Published private(set) var permissions: PerryPermissionSnapshot?
+    @Published private(set) var micDenied = false
     private(set) var startedAt: Date?
 
     private let effects: Effects
+    private let defaults: UserDefaults?
+    private let checkpointKey = "perry.onboarding.beat"
+    private let practiceKey = "perry.onboarding.practice"
     private var permissionTimer: Timer?
+    private var isRefreshingPermissions = false
 
-    init(effects: Effects = Effects()) {
+    init(effects: Effects = Effects(), defaults: UserDefaults? = nil) {
         self.effects = effects
+        self.defaults = defaults
     }
 
-    func start() {
+    func start(resume: Bool = true) {
         startedAt = effects.now()
-        enter(.greet)
+        let saved = resume ? defaults?.string(forKey: checkpointKey).flatMap(Beat.init(rawValue:)) : nil
+        let savedPractice = resume ? defaults?.string(forKey: practiceKey).flatMap(PracticeStep.init(rawValue:)) : nil
+        enter(saved ?? .greet)
+        if beat == .practice, let savedPractice {
+            practiceStep = savedPractice
+            defaults?.set(savedPractice.rawValue, forKey: practiceKey)
+        }
     }
 
-    /// Any beat may be skipped — "Skip" key, Esc, or the composer path.
     func skip() {
-        guard let current = beat else { return }
-        switch current {
-        case .practice:
-            advancePracticeStep()
-        default:
-            advance()
-        }
+        advance()
     }
 
-    // MARK: Events from the app
-
-    /// A Talk turn finished (voice or typed). On greet it opens the "ask
-    /// about your screen" beat; on firstTalk it unlocks permissions; during
-    /// practice it completes the pointAsk sub-step.
     func noteTalkTurnCompleted() {
-        switch beat {
-        case .greet:
-            enter(.firstTalk)
-        case .firstTalk:
-            enter(.screenAccess)
-        case .practice where practiceStep == .pointAsk:
-            advancePracticeStep()
-        default:
-            break
+        if beat == .firstTalk {
+            advance()
+        } else if beat == .practice, practiceStep == .pointAsk {
+            notePracticeStepCompleted()
         }
     }
 
-    /// Mic permission was denied — the talk beat degrades to the keyboard
-    /// variant instead of stalling.
     func noteMicrophoneDenied() {
         micDenied = true
-        if beat == .firstTalk {
-            effects.speak(Self.scriptNoMicTalk)
-        }
+        if beat == .firstTalk { effects.speak(Self.scriptNoMicTalk) }
     }
 
-    /// A practice sub-beat finished inside the PracticeWindow.
-    func notePracticeStepCompleted() {
-        guard beat == .practice else { return }
-        advancePracticeStep()
-    }
-
-    private func advancePracticeStep() {
-        guard let step = practiceStep else { advance(); return }
-        if let next = PracticeStep.allCases.drop(while: { $0 != step }).dropFirst().first {
-            practiceStep = next
-            effects.speak(Self.practiceScript(for: next))
-            onBeatChanged?(.practice, next)
-        } else {
-            advance()
-        }
-    }
-
-    /// Brain choice beat resolved (ChatGPT sign-in started, on-device, or
-    /// BYOK) — always allowed to proceed.
     func noteBrainChoiceMade() {
         guard beat == .brainChoice else { return }
         advance()
     }
 
-    // MARK: Transitions
-
-    private func advance() {
-        guard let current = beat else { return }
-        let order = Beat.allCases
-        guard let idx = order.firstIndex(of: current), idx + 1 < order.count else {
-            beat = nil
-            effects.finish()
-            return
-        }
-        enter(order[idx + 1])
+    func startPractice() {
+        guard beat == .practice, !practiceStarted else { return }
+        practiceStarted = true
+        effects.beginPractice()
+        if let practiceStep { effects.speak(Self.practiceScript(for: practiceStep)) }
     }
 
-    private func advance(to target: Beat) {
-        enter(target)
-    }
-
-    private func enter(_ next: Beat) {
-        beat = next
-        practiceStep = next == .practice ? .pointAsk : nil
-        switch next {
-        case .greet:
-            effects.speak(Self.scriptGreet)
-        case .firstTalk:
-            effects.speak(micDenied ? Self.scriptNoMicTalk : Self.scriptTalk)
-        case .screenAccess:
-            effects.speak(Self.scriptPermissions)
-            effects.openScreenAccessSettings()
-            startPermissionPolling()
-        case .brainChoice:
-            effects.speak(Self.scriptBrain)
-        case .practice:
-            effects.beginPractice()
-            effects.speak(Self.practiceScript(for: .pointAsk))
-        case .finale:
-            effects.speak(Self.scriptFinale)
-            // Let the tuck-away line land, then mark onboarding complete.
-            Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
-                Task { @MainActor in self?.advance() }
-            }
-        }
-        onBeatChanged?(next, practiceStep)
-    }
-
-    // MARK: Permission polling (§4.1.3 — grants detected live, no "Retry")
-
-    private func startPermissionPolling() {
-        permissionTimer?.invalidate()
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) {
-            [weak self] _ in
-            Task { @MainActor in await self?.pollPermissions() }
-        }
-    }
-
-    private func pollPermissions() async {
-        let snapshot = await effects.permissionProbe()
-        guard beat == .screenAccess else { return }
-        if snapshot.requiredPermissionsGranted {
-            permissionTimer?.invalidate()
+    func notePracticeStepCompleted() {
+        guard beat == .practice, practiceStarted, let step = practiceStep else { return }
+        if let next = PracticeStep.allCases.drop(while: { $0 != step }).dropFirst().first {
+            practiceStep = next
+            defaults?.set(next.rawValue, forKey: practiceKey)
+            effects.speak(Self.practiceScript(for: next))
+        } else {
             advance()
         }
     }
 
+    func openAccessibilitySettings() {
+        guard beat == .screenAccess else { return }
+        effects.openScreenAccessSettings()
+    }
+
+    func openScreenRecordingSettings() {
+        guard beat == .screenAccess else { return }
+        effects.openScreenRecordingSettings()
+    }
+
+    func refreshPermissions() async {
+        guard beat == .screenAccess, !isRefreshingPermissions else { return }
+        isRefreshingPermissions = true
+        defer { isRefreshingPermissions = false }
+        let snapshot = await effects.permissionProbe()
+        guard beat == .screenAccess else { return }
+        permissions = snapshot
+        if snapshot.requiredPermissionsGranted { advance() }
+    }
+
     func stop() {
         permissionTimer?.invalidate()
+        permissionTimer = nil
         beat = nil
     }
 
-    // MARK: Script (kept here so beats, copy, and tests share one source)
+    private func advance() {
+        guard let current = beat else { return }
+        if current == .practice { effects.endPractice() }
+        let order = Beat.allCases
+        guard let index = order.firstIndex(of: current), index + 1 < order.count else {
+            stop()
+            defaults?.removeObject(forKey: checkpointKey)
+            defaults?.removeObject(forKey: practiceKey)
+            effects.finish()
+            return
+        }
+        enter(order[index + 1])
+    }
 
-    static let scriptGreet =
-        "Hi, I'm Perry. Hold Control and Option and say hi."
-    static let scriptTalk =
-        "Now ask about something on your screen — point at it and say “what's this?”"
-    static let scriptNoMicTalk =
-        "No mic? No problem — double-tap Control and type what you'd ask."
-    static let scriptPermissions =
-        "To see your screen I need two permissions. I'll point at the switches."
-    static let scriptBrain =
-        "Want me to use your ChatGPT account? One click, no keys. Or skip — I'll use this Mac's on-device model."
-    static let scriptFinale =
-        "I live up here. Hover the notch any time."
+    private func enter(_ next: Beat) {
+        permissionTimer?.invalidate()
+        permissionTimer = nil
+        beat = next
+        practiceStep = next == .practice ? .pointAsk : nil
+        practiceStarted = false
+        defaults?.set(next.rawValue, forKey: checkpointKey)
+        switch next {
+        case .greet: effects.speak(Self.scriptGreet)
+        case .brainChoice: effects.speak(Self.scriptBrain)
+        case .firstTalk: effects.speak(micDenied ? Self.scriptNoMicTalk : Self.scriptTalk)
+        case .screenAccess:
+            effects.speak(Self.scriptPermissions)
+            permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in await self?.refreshPermissions() }
+            }
+        case .practice: defaults?.set(PracticeStep.pointAsk.rawValue, forKey: practiceKey)
+        case .finale: effects.speak(Self.scriptFinale)
+        }
+    }
+
+    static let scriptGreet = "Hi, I’m Perry. Let’s connect your account, then try a conversation."
+    static let scriptTalk = "Tell me something you’re working on, or ask a question. You can type below."
+    static let scriptNoMicTalk = "You can type your first question below. A microphone isn’t required."
+    static let scriptPermissions = "Screen permissions let me understand what you point at and help in other apps. You can enable them in System Settings or do this later."
+    static let scriptBrain = "Connect your ChatGPT account to get started. You can also configure your own model in Settings."
+    static let scriptFinale = "Home keeps your conversations together. Hold Control and Option to talk, or double-tap Control to type."
 
     static func practiceScript(for step: PracticeStep) -> String {
         switch step {
-        case .pointAsk:
-            return "In this practice window, point at anything and ask “what's this?”"
-        case .guide:
-            return "Say “show me how to rename a file” and I'll walk you through it."
-        case .renameUndo:
-            return "Say “rename these three files” — watch me do it, then say “undo that.”"
-        case .dictate:
-            return "Hold the talk key in the text box and dictate a sentence."
+        case .pointAsk: "In the practice window, point at something and ask what it is."
+        case .guide: "Ask Perry to show you how to rename a file."
+        case .renameUndo: "Ask Perry to rename the three practice files, then undo the change."
+        case .dictate: "Focus the practice text box, hold the talk key, and dictate a sentence."
         }
     }
 }

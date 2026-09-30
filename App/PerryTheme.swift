@@ -13,8 +13,17 @@ enum PerryTheme {
         static let textSecondary = Color.secondary
 
         // Accent
-        static let accent = PerryOverlayTheme.Colors.accent
-        static let onAccent = Color(red: 0.024, green: 0.110, blue: 0.070)
+        static let accent = Color(nsColor: NSColor(name: nil) { appearance in
+            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+                return NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 1)
+            }
+            return NSColor(srgbRed: 0.055, green: 0.400, blue: 0.286, alpha: 1)
+        })
+        static let onAccent = Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 0.024, green: 0.110, blue: 0.070, alpha: 1)
+                : .white
+        })
 
         // Status
         static let success = Color(nsColor: .systemGreen)
@@ -62,8 +71,8 @@ enum PerryTheme {
     }
 
     enum Sizing {
-        static let panelWidth = CGFloat(390)
-        static let panelHeight = CGFloat(320)
+        static let panelWidth = CGFloat(480)
+        static let panelHeight = CGFloat(440)
         static let settingsWidth = CGFloat(760)
         static let settingsHeight = CGFloat(520)
         static let settingsMinimumWidth = CGFloat(680)

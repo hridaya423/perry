@@ -1,35 +1,47 @@
 import Foundation
 import PerryRuntimes
 
-/// While a foreground Do run drives the agent loop, its already-claimed
-/// worker is lent to screen/ui tools so they share the session's target-app
-/// lock instead of claiming a conflicting `.application` resource on a
-/// background worker.
 final class ForegroundWorkerLease: @unchecked Sendable {
     private let lock = NSLock()
-    private var handle: CuaWorkerHandle?
+    private var handles: [UUID: CuaWorkerHandle] = [:]
 
-    var current: CuaWorkerHandle? {
-        lock.lock()
-        defer { lock.unlock() }
-        return handle
+    func withRun<Value: Sendable>(
+        _ runID: UUID,
+        workers: CuaWorkerService,
+        operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        if worker(for: runID) != nil { return try await operation() }
+        return try await workers.withWorker(scope: .background, resources: []) { worker in
+            self.set(worker, for: runID)
+            defer { self.set(nil, for: runID) }
+            return try await operation()
+        }
     }
 
-    func set(_ handle: CuaWorkerHandle?) {
+    func worker(for runID: UUID) -> CuaWorkerHandle? {
         lock.lock()
-        self.handle = handle
+        defer { lock.unlock() }
+        return handles[runID]
+    }
+
+    func set(_ handle: CuaWorkerHandle?, for runID: UUID) {
+        lock.lock()
+        handles[runID] = handle
         lock.unlock()
     }
 }
 
-/// Runs `body` on the lent foreground worker when one is active, else claims
-/// a background worker as usual.
 func withCuaWorker<Value: Sendable>(
     _ workers: CuaWorkerService,
     lease: ForegroundWorkerLease?,
+    runID: UUID,
     resources: Set<BackgroundTaskResource>,
     _ body: @escaping @Sendable (CuaWorkerHandle) async throws -> Value
 ) async throws -> Value {
-    if let lent = lease?.current { return try await body(lent) }
+    try Task.checkCancellation()
+    if let lent = lease?.worker(for: runID) {
+        try await lent.claimResources(resources)
+        return try await body(lent)
+    }
     return try await workers.withWorker(scope: .background, resources: resources, operation: body)
 }

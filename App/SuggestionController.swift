@@ -10,6 +10,7 @@ import PerryBrain
 /// tomorrow's bar. Quiet when Focus is on or the screen is being shared.
 @MainActor
 final class SuggestionController {
+    static let enabledKey = "perry.suggestions.enabled"
     private let coordinator: AgentCoordinator
     private let backend: any IntegrationBackend
     /// A foreground Do run owns the user's attention — generation waits.
@@ -19,9 +20,11 @@ final class SuggestionController {
     /// Fixed thread so research turns stay inspectable in Home.
     private let threadID = UUID(uuidString: "A6E11C7E-0000-4A00-9E00-000000000009")!
     private var timer: Timer?
+    private var generationTask: Task<Void, Never>?
+    private var defaultsObserver: NSObjectProtocol?
     private(set) var cards: [SuggestionCard] = []
 
-    private var defaults: UserDefaults { .standard }
+    private let defaults: UserDefaults
     private var lastRunDayKey: String { "perry.suggestions.lastRunDay" }
     private var ignoredDaysKey: String { "perry.suggestions.ignoredDays" }
     private var pendingCardsKey: String { "perry.suggestions.pending" }
@@ -29,25 +32,51 @@ final class SuggestionController {
     init(
         coordinator: AgentCoordinator,
         backend: any IntegrationBackend,
-        isBusy: @escaping @MainActor () -> Bool
+        isBusy: @escaping @MainActor () -> Bool,
+        defaults: UserDefaults = .standard
     ) {
         self.coordinator = coordinator
         self.backend = backend
         self.isBusy = isBusy
+        self.defaults = defaults
     }
 
-    func start() {
+    func start(at now: Date = Date()) {
         guard timer == nil else { return }
-        restorePending()
-        timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in await self?.maybeGenerate() }
+        reloadCards()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.defaults.bool(forKey: Self.enabledKey) else { return }
+                self.coordinator.stop(threadID: self.threadID)
+            }
         }
-        Task { await maybeGenerate() }
+        timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.requestGeneration() }
+        }
+        requestGeneration(at: now)
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+        defaultsObserver = nil
+        generationTask?.cancel()
+        coordinator.stop(threadID: threadID)
+    }
+
+    func joinAll() async {
+        await generationTask?.value
+    }
+
+    func requestGeneration(at now: Date = Date()) {
+        guard timer != nil, generationTask == nil else { return }
+        generationTask = Task {
+            defer { generationTask = nil }
+            await maybeGenerate(at: now)
+        }
     }
 
     // MARK: - Card actions
@@ -62,6 +91,13 @@ final class SuggestionController {
         perform(card)
     }
 
+    func adjust(_ card: SuggestionCard) {
+        guard let index = cards.firstIndex(where: { $0.id == card.id }) else { return }
+        cards[index].body = card.body
+        persistPending()
+        publish()
+    }
+
     func dismiss(_ card: SuggestionCard) {
         cards.removeAll { $0.id == card.id }
         persistPending()
@@ -70,8 +106,8 @@ final class SuggestionController {
 
     // MARK: - Generation
 
-    private func maybeGenerate() async {
-        let now = Date()
+    private func maybeGenerate(at now: Date) async {
+        guard !Task.isCancelled, defaults.bool(forKey: Self.enabledKey) else { return }
         let cal = Calendar.current
         guard cal.component(.hour, from: now) >= 6 else { return }
         let day = cal.startOfDay(for: now).timeIntervalSince1970
@@ -80,7 +116,7 @@ final class SuggestionController {
         defaults.set(day, forKey: lastRunDayKey)
 
         let connected = (try? await backend.services().filter { $0.connected }) ?? []
-        guard !connected.isEmpty else { return }
+        guard !Task.isCancelled, !connected.isEmpty else { return }
 
         // Un-acted cards from the last run count as ignored → higher bar.
         if !cards.isEmpty {
@@ -89,8 +125,10 @@ final class SuggestionController {
 
         var fresh: [SuggestionCard] = []
         for service in connected {
+            guard !Task.isCancelled, defaults.bool(forKey: Self.enabledKey) else { return }
             fresh += await research(service)
         }
+        guard !Task.isCancelled else { return }
         let minScore = SuggestionRules.effectiveMinScore(
             base: 0.3, ignoredDays: defaults.integer(forKey: ignoredDaysKey)
         )
@@ -99,9 +137,6 @@ final class SuggestionController {
         publish()
     }
 
-    /// One researcher turn per service: read-only ops only — the researcher
-    /// has no write tools in scope because `integrations.write` is gated by
-    /// tier and never requested by this prompt.
     private func research(_ service: IntegrationService) async -> [SuggestionCard] {
         let ops = service.operations.filter { !$0.isWrite }.map(\.name).joined(separator: ", ")
         guard !ops.isEmpty else { return [] }
@@ -114,10 +149,15 @@ final class SuggestionController {
         Empty array if nothing merits attention.
         """
         var text = ""
-        for await event in coordinator.run(threadID: threadID, goal: prompt) {
+        for await event in coordinator.run(threadID: threadID, goal: prompt, surface: .suggestions) {
             if case .textDelta(let delta) = event { text += delta }
         }
-        return Self.parseCards(text, serviceID: nil)
+        return Self.parseCards(text, serviceID: nil).map { card in
+            var card = card
+            card.sourceServiceID = service.id
+            card.sourceServiceName = service.name
+            return card
+        }
     }
 
     /// First JSON array in the reply → cards, scored as given and validated.
@@ -162,11 +202,8 @@ final class SuggestionController {
         defaults.set(data, forKey: pendingCardsKey)
     }
 
-    private func restorePending() {
-        guard let data = defaults.data(forKey: pendingCardsKey),
-              let restored = try? JSONDecoder().decode([SuggestionCard].self, from: data)
-        else { return }
-        cards = restored
+    func reloadCards() {
+        cards = defaults.data(forKey: pendingCardsKey).flatMap { try? JSONDecoder().decode([SuggestionCard].self, from: $0) } ?? []
         publish()
     }
 

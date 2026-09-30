@@ -32,11 +32,11 @@ private struct BrowserReadExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: "browser.read",
-            description: "Read the frontmost browser window: URL, title, and its elements (compact ids for other tools).",
+            description: "Read the selected browser window: URL, title, and its elements (compact ids for other tools).",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "bundleID": .object(["type": .string("string"), "description": .string("Browser to read; default tries known browsers front-to-back")]),
+                    "bundleID": .object(["type": .string("string"), "description": .string("Browser to read; defaults to this run’s selected window")]),
                 ]),
             ]),
             surfaces: [.talk, .guide, .agent]
@@ -45,15 +45,15 @@ private struct BrowserReadExecutor: ToolExecutor {
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let bundleID = call.arguments["bundleID"]?.stringValue
-        let hint = CuaTargetHint(bundleID: bundleID)
+        let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             guard BrowserTools.knownBrowserBundleIDs.contains(captured.target.bundleID) || bundleID != nil else {
                 return .text(
                     call.id,
-                    "frontmost window is \(captured.target.bundleID), not a browser — pass bundleID explicitly",
+                    "selected window belongs to \(captured.target.bundleID). Specify a browser application to read.",
                     isError: true
                 )
             }
@@ -83,7 +83,7 @@ private struct BrowserReadExecutor: ToolExecutor {
                         width: captured.target.width, height: captured.target.height
                     )
                 ),
-                threadID: context.threadID ?? ""
+                runID: context.runID
             )
             // The URL lives in the browser's address text field.
             let url = snapshot?.elements.first {

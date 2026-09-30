@@ -1,6 +1,9 @@
 import Foundation
+import AppKit
 import XCTest
+import SwiftUI
 import PerryCapture
+import PerryBrain
 import PerryCore
 import PerryGuide
 import PerryRuntimes
@@ -8,6 +11,538 @@ import PerryRuntimes
 
 @MainActor
 final class ForegroundPlanningTests: XCTestCase {
+    func testGuideTakeoverRetainsConversationTargetAndRejectsDuplicateClicks() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+            appBundleID: "fixture.app", windowTitle: "Fixture window",
+            elements: [AXElement(stableID: "save", role: .button, label: "Save",
+                frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
+        ))
+        let controller = makeController(
+            directory: directory, planner: ForegroundPlanner(),
+            fullGuideCaptureLoader: { _, _ in capture },
+            fullGuidePlanner: { _, _, _ in
+                [GuideStep(instruction: "Select Save", target: .axElement(stableID: "save"))]
+            },
+            screenContextLoader: { _, target in
+                XCTAssertEqual(target, capture.target.hint)
+                return (ScreenContext(frontAppBundleID: "fixture.app", frontWindowTitle: "Fixture window",
+                    screenshotReferenceID: "cua:fixture", screenshotCoordinateSpace: .windowPixels), capture.target)
+            }
+        )
+        let store = ThreadStore(directory: directory.appendingPathComponent("handoff-threads"))
+        let coordinator = AgentCoordinator(
+            provider: { _ in ForegroundAnswerProvider(reason: .endTurn) },
+            host: PerryToolHost(executors: []), threads: store,
+            consent: ToolConsentStore(directory: nil)
+        )
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        await controller.showEverything(goal: "Save the fixture")
+        let presented = await waitUntil { controller.guideCoordinator.debugGuideSpeechIdentity != nil }
+        XCTAssertTrue(presented)
+        guard case .guiding(let guide) = controller.sessionState else { return XCTFail("Guide did not start") }
+        controller.guideCoordinator.takeOverGuide()
+        controller.guideCoordinator.takeOverGuide()
+        let finished = await waitUntil(timeout: .seconds(10)) {
+            let conversations = await store.list()
+            return conversations.first?.turns.count == 2 && coordinator.runningThreads.isEmpty
+        }
+        XCTAssertTrue(finished)
+        await controller.foreground.joinStartTask()
+        let conversations = await ThreadStore(directory: directory.appendingPathComponent("handoff-threads")).list()
+        XCTAssertEqual(conversations.count, 1)
+        XCTAssertEqual(conversations.first?.id, guide.threadID)
+        XCTAssertEqual(conversations.first?.turns.count, 2)
+        XCTAssertEqual(conversations.first?.turns.first?.outcome, .interrupted)
+        XCTAssertEqual(conversations.first?.turns.last?.outcome, .completed)
+        XCTAssertEqual(conversations.first?.turns.last?.answer, "The fixture answer.")
+        XCTAssertNil(conversations.first?.pendingTurn)
+        controller.dismiss()
+        controller.guideCoordinator.prepareForTermination()
+        await controller.guideCoordinator.joinAfterWorkerShutdown()
+    }
+
+    func testGuideTakeoverSaveFailurePreventsDo() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+            appBundleID: "fixture.app", windowTitle: "Fixture window",
+            elements: [AXElement(stableID: "save", role: .button, label: "Save",
+                frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
+        ))
+        let controller = makeController(
+            directory: directory, planner: ForegroundPlanner(),
+            fullGuideCaptureLoader: { _, _ in capture },
+            fullGuidePlanner: { _, _, _ in
+                [GuideStep(instruction: "Select Save", target: .axElement(stableID: "save"))]
+            }
+        )
+        let threadDirectory = directory.appendingPathComponent("handoff-threads")
+        let coordinator = AgentCoordinator(
+            provider: { _ in
+                XCTFail("Takeover dispatched work after its save failed")
+                return ForegroundAnswerProvider(reason: .endTurn)
+            }, host: PerryToolHost(executors: []), threads: ThreadStore(directory: threadDirectory),
+            consent: ToolConsentStore(directory: nil)
+        )
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        await controller.showEverything(goal: "Save the fixture")
+        let presented = await waitUntil { controller.guideCoordinator.debugGuideSpeechIdentity != nil }
+        XCTAssertTrue(presented)
+        let backup = directory.appendingPathComponent("recoverable-threads")
+        try FileManager.default.moveItem(at: threadDirectory, to: backup)
+        try Data("blocked storage".utf8).write(to: threadDirectory)
+        controller.guideCoordinator.takeOverGuide()
+        let failed = await waitUntil { controller.sessionStatus.contains("couldn’t be saved") }
+        XCTAssertTrue(failed)
+        XCTAssertTrue(coordinator.runningThreads.isEmpty)
+        XCTAssertEqual(controller.sessionState, .idle)
+        let recoverable = await ThreadStore(directory: backup).list()
+        XCTAssertEqual(recoverable.first?.pendingTurn?.question, "Save the fixture")
+        XCTAssertTrue(recoverable.first?.turns.isEmpty == true)
+        controller.guideCoordinator.prepareForTermination()
+        await controller.guideCoordinator.joinAfterWorkerShutdown()
+    }
+
+    func testDismissedTakeoverCannotStartAfterGuideRetires() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let gate = FullGuidePlannerGate()
+        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+            appBundleID: "fixture.app", windowTitle: "Fixture window",
+            elements: [AXElement(stableID: "save", role: .button, label: "Save",
+                frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
+        ))
+        let controller = makeController(
+            directory: directory, planner: ForegroundPlanner(),
+            fullGuideCaptureLoader: { _, _ in capture },
+            fullGuidePlanner: { goal, observation, context in
+                try await gate.plan(goal: goal, observation: observation, context: context)
+            }
+        )
+        let store = ThreadStore(directory: directory.appendingPathComponent("handoff-threads"))
+        let coordinator = AgentCoordinator(
+            provider: { _ in
+                XCTFail("Dismissed takeover dispatched a provider request")
+                return ForegroundAnswerProvider(reason: .endTurn)
+            }, host: PerryToolHost(executors: []), threads: store,
+            consent: ToolConsentStore(directory: nil)
+        )
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        await controller.showEverything(goal: "Save the fixture")
+        await gate.waitForFirstEntry()
+        controller.guideCoordinator.takeOverGuide()
+        let reserved = await waitUntil {
+            if case .invoking = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(reserved)
+        controller.dismiss()
+        await gate.releaseFirst()
+        let retired = await waitUntil { coordinator.runningThreads.isEmpty }
+        XCTAssertTrue(retired)
+        await controller.foreground.joinStartTask()
+        let conversations = await store.list()
+        XCTAssertEqual(conversations.count, 1)
+        XCTAssertEqual(conversations.first?.turns.count, 1)
+        XCTAssertEqual(conversations.first?.turns.first?.outcome, .interrupted)
+        XCTAssertEqual(controller.sessionState, .idle)
+        controller.guideCoordinator.prepareForTermination()
+        await controller.guideCoordinator.joinAfterWorkerShutdown()
+    }
+
+    func testProductionAgentRouteConsumesAnswerAndTerminalOutcome() async throws {
+        for reason: ModelStopReason? in [.endTurn, .maxTokens, nil] {
+            let directory = try makeTemporaryDirectory()
+            addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+            let session = SessionController()
+            let controller = makeWakingController(directory: directory, session: session)
+            let store = ThreadStore(directory: directory.appendingPathComponent("agent-threads"))
+            let provider = ForegroundAnswerProvider(reason: reason)
+            let coordinator = AgentCoordinator(
+                provider: { _ in provider }, host: PerryToolHost(executors: []),
+                threads: store, consent: ToolConsentStore(directory: nil)
+            )
+            controller.foreground.agentCoordinator = coordinator
+            let outcome = try await controller.foreground.debugRun(goal: "Read the synthetic fixture")
+            XCTAssertEqual(controller.transcriptPreview, "The fixture answer.")
+            let history = await TranscriptStore(directory: directory).snapshot()
+            let conversations = await store.list()
+            XCTAssertEqual(conversations.count, 1)
+            XCTAssertEqual(conversations.first?.turns.first?.answer, "The fixture answer.")
+            XCTAssertNil(conversations.first?.pendingTurn)
+            XCTAssertTrue(coordinator.runningThreads.isEmpty)
+            if reason == .endTurn {
+                XCTAssertEqual(outcome, .completed(stepsRun: 0))
+                XCTAssertEqual(history.first?.outcome, .completed)
+                XCTAssertEqual(conversations.first?.turns.first?.outcome, .completed)
+            } else {
+                guard case .failed = outcome else { return XCTFail("Expected provider failure, received \(String(describing: outcome))") }
+                XCTAssertEqual(history.first?.outcome, .failed)
+                XCTAssertEqual(conversations.first?.turns.first?.outcome, .failed)
+            }
+            controller.dismiss()
+        }
+    }
+
+    func testProductionAgentStopPreservesPartialAnswerWithoutReportingSuccess() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let controller = makeWakingController(directory: directory, session: SessionController())
+        let store = ThreadStore(directory: directory.appendingPathComponent("agent-threads"))
+        let gate = FinalizationGate()
+        let provider = ForegroundAnswerProvider(reason: .endTurn, waitAfterFirstText: { await gate.pause() })
+        let coordinator = AgentCoordinator(
+            provider: { _ in provider }, host: PerryToolHost(executors: []),
+            threads: store, consent: ToolConsentStore(directory: nil)
+        )
+        controller.foreground.agentCoordinator = coordinator
+        let run = Task { try await controller.foreground.debugRun(goal: "Read the synthetic fixture") }
+        await gate.waitForEntry()
+        let displayed = await waitUntil { controller.transcriptPreview == "The fixture " }
+        XCTAssertTrue(displayed)
+        controller.foreground.cancel()
+        await gate.release()
+        let outcome = try await run.value
+        guard case .blocked = outcome else { return XCTFail("Stopped execution must not complete") }
+        let history = await TranscriptStore(directory: directory).snapshot()
+        XCTAssertEqual(history.first?.outcome, .stopped)
+        let conversations = await store.list()
+        XCTAssertEqual(conversations.first?.turns.first?.answer, "The fixture ")
+        XCTAssertEqual(conversations.first?.turns.first?.outcome, .interrupted)
+        XCTAssertEqual(conversations.first?.draft, "Read the synthetic fixture")
+        XCTAssertNil(conversations.first?.pendingTurn)
+        XCTAssertTrue(coordinator.runningThreads.isEmpty)
+        XCTAssertFalse(controller.foreground.supervisorActive)
+        controller.dismiss()
+    }
+
+    func testStaleAgentStreamCannotFinalizeReplacementExecution() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+        let gate = FinalizationGate()
+        let provider = ForegroundAnswerProvider(reason: .endTurn, waitAfterFirstText: { await gate.pause() })
+        let coordinator = AgentCoordinator(
+            provider: { _ in provider }, host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: directory.appendingPathComponent("agent-threads")),
+            consent: ToolConsentStore(directory: nil)
+        )
+        controller.foreground.agentCoordinator = coordinator
+        let run = Task { try await controller.foreground.debugRun(goal: "Old fixture") }
+        defer {
+            run.cancel()
+            Task { await gate.release() }
+        }
+        await gate.waitForEntry()
+        let displayed = await waitUntil { controller.transcriptPreview == "The fixture " }
+        XCTAssertTrue(displayed)
+        guard case .executing(let original) = session.state else { return XCTFail("Missing execution") }
+        try session.fail(.init(taskID: original.taskID, goal: original.goal, message: "Worker retired"))
+        try session.completeDismissal()
+        try session.wake()
+        let replacement = ExecutionSessionState(
+            taskID: UUID(), goal: "Replacement fixture", startedAt: Date(), appBundleID: nil,
+            workspace: directory, lifecycle: .starting
+        )
+        try session.startExecution(replacement)
+        try session.setExecutionPhase(.running)
+        let replacementState = session.state
+        await gate.release()
+        let outcome = try await run.value
+        XCTAssertEqual(outcome, .blocked(reason: "the execution session changed"))
+        XCTAssertEqual(session.state, replacementState)
+        XCTAssertEqual(controller.transcriptPreview, "The fixture ")
+        let history = await TranscriptStore(directory: directory).snapshot()
+        XCTAssertTrue(history.isEmpty)
+        let settled = await waitUntil { coordinator.runningThreads.isEmpty }
+        XCTAssertTrue(settled)
+        controller.dismiss()
+    }
+
+    func testGuideUsesConversationTargetUnlessExplicitlyRetargeted() async throws {
+        let remembered = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        let newlySelected = CuaTargetHint(bundleID: "fixture.browser", processID: 43, windowID: 74, windowTitle: "Cedar")
+        for override in [nil, newlySelected] as [CuaTargetHint?] {
+            let directory = try makeTemporaryDirectory()
+            addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+            let threadID = UUID()
+            let expected = override ?? remembered
+            var captured = false
+            let controller = makeController(
+                directory: directory, planner: ForegroundPlanner(),
+                fullGuideCaptureLoader: { _, received in
+                    XCTAssertEqual(received, expected)
+                    captured = true
+                    throw FullGuidePlannerError.failed
+                }
+            )
+            controller.homeController.homeModel.sidebarSelection = .thread(threadID)
+            controller.homeController.homeModel.conversationTargets[threadID] = remembered
+            await controller.showEverything(goal: "Show me where to save it", targetHint: override)
+            let settled = await waitUntil { controller.guideCoordinator.debugGuideScopeCount == 0 }
+            XCTAssertTrue(settled)
+            XCTAssertTrue(captured)
+            let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: threadID)
+            XCTAssertEqual(saved?.turns.first?.question, "Show me where to save it")
+            XCTAssertEqual(saved?.turns.first?.outcome, .failed)
+            XCTAssertNil(saved?.pendingTurn)
+            XCTAssertEqual(controller.homeController.homeModel.sidebarSelection, .thread(threadID))
+            XCTAssertEqual(controller.homeController.homeModel.conversationTargets[threadID], expected)
+        }
+    }
+
+    func testExplicitAskGuideTransitionRetainsConversationAndTarget() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
+        let thread = try await store.upsert(PerryThread(draft: "Unrelated conversation draft", turns: [.init(question: "Explain saving", answer: "Use Save")]))
+        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        var captured = false
+        let controller = makeController(
+            directory: directory, planner: ForegroundPlanner(),
+            fullGuideCaptureLoader: { _, received in
+                XCTAssertEqual(received, target)
+                captured = true
+                throw FullGuidePlannerError.failed
+            }, session: session
+        )
+        controller.homeController.homeModel.conversationTargets[thread.id] = target
+        controller.homeController.homeModel.newConversationDraft = "Preserve this separate draft"
+        controller.homeController.homeModel.sidebarSelection = .thread(UUID())
+        try session.wake()
+        try session.startAsk(AskSessionState(id: UUID(), threadID: thread.id, startedAt: Date(), question: "Explain saving"))
+        controller.debugDispatch("show me everything save document")
+        let settled = await waitUntil { captured && controller.guideCoordinator.debugGuideScopeCount == 0 }
+        XCTAssertTrue(settled)
+        let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: thread.id)
+        XCTAssertEqual(saved?.turns.count, 2)
+        XCTAssertEqual(saved?.turns.last?.question, "show me everything save document")
+        XCTAssertTrue(saved?.waitingInputs?.isEmpty == true)
+        XCTAssertEqual(saved?.draft, "Unrelated conversation draft")
+        XCTAssertEqual(saved?.turns.last?.outcome, .failed)
+        XCTAssertEqual(controller.homeController.homeModel.sidebarSelection, .thread(thread.id))
+        XCTAssertNil(controller.homeController.homeModel.drafts[thread.id])
+        XCTAssertEqual(controller.homeController.homeModel.newConversationDraft, "Preserve this separate draft")
+    }
+
+    func testRenderCompactWithUnsavedRequestRecovery() throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let controller = makeController(directory: directory, planner: ForegroundPlanner())
+        controller.homeController.homeModel.unsavedInputs = [
+            .init(threadID: UUID(), request: .init(text: "Explain this document, keeping the original names and dates."), error: "The disk is full.")
+        ]
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+            let frame = NSRect(x: 0, y: 0, width: 480, height: 440)
+            let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: appearance)
+            let host = NSHostingView(rootView: CompactConversationView(controller: controller))
+            window.contentView = host
+            host.frame = frame
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("build/dependable-evidence/unsaved-compact-\(name).png")
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
+            window.close()
+        }
+    }
+
+    func testRenderWaitingGuideRequestInSessionPanel() throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let session = SessionController()
+        let controller = makeController(directory: directory, planner: ForegroundPlanner(), session: session)
+        try session.wake()
+        var ask = AskSessionState(id: UUID(), startedAt: Date(), question: "Explain this")
+        ask.pendingGuideRequest = .init(text: "Show me how to save this document")
+        try session.startAsk(ask)
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+            let frame = NSRect(x: 0, y: 0, width: 500, height: 740)
+            let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: appearance)
+            let host = NSHostingView(rootView: SessionPanelView(controller: controller))
+            window.contentView = host
+            host.frame = frame
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("build/dependable-evidence/waiting-guide-panel-\(name).png")
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
+            window.close()
+        }
+    }
+
+    func testUnsavedAskGuideRequestRemainsAvailableAndCannotCapture() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        try Data("Storage unavailable".utf8).write(to: directory.appendingPathComponent("Threads"))
+        let session = SessionController()
+        var captured = false
+        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, _ in
+            captured = true
+            throw FullGuidePlannerError.failed
+        }, session: session)
+        try session.wake()
+        try session.startAsk(AskSessionState(id: UUID(), startedAt: Date(), question: "Explain this"))
+        let request = "show me everything save document"
+        controller.debugDispatch(request)
+        let failed = await waitUntil { controller.homeController.homeModel.unsavedInputs.contains { $0.request.text == request } }
+        XCTAssertTrue(failed)
+        guard case .asking(let ask) = session.state else { return XCTFail("Lost the unsaved request") }
+        XCTAssertEqual(ask.pendingGuideRequest?.text, request)
+        XCTAssertFalse(captured)
+        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+    }
+
+    func testGuideDismissedBeforeScheduledStartDoesNotCapture() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        var captured = false
+        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, _ in
+            captured = true
+            throw FullGuidePlannerError.failed
+        })
+        controller.guideCoordinator.startGuiding(goal: "Save", full: true)
+        controller.dismiss()
+        await Task.yield()
+        XCTAssertFalse(captured)
+        XCTAssertEqual(controller.sessionState, .idle)
+        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+    }
+
+    func testHomeGuidePersistsFailureInOriginatingConversation() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let prompt = "show me everything for saving this document"
+        let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
+        let thread = try await store.upsert(PerryThread(draft: prompt))
+        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        var captures = 0
+        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, received in
+            XCTAssertEqual(received, target)
+            captures += 1
+            throw FullGuidePlannerError.failed
+        })
+        let model = controller.homeController.homeModel
+        model.threads = [thread]
+        model.conversationTargets[thread.id] = target
+        model.send(threadID: thread.id, text: prompt)
+        let settled = await waitUntil { captures == 1 && model.pendingQuestions.isEmpty }
+        XCTAssertTrue(settled)
+        let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: thread.id)
+        XCTAssertEqual(saved?.turns.count, 1)
+        XCTAssertEqual(saved?.turns.first?.question, prompt)
+        XCTAssertEqual(saved?.turns.first?.outcome, .failed)
+        XCTAssertEqual(saved?.draft, prompt)
+        XCTAssertNil(saved?.pendingTurn)
+        XCTAssertNotNil(model.threadErrors[thread.id])
+        XCTAssertTrue(controller.agentCoordinator.runningThreads.isEmpty)
+    }
+
+    func testHomeStopWaitsForGuideRetirementAndPreservesInput() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let gate = FullGuidePlannerGate()
+        let prompt = "show me everything for saving"
+        let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
+        let thread = try await store.upsert(PerryThread(draft: prompt))
+        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+            appBundleID: "fixture.app", windowTitle: "Fixture",
+            elements: [AXElement(stableID: "save", role: .button, label: "Save",
+                frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
+        ))
+        let controller = makeController(
+            directory: directory, planner: ForegroundPlanner(),
+            fullGuideCaptureLoader: { _, _ in capture },
+            fullGuidePlanner: { goal, observation, context in
+                try await gate.plan(goal: goal, observation: observation, context: context)
+            }
+        )
+        let model = controller.homeController.homeModel
+        model.threads = [thread]
+        model.send(threadID: thread.id, text: prompt)
+        await gate.waitForFirstEntry()
+        XCTAssertTrue(controller.agentCoordinator.runningThreads.contains(thread.id))
+        model.onStop?(thread.id)
+        XCTAssertTrue(model.stoppingThreads.contains(thread.id))
+        await gate.releaseFirst()
+        let settled = await waitUntil { model.pendingQuestions.isEmpty && controller.agentCoordinator.runningThreads.isEmpty }
+        XCTAssertTrue(settled)
+        let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: thread.id)
+        XCTAssertEqual(saved?.turns.count, 1)
+        XCTAssertEqual(saved?.turns.first?.outcome, .interrupted)
+        XCTAssertEqual(saved?.draft, prompt)
+        XCTAssertNil(saved?.pendingTurn)
+        XCTAssertNil(controller.guideCoordinator.debugGuideSpeechIdentity)
+        XCTAssertTrue(model.stoppingThreads.isEmpty)
+    }
+
+    func testGuideStorageFailureStopsBeforeCapture() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        try Data("blocked store".utf8).write(to: directory.appendingPathComponent("Threads"))
+        var captured = false
+        let controller = AppController(
+            debugStorageDirectory: directory,
+            fullGuideCaptureLoader: { _, _ in
+                captured = true
+                throw FullGuidePlannerError.failed
+            },
+            notifier: ForegroundNotifier()
+        )
+        await controller.showEverything(goal: "Save the fixture")
+        let settled = await waitUntil { controller.guideCoordinator.debugGuideScopeCount == 0 }
+        XCTAssertTrue(settled)
+        XCTAssertFalse(captured)
+        XCTAssertTrue(controller.agentCoordinator.runningThreads.isEmpty)
+        XCTAssertTrue(controller.sessionStatus.contains("Couldn’t save your request"))
+        XCTAssertEqual(controller.sessionState, .idle)
+    }
+
+    func testInvocationKeepsItsWindowUntilExplicitSelectionOrNewInvocation() throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        var selection: SpatialSelection?
+        let probe = EnvironmentProbe(
+            workers: CuaWorkerService(), memoryStore: MemoryStore(storageDirectory: directory),
+            oauthCoordinator: OAuthCoordinator(), remoteIntegrationPermissions: RemoteIntegrationPermissionStore(),
+            spatialSelection: { selection }, storageDirectory: { directory }
+        )
+        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 4242, windowID: 1001, windowTitle: "Document")
+        probe.pinInvocationTarget(target)
+        probe.pinInvocationTargetIfNeeded()
+        XCTAssertEqual(probe.currentTargetHint(), target)
+
+        selection = SpatialSelection(
+            window: WindowContext(appBundleID: "fixture.preview", title: "Selected PDF"),
+            rect: .zero, points: []
+        )
+        XCTAssertNil(probe.currentTargetHint().processID)
+        XCTAssertEqual(probe.currentTargetHint().bundleID, "fixture.preview")
+        XCTAssertEqual(probe.currentTargetHint().windowTitle, "Selected PDF")
+        selection = nil
+        XCTAssertEqual(probe.currentTargetHint(), target)
+
+        probe.clearInvocationTarget()
+        let next = CuaTargetHint(bundleID: "fixture.notes", processID: 4343, windowID: 2002)
+        probe.pinInvocationTarget(next)
+        XCTAssertEqual(probe.currentTargetHint(), next)
+    }
+
     func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }
@@ -88,6 +623,7 @@ final class ForegroundPlanningTests: XCTestCase {
             try String(contentsOf: taskWorkspace.appendingPathComponent("adopted.txt"), encoding: .utf8),
             "post-wake"
         )
+        await controller.foreground.joinStartTask()
     }
 
     func testGuideStartDuringPendingInvocationAdoptsIt() async throws {
@@ -187,6 +723,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await gate.release()
+        await controller.foreground.joinStartTask()
     }
 
     func testDispatchDismissDuringAskingDismisses() async throws {
@@ -287,6 +824,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(retried, "session state after retry: \(controller.sessionState), status: \(controller.sessionStatus)")
         let callCount = await askUser.callCount
         XCTAssertEqual(callCount, 2)
+        await controller.foreground.joinStartTask()
     }
 
     func testStoppedForegroundReportProjectsAsStopped() throws {
@@ -430,6 +968,8 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await replacementRun.value
+        controller.guideCoordinator.prepareForTermination()
+        await controller.guideCoordinator.joinAfterWorkerShutdown()
     }
 
     func testThrowingFullGuidePlannerFinalizesFailedGuideAfterWorkerRelease() async throws {
@@ -473,7 +1013,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(history.first?.outcome, .failed)
         XCTAssertEqual(
             history.first?.summary,
-            "Cua could not finish the full guide: fixture full-guide planner failure"
+            "Perry could not prepare the guide: fixture full-guide planner failure"
         )
     }
 
@@ -823,7 +1363,9 @@ final class ForegroundPlanningTests: XCTestCase {
         fullGuideContinuationBarrier: (@MainActor (UUID) async -> Void)? = nil,
         fullGuidePlanner: (@MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep])? = nil,
         typedVerifier: (any TypedActionVerifier)? = nil,
-        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil
+        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
+        screenContextLoader: EnvironmentProbe.ScreenContextLoader? = nil,
+        session: SessionController? = nil
     ) -> AppController {
         let descriptor = RuntimeProviderDescriptor(
             id: planner.id,
@@ -848,6 +1390,7 @@ final class ForegroundPlanningTests: XCTestCase {
         )
         return AppController(
             debugStorageDirectory: directory,
+            sessionController: session ?? SessionController(),
             runtimeInventoryLoader: { _ in inventory },
             permissionSnapshotLoader: {
                 PerryPermissionSnapshot(
@@ -864,7 +1407,7 @@ final class ForegroundPlanningTests: XCTestCase {
             fullGuidePlanner: fullGuidePlanner,
             finalizationBarrier: finalizationBarrier,
             finalizationPersistenceBarrier: finalizationPersistenceBarrier,
-            screenContextLoader: { _, _ in
+            screenContextLoader: screenContextLoader ?? { _, _ in
                 (
                     ScreenContext(
                         frontAppBundleID: "fixture.app",
@@ -1251,4 +1794,31 @@ private final class ForegroundNotifier: AppNotificationClient, @unchecked Sendab
     func requestAuthorization() async -> Bool { true }
 
     func deliver(_ notification: TaskNotification) async {}
+}
+
+private struct ForegroundAnswerProvider: ModelProvider {
+    let id: ProviderID = "fixture.foreground-answer"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.streaming]
+    let reason: ModelStopReason?
+    var waitAfterFirstText: (@Sendable () async -> Void)? = nil
+
+    func warm() async {}
+
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                continuation.yield(.textDelta("The fixture "))
+                await waitAfterFirstText?()
+                guard !Task.isCancelled else {
+                    continuation.finish(throwing: CancellationError())
+                    return
+                }
+                continuation.yield(.textDelta("answer."))
+                if let reason { continuation.yield(.done(reason)) }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
 }

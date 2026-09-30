@@ -17,6 +17,7 @@ final class EnvironmentProbe {
     private let remoteIntegrationPermissions: RemoteIntegrationPermissionStore
     private let spatialSelection: () -> SpatialSelection?
     private let storageDirectory: () -> URL?
+    private var invocationTarget: CuaTargetHint?
 
 #if DEBUG
     typealias PermissionSnapshotLoader = @MainActor () async -> PerryPermissionSnapshot
@@ -92,25 +93,15 @@ final class EnvironmentProbe {
         worker: CuaWorkerHandle,
         targetHint: CuaTargetHint? = nil
     ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
+        let resolvedHint = targetHint ?? currentTargetHint()
 #if DEBUG
         if let debugScreenContextLoader {
-            return await debugScreenContextLoader(worker, targetHint)
+            return await debugScreenContextLoader(worker, resolvedHint)
         }
 #endif
+        let initialBundleID = resolvedHint.bundleID
+        let initialTitle = resolvedHint.windowTitle
         let integrationContext = await remoteIntegrationPromptContext()
-        let selectedWindow = spatialSelection()?.window
-        let initialBundleID = targetHint == nil
-            ? selectedWindow?.appBundleID ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            : nil
-        let initialTitle = targetHint == nil
-            ? selectedWindow?.title
-            : targetHint?.windowTitle
-        let resolvedHint = CuaTargetHint(
-            bundleID: targetHint?.bundleID ?? initialBundleID,
-            processID: targetHint?.processID ?? processID(for: initialBundleID),
-            windowID: targetHint?.windowID,
-            windowTitle: targetHint?.windowTitle ?? initialTitle
-        )
 
         do {
             let capture = try await worker.capture(target: resolvedHint)
@@ -183,13 +174,9 @@ final class EnvironmentProbe {
     }
 
     func processID(for bundleID: String?) -> Int32? {
-        if let bundleID,
-           let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-            .first(where: { $0.isActive })
-            ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first {
-            return application.processIdentifier
-        }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard let bundleID else { return NSWorkspace.shared.frontmostApplication?.processIdentifier }
+        let applications = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        return (applications.first(where: { $0.isActive }) ?? applications.first)?.processIdentifier
     }
 
     func processID(for metadata: BackgroundTaskMetadata?) -> Int32? {
@@ -202,13 +189,74 @@ final class EnvironmentProbe {
         return processID(for: metadata?.targetAppBundleID)
     }
 
+    func pinInvocationTarget(_ target: CuaTargetHint? = nil) {
+        invocationTarget = target ?? Self.frontmostTarget()
+    }
+
+    func clearInvocationTarget() {
+        invocationTarget = nil
+    }
+
+    func pinInvocationTargetIfNeeded() {
+        if invocationTarget == nil { pinInvocationTarget() }
+    }
+
     func currentTargetHint() -> CuaTargetHint {
-        let selectedWindow = spatialSelection()?.window
-        let bundleID = selectedWindow?.appBundleID ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        if let window = spatialSelection()?.window {
+            return CuaTargetHint(
+                bundleID: window.appBundleID,
+                processID: processID(for: window.appBundleID),
+                windowTitle: window.title
+            )
+        }
+        return invocationTarget ?? Self.frontmostTarget()
+    }
+
+    func presentationTarget() -> CuaTargetHint? {
+        let foreground = Self.frontmostTarget()
+        let target = foreground.processID == ProcessInfo.processInfo.processIdentifier ? currentTargetHint() : foreground
+        guard target.processID != ProcessInfo.processInfo.processIdentifier else { return nil }
+        return target
+    }
+
+    static func availableTargets() -> [CuaTargetHint] {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let targets: [CuaTargetHint] = windows.compactMap { window in
+            guard (window[kCGWindowLayer as String] as? Int) == 0,
+                  let pid = window[kCGWindowOwnerPID as String] as? Int32,
+                  pid != ProcessInfo.processInfo.processIdentifier,
+                  let app = NSRunningApplication(processIdentifier: pid),
+                  app.activationPolicy == .regular,
+                  let bundleID = app.bundleIdentifier,
+                  let id = window[kCGWindowNumber as String] as? NSNumber,
+                  let title = window[kCGWindowName as String] as? String,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return CuaTargetHint(bundleID: bundleID, processID: pid, windowID: id.int64Value,
+                windowTitle: title)
+        }
+        let represented = Set(targets.compactMap(\.processID))
+        let applications = NSWorkspace.shared.runningApplications.compactMap { app -> CuaTargetHint? in
+            guard app.activationPolicy == .regular,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+                  !represented.contains(app.processIdentifier),
+                  let bundleID = app.bundleIdentifier else { return nil }
+            return CuaTargetHint(bundleID: bundleID, processID: app.processIdentifier)
+        }
+        return targets + applications
+    }
+
+    private static func frontmostTarget() -> CuaTargetHint {
+        let application = NSWorkspace.shared.frontmostApplication
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]
+        let window = windows?.first {
+            ($0[kCGWindowOwnerPID as String] as? Int32) == application?.processIdentifier
+                && ($0[kCGWindowLayer as String] as? Int) == 0
+        }
         return CuaTargetHint(
-            bundleID: bundleID,
-            processID: processID(for: bundleID),
-            windowTitle: selectedWindow?.title
+            bundleID: application?.bundleIdentifier,
+            processID: application?.processIdentifier,
+            windowID: (window?[kCGWindowNumber as String] as? NSNumber)?.int64Value,
+            windowTitle: window?[kCGWindowName as String] as? String
         )
     }
 

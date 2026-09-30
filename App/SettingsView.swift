@@ -19,6 +19,7 @@ enum SettingsTab: String, CaseIterable {
 }
 
 struct SettingsView: View {
+    let controller: AppController
     @AppStorage(SettingsTab.userDefaultsKey) private var selectedTab = SettingsTab.general.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("perry.wakeWord.enabled") private var wakeWordEnabled = false
@@ -44,11 +45,7 @@ struct SettingsView: View {
     @State private var memoryCategoryToggles: [MemoryRecord.Category: Bool] = MemoryRecord.Category.allCases.reduce(into: [:]) { result, category in
         result[category] = true
     }
-    @StateObject private var runtimeSettings = RuntimeSettingsState {
-        async let setup = AppController.shared.runtimes.currentSetup()
-        async let driverStatus = AppController.shared.probe.cuaHealth().summary
-        return await RuntimeSettingsState.Status(setup: setup, cuaStatus: driverStatus)
-    }
+    @StateObject private var runtimeSettings: RuntimeSettingsState
     @State private var dictionaryEntries: [String: String] = [:]
     @State private var inputDevices: [DictationInputDevice] = []
     @State private var inputDeviceStatus = ""
@@ -64,22 +61,46 @@ struct SettingsView: View {
     @State private var showRemoveVisionCredentialConfirmation = false
     @State private var showReportProblem = false
 
+    init(controller: AppController) {
+        self.controller = controller
+        _runtimeSettings = StateObject(wrappedValue: RuntimeSettingsState {
+            async let setup = controller.runtimes.currentSetup()
+            async let driverStatus = controller.probe.cuaHealth().summary
+            return await RuntimeSettingsState.Status(setup: setup, cuaStatus: driverStatus)
+        })
+    }
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            generalTab.tag(SettingsTab.general.rawValue)
-            voiceAndInputTab.tag(SettingsTab.voice.rawValue)
-            runtimesTab.tag(SettingsTab.runtimes.rawValue)
-            integrationsTab.tag(SettingsTab.integrations.rawValue)
-            memoryTab.tag(SettingsTab.memory.rawValue)
-            appearanceTab.tag(SettingsTab.appearance.rawValue)
-            safetyTab.tag(SettingsTab.safety.rawValue)
+        VStack(spacing: 0) {
+            HStack {
+                Text("Settings").font(.title2.weight(.semibold))
+                Spacer()
+                Picker("Settings section", selection: $selectedTab) {
+                    Text("General").tag(SettingsTab.general.rawValue)
+                    Text("Voice & Input").tag(SettingsTab.voice.rawValue)
+                    Text("Models & Advanced").tag(SettingsTab.runtimes.rawValue)
+                    Text("Connected Apps").tag(SettingsTab.integrations.rawValue)
+                    Text("Memory").tag(SettingsTab.memory.rawValue)
+                    Text("Appearance").tag(SettingsTab.appearance.rawValue)
+                    Text("Safety").tag(SettingsTab.safety.rawValue)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+            }
+            .padding(20)
+            Divider()
+            switch SettingsTab(rawValue: selectedTab) ?? .general {
+            case .general: generalTab
+            case .voice: voiceAndInputTab
+            case .runtimes: runtimesTab
+            case .integrations: integrationsTab
+            case .memory: memoryTab
+            case .appearance: appearanceTab
+            case .safety: safetyTab
+            }
         }
-        .frame(
-            minWidth: PerryTheme.Sizing.settingsMinimumWidth,
-            idealWidth: PerryTheme.Sizing.settingsWidth,
-            minHeight: PerryTheme.Sizing.settingsMinimumHeight,
-            idealHeight: PerryTheme.Sizing.settingsHeight
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
         .transaction { transaction in
@@ -102,7 +123,7 @@ struct SettingsView: View {
             Section("Invocation") {
                 Toggle("Say \"hey Perry\" to wake", isOn: $wakeWordEnabled)
                     .onChange(of: wakeWordEnabled) { _, value in
-                        AppController.shared.voice.updateWakeWordEnabled(value)
+                        controller.voice.updateWakeWordEnabled(value)
                     }
                 Text("Off by default. When on, Perry listens on device for the phrase and keeps no ambient transcript.")
                     .settingNote()
@@ -114,7 +135,7 @@ struct SettingsView: View {
                 .onChange(of: wakeShortcutRaw) { _, value in
                     guard let shortcut = WakeShortcut(rawValue: value) else { return }
                     do {
-                        try AppController.shared.updateWakeShortcut(shortcut)
+                        try controller.updateWakeShortcut(shortcut)
                     } catch {
                         wakeShortcutRaw = UserDefaults.standard.string(forKey: "perry.wakeShortcut")
                             ?? WakeShortcut.optionCommandP.rawValue
@@ -128,7 +149,7 @@ struct SettingsView: View {
                 }
                 .onChange(of: pttShortcutRaw) { _, value in
                     guard let shortcut = PushToTalkShortcut(rawValue: value) else { return }
-                    AppController.shared.voice.updatePushToTalkShortcut(shortcut)
+                    controller.voice.updatePushToTalkShortcut(shortcut)
                 }
                 Text("Hold the push-to-talk shortcut from any app. Caps Lock double-tap is available for hands-free use.")
                     .settingNote()
@@ -137,7 +158,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("General", systemImage: "switch.2") }
     }
 
     private var voiceAndInputTab: some View {
@@ -163,7 +183,7 @@ struct SettingsView: View {
                 }
                 Button("Preview voice") {
                     let voice = AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice
-                    if let voice { AppController.shared.voice.previewSpeechVoice(voice) }
+                    if let voice { controller.voice.previewSpeechVoice(voice) }
                 }
                 Text("Perry uses the system voice installed on this Mac. Voice previews never leave the device.")
                     .settingNote()
@@ -216,7 +236,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("Voice & Input", systemImage: "waveform.and.mic") }
         .onAppear {
             reloadVoiceDictionary()
             inputDevices = DictationController.availableInputDevices()
@@ -262,7 +281,7 @@ struct SettingsView: View {
                         Spacer()
                         Button("Remove replacement") {
                             do {
-                                try AppController.shared.voice.removeVoiceDictionaryEntry(spoken: spoken)
+                                try controller.voice.removeVoiceDictionaryEntry(spoken: spoken)
                                 reloadVoiceDictionary()
                                 updateDictationPreferences()
                             } catch {
@@ -281,7 +300,7 @@ struct SettingsView: View {
                         let replacement = newReplacement.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !spoken.isEmpty, !replacement.isEmpty else { return }
                         do {
-                            try AppController.shared.voice.saveVoiceDictionaryEntry(spoken: spoken, replacement: replacement)
+                            try controller.voice.saveVoiceDictionaryEntry(spoken: spoken, replacement: replacement)
                             reloadVoiceDictionary()
                             newSpokenWord = ""
                             newReplacement = ""
@@ -300,7 +319,7 @@ struct SettingsView: View {
             Section("Memory") {
                 Toggle("Remember context between sessions", isOn: $memoryEnabled)
                     .onChange(of: memoryEnabled) { _, value in
-                        Task { await AppController.shared.setMemoryEnabled(value) }
+                        Task { await controller.setMemoryEnabled(value) }
                     }
                 Text("Stored locally, inspectable, and never synced. Turn it off for goldfish mode.")
                     .settingNote()
@@ -309,7 +328,7 @@ struct SettingsView: View {
                         get: { memoryCategoryToggles[category] ?? true },
                         set: { value in
                             memoryCategoryToggles[category] = value
-                            Task { await AppController.shared.setMemoryCategoryEnabled(category, enabled: value) }
+                            Task { await controller.setMemoryCategoryEnabled(category, enabled: value) }
                         }
                     ))
                 }
@@ -321,10 +340,10 @@ struct SettingsView: View {
             }
             Section("Activity") {
                 Button("Export activity log") {
-                    AppController.shared.exportActivityLog()
+                    controller.exportActivityLog()
                 }
                 Button("Export redacted diagnostics") {
-                    AppController.shared.exportDiagnostics()
+                    controller.exportDiagnostics()
                 }
                 Button("Report a problem…") {
                     showReportProblem = true
@@ -334,7 +353,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("Memory & Privacy", systemImage: "brain") }
         .onAppear {
             refreshMemory()
         }
@@ -344,7 +362,7 @@ struct SettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Export diagnostics first") {
-                AppController.shared.exportDiagnostics()
+                controller.exportDiagnostics()
             }
             if let url = perryIssuesURL {
                 Button("Open GitHub issues") {
@@ -368,6 +386,9 @@ struct SettingsView: View {
 
     private var runtimesTab: some View {
         Form {
+            Section("Conversation model") {
+                BrainModelSettingsView(brain: controller.brain)
+            }
             Section("Agent runtime") {
                 Text(runtimeSettings.status.setup.summary)
                     .font(PerryTheme.Typography.settingsStatus)
@@ -421,7 +442,7 @@ struct SettingsView: View {
                 TextField("Cua Driver path (optional)", text: $cuaDriverPath)
                     .textFieldStyle(.roundedBorder)
                 Button("Save Cua Driver settings") {
-                    AppController.shared.reloadCuaDriverConfiguration()
+                    controller.reloadCuaDriverConfiguration()
                     refreshRuntimeStatus()
                 }
                 Text("Perry requires Cua Driver for window screenshots, accessibility grounding, and GUI actions. Grounded tasks stop when Cua is unavailable or unhealthy.")
@@ -437,7 +458,7 @@ struct SettingsView: View {
                     applySelectedVisionProvider()
                 }
                 if selectedVisionProvider == .custom {
-                    TextField("HTTPS endpoint", text: $byokVisionEndpoint)
+                    TextField("HTTPS base URL", text: $byokVisionEndpoint)
                         .textFieldStyle(.roundedBorder)
                 } else {
                     LabeledContent("Endpoint") {
@@ -522,7 +543,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("Runtimes", systemImage: "cpu") }
         .onAppear {
             prepareVisionProviderSettings()
             refreshRuntimeStatus()
@@ -537,7 +557,7 @@ struct SettingsView: View {
                 Text("Connect services with device-owned OAuth. Register dev.perry.perry:/oauth/callback with each provider; Perry keeps access tokens and client secrets in Keychain, refreshes expiring grants, and keeps remote writes disabled until you enable them per service and approve each action.")
                     .settingNote()
                 ForEach(RemoteIntegrationDefinition.catalog) { definition in
-                    IntegrationRow(definition: definition)
+                    IntegrationRow(definition: definition, controller: controller)
                     if definition.id != RemoteIntegrationDefinition.catalog.last?.id {
                         Divider()
                     }
@@ -545,7 +565,6 @@ struct SettingsView: View {
             }
             .padding(PerryTheme.Spacing.cardInset)
         }
-        .tabItem { Label("Integrations", systemImage: "point.3.connected.trianglepath.dotted") }
     }
 
     private var appearanceTab: some View {
@@ -564,7 +583,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("Appearance", systemImage: "paintbrush") }
     }
 
     private var safetyTab: some View {
@@ -584,7 +602,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .tabItem { Label("Safety & Advanced", systemImage: "hand.raised") }
     }
 
     private func refreshRuntimeStatus() {
@@ -603,7 +620,7 @@ struct SettingsView: View {
 
     private func refreshMemory() {
         Task {
-            let config = await AppController.shared.currentMemoryConfiguration()
+            let config = await controller.currentMemoryConfiguration()
             await MainActor.run {
                 memoryEnabled = config.enabled
                 memoryCategoryToggles = config.categoryToggles
@@ -698,7 +715,7 @@ struct SettingsView: View {
     }
 
     private func saveSpeechPreferences() {
-        AppController.shared.voice.updateSpeechPreferences(
+        controller.voice.updateSpeechPreferences(
             SpeechPreferences(
                 outputEnabled: speechOutputEnabled,
                 rateMultiplier: speechRate,
@@ -713,12 +730,12 @@ struct SettingsView: View {
             : .fixed(identifier: dictationLanguageRaw)
         let entries: [String: String]
         do {
-            entries = try AppController.shared.voice.voiceDictionaryEntries()
+            entries = try controller.voice.voiceDictionaryEntries()
         } catch {
             settingsError = error.localizedDescription
             return
         }
-        AppController.shared.voice.updateDictationPreferences(
+        controller.voice.updateDictationPreferences(
             DictationPreferences(
                 language: language,
                 customWords: Array(entries.keys) + Array(entries.values),
@@ -729,7 +746,7 @@ struct SettingsView: View {
 
     private func reloadVoiceDictionary() {
         do {
-            dictionaryEntries = try AppController.shared.voice.voiceDictionaryEntries()
+            dictionaryEntries = try controller.voice.voiceDictionaryEntries()
         } catch {
             dictionaryEntries = [:]
             settingsError = error.localizedDescription

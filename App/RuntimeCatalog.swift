@@ -188,38 +188,6 @@ final class RuntimeCatalog: ObservableObject {
         return BYOKAgentEndpoint(baseURL: url, model: model.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    /// A configured direct-provider endpoint upgrades Guide to the runtime
-    /// planner; without one the honest offline AX planner runs instead.
-    func makeGuidePlanner(storageDirectory: URL?) -> (any GuidePlanner)? {
-        guard let endpoint = Self.currentBYOKVisionEndpoint(),
-              let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
-              !key.isEmpty else { return nil }
-        let provider = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) ?? .openAI
-        return RuntimeGuidePlanner(
-            configuration: DirectProviderConfiguration(provider: provider, model: endpoint.model, baseURL: endpoint.baseURL),
-            apiKeyProvider: { key },
-            skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory)
-        )
-    }
-
-    /// Ask shares the configured direct provider with Guide; without one the
-    /// controller answers with a literal, clearly-labelled screen listing.
-    func makeSpatialAnswerer() -> RuntimeSpatialAnswerer? {
-        guard let endpoint = Self.currentBYOKVisionEndpoint(),
-              let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
-              !key.isEmpty else { return nil }
-        let provider = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) ?? .openAI
-        return RuntimeSpatialAnswerer(
-            client: DirectProviderClient(
-                configuration: DirectProviderConfiguration(provider: provider, model: endpoint.model, baseURL: endpoint.baseURL),
-                apiKeyProvider: { key }
-            )
-        )
-    }
-
-    /// Raw provider access for bounded synthesis prompts (routine naming).
-    /// Same credential lookup as the Ask answerer; nil without a configured
-    /// endpoint + key.
     func makeProviderClient() -> DirectProviderClient? {
         guard let endpoint = Self.currentBYOKVisionEndpoint(),
               let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),

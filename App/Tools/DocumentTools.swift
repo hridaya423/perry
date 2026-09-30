@@ -10,13 +10,14 @@ struct DocumentTools {
     let observations: AgentObservationStore
 
     var executors: [any ToolExecutor] {
-        [DocumentReadExecutor(workers: workers, lease: lease)]
+        [DocumentReadExecutor(workers: workers, lease: lease, observations: observations)]
     }
 }
 
 private struct DocumentReadExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
 
     private static let maxChars = 20_000
     /// AX role strings that carry document text; AXElement.Role is coarser.
@@ -27,7 +28,7 @@ private struct DocumentReadExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: "document.read",
-            description: "Read the text of the frontmost document window (editor, note, PDF, browser page).",
+            description: "Read the text of the selected document window (editor, note, PDF, browser page).",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -42,11 +43,12 @@ private struct DocumentReadExecutor: ToolExecutor {
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let bundleID = call.arguments["bundleID"]?.stringValue
         let maxChars = call.arguments["maxChars"]?.doubleValue.map { min(Int($0), Self.maxChars) } ?? Self.maxChars
-        let hint = CuaTargetHint(bundleID: bundleID)
+        let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
+            observations.setTarget(captured.target.hint, runID: context.runID)
             let elements = captured.accessibilitySnapshotModel?.elements ?? []
             let best = elements
                 .filter { Self.textRoles.contains($0.rawRole ?? "") }

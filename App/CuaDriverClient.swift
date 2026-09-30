@@ -236,6 +236,10 @@ struct CuaWindowTarget: Sendable, Equatable {
     let isOnScreen: Bool
     let isOnCurrentSpace: Bool
 
+    var hint: CuaTargetHint {
+        CuaTargetHint(bundleID: bundleID, processID: processID, windowID: windowID, windowTitle: title)
+    }
+
     fileprivate init(
         bundleID: String,
         processID: Int32,
@@ -946,7 +950,9 @@ actor CuaDriverClient {
     }
 
     private func selectTarget(from windows: [CuaWindowTarget], hint: CuaTargetHint?) -> CuaWindowTarget? {
+        guard let configuration = resolvedConfiguration() else { return nil }
         let scopedWindows = windows.filter { window in
+            guard window.bundleID.caseInsensitiveCompare(configuration.hostBundleID) != .orderedSame else { return false }
             if let bundleID = hint?.bundleID,
                window.bundleID.caseInsensitiveCompare(bundleID) != .orderedSame {
                 return false

@@ -39,7 +39,8 @@ private struct DrawVerbExecutor: ToolExecutor {
         ToolSpec(
             name: verb.rawValue,
             description: "Draw a \(verb.rawValue) mark on an element (compact id like e12) or point (x, y in screen points).",
-            inputSchema: Self.schema
+            inputSchema: Self.schema,
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
@@ -63,7 +64,7 @@ private struct DrawVerbExecutor: ToolExecutor {
         // a small box around an explicit (x, y) point.
         let rect: CGRect
         if let elementID = args["elementID"]?.stringValue {
-            guard let element = observations.resolveElement(elementID, threadID: context.threadID) else {
+            guard let element = observations.resolveElement(elementID, runID: context.runID) else {
                 return .text(call.id, "\(verb.rawValue): element \(elementID) is stale or unknown — run screen.observe again", isError: true)
             }
             rect = element.frame
@@ -139,7 +140,8 @@ private struct PathDrawExecutor: ToolExecutor {
                     "duration": .object(["type": .string("number")]),
                 ]),
                 "required": .array([.string("points")]),
-            ])
+            ]),
+            requiredCapabilities: [.tools, .vision]
         )
     }
 

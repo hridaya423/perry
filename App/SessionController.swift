@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import PerryBrain
 import PerryCore
 import PerryRuntimes
 
@@ -15,6 +16,7 @@ struct InvocationState: Equatable {
 
 struct GuideSessionState: Equatable {
     let id: UUID
+    var threadID: UUID = UUID()
     let goal: String
     let startedAt: Date
     let appBundleID: String?
@@ -29,6 +31,8 @@ struct GuideSessionState: Equatable {
 /// session is dismissed.
 struct AskSessionState: Equatable {
     let id: UUID
+    var threadID: UUID? = nil
+    var pendingGuideRequest: PerryThread.WaitingInput? = nil
     let startedAt: Date
     var question: String
     var answerText: String?
@@ -41,6 +45,7 @@ struct AskSessionState: Equatable {
 /// never act — the .talk tool surface only admits observe + draw tools.
 struct TalkSessionState: Equatable {
     let id: UUID
+    var threadID: UUID? = nil
     let startedAt: Date
     var transcript: String
     var answerText: String?

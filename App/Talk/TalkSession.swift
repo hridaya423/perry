@@ -21,8 +21,11 @@ final class TalkSession {
         var makeInput: () -> any TalkSpeechInput
         var output: any TalkSpeechOutput
         var capture: () async throws -> GuideObservation
-        var route: (RouteRequirement) async throws -> RouteDecision
-        var memory: () -> String? = { nil }
+        var acceptInput: (String, UUID?) -> HomeController.AcceptedInput
+        var run: (HomeController.AcceptedInput, AgentCoordinator.SpatialContext) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
+        var waitForConversation: (UUID) async -> Void = { _ in }
+        var guide: ((HomeController.AcceptedInput, AgentCoordinator.SpatialContext, Bool) -> Void)? = nil
+        var warm: () async -> Void = {}
         var skill: (GuideObservation) -> String? = { _ in nil }
     }
 
@@ -31,13 +34,13 @@ final class TalkSession {
     private weak var output: (any GuideSessionOutput)?
     private let services: Services
     private let tracer: PointerTraceRecorder
-    private let contexts: TalkContextStore
 
     private(set) var phase: Phase = .idle
     private var input: (any TalkSpeechInput)?
+    private var warmTask: Task<Void, Never>?
     private var captureTask: Task<GuideObservation, Error>?
-    private var warmTask: Task<RouteDecision, Error>?
     private var turnTask: Task<Void, Never>?
+    private var presentationTask: Task<Void, Never>?
     private var index = ElementIndex(elements: [])
     private var answerText = ""
     private var firstTextMarked = false
@@ -65,37 +68,13 @@ final class TalkSession {
         overlayState: PerryCursorState,
         output: any GuideSessionOutput,
         services: Services,
-        tracer: PointerTraceRecorder? = nil,
-        contexts: TalkContextStore? = nil
+        tracer: PointerTraceRecorder? = nil
     ) {
         self.sessionController = sessionController
         self.overlayState = overlayState
         self.output = output
         self.services = services
         self.tracer = tracer ?? .live()
-        self.contexts = contexts ?? TalkContextStore()
-    }
-
-    // MARK: Draw tool surface (.talk allows only these)
-
-    static let drawToolSpecs: [ToolSpec] = DrawCommand.Verb.allCases.map { verb in
-        ToolSpec(
-            name: verb.rawValue,
-            description: verb == .clear
-                ? "Clear all drawn marks."
-                : "Draw a \(verb.rawValue) mark on the element with the given compact id.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "elementID": .object([
-                        "type": .string("string"),
-                        "description": .string("Compact element id like e12"),
-                    ]),
-                    "label": .object(["type": .string("string")]),
-                ]),
-                "required": .array(verb == .clear ? [] : [.string("elementID")]),
-            ])
-        )
     }
 
     // MARK: Hold lifecycle
@@ -147,13 +126,8 @@ final class TalkSession {
             }
         }
         captureTask = Task { @MainActor in try await services.capture() }
-        warmTask = Task { @MainActor in
-            let decision = try await services.route(RouteRequirement(
-                capabilities: [.vision, .streaming], tier: .fast
-            ))
-            await decision.provider.warm()
-            return decision
-        }
+        warmTask = Task { @MainActor in await services.warm() }
+
     }
 
     /// Key-up: freeze the trace, finalize STT, resolve deixis, run the turn.
@@ -174,10 +148,10 @@ final class TalkSession {
         PerfMark.mark("talk.bargein")
         turnTask?.cancel()
         turnTask = nil
-        captureTask?.cancel()
-        captureTask = nil
         warmTask?.cancel()
         warmTask = nil
+        captureTask?.cancel()
+        captureTask = nil
         input?.cancel()
         input = nil
         services.output.shutUp()
@@ -216,8 +190,10 @@ final class TalkSession {
 
     private func run(trace: [TraceSample]) async {
         do {
+            try Task.checkCancellation()
             guard let speech = input else { throw CancellationError() }
             let (transcript, words) = await speech.finalize()
+            try Task.checkCancellation()
             sessionController.updateTalk { $0.transcript = transcript }
             guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 output?.guideSetStatus("I didn't catch that — hold ⌃⌥ and try again.")
@@ -227,6 +203,11 @@ final class TalkSession {
                 phase = .idle
                 return
             }
+            try Task.checkCancellation()
+            guard case .talking(let original) = sessionController.state else { throw CancellationError() }
+            let accepted = services.acceptInput(transcript, original.threadID)
+            sessionController.updateTalk { $0.threadID = accepted.threadID }
+            try await accepted.saved.value
             try Task.checkCancellation()
             let observation: GuideObservation
             if let captureTask {
@@ -238,46 +219,46 @@ final class TalkSession {
             try Task.checkCancellation()
             try GuideTargetValidator.requireUnprotected(observation)
 
-            let elements = Self.observedElements(of: observation)
+            let elements = observation.observedElements
             index = ElementIndex(elements: elements)
             let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: elements)
-            let contextKey = TalkContextKey(
-                processID: observation.processID ?? 0,
-                windowID: observation.windowID ?? 0
+            let spatial = AgentCoordinator.SpatialContext(
+                observation: observation, bindings: bindings, skill: services.skill(observation)
             )
-            if TalkContextStore.isResetPhrase(transcript) {
-                contexts.reset(contextKey)
+            await presentationTask?.value
+            try Task.checkCancellation()
+            guard case .talking(let talk) = sessionController.state else { throw CancellationError() }
+            if let guide = services.guide {
+                let full: Bool?
+                switch GuideIntentParser.parse(transcript) {
+                case .guide: full = false
+                case .showEverything: full = true
+                default: full = nil
+                }
+                if let full {
+                    if let threadID = talk.threadID { await services.waitForConversation(threadID) }
+                    try Task.checkCancellation()
+                    guard case .talking(let current) = sessionController.state, current.id == talk.id else { throw CancellationError() }
+                    cancel()
+                    _ = sessionController.requestDismissal()
+                    guide(accepted, spatial, full)
+                    return
+                }
             }
-            var conversation = contexts.conversation(for: contextKey)
-
-            let decision = try await routeDecision(for: transcript, bindings: bindings, elements: elements)
-            let tools = ToolGate.filter(
-                Self.drawToolSpecs,
-                for: .talk
-            ).filter { _ in decision.provider.capabilities.contains(.tools) }
-            let request = ModelRequest(
-                system: TalkPrompt.system(
-                    index: index,
-                    bindings: bindings,
-                    memory: services.memory(),
-                    skill: services.skill(observation)
-                ),
-                messages: Self.messages(conversation: conversation, transcript: transcript, observation: observation),
-                tools: tools,
-                tier: TierClassifier.tier(question: transcript, bindingCount: bindings.count, elementCount: elements.count),
-                maxOutputTokens: 1024
-            )
-            try await stream(request: request, provider: decision.provider, observation: observation)
-            try? conversation.append(
-                question: transcript,
-                answer: SpatialAnswer(text: answerText, references: [], followUp: nil, observationID: observation.observationID)
-            )
-            contexts.update(contextKey, conversation: conversation)
+            let run = services.run(accepted, spatial)
+            presentationTask = run.completion
+            sessionController.updateTalk { $0.threadID = run.threadID }
+            try await stream(events: run.events, observation: observation)
         } catch is CancellationError {
+            guard !Task.isCancelled else { return }
+            services.output.shutUp()
+            sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle
             overlayState.buddyState = .idle
             phase = .idle
         } catch {
+            guard !Task.isCancelled else { return }
+            services.output.shutUp()
             sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle
             overlayState.buddyState = .blocked
@@ -290,27 +271,21 @@ final class TalkSession {
         }
     }
 
-    private func routeDecision(
-        for transcript: String,
-        bindings: [DeixisBinding],
-        elements: [ObservedElement]
-    ) async throws -> RouteDecision {
-        let tier = TierClassifier.tier(question: transcript, bindingCount: bindings.count, elementCount: elements.count)
-        defer { warmTask = nil }
-        if tier == .fast, let warmed = try? await warmTask?.value {
-            return warmed
-        }
-        return try await services.route(RouteRequirement(capabilities: [.vision, .streaming], tier: tier))
+    private struct ResponseError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
     }
 
-    private func stream(request: ModelRequest, provider: any ModelProvider, observation: GuideObservation) async throws {
+    private func stream(events: AsyncStream<AgentLoopEvent>, observation: GuideObservation) async throws {
         var parser = InlineMarkupParser(validElementIDs: index.validIDs)
         var chunker = SentenceChunker()
+        var completed = false
         answerText = ""
         firstTextMarked = false
         firstInkMarked = false
         firstAudioMarked = false
-        for try await event in provider.stream(request) {
+        for await event in events {
+            try Task.checkCancellation()
             switch event {
             case .textDelta(let delta):
                 let result = parser.feed(delta)
@@ -328,13 +303,27 @@ final class TalkSession {
                 for command in result.commands {
                     draw(command, observation: observation)
                 }
-            case .toolCall(let call):
-                if let command = drawCommand(from: call) {
-                    draw(command, observation: observation)
+            case .finished(.completed):
+                completed = true
+            case .finished(.interrupted), .finished(.paused):
+                throw CancellationError()
+            case .finished(let outcome):
+                throw ResponseError(message: outcome.failureReason ?? "Perry couldn’t finish this answer.")
+            case .toolCallStarted(let call):
+                if ToolGate.observeTools.contains(call.name) {
+                    index = ElementIndex(elements: [])
+                    parser = InlineMarkupParser(validElementIDs: [])
+                    overlayState.visualGuidanceOverlays.removeAll { markOverlayIDs.contains($0.id) }
+                    markOverlayIDs.removeAll()
+                    stopReanchor()
                 }
-            case .usage, .done:
+            case .toolCallFinished, .note:
                 break
             }
+        }
+        try Task.checkCancellation()
+        guard completed else {
+            throw ResponseError(message: "The spoken answer ended unexpectedly. Your question and partial answer are still shown.")
         }
         let tail = parser.finish()
         if !tail.text.isEmpty {
@@ -492,58 +481,4 @@ final class TalkSession {
         }
     }
 
-    /// Model tool calls map to draw commands through the same validity gate the
-    /// inline parser uses; anything else was already rejected by ToolGate.check.
-    private func drawCommand(from call: ToolCall) -> DrawCommand? {
-        guard ToolGate.check(call, on: .talk) == nil,
-              let verb = DrawCommand.Verb(rawValue: call.name) else { return nil }
-        let label = call.arguments["label"]?.stringValue
-        if verb == .clear {
-            return DrawCommand(verb: .clear, label: label)
-        }
-        guard let elementID = call.arguments["elementID"]?.stringValue,
-              index.validIDs.contains(elementID) else { return nil }
-        return DrawCommand(verb: verb, elementID: elementID, label: label)
-    }
-
-    // MARK: Mapping
-
-    /// AXElements → ObservedElements for the resolver/prompt. Secure elements
-    /// never reach the model — they are filtered here, before indexing.
-    static func observedElements(of observation: GuideObservation) -> [ObservedElement] {
-        let windowID = Int(observation.windowID ?? 0)
-        return observation.snapshot.elements
-            .filter { $0.sensitivity != .secure }
-            .map { element in
-                ObservedElement(
-                    id: element.stableID,
-                    role: element.rawRole ?? "AX\(element.role.rawValue)",
-                    label: element.label ?? "",
-                    frame: CGRect(
-                        x: element.frame.x, y: element.frame.y,
-                        width: element.frame.width, height: element.frame.height
-                    ),
-                    windowID: windowID
-                )
-            }
-    }
-
-    static func messages(
-        conversation: SpatialConversation,
-        transcript: String,
-        observation: GuideObservation
-    ) -> [ModelMessage] {
-        var messages: [ModelMessage] = conversation.turns.flatMap { turn in
-            [
-                ModelMessage.user([.text(turn.question)]),
-                ModelMessage.assistant(text: turn.answer.text, toolCalls: []),
-            ]
-        }
-        var parts: [ModelContentPart] = [.text(transcript)]
-        if let screenshot = observation.screenshotData {
-            parts.append(.image(data: screenshot, mimeType: observation.screenshotMIMEType))
-        }
-        messages.append(.user(parts))
-        return messages
-    }
 }

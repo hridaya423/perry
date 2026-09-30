@@ -1,14 +1,15 @@
 import AppKit
+import PerryBrain
 import PerryGuide
 import PerryOverlay
 
-/// Read-only question answering over one bounded observation. Ask never plans
-/// or performs actions: it captures the target window once, asks once,
-/// revalidates the answer against a fresh capture so a changed window cannot
-/// smuggle a stale answer in, then presents references as passive highlights.
-/// Follow-ups reuse the session until it is dismissed; nothing is persisted.
 @MainActor
 final class AskSessionController {
+    struct Runner {
+        let accept: @MainActor (String, UUID?) -> HomeController.AcceptedInput
+        let run: @MainActor (HomeController.AcceptedInput, GuideObservation) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
+    }
+
     typealias ObservationProvider = @MainActor () async throws -> GuideObservation
     typealias Answerer = @MainActor (String, GuideObservation, SpatialConversation, String?) async throws -> SpatialAnswer
     typealias AnswererFactory = @MainActor () -> Answerer?
@@ -18,12 +19,16 @@ final class AskSessionController {
     private let overlayState: PerryCursorState
     private weak var output: (any GuideSessionOutput)?
     private weak var context: (any GuideSessionContext)?
+    private let runner: Runner?
     private let answererFactory: AnswererFactory
     private let observationProvider: ObservationProvider?
     private let targetStore = CuaGuideTargetStore()
 
     private var conversation = SpatialConversation()
     private var runTask: Task<Void, Never>?
+    private var presentationTask: Task<Void, Never>?
+    private var transitionTask: Task<Void, Never>?
+    private var inputSaveTask: Task<Bool, Never>?
     private var activeAskID: UUID?
 
     init(
@@ -32,14 +37,16 @@ final class AskSessionController {
         overlayState: PerryCursorState,
         output: any GuideSessionOutput,
         context: any GuideSessionContext,
-        answererFactory: @escaping AnswererFactory,
-        observationProvider: ObservationProvider? = nil
+        answererFactory: @escaping AnswererFactory = { nil },
+        observationProvider: ObservationProvider? = nil,
+        runner: Runner? = nil
     ) {
         self.sessionController = sessionController
         self.workers = workers
         self.overlayState = overlayState
         self.output = output
         self.context = context
+        self.runner = runner
         self.answererFactory = answererFactory
         self.observationProvider = observationProvider
     }
@@ -56,6 +63,7 @@ final class AskSessionController {
             activeAskID = existing.id
             sessionController.updateAsk {
                 $0.question = question
+                $0.pendingGuideRequest = nil
                 $0.isWorking = true
             }
             start(question: question, askID: existing.id)
@@ -93,6 +101,8 @@ final class AskSessionController {
     /// Stops pending provider/capture work and drops follow-up context. The
     /// session-state transition itself belongs to SessionController.dismiss.
     func cancel() {
+        transitionTask?.cancel()
+        transitionTask = nil
         runTask?.cancel()
         runTask = nil
         activeAskID = nil
@@ -100,22 +110,73 @@ final class AskSessionController {
         overlayState.visualGuidanceOverlays = []
     }
 
+    func joinInputSaves() async {
+        _ = await inputSaveTask?.value
+    }
+
+    func afterCurrentAnswer(
+        prepare: @escaping @MainActor () async -> Bool = { true },
+        _ action: @escaping @MainActor (AskSessionState) -> Void
+    ) {
+        guard case .asking(let original) = sessionController.state else { return }
+        transitionTask?.cancel()
+        let answerTask = runTask
+        let previousSave = inputSaveTask
+        let saveTask = Task { @MainActor in
+            _ = await previousSave?.value
+            return await prepare()
+        }
+        inputSaveTask = saveTask
+        transitionTask = Task { @MainActor [weak self] in
+            guard await saveTask.value, !Task.isCancelled else { return }
+            await answerTask?.value
+            guard !Task.isCancelled, let self else { return }
+            await self.presentationTask?.value
+            guard !Task.isCancelled,
+                  case .asking(let current) = self.sessionController.state,
+                  current.id == original.id, !current.isWorking else { return }
+            self.transitionTask = nil
+            action(current)
+        }
+    }
+
     private func start(question: String, askID: UUID) {
+        transitionTask?.cancel()
+        transitionTask = nil
         runTask?.cancel()
+        let accepted: HomeController.AcceptedInput?
+        if let runner, case .asking(let ask) = sessionController.state {
+            accepted = runner.accept(question, ask.threadID)
+            sessionController.updateAsk { $0.threadID = accepted?.threadID }
+        } else {
+            accepted = nil
+        }
         let answerer = answererFactory()
         output?.guideSetBuddyState(.thinking)
         output?.guideSetStatus("Looking at the screen…")
         runTask = Task { @MainActor [weak self] in
-            await self?.run(question: question, askID: askID, answerer: answerer)
+            await self?.run(question: question, askID: askID, answerer: answerer, accepted: accepted)
         }
     }
 
-    private func run(question: String, askID: UUID, answerer: Answerer?) async {
+    private func run(question: String, askID: UUID, answerer: Answerer?, accepted: HomeController.AcceptedInput?) async {
         do {
+            try await accepted?.saved.value
+            try Task.checkCancellation()
+            await presentationTask?.value
+            try Task.checkCancellation()
             let baseline = try await capture()
             PerfMark.mark("capture.done")
             try GuideTargetValidator.requireUnprotected(baseline)
             try Task.checkCancellation()
+            if let runner, let accepted {
+                guard case .asking(let ask) = sessionController.state, ask.id == askID else { throw CancellationError() }
+                let run = runner.run(accepted, baseline)
+                presentationTask = run.completion
+                sessionController.updateAsk { $0.threadID = run.threadID }
+                try await stream(run.events, askID: askID)
+                return
+            }
             let answer: SpatialAnswer
             if let answerer {
                 let proposed = try await answerer(
@@ -147,7 +208,7 @@ final class AskSessionController {
             output?.guideSetStatus(answer.followUp ?? "Ask a follow-up or press Esc to finish.")
         } catch is CancellationError {
         } catch {
-            guard activeAskID == askID else { return }
+            guard !Task.isCancelled, activeAskID == askID else { return }
             overlayState.visualGuidanceOverlays = []
             sessionController.updateAsk { $0.isWorking = false }
             output?.guideSetBuddyState(.blocked)
@@ -155,6 +216,36 @@ final class AskSessionController {
                 (error as? LocalizedError)?.errorDescription ?? "Perry couldn't answer that."
             )
         }
+    }
+
+    private func stream(_ events: AsyncStream<AgentLoopEvent>, askID: UUID) async throws {
+        var answer = ""
+        var finish: AgentFinish?
+        for await event in events {
+            try Task.checkCancellation()
+            guard activeAskID == askID, case .asking(let ask) = sessionController.state, ask.id == askID else { throw CancellationError() }
+            switch event {
+            case .textDelta(let delta):
+                if answer.isEmpty { PerfMark.mark("answer.first_text") }
+                answer += delta
+                sessionController.updateAsk { $0.answerText = answer }
+            case .finished(let outcome): finish = outcome
+            default: break
+            }
+        }
+        try Task.checkCancellation()
+        guard activeAskID == askID, case .asking(let ask) = sessionController.state, ask.id == askID else { throw CancellationError() }
+        guard finish == .completed else {
+            throw ModelProviderError(kind: .unavailable, provider: "ask", message: finish?.failureReason ?? "The answer ended before completion. Try again.")
+        }
+        sessionController.updateAsk {
+            $0.followUpPrompt = nil
+            $0.turnCount += 1
+            $0.isWorking = false
+        }
+        output?.guideSpeak(answer, identity: GuideSpeechIdentity(guideID: askID, scopeID: askID, stepID: nil, text: answer))
+        output?.guideSetBuddyState(.success)
+        output?.guideSetStatus("Ask a follow-up or press Esc to finish.")
     }
 
     private func present(_ answer: SpatialAnswer) {

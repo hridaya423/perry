@@ -41,7 +41,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         case erasure
     }
 
-    static let shared = AppController()
 
     private var hotkey: HotkeyController?
     let overlayState = PerryCursorState()
@@ -77,12 +76,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// the support directory is unavailable rather than silently rooted
     /// somewhere else.
     private func packageExecutors() -> [any ToolExecutor] {
-        guard let support = Self.supportDirectory else { return [] }
+        guard let support = storageDirectory else { return [] }
         var executors: [any ToolExecutor] = []
         // LocalWorkspaceFiles requires an existing root — the workspace is
         // created on first launch, empty until an agent writes to it.
         let workspace = support.appendingPathComponent("workspace", isDirectory: true)
-        try? FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         if let files = try? LocalWorkspaceFiles(root: workspace) {
             executors += FileToolExecutors.make(backend: files)
         }
@@ -114,7 +112,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// The shared Perry registry — agent tools, the scheduler, and Home's
     /// sidebar all read the same directory.
-    private lazy var perryStore: PerryStore? = Self.supportDirectory.map {
+    private lazy var perryStore: PerryStore? = storageDirectory.map {
         PerryStore(directory: $0.appendingPathComponent("perrys", isDirectory: true))
     }
 
@@ -168,6 +166,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         overlayState.externalSecondaryCursors.append(cursor)
     }
     private var mcpSocket: PerryMCPSocket?
+    private var mcpStartupTask: Task<Void, Never>?
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
@@ -243,6 +242,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private let debugFullGuideCaptureLoader: FullGuideCaptureLoader?
     private let debugFullGuideContinuationBarrier: FullGuideContinuationBarrier?
     private let debugFullGuidePlanner: FullGuidePlanner?
+    private let debugGuidePlanner: (any GuidePlanner)?
     private let debugFinalizationBarrier: FinalizationBarrier?
     private let debugTypedVerifier: (any TypedActionVerifier)?
 #endif
@@ -259,10 +259,16 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         fullGuideCaptureLoader: debugFullGuideCaptureLoader,
         fullGuideContinuationBarrier: debugFullGuideContinuationBarrier,
         fullGuidePlanner: debugFullGuidePlanner,
-        guidePlannerProvider: { [weak self] in
+        guidePlannerProvider: { [weak self] guide in
             guard let self else { return nil }
-            return self.runtimes.makeGuidePlanner(storageDirectory: self.storageDirectory)
-        }
+            return self.debugGuidePlanner ?? self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
+                guard let self else { throw CancellationError() }
+                return try await self.agentCoordinator.prepareGuideRequest(
+                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
+                )
+            }
+        },
+        executionOwner: agentCoordinator
     )
 #else
     lazy var guideCoordinator = GuideSessionCoordinator(
@@ -273,10 +279,16 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         storageDirectory: storageDirectory,
         output: self,
         context: self,
-        guidePlannerProvider: { [weak self] in
+        guidePlannerProvider: { [weak self] guide in
             guard let self else { return nil }
-            return self.runtimes.makeGuidePlanner(storageDirectory: self.storageDirectory)
-        }
+            return self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
+                guard let self else { throw CancellationError() }
+                return try await self.agentCoordinator.prepareGuideRequest(
+                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
+                )
+            }
+        },
+        executionOwner: agentCoordinator
     )
 #endif
     lazy var askController = AskSessionController(
@@ -285,17 +297,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         overlayState: overlayState,
         output: self,
         context: self,
-        answererFactory: { [weak self] in
-            guard let answerer = self?.runtimes.makeSpatialAnswerer() else { return nil }
-            return { question, observation, conversation, spatial in
-                try await answerer.answer(
-                    question: question,
-                    observation: observation,
-                    conversation: conversation,
-                    spatialRegionDescription: spatial
-                )
-            }
-        }
+        runner: .init(accept: { [unowned self] in homeController.acceptInput($0, threadID: $1) }, run: { [unowned self] input, observation in
+            homeController.runSpokenTurn(
+                input,
+                spatial: .init(observation: observation, bindings: [], skill: talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)),
+                coordinator: agentCoordinator
+            )
+        })
     )
     private let talkTargetStore = CuaGuideTargetStore()
     private lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: storageDirectory)
@@ -311,9 +319,23 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 guard let self else { throw CancellationError() }
                 return try await self.captureTalkObservation()
             },
-            route: { [weak self] requirement in
-                guard let self else { throw CancellationError() }
-                return try await self.brain.route(requirement)
+            acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1) },
+            run: { [unowned self] input, spatial in
+                homeController.runSpokenTurn(input, spatial: spatial, coordinator: agentCoordinator)
+            },
+            waitForConversation: { [weak self] threadID in
+                await self?.agentCoordinator.waitForCompletion(threadID: threadID)
+            },
+            guide: { [weak self] input, spatial, full in
+                guard let self else { return }
+                let id = input.threadID
+                self.homeController.homeModel.sidebarSelection = .thread(id)
+                self.homeController.homeModel.conversationTargets[id] = spatial.target
+                self.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
+            },
+            warm: { [weak self] in
+                guard let self, let decision = try? await brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
+                await decision.provider.warm()
             },
             skill: { [weak self] observation in
                 self?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
@@ -322,6 +344,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak self] in
+            guard self?.maintenanceOwner == nil else { return }
+            self?.probe.pinInvocationTarget()
             self?.talkSessionStarted = true
             self?.talkSession.keyDown()
         },
@@ -461,31 +485,45 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private lazy var toolConsent = ToolConsentStore(directory: Self.supportDirectory)
     lazy var agentCoordinator = AgentCoordinator(
-        brain: brain, host: toolHost, threads: homeThreadStore, consent: toolConsent
+        provider: { [unowned self] requirement in
+            try await self.brain.route(requirement).provider
+        },
+        host: toolHost, threads: homeThreadStore, consent: toolConsent,
+        perrys: perryStore,
+        workers: workers, workerLease: foregroundWorkerLease,
+        memoryContext: { [memoryStore] in
+            let config = await memoryStore.currentConfiguration()
+            return (config.enabled, await memoryStore.promptContext(appBundleID: nil))
+        }
     )
-    private lazy var homeController: HomeController = {
+    lazy var homeController: HomeController = {
         let controller = HomeController()
         controller.threadStore = homeThreadStore
-        controller.answerProvider = { [weak self] threadID, prompt, onPartial in
-            guard let self else { return "" }
-            // Agent path first: the deep route drives observe/act/verify tool
-            // calls; a provider failure or silent run falls back to the plain
-            // completer so a thread reply never dead-ends.
+        controller.captureTarget = { [weak self] in self?.probe.presentationTarget() }
+        controller.answerProvider = { [weak self] input, target, onPartial in
+            guard let self else { return .failed("Perry is shutting down.") }
+            let threadID = input.threadID
+            let prompt = input.request.text
+            switch GuideIntentParser.parse(prompt) {
+            case .guide:
+                return await self.runHomeGuide(input: input, target: target, full: false, onPartial: onPartial)
+            case .showEverything:
+                return await self.runHomeGuide(input: input, target: target, full: true, onPartial: onPartial)
+            default: break
+            }
             var text = ""
-            var agentFailed = false
-            for await event in agentCoordinator.run(threadID: threadID, goal: prompt, persistTurn: false) {
+            var finish: AgentFinish = .interrupted
+            for await event in agentCoordinator.run(threadID: threadID, goal: prompt, runID: input.request.id, target: target, waitingInputID: input.request.id) {
                 if case .textDelta(let delta) = event {
                     text += delta
-                    await onPartial(text)
+                    onPartial(text)
                 }
-                if case .finished(.providerError) = event { agentFailed = true }
+                if case .finished(let outcome) = event { finish = outcome }
             }
-            if agentFailed || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                guard let client = runtimes.makeProviderClient() else { return text }
-                return (try? await client.complete(prompt: prompt)) ?? text
-            }
-            return text
+            if finish == .completed { self.onboardingDirector?.noteTalkTurnCompleted() }
+            return finish
         }
+        controller.onStop = { [weak self] id in self?.agentCoordinator.stop(threadID: id) }
         agentRunningObservation = controller.bindWorkingThreads(agentCoordinator.$runningThreads)
         controller.perryListProvider = { [weak self] in
             await self?.perryStore?.list() ?? []
@@ -501,6 +539,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             self?.routineLibrary.remove(routine)
         }
         controller.configure(deps: HomeModel.Deps(
+            controller: self,
+            brain: brain,
             transcriptStore: transcriptStore,
             activityLog: activityLog,
             undoableEntryIDs: { [backgroundTasks] in
@@ -624,6 +664,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
     private var debugMaintenanceBarrier: (@MainActor () async throws -> Void)?
     private var debugSkipEraseConfirmation = false
+    var debugUnsavedQuitDecision: (() -> Bool)?
     private let debugConfirmer: (any Confirmer)?
     private let debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
 #endif
@@ -644,6 +685,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugFullGuideCaptureLoader = nil
         debugFullGuideContinuationBarrier = nil
         debugFullGuidePlanner = nil
+        debugGuidePlanner = nil
         debugFinalizationBarrier = nil
         debugTypedVerifier = nil
         debugConfirmer = nil
@@ -668,6 +710,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugFullGuideCaptureLoader = nil
         debugFullGuideContinuationBarrier = nil
         debugFullGuidePlanner = nil
+        debugGuidePlanner = AXGuidePlanner()
         debugFinalizationBarrier = nil
         debugTypedVerifier = nil
         debugConfirmer = nil
@@ -693,6 +736,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         fullGuideCaptureLoader: FullGuideCaptureLoader? = nil,
         fullGuideContinuationBarrier: FullGuideContinuationBarrier? = nil,
         fullGuidePlanner: FullGuidePlanner? = nil,
+        guidePlanner: (any GuidePlanner)? = AXGuidePlanner(),
         finalizationBarrier: FinalizationBarrier? = nil,
         finalizationPersistenceBarrier: FinalizationPersistenceBarrier? = nil,
         screenContextLoader: EnvironmentProbe.ScreenContextLoader? = nil,
@@ -710,6 +754,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         self.debugFullGuideCaptureLoader = fullGuideCaptureLoader
         self.debugFullGuideContinuationBarrier = fullGuideContinuationBarrier
         self.debugFullGuidePlanner = fullGuidePlanner
+        self.debugGuidePlanner = guidePlanner
         self.debugFinalizationBarrier = finalizationBarrier
         self.debugFinalizationPersistenceBarrier = finalizationPersistenceBarrier
         self.debugTypedVerifier = typedVerifier
@@ -785,7 +830,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             if let director = self.onboardingDirector,
                director.beat == .practice,
                director.practiceStep == .guide,
-               case .idle = state {
+               case .guiding = self.sessionController.state,
+               case .reporting(let report) = state, report.outcome == .completed {
                 director.notePracticeStepCompleted()
             }
             // Last answer feeds the Home peek's preview line.
@@ -844,6 +890,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private static let onboardingCompletedKey = "perry.onboarding.completed"
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        homeController.openHome()
+        return false
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         // A companion that gets terminated mid-setup loses the user's trust
@@ -861,6 +912,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
 #endif
+        if let support = storageDirectory {
+            do {
+                try FileManager.default.createDirectory(at: support.appendingPathComponent("workspace", isDirectory: true), withIntermediateDirectories: true)
+            } catch {
+                homeController.homeModel.storageError = "Couldn’t prepare Perry’s file workspace. \(error.localizedDescription)"
+            }
+        }
         notifier.configure(
             onApprove: { [weak self] taskID, actionID, revision in
                 self?.backgroundTasks.approve(taskID, expectedActionID: actionID, expectedRevision: revision)
@@ -880,13 +938,19 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         homeController.start()
         perryScheduler?.start()
         suggestionController.start()
-        // Helper socket after first idle — never a launch blocker.
-        if let dir = Self.supportDirectory {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                guard let self else { return }
-                let socket = PerryMCPSocket(host: self.toolHost, directory: dir)
-                try? socket.start()
-                self.mcpSocket = socket
+        if let dir = storageDirectory {
+            mcpStartupTask = Task { @MainActor [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                    guard let self, self.maintenanceOwner == nil, !self.terminationPrepared else { return }
+                    defer { self.mcpStartupTask = nil }
+                    let socket = PerryMCPSocket(host: self.toolHost, directory: dir, workers: self.workers, workerLease: self.foregroundWorkerLease)
+                    try socket.start()
+                    self.mcpSocket = socket
+                } catch is CancellationError {
+                } catch {
+                    self?.sessionStatus = "Perry could not start its tool connection: \(error.localizedDescription)"
+                }
             }
         }
 #if DEBUG
@@ -990,11 +1054,24 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         backgroundTasks.closeControls()
         guideCoordinator.prepareForTermination()
         Task { @MainActor [self] in
-            defer { self.releaseMaintenance(.termination) }
+            var showRecovery = false
+            defer {
+                self.releaseMaintenance(.termination)
+                if showRecovery { self.homeController.openHome() }
+            }
             do {
                 try await self.prepareForTermination()
                 try await self.workers.shutdown()
+                await self.mcpStartupTask?.value
+                await self.mcpSocket?.stop()
                 await self.joinAfterWorkerShutdown()
+                guard self.confirmQuitDiscardingUnsavedRequests() else {
+                    self.backgroundTasks.reopenControls()
+                    self.sessionStatus = "Perry stayed open. Recover your requests before quitting."
+                    showRecovery = true
+                    sender.reply(toApplicationShouldTerminate: false)
+                    return
+                }
                 self.terminationPrepared = true
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
@@ -1006,15 +1083,58 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return .terminateLater
     }
 
+    func unsavedRequestQuitAlert() -> NSAlert {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Quit with unsaved requests?"
+        alert.informativeText = "Some requests haven’t been saved. Keep Perry open to copy them or try saving again. Quitting will discard this text."
+        alert.addButton(withTitle: "Keep Perry open")
+        alert.addButton(withTitle: "Quit without saving").hasDestructiveAction = true
+        return alert
+    }
+
+    private func confirmQuitDiscardingUnsavedRequests() -> Bool {
+        guard !homeController.homeModel.unsavedInputs.isEmpty else { return true }
+#if DEBUG
+        if let debugUnsavedQuitDecision { return debugUnsavedQuitDecision() }
+#endif
+        return unsavedRequestQuitAlert().runModal() == .alertSecondButtonReturn
+    }
+
     private func acquireMaintenance(_ operation: MaintenanceOperation) -> Bool {
         guard maintenanceOwner == nil else { return false }
         maintenanceOwner = operation
+        mcpStartupTask?.cancel()
+        mcpSocket?.closeAdmission()
+        agentCoordinator.closeAdmission()
+        brain.closeAdmission()
+        homeController.closeAdmission()
+        hidePanel()
         return true
     }
 
     private func releaseMaintenance(_ operation: MaintenanceOperation) {
         guard maintenanceOwner == operation else { return }
         maintenanceOwner = nil
+        if !terminationPrepared {
+            agentCoordinator.reopenAdmission()
+            brain.reopenAdmission()
+            homeController.reopenAdmission()
+            if let socket = mcpSocket {
+                let previousStartup = mcpStartupTask
+                mcpStartupTask = Task { @MainActor [weak self] in
+                    await previousStartup?.value
+                    await socket.stop()
+                    guard let self, !Task.isCancelled, self.maintenanceOwner == nil else { return }
+                    defer { self.mcpStartupTask = nil }
+                    do {
+                        try socket.start()
+                    } catch {
+                        self.sessionStatus = "Perry could not restart its tool connection: \(error.localizedDescription)"
+                    }
+                }
+            }
+        }
     }
 
     private func maintenanceConflictMessage() -> String {
@@ -1073,6 +1193,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionStatus = "Listening for a request."
         transcriptPreview = ""
         activeSpatialSelection = nil
+        probe.pinInvocationTarget()
         overlayState.voiceState = .idle
         overlayState.taskBubbleText = "Circle a window with ⌥⌘ and drag, or type a request."
         overlayState.circleSelectSnappedRect = nil
@@ -1101,6 +1222,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             foreground.cancelInvocationIfCurrent(invocation.id)
         }
         sessionStatus = "Ready when you are."
+        probe.clearInvocationTarget()
         askController.cancel()
         guideCoordinator.stopClickObservation()
         guideCoordinator.cancelPendingDemoInputs()
@@ -1396,7 +1518,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc private func everythingAction() {
-        Task { await showEverything(goal: "walk through the frontmost window") }
+        let target = probe.currentTargetHint()
+        Task { await showEverything(goal: "walk through the frontmost window", targetHint: target) }
     }
 
     @objc private func doPromptAction() {
@@ -1600,7 +1723,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             try await pauseOwnedBackgroundTasksForWorkerStop()
             let report = try await workers.withWorkersStopped { @MainActor [self] in
                 await self.stopWorkForErasure()
-                return await self.completeErasureCoordinator.erase()
+                let report = await self.completeErasureCoordinator.erase()
+                self.brain.reloadPreferences()
+                await self.homeController.reloadAfterErasure()
+                self.suggestionController.reloadCards()
+                return report
             }
             voice.speak(report.summary)
         } catch {
@@ -1615,7 +1742,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func prepareForTermination() async throws {
         backgroundTasks.closeControls()
+        await brain.stopSetup()
         askController.cancel()
+        talkSession.cancel()
+        await askController.joinInputSaves()
         notchStatus.hide()
         homeController.stop()
         perryScheduler?.stop()
@@ -1631,6 +1761,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func joinAfterWorkerShutdown() async {
         await guideCoordinator.joinAfterWorkerShutdown()
+        await agentCoordinator.joinAll()
+        await perryScheduler?.joinAll()
+        await suggestionController.joinAll()
+        await homeController.joinAll()
         await voice.joinInputWork()
         if let spatialWorkerTask {
             await spatialWorkerTask.value
@@ -1640,12 +1774,25 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func stopWorkForErasure() async {
+        await mcpStartupTask?.value
+        mcpStartupTask = nil
+        await mcpSocket?.stop()
+        mcpSocket = nil
+        await brain.stopSetup()
         demoDirector.cancel()
         askController.cancel()
+        talkSession.cancel()
+        await askController.joinInputSaves()
         notchStatus.hide()
         homeController.stop()
+        perryScheduler?.stop()
+        suggestionController.stop()
         routineLibrary.stop()
         await guideCoordinator.stopForErasure()
+        await agentCoordinator.joinAll()
+        await perryScheduler?.joinAll()
+        await suggestionController.joinAll()
+        await homeController.joinAll()
         spatialMonitor.stop()
         foreground.cancelStartTask()
         await foreground.cancelActiveSupervisor()
@@ -1674,13 +1821,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func showPanel() {
+        probe.pinInvocationTargetIfNeeded()
+        homeController.prepareConversation(target: probe.presentationTarget())
         if panel == nil {
 #if DEBUG
             let rootView = PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
-                to: SessionPanelView(controller: self)
+                to: CompactConversationView(controller: self)
             )
 #else
-            let rootView = SessionPanelView(controller: self)
+            let rootView = CompactConversationView(controller: self)
 #endif
             let host = NSHostingView(rootView: rootView)
             let p = NSPanel(
@@ -1703,13 +1852,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             p.backgroundColor = .clear
             p.titlebarAppearsTransparent = true
             p.level = .floating
+            if !p.setFrameUsingName("perry.session.frame"), let screen = NSScreen.main {
+                let frame = screen.visibleFrame
+                p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))
+            }
+            p.setFrameAutosaveName("perry.session.frame")
             panel = p
-        }
-        if let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            panel?.setFrameOrigin(
-                NSPoint(x: frame.maxX - 410, y: frame.minY + 120)
-            )
         }
         NSApp.activate(ignoringOtherApps: true)
         panel?.makeKeyAndOrderFront(nil)
@@ -1732,11 +1880,24 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 #endif
 
+    private func guideConversationID() -> UUID {
+        if case .thread(let id) = homeController.homeModel.sidebarSelection,
+           !agentCoordinator.runningThreads.contains(id) { return id }
+        let id = UUID()
+        homeController.homeModel.sidebarSelection = .thread(id)
+        return id
+    }
+
     func startGuiding(goal: String) {
-        guideCoordinator.startGuiding(goal: goal)
+        let threadID = guideConversationID()
+        guideCoordinator.startGuiding(
+            goal: goal, threadID: threadID,
+            targetHint: homeController.homeModel.conversationTargets[threadID]
+        )
     }
 
     func ask(question: String) {
+        guard maintenanceOwner == nil else { return }
         askController.submit(question: question)
     }
 
@@ -1744,8 +1905,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         guideCoordinator.advanceGuide()
     }
 
-    func showEverything(goal: String) async {
-        await guideCoordinator.showEverything(goal: goal)
+    func showEverything(goal: String, targetHint: CuaTargetHint? = nil) async {
+        let threadID = guideConversationID()
+        if let targetHint { homeController.homeModel.conversationTargets[threadID] = targetHint }
+        await guideCoordinator.showEverything(
+            goal: goal, threadID: threadID,
+            targetHint: homeController.homeModel.conversationTargets[threadID]
+        )
     }
     private func handleSpatialPoints(_ points: [CGPoint]) {
         overlayState.circleSelectLivePoints = points
@@ -2077,14 +2243,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             showPanel()
             return
         }
-        // Voice follows the same session contract as typing: while an Ask
-        // session is live a dictated intent is a follow-up question, and a
-        // plain utterance defaults to Ask — never a silent drop or a task
-        // started around the mode the user is in.
         if case .asking = sessionController.state {
-            if case .dismiss = GuideIntentParser.parse(text) {
+            switch GuideIntentParser.parse(text) {
+            case .dismiss:
                 dismiss()
-            } else {
+            case .guide:
+                continueAskInGuide(request: text, full: false)
+            case .showEverything:
+                continueAskInGuide(request: text, full: true)
+            case .doTask, .notAGuideRequest:
                 ask(question: text)
             }
             return
@@ -2103,28 +2270,68 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
+    private func runHomeGuide(
+        input: HomeController.AcceptedInput, target: CuaTargetHint?, full: Bool,
+        onPartial: @MainActor @Sendable (String) -> Void
+    ) async -> AgentFinish {
+        guard let task = guideCoordinator.startGuiding(goal: input.request.text, threadID: input.threadID, targetHint: target, full: full, waitingInput: input.request) else {
+            return .failed("Finish or stop the current session before starting Guide. Your request is still here.")
+        }
+        onPartial("Preparing a guide…")
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func continueAskInGuide(request: String, full: Bool) {
+        guard case .asking(let ask) = sessionController.state, maintenanceOwner == nil else { return }
+        let accepted = homeController.acceptInput(request, threadID: ask.threadID ?? UUID())
+        let input = accepted.request
+        let threadID = accepted.threadID
+        sessionController.updateAsk {
+            $0.threadID = threadID
+            $0.pendingGuideRequest = input
+        }
+        sessionStatus = "Saving your request while this answer finishes…"
+        askController.afterCurrentAnswer(prepare: { [weak self] in
+            guard let self else { return false }
+            do {
+                try await accepted.saved.value
+                return self.maintenanceOwner == nil
+            } catch {
+                self.homeController.homeModel.storageError = error.localizedDescription
+                self.sessionStatus = "Couldn’t save your Guide request. Your text is still here."
+                return false
+            }
+        }) { [weak self] current in
+            guard let self, self.maintenanceOwner == nil,
+                  current.pendingGuideRequest?.id == input.id else { return }
+            let target = self.homeController.homeModel.conversationTargets[threadID]
+            self.dismiss()
+            self.homeController.homeModel.sidebarSelection = .thread(threadID)
+            self.guideCoordinator.startGuiding(
+                goal: input.text, threadID: threadID, targetHint: target, full: full, waitingInput: input
+            )
+        }
+    }
+
     // MARK: Onboarding
 
     private func runOnboardingIfNeeded() {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let snapshot = await PerryPermissionSnapshot.probe()
-            if !snapshot.requiredPermissionsGranted || !UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey) {
-                runOnboarding(force: false)
-            }
+        if !UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey) {
+            runOnboarding(force: false)
         }
     }
 
     func runOnboarding(force: Bool) {
         if onboardingDirector != nil && !force { return }
-        startOnboarding(effects: OnboardingDirector.Effects())
+        startOnboarding(effects: OnboardingDirector.Effects(), resume: !force)
     }
 
-    /// Drives the Phase-4 beat script: greet → first talk → live-detected
-    /// permissions → brain choice → sandbox practice → tuck into the notch.
-    /// All UI goes through the overlay cursor + captions + TTS; the only
-    /// real window is the bundled practice surface.
-    private func startOnboarding(effects overrides: OnboardingDirector.Effects) {
+    private func startOnboarding(effects overrides: OnboardingDirector.Effects, resume: Bool = true) {
+        onboardingDirector?.stop()
         var effects = overrides
         effects.speak = { [weak self] line in
             self?.overlayState.taskBubbleText = line
@@ -2137,145 +2344,42 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 NSWorkspace.shared.open(url)
             }
         }
-        effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
-        effects.finish = { [weak self] in self?.finishOnboarding() }
-        let director = OnboardingDirector(effects: effects)
-        director.onBeatChanged = { [weak self] beat, _ in
-            guard let self else { return }
-            switch beat {
-            case .brainChoice:
-                self.presentBrainChoices()
-            case .screenAccess:
-                self.pointAtSystemSettingsWindow()
-            default:
-                self.clearOnboardingMarks()
+        effects.openScreenRecordingSettings = {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
             }
         }
+        effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
+        effects.endPractice = { [weak self] in self?.practiceWindow.close() }
+        effects.finish = { [weak self] in self?.finishOnboarding() }
+        let director = OnboardingDirector(effects: effects, defaults: .standard)
         onboardingDirector = director
+        homeController.homeModel.onboarding = director
+        homeController.homeModel.sidebarSelection = nil
+        homeController.openHome()
         talkSession.onTurnCompleted = { [weak director] in
             director?.noteTalkTurnCompleted()
         }
-        practiceWindow.onEvent = { [weak director] _ in
-            director?.notePracticeStepCompleted()
+        practiceWindow.onEvent = { [weak director] event in
+            switch (event, director?.practiceStep) {
+            case (.renamedAndUndone, .renameUndo), (.dictated, .dictate):
+                director?.notePracticeStepCompleted()
+            default: break
+            }
         }
         if PerryPermissionProbe.checkMicrophone() == .denied {
             director.noteMicrophoneDenied()
         }
-        director.start()
-    }
-
-    /// Brain choice (§4.1.4): a popup menu at the cursor — no new window for
-    /// a consequential one-click decision.
-    private func presentBrainChoices() {
-        let menu = NSMenu()
-        let chatGPT = NSMenuItem(
-            title: "Use my ChatGPT account — one click, no keys",
-            action: #selector(brainChoiceChatGPT), keyEquivalent: ""
-        )
-        let onDevice = NSMenuItem(
-            title: "Use this Mac (on-device model)",
-            action: #selector(brainChoiceOnDevice), keyEquivalent: ""
-        )
-        let byok = NSMenuItem(
-            title: "I have a key or local model…",
-            action: #selector(brainChoiceBYOK), keyEquivalent: ""
-        )
-        let skip = NSMenuItem(title: "Skip", action: #selector(brainChoiceSkip), keyEquivalent: "")
-        for item in [chatGPT, onDevice, byok, skip] {
-            item.target = self
-            menu.addItem(item)
-        }
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
-    @objc private func brainChoiceChatGPT() {
-        brain.signInWithChatGPT()
-        onboardingDirector?.noteBrainChoiceMade()
-    }
-
-    @objc private func brainChoiceOnDevice() {
-        onboardingDirector?.noteBrainChoiceMade()
-    }
-
-    @objc private func brainChoiceBYOK() {
-        settingsAction()
-        onboardingDirector?.noteBrainChoiceMade()
-    }
-
-    @objc private func brainChoiceSkip() {
-        onboardingDirector?.noteBrainChoiceMade()
-    }
-
-    /// Onboarding marks (kept separate so a beat change clears only ours).
-    private var onboardingMarkIDs: Set<UUID> = []
-
-    /// §4.1.3: while the permission beat is active, point at the System
-    /// Settings window with an ink arrow + caption. Window bounds come from
-    /// CGWindowList — readable without any permission — while the deep link
-    /// is what lands the user on the right pane. Precise toggle pointing
-    /// needs AX on System Settings (granted by this very beat).
-    private func pointAtSystemSettingsWindow() {
-        clearOnboardingMarks()
-        Task { @MainActor [weak self] in
-            for _ in 0..<40 {
-                guard let self, self.onboardingDirector?.beat == .screenAccess else { return }
-                if let frame = self.systemSettingsWindowFrame() {
-                    let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-                    let windowBL = CGRect(
-                        x: frame.minX, y: primaryMaxY - frame.maxY,
-                        width: frame.width, height: frame.height
-                    )
-                    let overlay = PerryGuidanceOverlay.scribble(
-                        points: [
-                            CGPoint(x: windowBL.minX - 60, y: windowBL.midY + 30),
-                            CGPoint(x: windowBL.minX - 8, y: windowBL.midY),
-                        ],
-                        accentHex: "#34D399", lineWidth: 5,
-                        caption: "Turn on Perry here — I'll notice.",
-                        duration: 120
-                    )
-                    self.overlayState.visualGuidanceOverlays.append(overlay)
-                    self.onboardingMarkIDs.insert(overlay.id)
-                    return
-                }
-                try? await Task.sleep(nanoseconds: 250_000_000)
-            }
-        }
-    }
-
-    private func clearOnboardingMarks() {
-        guard !onboardingMarkIDs.isEmpty else { return }
-        overlayState.visualGuidanceOverlays.removeAll { onboardingMarkIDs.contains($0.id) }
-        onboardingMarkIDs = []
-    }
-
-    /// On-screen bounds of the System Settings window (CG top-left space),
-    /// matched by owner PID — window names need Screen Recording, bounds don't.
-    private func systemSettingsWindowFrame() -> CGRect? {
-        guard let app = NSRunningApplication.runningApplications(
-            withBundleIdentifier: "com.apple.systempreferences"
-        ).first,
-              let list = CGWindowListCopyWindowInfo(
-                  [.optionOnScreenOnly], kCGNullWindowID
-              ) as? [[String: Any]] else { return nil }
-        for info in list {
-            guard (info[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
-                  (info[kCGWindowLayer as String] as? Int) == 0,
-                  let bounds = info[kCGWindowBounds as String] as? [String: Any],
-                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
-                  frame.width > 200, frame.height > 200 else { continue }
-            return frame
-        }
-        return nil
+        director.start(resume: resume)
     }
 
     private func finishOnboarding() {
         practiceWindow.close()
-        clearOnboardingMarks()
         overlayState.taskBubbleText = nil
         talkSession.onTurnCompleted = nil
         UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
         onboardingDirector = nil
+        homeController.homeModel.onboarding = nil
     }
 
 #if DEBUG
@@ -2487,9 +2591,11 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
         overlayState.visualGuidanceOverlays = []
     }
 
-    func guideRequestTakeOver(goal: String) {
-        _ = guideCoordinator.dismissIfActive()
-        foreground.start(goal: goal)
+    func guideRequestTakeOver(_ handoff: GuideHandoff) {
+        foreground.start(
+            goal: "Continue the guided task: \(handoff.goal). Check the current window and finish the remaining work without repeating completed changes.",
+            threadID: handoff.threadID, targetHint: handoff.target
+        )
     }
 
     func guideTargetHint() -> CuaTargetHint {

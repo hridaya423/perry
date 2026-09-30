@@ -1,5 +1,6 @@
 import AppKit
 import PerryCore
+import PerryBrain
 import PerryOverlay
 import PerryCapture
 import PerryGuide
@@ -11,6 +12,12 @@ struct GuideSpeechIdentity: Equatable {
     let scopeID: UUID
     let stepID: UUID?
     let text: String
+}
+
+struct GuideHandoff {
+    let threadID: UUID
+    let goal: String
+    let target: CuaTargetHint
 }
 
 @MainActor
@@ -31,11 +38,11 @@ protocol GuideSessionOutput: AnyObject {
     func guideClearFullPath()
     /// The user asked Perry to finish the guided task itself — shared
     /// control, one direction. The coordinator hands over the same goal.
-    func guideRequestTakeOver(goal: String)
+    func guideRequestTakeOver(_ handoff: GuideHandoff)
 }
 
 extension GuideSessionOutput {
-    func guideRequestTakeOver(goal: String) {}
+    func guideRequestTakeOver(_ handoff: GuideHandoff) {}
 }
 
 @MainActor
@@ -71,6 +78,9 @@ final class GuideWorkerSession {
     let finishStream: AsyncStream<Void>
     let finishContinuation: AsyncStream<Void>.Continuation
     private(set) var worker: CuaWorkerHandle?
+    var conversationOutcome: (answer: String, finish: AgentFinish)?
+    var savedOutcome: AgentFinish?
+    var takeoverRequested = false
     private(set) var engine: GuideEngine?
     var scopeTask: Task<Void, Never>?
     var finalizationTask: Task<Void, Never>?
@@ -199,10 +209,11 @@ final class GuideSessionCoordinator {
     typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
     typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
     typealias FullGuidePlanner = @MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep]
-    typealias GuidePlannerProvider = @MainActor () -> (any GuidePlanner)?
+    typealias GuidePlannerProvider = @MainActor (GuideSessionState) -> (any GuidePlanner)?
 
     private let sessionController: SessionController
     private let workers: CuaWorkerService
+    private let executionOwner: AgentCoordinator?
     private let transcriptStore: TranscriptStore
     private let memoryStore: MemoryStore
     private let storageDirectory: URL?
@@ -239,10 +250,12 @@ final class GuideSessionCoordinator {
         fullGuideCaptureLoader: FullGuideCaptureLoader? = nil,
         fullGuideContinuationBarrier: FullGuideContinuationBarrier? = nil,
         fullGuidePlanner: FullGuidePlanner? = nil,
-        guidePlannerProvider: GuidePlannerProvider? = nil
+        guidePlannerProvider: GuidePlannerProvider? = nil,
+        executionOwner: AgentCoordinator? = nil
     ) {
         self.sessionController = sessionController
         self.workers = workers
+        self.executionOwner = executionOwner
         self.transcriptStore = transcriptStore
         self.memoryStore = memoryStore
         self.storageDirectory = storageDirectory
@@ -254,8 +267,8 @@ final class GuideSessionCoordinator {
         self.guidePlannerProvider = guidePlannerProvider
     }
 
-    private func makeGuidePlanner() -> any GuidePlanner {
-        guidePlannerProvider?() ?? AXGuidePlanner(skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory))
+    private func makeGuidePlanner(for guide: GuideSessionState) -> any GuidePlanner {
+        guidePlannerProvider?(guide) ?? AXGuidePlanner(skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory))
     }
 
     var debugGuideScopeID: UUID? {
@@ -286,16 +299,28 @@ final class GuideSessionCoordinator {
     }
     #endif
 
-    func startGuiding(goal: String) {
-        guard guideAdmissionOpen else { return }
-        Task { @MainActor [weak self] in
-            await self?.startGuideSession(goal: goal, full: false)
+    @discardableResult
+    func startGuiding(goal: String, threadID: UUID = UUID(), targetHint: CuaTargetHint? = nil, full: Bool = false, waitingInput: PerryThread.WaitingInput? = nil) -> Task<AgentFinish, Never>? {
+        guard guideAdmissionOpen else { return nil }
+        let attemptID = sessionController.currentOrFreshAttemptID
+        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+            output?.guideSetStatus("Finish or stop the current session first.")
+            return nil
+        }
+        guard let scope = startGuideSession(goal: goal, full: full, threadID: threadID, targetHint: targetHint, attemptID: attemptID, waitingInput: waitingInput),
+              let task = scope.scopeTask else { return nil }
+        return Task {
+            await withTaskCancellationHandler {
+                await task.value
+                return scope.savedOutcome ?? .interrupted
+            } onCancel: {
+                task.cancel()
+            }
         }
     }
 
-    func showEverything(goal: String) async {
-        guard guideAdmissionOpen else { return }
-        await startGuideSession(goal: goal, full: true)
+    func showEverything(goal: String, threadID: UUID = UUID(), targetHint: CuaTargetHint? = nil) async {
+        startGuiding(goal: goal, threadID: threadID, targetHint: targetHint, full: true)
     }
 
     func runGuideForDemo(goal: String) async -> Bool {
@@ -486,13 +511,31 @@ final class GuideSessionCoordinator {
         guideStepPosition = 0
     }
 
-    /// "Do it" on the guide controls: the user hands the remaining work to
-    /// Perry. The shell tears the guide down and starts the same goal as a
-    /// Do task — no restart, no re-typing.
     func takeOverGuide() {
-        guard activeGuideID != nil,
+        guard let scope = currentGuideScope, !scope.takeoverRequested,
+              executionOwner != nil,
               case .guiding(let guide) = sessionController.state else { return }
-        output?.guideRequestTakeOver(goal: guide.goal)
+        scope.takeoverRequested = true
+        Task { @MainActor [weak self, scope] in
+            guard let self, let target = await scope.targetStore.current(), self.guideIsCurrent(guide.id) else {
+                scope.takeoverRequested = false
+                return
+            }
+            let handoff = GuideHandoff(threadID: guide.threadID, goal: guide.goal, target: target)
+            let attemptID = UUID()
+            guard self.dismissIfActive(), self.beginInvokingIfNeeded(attemptID: attemptID) else { return }
+            self.output?.guideSetStatus("Saving the guide before continuing…")
+            await scope.scopeTask?.value
+            guard self.guideAdmissionOpen,
+                  case .invoking(let invocation) = self.sessionController.state,
+                  invocation.id == attemptID else { return }
+            guard scope.savedOutcome == .interrupted else {
+                _ = try? self.sessionController.cancelInvocation(attemptID)
+                self.output?.guideSetStatus(scope.savedOutcome?.failureReason ?? "The guide could not be saved. Review it before continuing.")
+                return
+            }
+            self.output?.guideRequestTakeOver(handoff)
+        }
     }
 
     private func presentGuideInput(guideID: UUID, prompt: String, choices: [String]) {
@@ -580,18 +623,15 @@ final class GuideSessionCoordinator {
         }
     }
 
-    private func startGuideSession(goal: String, full: Bool) async {
-        let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else {
-            output?.guideSetStatus("Finish or stop the current session first.")
-            return
-        }
+    private func startGuideSession(goal: String, full: Bool, threadID: UUID, targetHint: CuaTargetHint?, attemptID: UUID, waitingInput: PerryThread.WaitingInput?) -> GuideWorkerSession? {
+        guard guideAdmissionOpen, case .invoking(let invocation) = sessionController.state,
+              invocation.id == attemptID else { return nil }
         output?.guideSetStatus(full ? "Painting the complete path." : "Finding two useful places to show you.")
         output?.guideStopSpatialInput()
-        let targetHint = context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
+        let targetHint = targetHint ?? context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
         let appBundleID = context?.guideAppBundleID(for: targetHint)
-        let guide = GuideSessionState(id: UUID(), goal: goal, startedAt: Date(), appBundleID: appBundleID)
-        guard transitionSession({ try sessionController.startGuide(guide, attemptID: attemptID) }) else { return }
+        let guide = GuideSessionState(id: waitingInput?.id ?? UUID(), threadID: threadID, goal: goal, startedAt: Date(), appBundleID: appBundleID)
+        guard transitionSession({ try sessionController.startGuide(guide, attemptID: attemptID) }) else { return nil }
         let (finishStream, finishContinuation) = AsyncStream<Void>.makeStream()
         let scope = GuideWorkerSession(
             id: guide.id,
@@ -602,59 +642,86 @@ final class GuideSessionCoordinator {
         guideScopes[scope.id] = scope
         currentGuideScopeID = scope.id
         output?.guideShowOverlay()
-        let scopeTask = Task { @MainActor [weak self, scope] in
-            guard let self else { return }
-            defer {
-                scope.markFinished()
-                self.clearGuideScope(scope)
-            }
-            do {
-                // A dismissed or finished scope can still be unwinding while
-                // it holds the single guide worker — wait briefly for prior
-                // scopes to release before claiming it.
-                await self.waitForScopeCompletion(guideScopes.values.filter { $0 !== scope })
-                // The worker stays alive for the whole guide session: every
-                // verified click, repoint, and dynamic replan reads the live
-                // window through it. The body returns only when the guide's
-                // finish stream closes.
-                try await self.workers.withWorker(scope: .guide, resources: []) { @MainActor worker in
-                    scope.beginWorkerBody()
-                    do {
-                        let engine = GuideEngine(
-                            planner: self.makeGuidePlanner(),
-                            observer: CuaGuideTreeReader(worker: worker, targetStore: scope.targetStore)
+        if let executionOwner {
+            scope.scopeTask = executionOwner.runGuide(
+                threadID: threadID, goal: goal, runID: guide.id, waitingInputID: waitingInput?.id,
+                operation: { [weak self, scope] _ in
+                    guard let self else { return ("Guide stopped.", .interrupted) }
+                    return await self.runGuideScope(scope, guide: guide, full: full, targetHint: targetHint)
+                },
+                onFinish: { [weak self, scope] finish in
+                    scope.savedOutcome = finish
+                    scope.markFinished()
+                    guard let self else { return }
+                    if self.guideIsCurrent(guide.id) {
+                        self.resetGuideAfterWorkerFailure(
+                            guideID: guide.id, summary: finish.failureReason ?? "Guide stopped."
                         )
-                        self.bindGuideScope(scope, worker: worker, engine: engine)
-                        await scope.targetStore.set(targetHint)
-                        guard self.guideIsCurrent(guide.id) else { return }
-                        try Task.checkCancellation()
-                        if full {
-                            #if DEBUG
-                            if let captureLoader = self.fullGuideCaptureLoader {
-                                try await self.runFullGuide(guide: guide, capture: try await captureLoader(worker, targetHint))
-                            } else {
-                                try await self.runFullGuide(guide: guide, capture: try await worker.capture(target: targetHint))
-                            }
-                            #else
-                            try await self.runFullGuide(guide: guide, capture: try await worker.capture(target: targetHint))
-                            #endif
+                    }
+                    self.clearGuideScope(scope)
+                }
+            )
+        } else {
+            scope.scopeTask = Task { @MainActor [weak self, scope] in
+                guard let self else { return }
+                defer {
+                    scope.markFinished()
+                    self.clearGuideScope(scope)
+                }
+                _ = await self.runGuideScope(scope, guide: guide, full: full, targetHint: targetHint)
+            }
+        }
+        return scope
+    }
+
+    private func runGuideScope(
+        _ scope: GuideWorkerSession, guide: GuideSessionState, full: Bool, targetHint: CuaTargetHint
+    ) async -> (answer: String, finish: AgentFinish) {
+        do {
+            // A dismissed or finished scope can still be unwinding while
+            // it holds the single guide worker — wait briefly for prior
+            // scopes to release before claiming it.
+            await self.waitForScopeCompletion(guideScopes.values.filter { $0 !== scope })
+            // The worker stays alive for the whole guide session: every
+            // verified click, repoint, and dynamic replan reads the live
+            // window through it. The body returns only when the guide's
+            // finish stream closes.
+            try await self.workers.withWorker(scope: .guide, resources: []) { @MainActor worker in
+                scope.beginWorkerBody()
+                do {
+                    let engine = GuideEngine(
+                        planner: self.makeGuidePlanner(for: guide),
+                        observer: CuaGuideTreeReader(worker: worker, targetStore: scope.targetStore)
+                    )
+                    self.bindGuideScope(scope, worker: worker, engine: engine)
+                    await scope.targetStore.set(targetHint)
+                    guard self.guideIsCurrent(guide.id) else { return }
+                    try Task.checkCancellation()
+                    if full {
+                        #if DEBUG
+                        if let captureLoader = self.fullGuideCaptureLoader {
+                            try await self.runFullGuide(guide: guide, capture: try await captureLoader(worker, targetHint))
                         } else {
-                            try await self.runTwoStepGuide(guide: guide, engine: engine)
+                            try await self.runFullGuide(guide: guide, capture: try await worker.capture(target: targetHint))
                         }
-                        for await _ in scope.finishStream { break }
-                    } catch is CancellationError {
-                        return
-                    } catch GuidePlannerError.protectedWindow {
+                        #else
+                        try await self.runFullGuide(guide: guide, capture: try await worker.capture(target: targetHint))
+                        #endif
+                    } else {
+                        try await self.runTwoStepGuide(guide: guide, engine: engine)
+                    }
+                    for await _ in scope.finishStream { break }
+                } catch {
+                    guard !Task.isCancelled, !(error is CancellationError) else { return }
+                    switch error {
+                    case GuidePlannerError.protectedWindow:
                         self.finishGuide(guideID: guide.id, outcome: .failed, summary: "That window is protected, so Perry won't guide inside it.")
-                    } catch GuidePlannerError.explanationEnded {
+                    case GuidePlannerError.explanationEnded:
                         self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
-                    } catch GuidePlannerError.needsInput(let prompt, let choices) {
-                        // The engine is bound to this scope and paused in
-                        // .idle/.waitingForUser — keep the worker alive so the
-                        // user's answer can resume it.
+                    case GuidePlannerError.needsInput(let prompt, let choices):
                         self.presentGuideInput(guideID: guide.id, prompt: prompt, choices: choices)
                         for await _ in scope.finishStream { break }
-                    } catch {
+                    default:
                         if full {
                             self.failFullGuide(guideID: guide.id, error: error)
                         } else {
@@ -662,35 +729,34 @@ final class GuideSessionCoordinator {
                         }
                     }
                 }
-                if !self.guideIsCurrent(guide.id) {
-                    scope.finishContinuation.finish()
-                }
-            } catch is CancellationError {
-                self.resetGuideAfterWorkerFailure(
-                    guideID: guide.id,
-                    summary: "The guide stopped before its Cua worker could finish."
-                )
-            } catch {
-                self.resetGuideAfterWorkerFailure(
-                    guideID: guide.id,
-                    summary: "Cua could not start the guide: \(error.localizedDescription)"
-                )
             }
-            // Drains pending finalization even when the worker was cancelled
-            // out from under the body (dismiss, erasure, termination).
-            await self.closeGuideScope(scope)
+            if !self.guideIsCurrent(guide.id) {
+                scope.finishContinuation.finish()
+            }
+        } catch is CancellationError {
+            self.resetGuideAfterWorkerFailure(
+                guideID: guide.id,
+                summary: "The guide stopped before its Cua worker could finish."
+            )
+        } catch {
+            let message = "Cua could not start the guide: \(error.localizedDescription)"
+            scope.conversationOutcome = (message, .failed(message))
+            self.resetGuideAfterWorkerFailure(guideID: guide.id, summary: message)
         }
-        scope.scopeTask = scopeTask
+        // Drains pending finalization even when the worker was cancelled
+        // out from under the body (dismiss, erasure, termination).
+        await self.closeGuideScope(scope)
+        return scope.conversationOutcome ?? ("Guide stopped before it finished.", .interrupted)
     }
 
     private func failGuideFromWorker(guideID: UUID, error: Error) {
         guard guideIsCurrent(guideID) else { return }
-        finishGuide(guideID: guideID, outcome: .failed, summary: "Cua could not read the target window: \(error.localizedDescription)")
+        finishGuide(guideID: guideID, outcome: .failed, summary: "Perry could not continue the guide: \(error.localizedDescription)")
     }
 
     private func failFullGuide(guideID: UUID, error: Error) {
         guard guideIsCurrent(guideID) else { return }
-        finishGuide(guideID: guideID, outcome: .failed, summary: "Cua could not finish the full guide: \(error.localizedDescription)")
+        finishGuide(guideID: guideID, outcome: .failed, summary: "Perry could not prepare the guide: \(error.localizedDescription)")
     }
 
     private func resetGuideAfterWorkerFailure(guideID: UUID, summary: String) {
@@ -757,6 +823,25 @@ final class GuideSessionCoordinator {
             : nil
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            let progress = await scope.engine?.progress
+            let current = await scope.engine?.currentPresentation()?.step.instruction
+            var details = [request.summary]
+            if let progress {
+                if !progress.completedInstructions.isEmpty {
+                    details.append("Observed completed steps:\n" + progress.completedInstructions.joined(separator: "\n"))
+                }
+                if !progress.userConfirmedInstructions.isEmpty {
+                    details.append("User-confirmed steps, not independently verified:\n" + progress.userConfirmedInstructions.joined(separator: "\n"))
+                }
+            }
+            if let current { details.append("Last instruction, not verified complete: " + current) }
+            let finish: AgentFinish
+            switch request.outcome {
+            case .completed: finish = .completed
+            case .stopped: finish = .interrupted
+            case .failed: finish = .failed(request.summary)
+            }
+            scope.conversationOutcome = (details.joined(separator: "\n\n"), finish)
             _ = await self.transcriptStore.append(entry)
             if let workflow {
                 _ = await self.memoryStore.remember(workflow)
@@ -803,6 +888,8 @@ final class GuideSessionCoordinator {
             return
         }
         let target = capture.target
+        guard guideIsCurrent(guide.id), let scope = currentGuideScope, scope.id == guide.id else { return }
+        await scope.targetStore.set(target.hint)
         let observation = GuideObservation(
             snapshot: snapshot,
             processID: target.processID,
@@ -830,16 +917,17 @@ final class GuideSessionCoordinator {
         if let planner = fullGuidePlanner {
             steps = try await planner(guide.goal, observation, guideContext)
         } else {
-            steps = try await makeGuidePlanner().visiblePath(goal: guide.goal, observation: observation, context: guideContext)
+            steps = try await makeGuidePlanner(for: guide).visiblePath(goal: guide.goal, observation: observation, context: guideContext)
         }
         #else
-        steps = try await makeGuidePlanner().visiblePath(goal: guide.goal, observation: observation, context: guideContext)
+        steps = try await makeGuidePlanner(for: guide).visiblePath(goal: guide.goal, observation: observation, context: guideContext)
         #endif
         #if DEBUG
         if let barrier = fullGuideContinuationBarrier {
             await barrier(guide.id)
         }
         #endif
+        try Task.checkCancellation()
         guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }),
               let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot, goal: guide.goal) else {
             guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }) else { return }

@@ -5,32 +5,24 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Full Home (Phase 5 §4.7): sidebar (Perrys / Threads / Routines /
-/// Suggestions / Settings), a thread view with selectable reply text and a
-/// per-thread draft composer, and a preview slot for files. Popped out as a
-/// regular resizable NSWindow that remembers its frame. History, background
-/// tasks, Settings and What's New all live here as pages — the standalone
-/// windows were deleted in the Phase 5 migration.
 struct HomeView: View {
-    /// Injected so the view never touches the filesystem itself.
     @ObservedObject var model: HomeModel
 
     var body: some View {
         NavigationSplitView {
             List(selection: $model.sidebarSelection) {
-                Section("Perrys") {
-                    ForEach(model.perrys) { perry in
-                        Button { model.onPerrySelected?(perry) } label: {
-                            Label(perry.name, systemImage: "sparkle")
+                if !model.perrys.isEmpty {
+                    Section("Perrys") {
+                        ForEach(model.perrys) { perry in
+                            Button { model.onPerrySelected?(perry) } label: {
+                                Label(perry.name, systemImage: "sparkle")
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                    }
-                    if model.perrys.isEmpty {
-                        Text("No Perrys yet").foregroundStyle(.secondary)
                     }
                 }
-                Section("Threads") {
-                    ForEach(model.threads) { thread in
+                Section("Conversations") {
+                    ForEach(model.filteredThreads) { thread in
                         Label(thread.title.isEmpty ? "Untitled" : thread.title,
                               systemImage: "bubble.left")
                         .tag(HomeModel.Selection.thread(thread.id))
@@ -61,9 +53,64 @@ struct HomeView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
         } detail: {
-            detail
+            VStack(spacing: 0) {
+                if let onboarding = model.onboarding, showsSetup {
+                    HomeOnboardingView(director: onboarding, brain: model.deps.brain) {
+                        model.sidebarSelection = .settings
+                    }
+                    Divider()
+                }
+                detail
+            }
+            .navigationTitle(navigationTitle)
         }
-        .frame(minWidth: 520, minHeight: 380)
+        .searchable(text: $model.search, placement: .sidebar, prompt: "Search conversations")
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.sidebarSelection = nil
+                } label: {
+                    Label("New conversation", systemImage: "square.and.pencil")
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                .help("New conversation")
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                UnsavedInputRecoveryButton(model: model)
+                if let error = model.storageError {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.regularMaterial)
+                }
+            }
+        }
+        .tint(PerryTheme.Colors.accent)
+        .frame(minWidth: 600, minHeight: 460)
+    }
+
+    private var showsSetup: Bool {
+        switch model.sidebarSelection {
+        case nil, .thread: true
+        default: false
+        }
+    }
+
+    private var navigationTitle: String {
+        switch model.sidebarSelection {
+        case .thread(let id): model.threads.first { $0.id == id }.flatMap { $0.title.isEmpty ? nil : $0.title } ?? "New conversation"
+        case .history: "History"
+        case .tasks: "Background tasks"
+        case .routines: "Routines"
+        case .files: "Files"
+        case .suggestions: "Suggestions"
+        case .settings: "Settings"
+        case .whatsNew: "What’s New"
+        case nil: "Perry Home"
+        }
     }
 
     @ViewBuilder
@@ -71,7 +118,8 @@ struct HomeView: View {
         switch model.sidebarSelection {
         case .thread(let id):
             if let thread = model.threads.first(where: { $0.id == id }) {
-                ThreadDetailView(thread: thread, model: model)
+                HomeConversationView(thread: thread, model: model)
+                    .id(thread.id)
             } else {
                 placeholder("Pick a thread")
             }
@@ -94,11 +142,15 @@ struct HomeView: View {
         case .files:
             FilesPage(roots: model.deps.fileRoots)
         case .settings:
-            SettingsView()
+            if let controller = model.deps.controller {
+                SettingsView(controller: controller)
+            } else {
+                placeholder("Settings unavailable")
+            }
         case .whatsNew:
             WhatsNewView(onDone: { model.sidebarSelection = nil })
         case nil:
-            placeholder("Perry Home")
+            HomeWelcomeView(model: model)
         }
     }
 
@@ -107,78 +159,27 @@ struct HomeView: View {
     }
 }
 
-/// Selectable reply text + per-thread draft composer.
-private struct ThreadDetailView: View {
-    let thread: PerryThread
-    @ObservedObject var model: HomeModel
-    @State private var draft: String = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(thread.turns.indices, id: \.self) { i in
-                        let turn = thread.turns[i]
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(turn.question).font(.headline)
-                            Text(turn.answer)
-                                .textSelection(.enabled)
-                                .foregroundStyle(.secondary)
-                            if !turn.elementLabels.isEmpty {
-                                Text("on: " + turn.elementLabels.joined(separator: ", "))
-                                    .font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                    if let partial = model.streamingAnswers[thread.id], !partial.isEmpty {
-                        Text(partial)
-                            .textSelection(.enabled)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(16)
-            }
-            if model.workingThreads.contains(thread.id) {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Perry is working — it can act on your screen")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-            }
-            HStack {
-                TextField("Reply…", text: $draft)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { send() }
-                    .onChange(of: draft) { model.draftChanged(threadID: thread.id, draft: $0) }
-                Button("Send") { send() }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(model.workingThreads.contains(thread.id))
-            }
-            .padding(12)
-        }
-        .onAppear { draft = thread.draft }
-    }
-
-    private func send() {
-        guard !draft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        model.send(threadID: thread.id, text: draft)
-        draft = ""
-    }
-}
-
 /// Morning suggestion cards (Phase 9 §4.6): read-only research over connected
 /// apps, ranked; "Do it" runs the card's action as a goal on a new thread.
 private struct SuggestionsView: View {
     @ObservedObject var model: HomeModel
+    @AppStorage(SuggestionController.enabledKey) private var enabled = false
+    @State private var editing: SuggestionCard?
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
+                Toggle("Suggestions from connected apps", isOn: $enabled)
+                Text("When enabled, Perry reads recent activity in your connected apps to suggest useful tasks. It does not watch your screen.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 16)
                 ForEach(model.suggestions) { card in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(card.title).font(.headline)
+                        if let source = card.sourceServiceName {
+                            Text("From \(source)").font(.caption).foregroundStyle(.secondary)
+                        }
                         Text(card.body)
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -186,9 +187,9 @@ private struct SuggestionsView: View {
                             Button("Do it") { model.onSuggestionAct?(card) }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
-                            Button("Next") { model.onSuggestionDismiss?(card) }
+                            Button("Dismiss") { model.onSuggestionDismiss?(card) }
                                 .controlSize(.small)
-                            Button("Adjust") { model.onSuggestionDismiss?(card) }
+                            Button("Adjust") { editing = card }
                                 .controlSize(.small)
                         }
                     }
@@ -197,12 +198,50 @@ private struct SuggestionsView: View {
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                 }
                 if model.suggestions.isEmpty {
-                    Text("Nothing to suggest — Perry checks your connected apps each morning.")
+                    Text(enabled ? "No suggestions yet. Perry checks your connected apps each morning." : "Suggestions are off. Turn them on when you’d like Perry to look for useful tasks.")
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(16)
         }
+        .sheet(item: $editing) { card in
+            SuggestionEditor(card: card) { adjusted in
+                model.onSuggestionAdjust?(adjusted)
+                editing = nil
+            }
+        }
+    }
+}
+
+private struct SuggestionEditor: View {
+    @State var card: SuggestionCard
+    let save: (SuggestionCard) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Adjust suggestion").font(.title2.weight(.semibold))
+            Text(card.title).font(.headline)
+            if let source = card.sourceServiceName {
+                Text("From \(source)").foregroundStyle(.secondary)
+            }
+            TextEditor(text: $card.body)
+                .accessibilityLabel("Proposed task")
+                .frame(minHeight: 120)
+                .border(.separator)
+            Text("Saving changes the suggestion. Choose Do it when you’re ready to run it.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Save") { save(card) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(card.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
     }
 }
 
@@ -317,65 +356,81 @@ private struct FilePileItem: View {
     }
 }
 
-/// View-model seam between HomeView (SwiftUI) and HomeController (AppKit):
-/// the controller pushes thread updates in; user edits flow out through
-/// `draftChanged`/`send`.
-@MainActor
-final class HomeModel: ObservableObject {
-    enum Selection: Hashable {
-        case thread(UUID)
-        case history
-        case tasks
-        case files
-        case routines
-        case suggestions
-        case settings
-        case whatsNew
+struct UnsavedInputRecoveryButton: View {
+    @ObservedObject var model: HomeModel
+    @State private var isPresented = false
+
+    var body: some View {
+        if !model.unsavedInputs.isEmpty {
+            Button {
+                isPresented = true
+            } label: {
+                Label("Requests not saved (\(model.unsavedInputs.count))", systemImage: "exclamationmark.triangle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .padding(16)
+            .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+                UnsavedInputRecoveryView(model: model).frame(width: 420)
+            }
+            .onChange(of: model.unsavedInputs.count) { _, count in
+                if count == 0 { isPresented = false }
+            }
+        }
     }
+}
 
-    /// App-owned services the embedded pages need — injected by
-    /// HomeController's owner so the model stays testable.
-    struct Deps {
-        var transcriptStore: TranscriptStore?
-        var activityLog: ActivityLog?
-        var undoableEntryIDs: (@MainActor () async -> Set<UUID>)?
-        var backgroundTasks: BackgroundTaskController?
-        var runtimes: RuntimeCatalog?
-        /// Directories whose files Perry owns and the user may drag out —
-        /// practice sandbox today; Perry folders land here in Phase 9.
-        var fileRoots: [URL] = []
-    }
+struct UnsavedInputRecoveryView: View {
+    @ObservedObject var model: HomeModel
+    @State private var discarding: UUID?
 
-    @Published var threads: [PerryThread] = []
-    @Published var perrys: [Perry] = []
-    @Published var sidebarSelection: Selection?
-    /// Threads with an agent turn in flight — drives the working row.
-    @Published var workingThreads: Set<UUID> = []
-    /// In-flight answers by thread, rendered as they stream in.
-    @Published var streamingAnswers: [UUID: String] = [:]
-    /// Morning suggestion cards (Phase 9), newest run's ranked set.
-    @Published var suggestions: [SuggestionCard] = []
-    /// Learned routines for the sidebar's Routines section.
-    @Published var routines: [LearnedRoutine] = []
-    var deps = Deps()
-
-    var onDraftChanged: ((UUID, String) -> Void)?
-    var onSend: ((UUID, String) -> Void)?
-    /// Selecting a Perry row opens its bound thread — created on demand by
-    /// the owner so `perryID` rides along for consent scoping.
-    var onPerrySelected: ((Perry) -> Void)?
-    /// Card actions route to the owner: `act` runs the card's body as a goal.
-    var onSuggestionAct: ((SuggestionCard) -> Void)?
-    var onSuggestionDismiss: ((SuggestionCard) -> Void)?
-    /// Routine actions route to RoutineLibraryController via the owner.
-    var onRoutineRun: ((LearnedRoutine) -> Void)?
-    var onRoutineRemove: ((LearnedRoutine) -> Void)?
-
-    func draftChanged(threadID: UUID, draft: String) {
-        onDraftChanged?(threadID, draft)
-    }
-
-    func send(threadID: UUID, text: String) {
-        onSend?(threadID, text)
+    var body: some View {
+        if !model.unsavedInputs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Requests not saved", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                Text("Keep Perry open or copy your text. Saving again won’t send it.")
+                    .font(.callout).foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(model.unsavedInputs) { input in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(input.request.text).textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(input.error).font(.caption).foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                HStack {
+                                    Button(model.savingInputs.contains(input.id) ? "Saving…" : "Save again") {
+                                        model.onRetryInputSave?(input.id)
+                                    }
+                                    .disabled(model.savingInputs.contains(input.id))
+                                    Button("Copy") {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(input.request.text, forType: .string)
+                                    }
+                                    Spacer()
+                                    Button("Discard", role: .destructive) { discarding = input.id }
+                                        .disabled(model.savingInputs.contains(input.id))
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 180)
+            }
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .alert("Discard this unsaved request?", isPresented: Binding(
+                get: { discarding != nil }, set: { if !$0 { discarding = nil } }
+            ), presenting: discarding) { id in
+                Button("Cancel", role: .cancel) { discarding = nil }
+                Button("Discard", role: .destructive) {
+                    model.onDiscardUnsavedInput?(id)
+                    discarding = nil
+                }
+            } message: { _ in
+                Text("This text hasn’t been saved. You won’t be able to recover it from Perry.")
+            }
+        }
     }
 }

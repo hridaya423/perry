@@ -225,6 +225,15 @@ struct SessionPanelView: View {
                 }
             }
 
+            if case .asking(let ask) = controller.sessionState, let input = ask.pendingGuideRequest {
+                GroupBox("Guide request") {
+                    Text(input.text)
+                        .font(PerryTheme.Typography.panelBody)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
             if !controller.transcriptPreview.isEmpty {
                 Text(controller.transcriptPreview)
                     .font(PerryTheme.Typography.panelSubtitle)
@@ -274,7 +283,6 @@ struct SessionPanelView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(PerryTheme.Colors.accent)
-                .foregroundStyle(PerryTheme.Colors.onAccent)
                 .disabled(requestIsEmpty)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityHint("Submit the request to Perry")

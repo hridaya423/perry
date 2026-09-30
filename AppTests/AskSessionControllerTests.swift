@@ -1,4 +1,5 @@
 import XCTest
+import PerryBrain
 import PerryGuide
 import PerryOverlay
 @testable import Perry
@@ -61,7 +62,8 @@ final class AskSessionControllerTests: XCTestCase {
         overlayState: PerryCursorState,
         output: OutputStub,
         answerer: AskSessionController.Answerer? = nil,
-        observationProvider: AskSessionController.ObservationProvider? = nil
+        observationProvider: AskSessionController.ObservationProvider? = nil,
+        runner: AskSessionController.Runner? = nil
     ) -> AskSessionController {
         AskSessionController(
             sessionController: sessionController,
@@ -70,7 +72,8 @@ final class AskSessionControllerTests: XCTestCase {
             output: output,
             context: ContextStub(),
             answererFactory: { answerer },
-            observationProvider: observationProvider
+            observationProvider: observationProvider,
+            runner: runner
         )
     }
 
@@ -83,6 +86,299 @@ final class AskSessionControllerTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTAssertTrue(predicate(), file: file, line: line)
+    }
+
+    func testTypedInputIsSavedBeforeCaptureAndSurvivesDismissal() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ThreadStore(directory: root)
+        let home = HomeController()
+        home.threadStore = store
+        let original = try await store.upsert(PerryThread(draft: "Leave this draft alone"))
+        home.homeModel.sidebarSelection = .thread(original.id)
+        let capture = AsyncBarrier()
+        let entered = expectation(description: "Capture started after save")
+        let session = SessionController()
+        let output = OutputStub()
+        var dispatched = false
+        let controller = makeController(
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: {
+                let saved = await ThreadStore(directory: root).thread(id: original.id)
+                XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["Keep my typed request"])
+                XCTAssertEqual(saved?.draft, original.draft)
+                entered.fulfill()
+                await capture.wait()
+                return self.observation()
+            }, runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, _ in
+                dispatched = true
+                return (input.threadID, AsyncStream { $0.finish() }, nil)
+            })
+        )
+        controller.submit(question: "Keep my typed request")
+        await fulfillment(of: [entered], timeout: 2)
+        controller.cancel()
+        _ = session.requestDismissal()
+        await capture.release()
+        await home.joinInputSaves()
+        let saved = await ThreadStore(directory: root).thread(id: original.id)
+        XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["Keep my typed request"])
+        XCTAssertNil(saved?.pendingTurn)
+        XCTAssertFalse(dispatched)
+    }
+
+    func testCancelledInputSaveFailureCannotClearReplacementQuestion() async throws {
+        let session = SessionController()
+        let output = OutputStub()
+        let firstSave = AsyncBarrier()
+        let capture = AsyncBarrier()
+        let captured = expectation(description: "Replacement capture is active")
+        var accepted = 0
+        let controller = makeController(
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: {
+                captured.fulfill()
+                await capture.wait()
+                return self.observation()
+            }, runner: .init(accept: { text, id in
+                accepted += 1
+                let isFirst = accepted == 1
+                return .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {
+                    if isFirst {
+                        await firstSave.wait()
+                        throw CocoaError(.fileWriteUnknown)
+                    }
+                })
+            }, run: { input, _ in
+                (input.threadID, AsyncStream { $0.finish() }, nil)
+            })
+        )
+        controller.submit(question: "First")
+        controller.submit(question: "Replacement")
+        await fulfillment(of: [captured], timeout: 2)
+        await firstSave.release()
+        try await Task.sleep(for: .milliseconds(30))
+        guard case .asking(let ask) = session.state else { return XCTFail("Missing replacement") }
+        XCTAssertEqual(ask.question, "Replacement")
+        XCTAssertTrue(ask.isWorking)
+        XCTAssertFalse(output.buddyStates.contains(.blocked))
+        controller.cancel()
+        await capture.release()
+    }
+
+    func testSharedAskPersistsFollowUpsAndRejectsIncompleteAnswers() async throws {
+        for reason: ModelStopReason? in [.endTurn, .maxTokens, nil] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+            let store = ThreadStore(directory: directory)
+            let provider = AskSharedProvider(reason: reason)
+            let coordinator = AgentCoordinator(
+                provider: { _ in provider }, host: PerryToolHost(executors: []),
+                threads: store, consent: ToolConsentStore(directory: nil)
+            )
+            let home = HomeController()
+            home.threadStore = store
+            let session = SessionController()
+            let output = OutputStub()
+            let controller = makeController(
+                sessionController: session, overlayState: PerryCursorState(), output: output,
+                observationProvider: { self.observation() },
+                runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
+                    home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+                })
+            )
+            controller.submit(question: "Remember Orchid")
+            await waitForCondition {
+                guard case .asking(let ask) = session.state else { return false }
+                return !ask.isWorking
+            }
+            if reason == .endTurn {
+                guard case .asking(let first) = session.state else { return XCTFail("Missing Ask session") }
+                let originalID = try XCTUnwrap(first.threadID)
+                home.homeModel.sidebarSelection = .thread(UUID())
+                controller.submit(question: "Which document?")
+                await waitForCondition {
+                    guard case .asking(let ask) = session.state else { return false }
+                    return ask.turnCount == 2 && !ask.isWorking
+                }
+                XCTAssertEqual(home.homeModel.sidebarSelection, .thread(originalID))
+                XCTAssertEqual(provider.requests.count, 2)
+                XCTAssertTrue(provider.requests.last?.messages.contains(.user([.text("Remember Orchid")])) == true)
+                XCTAssertEqual(output.spoken, ["Orchid", "Orchid"])
+            } else {
+                XCTAssertTrue(output.spoken.isEmpty)
+                XCTAssertEqual(output.buddyStates.last, .blocked)
+            }
+            let saved = await ThreadStore(directory: directory).list()
+            XCTAssertEqual(saved.count, 1)
+            XCTAssertEqual(saved.first?.turns.count, reason == .endTurn ? 2 : 1)
+            XCTAssertEqual(saved.first?.turns.last?.outcome, reason == .endTurn ? .completed : .failed)
+            XCTAssertNil(saved.first?.pendingTurn)
+            XCTAssertTrue(coordinator.runningThreads.isEmpty)
+            controller.cancel()
+        }
+    }
+
+    func testSharedAskCancellationPreservesPartialAnswerAndStopsProvider() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let store = ThreadStore(directory: directory)
+        let provider = AskSharedProvider(reason: .endTurn, suspend: true)
+        let coordinator = AgentCoordinator(
+            provider: { _ in provider }, host: PerryToolHost(executors: []),
+            threads: store, consent: ToolConsentStore(directory: nil)
+        )
+        let home = HomeController()
+        home.threadStore = store
+        let session = SessionController()
+        let output = OutputStub()
+        let controller = makeController(
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { self.observation() },
+            runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
+                home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+            })
+        )
+        controller.submit(question: "Keep my question")
+        await waitForCondition {
+            guard case .asking(let ask) = session.state else { return false }
+            return ask.answerText == "Orchid"
+        }
+        controller.cancel()
+        await waitForCondition { coordinator.runningThreads.isEmpty && home.homeModel.pendingQuestions.isEmpty }
+        let saved = await ThreadStore(directory: directory).list()
+        XCTAssertEqual(saved.first?.turns.first?.answer, "Orchid")
+        XCTAssertEqual(saved.first?.turns.first?.outcome, .interrupted)
+        XCTAssertEqual(saved.first?.draft, "Keep my question")
+        XCTAssertNil(saved.first?.pendingTurn)
+        XCTAssertTrue(output.spoken.isEmpty)
+    }
+
+    func testQueuedTransitionWaitsAndCannotSurviveCancellation() async {
+        for cancel in [false, true] {
+            let session = SessionController()
+            let output = OutputStub()
+            let barrier = AsyncBarrier()
+            let controller = makeController(
+                sessionController: session, overlayState: PerryCursorState(), output: output,
+                answerer: { _, observation, _, _ in
+                    await barrier.wait()
+                    return SpatialAnswer(text: "Ready", references: [], followUp: nil, observationID: observation.observationID)
+                }, observationProvider: { self.observation() }
+            )
+            controller.submit(question: "Explain this")
+            var transitioned = false
+            controller.afterCurrentAnswer { _ in XCTFail("Superseded transition ran") }
+            controller.afterCurrentAnswer { state in
+                XCTAssertFalse(state.isWorking)
+                XCTAssertEqual(state.answerText, "Ready")
+                transitioned = true
+            }
+            await Task.yield()
+            XCTAssertFalse(transitioned)
+            if cancel { controller.cancel() }
+            await barrier.release()
+            if cancel {
+                try? await Task.sleep(for: .milliseconds(30))
+                XCTAssertFalse(transitioned)
+            } else {
+                await waitForCondition { transitioned }
+            }
+            controller.cancel()
+        }
+    }
+
+    func testCancelledTransitionStillJoinsItsInputSaveWithoutStartingGuide() async {
+        let session = SessionController()
+        let barrier = AsyncBarrier()
+        let controller = makeController(
+            sessionController: session, overlayState: PerryCursorState(), output: OutputStub(),
+            answerer: { _, observation, _, _ in
+                SpatialAnswer(text: "Ready", references: [], followUp: nil, observationID: observation.observationID)
+            }, observationProvider: { self.observation() }
+        )
+        controller.submit(question: "Explain this")
+        var saved = false
+        var transitioned = false
+        controller.afterCurrentAnswer(prepare: {
+            await barrier.wait()
+            saved = true
+            return true
+        }) { _ in transitioned = true }
+        controller.cancel()
+        var joined = false
+        let join = Task { @MainActor in
+            await controller.joinInputSaves()
+            joined = true
+        }
+        await Task.yield()
+        XCTAssertFalse(joined)
+        await barrier.release()
+        await join.value
+        XCTAssertTrue(saved)
+        XCTAssertFalse(transitioned)
+    }
+
+    func testFollowUpWaitsForPreviousPresentationLifetime() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ThreadStore(directory: root)
+        let home = HomeController()
+        home.threadStore = store
+        let coordinator = AgentCoordinator(provider: { _ in AskSharedProvider(reason: .endTurn) },
+            host: PerryToolHost(executors: []), threads: store, consent: ToolConsentStore(directory: nil))
+        let session = SessionController()
+        let output = OutputStub()
+        let release = AsyncStream<Void>.makeStream()
+        var retired = false
+        var completion: Task<Void, Never>?
+        var requests = 0
+        let controller = makeController(
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { self.observation() },
+            runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
+                requests += 1
+                let run = home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+                if requests > 1 {
+                    XCTAssertTrue(retired, "A follow-up outran presentation cleanup")
+                    return run
+                }
+                completion = Task { @MainActor in
+                    await run.completion?.value
+                    for await _ in release.stream { break }
+                    retired = true
+                }
+                return (run.threadID, run.events, completion)
+            })
+        )
+        controller.submit(question: "First")
+        await waitForCondition {
+            guard case .asking(let ask) = session.state else { return false }
+            return ask.turnCount == 1
+        }
+        guard case .asking(let first) = session.state else { return XCTFail("Missing Ask session") }
+        let threadID = try XCTUnwrap(first.threadID)
+        var transitioned = false
+        controller.afterCurrentAnswer { _ in transitioned = true }
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertFalse(transitioned)
+        controller.submit(question: "Follow up")
+        await home.joinInputSaves()
+        XCTAssertEqual(requests, 1)
+        let waiting = await ThreadStore(directory: root).thread(id: threadID)
+        XCTAssertEqual(waiting?.waitingInputs?.map(\.text), ["Follow up"])
+        XCTAssertEqual(waiting?.turns.count, 1)
+        release.continuation.finish()
+        await waitForCondition {
+            guard case .asking(let ask) = session.state else { return false }
+            return ask.turnCount == 2
+        }
+        XCTAssertEqual(requests, 2)
+        XCTAssertFalse(transitioned)
+        let finished = await store.thread(id: threadID)
+        XCTAssertTrue(finished?.waitingInputs?.isEmpty == true)
+        controller.cancel()
+        await completion?.value
     }
 
     func testAnswerPublishesReferencesAndSpeech() async {
@@ -377,5 +673,34 @@ private actor AsyncBarrier {
         released = true
         waiters.forEach { $0.resume() }
         waiters.removeAll()
+    }
+}
+
+private final class AskSharedProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.ask"
+    let displayName = "Ask fixture"
+    let capabilities: ModelCapabilities = [.vision, .streaming]
+    let reason: ModelStopReason?
+    let suspend: Bool
+    private let lock = NSLock()
+    private var recorded: [ModelRequest] = []
+    var requests: [ModelRequest] { lock.withLock { recorded } }
+
+    init(reason: ModelStopReason?, suspend: Bool = false) { self.reason = reason; self.suspend = suspend }
+    func warm() async {}
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        lock.withLock { recorded.append(request) }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                continuation.yield(.textDelta("Orchid"))
+                do {
+                    if suspend { try await Task.sleep(for: .seconds(60)) }
+                    try Task.checkCancellation()
+                    if let reason { continuation.yield(.done(reason)) }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }

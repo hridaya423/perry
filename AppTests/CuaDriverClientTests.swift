@@ -391,6 +391,23 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
     }
 
+    func testCaptureRejectsTheHostApplicationBeforeReadingItsWindow() async throws {
+        let client = makeClient(hostBundleID: "com.example.Editor")
+        addTeardownBlock { await client.shutdown() }
+
+        do {
+            _ = try await client.capture(
+                target: CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+                sessionID: "host-window"
+            )
+            XCTFail("Perry must not capture its own window as task context")
+        } catch let error as CuaDriverError {
+            XCTAssertEqual(error, .noTargetWindow)
+        }
+
+        XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
+    }
+
     func testBundleIdentityMustMatchInsteadOfSelectingAnotherApplication() async throws {
         let client = makeClient()
         addTeardownBlock {
@@ -1612,12 +1629,12 @@ final class CuaDriverClientTests: XCTestCase {
         try await task.value
     }
 
-    private func makeClient(allowsRestart: Bool = true) -> CuaDriverClient {
+    private func makeClient(allowsRestart: Bool = true, hostBundleID: String = "dev.perry.PerryTests") -> CuaDriverClient {
         CuaDriverClient(
             configuration: CuaDriverConfiguration(
                 executableURL: driverURL,
                 capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
-                hostBundleID: "dev.perry.PerryTests"
+                hostBundleID: hostBundleID
             ),
             allowsRestart: allowsRestart
         )

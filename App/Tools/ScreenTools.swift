@@ -15,15 +15,11 @@ struct ScreenTools {
     var executors: [any ToolExecutor] {
         [
             ScreenObserveExecutor(workers: workers, lease: lease, observations: observations),
-            ScreenDesktopExecutor(workers: workers, lease: lease),
-            ScreenZoomExecutor(workers: workers, lease: lease),
+            ScreenDesktopExecutor(workers: workers, lease: lease, observations: observations),
+            ScreenZoomExecutor(workers: workers, lease: lease, observations: observations),
             ClipboardReadExecutor(),
         ]
     }
-}
-
-private extension ToolContext {
-    var threadKey: String { threadID ?? "" }
 }
 
 private struct ScreenObserveExecutor: ToolExecutor {
@@ -38,21 +34,22 @@ private struct ScreenObserveExecutor: ToolExecutor {
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
-                    "bundleID": .object(["type": .string("string"), "description": .string("Target app bundle id; default is the frontmost window")]),
+                    "bundleID": .object(["type": .string("string"), "description": .string("Target app bundle id; defaults to the window captured for this run")]),
                     "windowTitle": .object(["type": .string("string")]),
                 ]),
             ]),
-            surfaces: [.talk, .guide, .agent]
+            surfaces: [.talk, .guide, .agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let bundleID = call.arguments["bundleID"]?.stringValue
         let windowTitle = call.arguments["windowTitle"]?.stringValue
-        let hint = CuaTargetHint(bundleID: bundleID, windowTitle: windowTitle)
+        let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID, windowTitle: windowTitle)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
                 .filter { $0.sensitivity != .secure }
@@ -79,7 +76,7 @@ private struct ScreenObserveExecutor: ToolExecutor {
                         width: captured.target.width, height: captured.target.height
                     )
                 ),
-                threadID: context.threadKey
+                runID: context.runID
             )
             let summary: JSONValue = .object([
                 "app": .string(captured.target.bundleID),
@@ -99,7 +96,10 @@ private struct ScreenObserveExecutor: ToolExecutor {
             ])
             return ToolResult(
                 callID: call.id,
-                content: [.text(Self.render(summary))]
+                content: [
+                    .text(Self.render(summary)),
+                    .image(data: captured.screenshotData, mimeType: captured.screenshotMIMEType)
+                ]
             )
         }
     }
@@ -116,19 +116,23 @@ private struct ScreenObserveExecutor: ToolExecutor {
 private struct ScreenDesktopExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
 
     var spec: ToolSpec {
         ToolSpec(
             name: "screen.desktop",
-            description: "Screenshot the frontmost window. Returns the image plus its window identity.",
+            description: "Screenshot the selected window. Returns the image plus its window identity.",
             inputSchema: .object(["type": .string("object"), "properties": .object([:])]),
-            surfaces: [.talk, .guide, .agent]
+            surfaces: [.talk, .guide, .agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
-        try await withCuaWorker(workers, lease: lease, resources: []) { worker in
-            let captured = try await worker.capture(target: nil)
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+        let hint = try observations.prepareCapture(runID: context.runID)
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: []) { worker in
+            let captured = try await worker.capture(target: hint)
+            observations.setTarget(captured.target.hint, runID: context.runID)
             return ToolResult(
                 callID: call.id,
                 content: [
@@ -143,6 +147,7 @@ private struct ScreenDesktopExecutor: ToolExecutor {
 private struct ScreenZoomExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
 
     var spec: ToolSpec {
         ToolSpec(
@@ -159,22 +164,24 @@ private struct ScreenZoomExecutor: ToolExecutor {
                 ]),
                 "required": .array([.string("x"), .string("y"), .string("w"), .string("h")]),
             ]),
-            surfaces: [.talk, .guide, .agent]
+            surfaces: [.talk, .guide, .agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let args = call.arguments
         guard let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue,
               let w = args["w"]?.doubleValue, let h = args["h"]?.doubleValue else {
             return .text(call.id, "screen.zoom: needs x, y, w, h", isError: true)
         }
         let bundleID = args["bundleID"]?.stringValue
-        let hint = CuaTargetHint(bundleID: bundleID)
+        let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, resources: resources) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
+            observations.setTarget(captured.target.hint, runID: context.runID)
             guard let image = NSImage(data: captured.screenshotData)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
                   let cropped = image.cropping(to: CGRect(x: x, y: y, width: w, height: h)) else {
                 return .text(call.id, "screen.zoom: could not crop capture", isError: true)
@@ -204,7 +211,7 @@ private struct ClipboardReadExecutor: ToolExecutor {
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let text = await MainActor.run { NSPasteboard.general.string(forType: .string) }
         return .text(call.id, text ?? "(clipboard has no text)")
     }

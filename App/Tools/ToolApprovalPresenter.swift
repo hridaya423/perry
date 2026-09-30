@@ -25,33 +25,39 @@ enum ToolApprovalPresenter {
            await consentStore.isGranted(tool: spec.name, threadID: consentScope) {
             return .approvedOnce
         }
-        return await withCheckedContinuation { continuation in
-            let summary = targetSummary(call)
-            let card = IntentCard(
-                title: "Perry wants to run \(spec.name)",
-                detail: spec.description,
-                tier: spec.tier,
-                targetSummary: summary,
-                requiredPhrase: spec.tier >= .red ? summary : nil
-            )
-            let window = IntentCardWindow(
-                card: card,
-                allowsStepThrough: false,
-                alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always allow" : nil,
-                onAlwaysAllow: consentScope.map { scope in
-                    { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
+        let presentation = ToolApprovalPresentation()
+        return await withTaskCancellationHandler {
+            guard !Task.isCancelled else { return .denied }
+            return await withCheckedContinuation { continuation in
+                let summary = targetSummary(call)
+                let card = IntentCard(
+                    title: "Perry wants to run \(spec.name)",
+                    detail: spec.description,
+                    tier: spec.tier,
+                    targetSummary: summary,
+                    requiredPhrase: spec.tier >= .red ? summary : nil
+                )
+                let window = IntentCardWindow(
+                    card: card,
+                    allowsStepThrough: false,
+                    alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always allow" : nil,
+                    onAlwaysAllow: consentScope.map { scope in
+                        { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
+                    }
+                ) { decision in
+                    presentation.window = nil
+                    switch decision {
+                    case .run, .stepThrough:
+                        continuation.resume(returning: spec.tier >= .red ? .approvedTyped : .approvedOnce)
+                    default:
+                        continuation.resume(returning: .denied)
+                    }
                 }
-            ) { decision in
-                switch decision {
-                case .run, .stepThrough:
-                    // The card only enables Approve once the typed phrase
-                    // matches on red cards — so a red run IS the typed answer.
-                    continuation.resume(returning: spec.tier >= .red ? .approvedTyped : .approvedOnce)
-                default:
-                    continuation.resume(returning: .denied)
-                }
+                presentation.window = window
+                window.showNearCursor()
             }
-            window.showNearCursor()
+        } onCancel: {
+            Task { @MainActor in presentation.window?.cancel() }
         }
     }
 
@@ -66,4 +72,9 @@ enum ToolApprovalPresenter {
         }
         return call.name
     }
+}
+
+@MainActor
+private final class ToolApprovalPresentation {
+    var window: IntentCardWindow?
 }

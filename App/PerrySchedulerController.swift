@@ -20,8 +20,9 @@ final class PerrySchedulerController {
     var onPerrysChanged: (@MainActor ([Perry]) -> Void)?
 
     private var timer: Timer?
-    private var runningPerryIDs: Set<UUID> = []
-    private let networkMonitor = NWPathMonitor()
+    private var tickTask: Task<Void, Never>?
+    private var runs: [UUID: Task<Void, Never>] = [:]
+    private var networkMonitor = NWPathMonitor()
     private var hasNetwork = true
 
     init(
@@ -36,6 +37,7 @@ final class PerrySchedulerController {
 
     func start() {
         guard timer == nil else { return }
+        networkMonitor = NWPathMonitor()
         networkMonitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 self?.hasNetwork = path.status == .satisfied
@@ -46,15 +48,30 @@ final class PerrySchedulerController {
         // Perry is idle — an overdue slot still runs on the first post-wake
         // tick (RoutineDecisions.isDue stays due until recorded).
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in await self?.tick() }
+            Task { @MainActor [weak self] in self?.requestTick() }
         }
-        Task { await tick() }
+        requestTick()
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
         networkMonitor.cancel()
+        tickTask?.cancel()
+        for task in runs.values { task.cancel() }
+    }
+
+    func joinAll() async {
+        await tickTask?.value
+        for task in runs.values { await task.value }
+    }
+
+    private func requestTick() {
+        guard timer != nil, tickTask == nil else { return }
+        tickTask = Task {
+            defer { tickTask = nil }
+            await tick(now: Date(), awake: sessionIsUnlocked, network: hasNetwork)
+        }
     }
 
     private var sessionIsUnlocked: Bool {
@@ -64,22 +81,19 @@ final class PerrySchedulerController {
         return (session["CGSSessionScreenIsLocked"] as? Bool) != true
     }
 
-    private func tick() async {
+    func tick(now: Date, awake: Bool, network: Bool) async {
         let perrys = await store.list()
+        guard !Task.isCancelled, timer != nil else { return }
         onPerrysChanged?(perrys)
-        let now = Date()
-        let awake = sessionIsUnlocked
-        let network = hasNetwork
         for perry in perrys {
             guard let schedule = perry.schedule,
                   RoutineDecisions.shouldRun(schedule, now: now, isAwake: awake, hasNetwork: network),
                   !isBusy(),
-                  !runningPerryIDs.contains(perry.id),
+                  runs[perry.id] == nil,
                   let threadID = UUID(uuidString: perry.threadID)
             else { continue }
-            runningPerryIDs.insert(perry.id)
-            Task { [weak self] in
-                defer { self?.runningPerryIDs.remove(perry.id) }
+            runs[perry.id] = Task {
+                defer { runs[perry.id] = nil }
                 var succeeded = false
                 for await event in coordinator.run(
                     threadID: threadID,

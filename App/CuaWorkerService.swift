@@ -190,6 +190,8 @@ actor CuaWorkerService {
             let target = try await client.resolveTarget(hint, sessionID: sessionID)
             try claim([.application(target.bundleID)], allocation: allocation)
             return try await client.capture(resolvedTarget: target, sessionID: sessionID)
+        } catch let error as CuaDriverError where error == .noTargetWindow {
+            throw error
         } catch {
             beginRetirement(allocation)
             throw error

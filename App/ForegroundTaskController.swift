@@ -212,7 +212,7 @@ final class ForegroundTaskController: ObservableObject {
 
     // MARK: Do mode
 
-    func start(goal: String, preferredRuntimeID: String? = nil) {
+    func start(goal: String, preferredRuntimeID: String? = nil, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) {
         guard !hooks.isErasureInProgress() else {
             voice.speak("I’m finishing a data erase before starting anything new.")
             return
@@ -227,21 +227,21 @@ final class ForegroundTaskController: ObservableObject {
             hooks.setStatus("Finish or stop the current session first.")
             return
         }
-        start(goal: goal, preferredRuntimeID: preferredRuntimeID, attemptID: attemptID)
+        start(goal: goal, preferredRuntimeID: preferredRuntimeID, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
     }
 
-    private func start(goal: String, preferredRuntimeID: String? = nil, attemptID: UUID) {
+    private func start(goal: String, preferredRuntimeID: String? = nil, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
         doStartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.cancelInvocationIfCurrent(attemptID)
                 self.doStartTask = nil
             }
-            _ = await self.begin(goal: goal, attemptID: attemptID, preferredRuntimeID: preferredRuntimeID)
+            _ = await self.begin(goal: goal, attemptID: attemptID, preferredRuntimeID: preferredRuntimeID, threadID: threadID, targetHint: targetHint)
         }
     }
 
-    func begin(goal: String, attemptID: UUID, preferredRuntimeID: String? = nil) async -> DoOutcome? {
+    func begin(goal: String, attemptID: UUID, preferredRuntimeID: String? = nil, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) async -> DoOutcome? {
         guard !supervisorActive else {
             guard taskStartIsCurrent(attemptID) else { return nil }
             voice.speak("I’m already working on a task. Stop or pause that one first.")
@@ -254,7 +254,7 @@ final class ForegroundTaskController: ObservableObject {
                     goal: goal,
                     attemptID: attemptID,
                     preferredRuntimeID: preferredRuntimeID,
-                    worker: worker
+                    worker: worker, threadID: threadID, targetHint: targetHint
                 )
             }
         } catch {
@@ -397,12 +397,14 @@ final class ForegroundTaskController: ObservableObject {
         goal: String,
         attemptID: UUID,
         preferredRuntimeID: String?,
-        worker: CuaWorkerHandle
+        worker: CuaWorkerHandle,
+        threadID: UUID? = nil,
+        targetHint: CuaTargetHint? = nil
     ) async throws -> DoOutcome? {
         guard taskStartIsCurrent(attemptID) else { return nil }
         let workspace = try Self.makeTaskWorkspace()
         try await worker.claimResources([.workspace(workspace.standardizedFileURL.path)])
-        let captured = await probe.captureScreenContext(worker: worker)
+        let captured = await probe.captureScreenContext(worker: worker, targetHint: targetHint)
         guard taskStartIsCurrent(attemptID) else { return nil }
         guard EnvironmentProbe.captureIsUsable(captured.context) else {
             hooks.setStatus("Cua could not capture the target window, so Perry stopped before planning.")
@@ -424,6 +426,8 @@ final class ForegroundTaskController: ObservableObject {
                 goal: goal,
                 attemptID: attemptID,
                 targetWindow: targetWindow,
+                target: captured.target?.hint ?? targetHint,
+                conversationID: threadID,
                 worker: worker,
                 workspace: workspace,
                 coordinator: coordinator
@@ -474,6 +478,8 @@ final class ForegroundTaskController: ObservableObject {
         goal: String,
         attemptID: UUID,
         targetWindow: WindowContext?,
+        target: CuaTargetHint?,
+        conversationID: UUID?,
         worker: CuaWorkerHandle,
         workspace: URL,
         coordinator: AgentCoordinator
@@ -504,19 +510,29 @@ final class ForegroundTaskController: ObservableObject {
         guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
         hooks.setStatus("Perry is working.")
 
-        let threadID = UUID()
+        let threadID = conversationID ?? UUID()
         activeAgentThreadID = threadID
-        workerLease?.set(worker)
+        let runID = UUID()
+        workerLease?.set(worker, for: runID)
         defer {
             activeAgentThreadID = nil
-            workerLease?.set(nil)
+            workerLease?.set(nil, for: runID)
         }
 
         var answer = ""
         var stepIndex = 0
-        var outcome: DoOutcome = .completed(stepsRun: 0)
-        for await event in coordinator.run(threadID: threadID, goal: goal, persistTurn: true) {
-            guard taskStartIsCurrent(attemptID) else { break }
+        var terminal: AgentFinish?
+        for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target) {
+            guard case .executing(let current) = sessionController.state,
+                  current.taskID == taskUUID, !current.isFinalized else {
+                coordinator.stop(threadID: threadID)
+                return .blocked(reason: "the execution session changed")
+            }
+            if Task.isCancelled {
+                coordinator.stop(threadID: threadID)
+                terminal = .interrupted
+                break
+            }
             switch event {
             case .textDelta(let delta):
                 answer += delta
@@ -545,10 +561,18 @@ final class ForegroundTaskController: ObservableObject {
             case .note(let note):
                 hooks.setStatus(note)
             case .finished(let finish):
-                outcome = Self.doOutcome(finish, stepsRun: stepIndex)
+                terminal = finish
             }
         }
-        return await finalizeTask(with: outcome)
+        if terminal == nil || Task.isCancelled {
+            coordinator.stop(threadID: threadID)
+            terminal = .interrupted
+        }
+        guard case .executing(let current) = sessionController.state,
+              current.taskID == taskUUID, !current.isFinalized else {
+            return .blocked(reason: "the execution session changed")
+        }
+        return await finalizeTask(with: Self.doOutcome(terminal ?? .interrupted, stepsRun: stepIndex))
     }
 
     /// One-line strip/status text for a tool call — name plus the most
@@ -569,7 +593,7 @@ final class ForegroundTaskController: ObservableObject {
         case .paused: return .blocked(reason: "paused")
         case .budgetToolCalls: return .blocked(reason: "reached the 60-action limit")
         case .budgetTime: return .blocked(reason: "reached the 20-minute limit")
-        case .providerError(let message): return .failed(stepSummary: "the model", reason: message)
+        case .providerError(let message), .failed(let message): return .failed(stepSummary: "the model", reason: message)
         }
     }
 
@@ -1026,7 +1050,7 @@ final class ForegroundTaskController: ObservableObject {
         guard transitionSession({ goal = try sessionController.retry(attemptID: attemptID) }),
               let goal else { return }
         foregroundActivityGeneration = UUID()
-        start(goal: goal, attemptID: attemptID)
+        start(goal: goal, attemptID: attemptID, threadID: nil, targetHint: nil)
     }
 
     // MARK: Shutdown

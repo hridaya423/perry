@@ -29,10 +29,6 @@ struct UITools {
     }
 }
 
-private extension ToolContext {
-    var threadKey: String { threadID ?? "" }
-}
-
 private enum UIClickKind: String {
     case click = "ui.click"
     case doubleClick = "ui.doubleclick"
@@ -54,13 +50,13 @@ private struct ToolResolutionError: Error {
 private func resolveTarget(
     args: JSONValue,
     observations: AgentObservationStore,
-    threadID: String?
+    runID: UUID
 ) -> Result<ResolvedTarget, ToolResolutionError> {
     if let elementID = args["elementID"]?.stringValue {
-        guard let element = observations.resolveElement(elementID, threadID: threadID) else {
+        guard let element = observations.resolveElement(elementID, runID: runID) else {
             return .failure(ToolResolutionError(message: "element \(elementID) is stale or unknown — run screen.observe again"))
         }
-        let window = observations.snapshot(threadID: threadID)?.window
+        let window = observations.snapshot(runID: runID)?.window
         return .success(ResolvedTarget(
             target: ComputerTarget(
                 stableID: element.id,
@@ -117,12 +113,13 @@ private struct UIActionExecutor: ToolExecutor {
                 "properties": targetSchemaProperties,
             ]),
             tier: .yellow,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let resolved = resolveTarget(args: call.arguments, observations: observations, threadID: context.threadKey)
+        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "\(kind.rawValue): \(resolved.errorMessage)", isError: true)
         }
@@ -132,7 +129,7 @@ private struct UIActionExecutor: ToolExecutor {
         case .rightClick: .rightClick(resolved.target)
         }
         let action = ComputerAction(stepID: call.id, operation: operation)
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(resolved.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
@@ -160,7 +157,8 @@ private struct UITypeExecutor: ToolExecutor {
                 "required": .array([.string("text")]),
             ]),
             tier: .yellow,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
@@ -168,12 +166,12 @@ private struct UITypeExecutor: ToolExecutor {
         guard let text = call.arguments["text"]?.stringValue else {
             return .text(call.id, "ui.type: missing text", isError: true)
         }
-        let resolved = resolveTarget(args: call.arguments, observations: observations, threadID: context.threadKey)
+        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
         let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: resolved.target))
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(resolved.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
@@ -202,7 +200,8 @@ private struct UIScrollExecutor: ToolExecutor {
                 "required": .array([.string("direction")]),
             ]),
             tier: .yellow,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
@@ -213,13 +212,13 @@ private struct UIScrollExecutor: ToolExecutor {
             return .text(call.id, "ui.scroll: direction must be up/down/left/right", isError: true)
         }
         let amount = args["amount"]?.doubleValue.map { Int($0) } ?? 3
-        let resolved = resolveTarget(args: args, observations: observations, threadID: context.threadKey)
+        let resolved = resolveTarget(args: args, observations: observations, runID: context.runID)
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
             operation: .scroll(direction: direction, amount: amount, by: nil, target: target?.target)
         )
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(target?.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
@@ -248,7 +247,8 @@ private struct UIKeyExecutor: ToolExecutor {
                 "required": .array([.string("key")]),
             ]),
             tier: .yellow,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
@@ -257,13 +257,13 @@ private struct UIKeyExecutor: ToolExecutor {
             return .text(call.id, "ui.key: missing key", isError: true)
         }
         let modifiers = call.arguments["modifiers"]?.arrayValue?.compactMap(\.stringValue)
-        let resolved = resolveTarget(args: call.arguments, observations: observations, threadID: context.threadKey)
+        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
             operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target?.target)
         )
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(target?.bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
@@ -290,18 +290,19 @@ private struct UIHotkeyExecutor: ToolExecutor {
                 "required": .array([.string("keys")]),
             ]),
             tier: .yellow,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let keys = call.arguments["keys"]?.arrayValue?.compactMap(\.stringValue) ?? []
         guard !keys.isEmpty else {
             return .text(call.id, "ui.hotkey: keys must be a non-empty list", isError: true)
         }
         let bundleID = call.arguments["bundleID"]?.stringValue
         let action = ComputerAction(stepID: call.id, operation: .hotkey(keys: keys.map { $0.lowercased() }, target: nil))
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             return .text(call.id, result.message, isError: !result.success)
         }
@@ -330,11 +331,12 @@ private struct UIDragExecutor: ToolExecutor {
             ]),
             // Unknown-effect GUI input defaults to orange review (Phase 7 spec).
             tier: .orange,
-            surfaces: [.agent]
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let args = call.arguments
         guard let fromX = args["fromX"]?.doubleValue, let fromY = args["fromY"]?.doubleValue,
               let toX = args["toX"]?.doubleValue, let toY = args["toY"]?.doubleValue else {
@@ -349,7 +351,7 @@ private struct UIDragExecutor: ToolExecutor {
             )
         )
         let bundleID = args["bundleID"]?.stringValue
-        return try await withCuaWorker(workers, lease: lease, resources: targetResources(bundleID)) { worker in
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success {
                 onActuation?(CGPoint(x: toX, y: toY), nil)

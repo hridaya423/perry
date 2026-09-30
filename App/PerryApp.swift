@@ -35,11 +35,13 @@ struct PerryApp: App {
 
     var body: some Scene {
         Settings {
-#if DEBUG
-            PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(to: SettingsView())
-#else
-            SettingsView()
-#endif
+            EmptyView()
+        }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.openSettings(tab: .general) }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 }

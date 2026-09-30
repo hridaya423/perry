@@ -22,6 +22,7 @@ struct CuaGuideTreeReader: GuideObserving {
             throw CuaDriverError.noTargetWindow
         }
         let target = capture.target
+        await targetStore.set(target.hint)
         return GuideObservation(
             snapshot: snapshot,
             processID: target.processID,

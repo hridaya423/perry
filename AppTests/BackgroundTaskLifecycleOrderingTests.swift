@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import XCTest
+import PerryBrain
 import PerryCore
 import PerryGuide
 import PerryRuntimes
@@ -9,6 +10,47 @@ import PerryRuntimes
 
 @MainActor
 final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
+    func testQuitChecksFailedAcceptedWritesBeforeDiscardingInput() async throws {
+        let directory = try temporaryDirectory()
+        addTeardownBlock { try self.removeFixture(directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        controller.homeController.threadStore = nil
+        let input = controller.homeController.acceptInput("Keep this unsaved request")
+        var asked = false
+        controller.debugUnsavedQuitDecision = {
+            asked = true
+            XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.map(\.request.text), [input.request.text])
+            XCTAssertTrue(controller.debugMaintenanceOwnerHeld)
+            return false
+        }
+        XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateLater)
+        let reopened = await waitUntil { asked && !controller.debugMaintenanceOwnerHeld }
+        XCTAssertTrue(reopened)
+        XCTAssertTrue(controller.backgroundTasks.acceptsControls)
+        XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
+        XCTAssertNotNil(controller.homeController.homeWindow)
+        controller.homeController.stop()
+        controller.homeController.closeHome()
+    }
+
+    func testRenderUnsavedQuitAlert() throws {
+        let directory = try temporaryDirectory()
+        addTeardownBlock { try self.removeFixture(directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        let alert = controller.unsavedRequestQuitAlert()
+        alert.layout()
+        XCTAssertEqual(alert.buttons.first?.title, "Keep Perry open")
+        XCTAssertEqual(alert.buttons.last?.title, "Quit without saving")
+        XCTAssertTrue(alert.buttons.last?.hasDestructiveAction == true)
+        let content = try XCTUnwrap(alert.window.contentView)
+        content.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/dependable-evidence/unsaved-quit-alert.png")
+        try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
+    }
+
     func testNotificationCannotApproveNewRevisionBehindStaleTaskList() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
@@ -88,7 +130,9 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         controller.backgroundTasks.approveWorkspace(try XCTUnwrap(initial))
         let awaitingSecond = await waitUntil {
             let current = await controller.backgroundTasks.debugRecord(plan.taskID)
-            return current?.workspaceActionToApprove?.id == actions[1].id && !controller.backgroundTasks.isRunning(plan.taskID)
+            return current?.workspaceActionToApprove?.id == actions[1].id
+                && !controller.backgroundTasks.isRunning(plan.taskID)
+                && controller.backgroundTasks.awaitingApprovalCount == 1
         }
         XCTAssertTrue(awaitingSecond)
         XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 1)
@@ -114,6 +158,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             let context = await controller.backgroundTasks.debugMetadata(plan.taskID)
             // A retained terminal row is the durable receipt — the task is done.
             return (current?.isTerminal ?? true) && context == nil && !controller.backgroundTasks.isRunning(plan.taskID)
+                && controller.backgroundTasks.awaitingApprovalCount == 0
         }
         XCTAssertTrue(reported)
         XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 0)
@@ -446,6 +491,14 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertTrue(eraseEntered)
         XCTAssertTrue(controller.debugMaintenanceOwnerHeld)
         XCTAssertFalse(controller.backgroundTasks.acceptsControls)
+        let blockedInput = controller.homeController.acceptInput("Do not save during erasure")
+        do { try await blockedInput.saved.value; XCTFail("Maintenance accepted new input") }
+        catch is CancellationError {}
+        var blockedRun: AgentFinish?
+        for await event in controller.agentCoordinator.run(threadID: UUID(), goal: "Do not execute during erasure") {
+            if case .finished(let finish) = event { blockedRun = finish }
+        }
+        guard case .failed = blockedRun else { return XCTFail("Maintenance accepted a new run") }
 
         let reply = controller.applicationShouldTerminate(NSApplication.shared)
         XCTAssertEqual(reply, .terminateLater)
@@ -458,6 +511,10 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
                 && controller.backgroundTasks.acceptsControls
         }
         XCTAssertTrue(recovered)
+        let reopened = controller.homeController.acceptInput("Keep this after maintenance failed")
+        try await reopened.saved.value
+        let saved = await controller.homeController.threadStore?.thread(id: reopened.threadID)
+        XCTAssertEqual(saved?.waitingInputs?.first?.text, "Keep this after maintenance failed")
     }
 
     private func executablePlan(taskID: TaskID, workspace: URL) throws -> ExecutionPlan {

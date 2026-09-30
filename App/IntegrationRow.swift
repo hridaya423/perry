@@ -37,6 +37,7 @@ enum IntegrationOperationState: Equatable {
 
 struct IntegrationRow: View {
     let definition: RemoteIntegrationDefinition
+    let controller: AppController
     @State private var clientID = ""
     @State private var clientSecret = ""
     @State private var connected = false
@@ -131,7 +132,7 @@ struct IntegrationRow: View {
         }
         .task {
             do {
-                connected = try await AppController.shared.integrationIsConnected(definition)
+                connected = try await controller.integrationIsConnected(definition)
             } catch {
                 connected = false
                 setOperationState(.failed(error.localizedDescription))
@@ -142,7 +143,7 @@ struct IntegrationRow: View {
 
     private func connect() {
         setOperationState(.working("Opening secure authorization…"))
-        AppController.shared.connectIntegration(definition, clientID: clientID, clientSecret: clientSecret) { result in
+        controller.connectIntegration(definition, clientID: clientID, clientSecret: clientSecret) { result in
             switch result {
             case .success:
                 connected = true
@@ -163,7 +164,7 @@ struct IntegrationRow: View {
 
     private func testConnection() {
         setOperationState(.working("Testing provider access…"))
-        AppController.shared.testIntegration(definition) { result in
+        controller.testIntegration(definition) { result in
             switch result {
             case .success(let summary): setOperationState(.succeeded(summary))
             case .failure(let error): setOperationState(.failed(error.localizedDescription))
@@ -173,7 +174,7 @@ struct IntegrationRow: View {
 
     private func preview(_ action: RemoteIntegrationQuickAction) {
         setOperationState(.working("Reading \(action.title.lowercased())…"))
-        AppController.shared.previewIntegration(definition, action: action) { result in
+        controller.previewIntegration(definition, action: action) { result in
             switch result {
             case .success(let summary): setOperationState(.succeeded(summary))
             case .failure(let error): setOperationState(.failed(error.localizedDescription))
@@ -185,7 +186,7 @@ struct IntegrationRow: View {
         setOperationState(.working("Disconnecting…"))
         Task {
             do {
-                try await AppController.shared.disconnectIntegration(definition)
+                try await controller.disconnectIntegration(definition)
                 connected = false
                 writesEnabled = false
                 setOperationState(.succeeded("Disconnected."))
