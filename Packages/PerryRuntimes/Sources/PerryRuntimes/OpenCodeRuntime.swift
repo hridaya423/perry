@@ -5,8 +5,8 @@ public struct OpenCodeRuntime: TaskPlanner {
     public let id = "cli.opencode"
     public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
 
-    public static let pinnedVersion = "1.18.31"
-    public static let pinnedBinarySHA256 = "16c960ba77421da11b53e785f359b73f328a86118b48feb4af143db5d9afb198"
+    public static let pinnedVersion = "1.18.32"
+    public static let pinnedBinarySHA256 = "a3c45d4e1d6620b436851f1ef6b25c71befcf06a382e279a1eb1c2196424395e"
 
     private let locateExecutable: @Sendable () throws -> URL
     private let invokeCommand: @Sendable (URL, [String]) async throws -> String
