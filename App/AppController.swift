@@ -935,6 +935,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installHotkey()
         voice.startInputListeners()
         modifierHoldMonitor.start()
+        DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         homeController.start()
         perryScheduler?.start()
         suggestionController.start()
@@ -1194,11 +1195,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         transcriptPreview = ""
         activeSpatialSelection = nil
         probe.pinInvocationTarget()
+        PerfMark.mark("wake.pinned")
         overlayState.voiceState = .idle
         overlayState.taskBubbleText = "Circle a window with ⌥⌘ and drag, or type a request."
         overlayState.circleSelectSnappedRect = nil
         overlayState.circleSelectSnapLabel = nil
         overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
+        PerfMark.mark("wake.overlay")
         spatialMonitor.start()
         showPanel()
         SoundPlayer.play(.wake)
@@ -1820,48 +1823,58 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         showPanel()
     }
 
+    private func ensurePanel() -> NSPanel {
+        if let panel { return panel }
+#if DEBUG
+        let rootView = PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
+            to: CompactConversationView(controller: self)
+        )
+#else
+        let rootView = CompactConversationView(controller: self)
+#endif
+        let host = NSHostingView(rootView: rootView)
+        let p = NSPanel(
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: PerryTheme.Sizing.panelWidth,
+                height: PerryTheme.Sizing.panelHeight
+            ),
+            styleMask: [.titled, .utilityWindow, .fullSizeContentView, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        p.contentView = host
+        p.identifier = SessionPanelView.windowIdentifier
+        p.contentMinSize = NSSize(width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight)
+        p.isFloatingPanel = true
+        p.hidesOnDeactivate = false
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.titlebarAppearsTransparent = true
+        p.level = .floating
+        if !p.setFrameUsingName("perry.session.frame"), let screen = NSScreen.main {
+            let frame = screen.visibleFrame
+            p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))
+        }
+        p.setFrameAutosaveName("perry.session.frame")
+        panel = p
+        return p
+    }
+
     private func showPanel() {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
-        if panel == nil {
-#if DEBUG
-            let rootView = PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
-                to: CompactConversationView(controller: self)
-            )
-#else
-            let rootView = CompactConversationView(controller: self)
-#endif
-            let host = NSHostingView(rootView: rootView)
-            let p = NSPanel(
-                contentRect: NSRect(
-                    x: 0,
-                    y: 0,
-                    width: PerryTheme.Sizing.panelWidth,
-                    height: PerryTheme.Sizing.panelHeight
-                ),
-                styleMask: [.titled, .utilityWindow, .fullSizeContentView, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            p.contentView = host
-            p.identifier = SessionPanelView.windowIdentifier
-            p.contentMinSize = NSSize(width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight)
-            p.isFloatingPanel = true
-            p.hidesOnDeactivate = false
-            p.isOpaque = false
-            p.backgroundColor = .clear
-            p.titlebarAppearsTransparent = true
-            p.level = .floating
-            if !p.setFrameUsingName("perry.session.frame"), let screen = NSScreen.main {
-                let frame = screen.visibleFrame
-                p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))
-            }
-            p.setFrameAutosaveName("perry.session.frame")
-            panel = p
-        }
         NSApp.activate(ignoringOtherApps: true)
-        panel?.makeKeyAndOrderFront(nil)
+        ensurePanel().makeKeyAndOrderFront(nil)
         PerfMark.mark("panel.visible")
+    }
+
+    /// Pays the one-time render cost for the session surfaces at launch so a
+    /// first invocation only orders already-rendered windows on screen.
+    private func warmSessionSurfaces() {
+        ensurePanel().displayIfNeeded()
+        overlayManager.warmRenderPipeline(state: overlayState)
     }
 
     private func hidePanel() {

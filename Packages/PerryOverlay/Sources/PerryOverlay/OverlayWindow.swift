@@ -1627,6 +1627,20 @@ public class OverlayWindowManager {
         }
     }
 
+    /// Pays the one-time SwiftUI + window-server render cost at launch, off
+    /// screen, so the first invocation only orders already-rendered surfaces.
+    public func warmRenderPipeline(state: PerryCursorState) {
+        let frame = NSRect(x: -10_000, y: -10_000, width: 64, height: 64)
+        let window = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        let hosting = NSHostingView(rootView: PerryBuddyView(screenFrame: frame, supervisorState: state))
+        hosting.frame = NSRect(origin: .zero, size: frame.size)
+        window.contentView = hosting
+        window.orderFrontRegardless()
+        window.displayIfNeeded()
+        window.orderOut(nil)
+        window.contentView = nil
+    }
+
     public func showOverlay(onScreens screens: [NSScreen], state: PerryCursorState) {
         let start = CFAbsoluteTimeGetCurrent()
         hideOverlay(clearSupervisorState: false)
