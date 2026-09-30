@@ -13,6 +13,45 @@ private struct StubProvider: ModelProvider {
     func warm() async {}
 }
 
+private final class ScriptableProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID
+    let displayName = "Scriptable"
+    let capabilities: ModelCapabilities
+    var events: [ModelEvent]
+    var error: Error?
+
+    init(id: ProviderID, capabilities: ModelCapabilities, events: [ModelEvent] = [.done(.endTurn)], error: Error? = nil) {
+        self.id = id
+        self.capabilities = capabilities
+        self.events = events
+        self.error = error
+    }
+
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        let events = self.events
+        let error = self.error
+        return AsyncThrowingStream { continuation in
+            for event in events { continuation.yield(event) }
+            if let error { continuation.finish(throwing: error) } else { continuation.finish() }
+        }
+    }
+    func warm() async {}
+}
+
+private struct ScriptableToolProvider: ToolExecutingModelProvider {
+    let id: ProviderID
+    let displayName = "Scriptable tools"
+    let capabilities: ModelCapabilities
+
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        AsyncThrowingStream { $0.yield(.done(.endTurn)); $0.finish() }
+    }
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
+        stream(request)
+    }
+    func warm() async {}
+}
+
 final class ProviderRouterTests: XCTestCase {
     private var now = Date(timeIntervalSince1970: 1_800_000_000)
     private lazy var clock: @Sendable () -> Date = { self.now }
@@ -85,6 +124,59 @@ final class ProviderRouterTests: XCTestCase {
         await router.reportSuccess(.openAI)
         let healthy = await router.isHealthy(.openAI)
         XCTAssertTrue(healthy)
+    }
+
+    func testStreamOutcomesDriveProviderHealth() async throws {
+        let flaky = ScriptableProvider(id: .openAI, capabilities: [.vision, .streaming], error: ModelProviderError(kind: .unavailable, provider: .openAI, message: "fixture"))
+        let router = router([
+            flaky,
+            ScriptableProvider(id: .gemini, capabilities: [.vision, .streaming]),
+        ])
+        let request = ModelRequest(messages: [.user([.text("hi")])], tier: .fast)
+
+        // First failure: counted but still routable.
+        var decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .openAI)
+        do {
+            for try await _ in decision.provider.stream(request) {}
+            XCTFail("fixture must throw")
+        } catch {}
+
+        // Second failure: two strikes marks it down for the window.
+        decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .openAI)
+        do {
+            for try await _ in decision.provider.stream(request) {}
+            XCTFail("fixture must throw")
+        } catch {}
+        decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .gemini)
+        XCTAssertTrue(decision.explanation.contains("openai(down)"))
+
+        // After the window a successful stream resets the failure count:
+        // one fresh failure alone is not enough to be skipped again.
+        now = now.addingTimeInterval(61)
+        flaky.error = nil
+        flaky.events = [.done(.endTurn)]
+        decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .openAI)
+        for try await _ in decision.provider.stream(request) {}
+        flaky.error = ModelProviderError(kind: .unavailable, provider: .openAI, message: "fixture")
+        flaky.events = []
+        do {
+            for try await _ in decision.provider.stream(request) {}
+            XCTFail("fixture must throw")
+        } catch {}
+        decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .openAI, "a post-recovery single failure must not re-mark the provider down")
+    }
+
+    func testHealthWrapKeepsToolExecutingConformance() async throws {
+        let router = router([
+            ScriptableToolProvider(id: .openAI, capabilities: [.vision, .tools, .streaming]),
+        ])
+        let decision = try await router.route(RouteRequirement(capabilities: [.vision, .tools], tier: .fast))
+        XCTAssertTrue(decision.provider is any ToolExecutingModelProvider)
     }
 
     func testNoQualifyingProviderThrows() async throws {

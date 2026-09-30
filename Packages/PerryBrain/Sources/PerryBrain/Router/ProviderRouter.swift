@@ -69,7 +69,18 @@ public actor ProviderRouter {
         } else {
             explanation = String("\(provider.displayName) — skipped \(skipped.joined(separator: ", "))".prefix(80))
         }
-        return RouteDecision(provider: provider, explanation: explanation)
+        return RouteDecision(provider: reportOutcomes(for: provider), explanation: explanation)
+    }
+
+    /// Wraps a routed provider so every consumer feeds stream outcomes back
+    /// into health. `.done` clears the failure record; a thrown error (other
+    /// than cancellation) or a stream that ends unterminated counts against
+    /// it. Tool-executing providers keep their native tool path.
+    private func reportOutcomes(for provider: any ModelProvider) -> any ModelProvider {
+        if let toolProvider = provider as? any ToolExecutingModelProvider {
+            return HealthReportingToolProvider(base: toolProvider, router: self)
+        }
+        return HealthReportingProvider(base: provider, router: self)
     }
 
     public func reportFailure(_ id: ProviderID) {
@@ -103,5 +114,70 @@ public actor ProviderRouter {
 
     static func matches(_ entry: ProviderID, _ providerID: ProviderID) -> Bool {
         providerID == entry || providerID.rawValue.hasPrefix(entry.rawValue + ".")
+    }
+}
+
+private struct HealthReportingProvider: ModelProvider {
+    let base: any ModelProvider
+    let router: ProviderRouter
+    var id: ProviderID { base.id }
+    var displayName: String { base.displayName }
+    var capabilities: ModelCapabilities { base.capabilities }
+    func warm() async { await base.warm() }
+    func contextWindow(for tier: ModelTier) async throws -> Int? {
+        try await base.contextWindow(for: tier)
+    }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        HealthReportingStream.wrap(base.stream(request), providerID: id, router: router)
+    }
+}
+
+private struct HealthReportingToolProvider: ToolExecutingModelProvider {
+    let base: any ToolExecutingModelProvider
+    let router: ProviderRouter
+    var id: ProviderID { base.id }
+    var displayName: String { base.displayName }
+    var capabilities: ModelCapabilities { base.capabilities }
+    func warm() async { await base.warm() }
+    func contextWindow(for tier: ModelTier) async throws -> Int? {
+        try await base.contextWindow(for: tier)
+    }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        HealthReportingStream.wrap(base.stream(request), providerID: id, router: router)
+    }
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
+        HealthReportingStream.wrap(base.stream(request, executeTool: executeTool), providerID: id, router: router)
+    }
+}
+
+private enum HealthReportingStream {
+    static func wrap(
+        _ base: AsyncThrowingStream<ModelEvent, Error>,
+        providerID: ProviderID,
+        router: ProviderRouter
+    ) -> AsyncThrowingStream<ModelEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                var finished = false
+                do {
+                    for try await event in base {
+                        if case .done = event { finished = true }
+                        continuation.yield(event)
+                    }
+                    if finished {
+                        await router.reportSuccess(providerID)
+                    } else {
+                        await router.reportFailure(providerID)
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish(throwing: CancellationError())
+                } catch {
+                    await router.reportFailure(providerID)
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }

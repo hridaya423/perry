@@ -216,17 +216,30 @@ final class AgentLoopTests: XCTestCase {
             [.textDelta("Done"), .done(.endTurn)]
         ])
         let executor = RecordingExecutor(spec: ToolSpec(name: "ui.click", description: "c", inputSchema: toolSchema([:])))
+        let toolsRunning = expectation(description: "tool calls in flight")
+        let lock = NSLock()
+        var gates: [CheckedContinuation<Void, Never>] = []
+        var gateOpen = false
         executor.body = { call in
-            try? await Task.sleep(nanoseconds: 10_000_000)
+            toolsRunning.fulfill()
+            await withCheckedContinuation { gate in
+                lock.withLock {
+                    if gateOpen { gate.resume() } else { gates.append(gate) }
+                }
+            }
             return .text(call.id, "ok")
         }
         let host = PerryToolHost(executors: [executor])
         let loop = AgentLoop(provider: provider, host: host)
         let task = Task { await collect(loop.run(system: "s", messages: [], context: context)) }
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        await fulfillment(of: [toolsRunning])
         await loop.pause()
-        try? await Task.sleep(nanoseconds: 50_000_000)
         await loop.interrupt()
+        lock.withLock {
+            gateOpen = true
+            gates.forEach { $0.resume() }
+            gates.removeAll()
+        }
         let events = await task.value
         XCTAssertEqual(finishReason(events), .interrupted)
     }
