@@ -111,8 +111,12 @@ enum RuntimeExecutableVerifier {
                 do {
                     while true {
                         try Task.checkCancellation()
-                        guard let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty else { break }
-                        hash.update(data: chunk)
+                        let done = try autoreleasepool { () -> Bool in
+                            guard let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty else { return true }
+                            hash.update(data: chunk)
+                            return false
+                        }
+                        if done { break }
                     }
                 } catch {
                     try handle.close()
