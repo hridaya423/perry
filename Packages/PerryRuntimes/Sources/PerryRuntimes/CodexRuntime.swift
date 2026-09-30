@@ -11,8 +11,8 @@ public struct CodexRuntime: TaskPlanner {
     public let id = "cli.codex"
     public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
 
-    public static let pinnedVersion = "0.132.0"
-    public static let pinnedBinarySHA256 = "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713"
+    public static let pinnedVersion = "0.158.0"
+    public static let pinnedBinarySHA256 = "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8"
 
     public static func authenticationStatus(executable: URL, runtimeHome: URL?) async throws -> RuntimeAuthenticationStatus {
         try Task.checkCancellation()

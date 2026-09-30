@@ -620,7 +620,7 @@ final class HomeController {
         homeModel.threadErrors[threadID] = nil
         performWork(cancelOnMaintenance: true) {
             defer { if welcomeDraft != nil { self.homeModel.isCreatingConversation = false } }
-            _ = await self.presentRun(threadID: threadID, text: input.request.text) { onPartial in
+            let finish = await self.presentRun(threadID: threadID, text: input.request.text) { onPartial in
                 do {
                     try await input.saved.value
                     try Task.checkCancellation()
@@ -635,6 +635,13 @@ final class HomeController {
                 } catch {
                     return .failed("Couldn’t save your request. Open Requests not saved to recover it. \(error.localizedDescription)")
                 }
+            }
+            if finish == .interrupted {
+                // Accepted but never dispatched: promote the staged request
+                // into the thread draft so it survives quit. restoreWaitingInput
+                // refuses when the composer already holds another draft — the
+                // staged copy stays listed for manual restore.
+                try? await self.threadStore?.restoreWaitingInput(input.request.id, from: threadID)
             }
         }
     }
@@ -734,6 +741,9 @@ final class HomeController {
                     continuation.yield(event)
                 }
                 return finish
+            }
+            if finish == .interrupted {
+                try? await self.threadStore?.restoreWaitingInput(input.request.id, from: threadID)
             }
             continuation.yield(.finished(finish))
             continuation.finish()
