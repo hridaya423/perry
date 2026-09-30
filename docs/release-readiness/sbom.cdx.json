@@ -40,11 +40,11 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://github.com/openai/codex/releases/download/rust-v0.132.0/codex-aarch64-apple-darwin.tar.gz"
+          "url": "https://github.com/openai/codex/releases/download/rust-v0.158.0/codex-aarch64-apple-darwin.tar.gz"
         },
         {
           "type": "license",
-          "url": "https://github.com/openai/codex/blob/rust-v0.132.0/LICENSE"
+          "url": "https://github.com/openai/codex/blob/rust-v0.158.0/LICENSE"
         },
         {
           "type": "vcs",
@@ -66,17 +66,17 @@
         },
         {
           "name": "perry:archive-sha256",
-          "value": "73258e01c122941c21bb8afbb81daff2ffdd8d3e803754fd411340c24257fdce"
+          "value": "341c4a08f9ce1935b3007376dc2a3d50a0a89112930e9a474ae61367218f6e8a"
         },
         {
           "name": "perry:binary-sha256",
-          "value": "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713"
+          "value": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8"
         }
       ],
       "publisher": "OpenAI",
       "scope": "required",
       "type": "application",
-      "version": "0.132.0"
+      "version": "0.158.0"
     },
     {
       "bom-ref": "runtime:cua-driver",

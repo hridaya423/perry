@@ -55,7 +55,7 @@
    "owner": "PerryGuide",
    "support": "Optional on-device wake word",
    "limitations": [
-    "Wake word is off by default, onboarding requires an explicit choice, and the menu bar shows when ambient listening is enabled. This registry still has no microphone or long-running live-session test.",
+    "Wake word is off by default and can be enabled in Settings. This registry has no microphone or long-running live-session test.",
     "The registry does not record a last successful run for this capability."
    ],
    "verification": {
@@ -80,7 +80,7 @@
     },
     {
      "kind": "source",
-     "reference": "App/OnboardingWindow.swift"
+     "reference": "App/SettingsView.swift"
     },
     {
      "kind": "source",
@@ -1076,7 +1076,7 @@
    "owner": "App",
    "support": "Local activity strip and background-task cards",
    "limitations": [
-    "The Background Tasks panel is unit-tested as an activating, key-capable, resizable panel. The activity strip remains passive while collapsed and becomes key-capable when expanded; card state transitions still lack live UI evidence."
+    "Background tasks are presented inside Home. The activity strip has a component activation test; current Home card transitions and keyboard interaction still lack live UI evidence."
    ],
    "verification": {
     "supported_environments": {
@@ -1100,11 +1100,7 @@
     },
     {
      "kind": "source",
-     "reference": "App/BackgroundTasksWindow.swift"
-    },
-    {
-     "kind": "unit-test",
-     "reference": "AppTests/InteractivePanelTests.swift::func testBackgroundTasksPanelCanActivateForKeyboardInput()"
+     "reference": "App/Home/BackgroundTasksView.swift"
     },
     {
      "kind": "unit-test",
@@ -1416,7 +1412,7 @@
    "owner": "PerryGuide",
    "support": "Local PROFILE.md and VOLATILE.md memory injected into voice and agent context",
    "limitations": [
-    "Memory is disabled on fresh profiles, onboarding asks for explicit consent, and enabled memory stays on this Mac. The consent surface compiles and its sequence is unit-tested, but it still needs a live first-run test.",
+    "Memory is disabled on fresh profiles and can be enabled in Settings. Records are stored locally; permitted memory is included in requests to the selected model. Live consent and first-run verification remain open.",
     "The registry does not record a last successful run for this capability."
    ],
    "verification": {
@@ -1441,11 +1437,7 @@
     },
     {
      "kind": "source",
-     "reference": "App/OnboardingWindow.swift"
-    },
-    {
-     "kind": "unit-test",
-     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testSequenceWalksEveryStepInOrderWhenNothingGranted()"
+     "reference": "App/SettingsView.swift"
     },
     {
      "kind": "unit-test",
@@ -1472,7 +1464,7 @@
    "owner": "PerryCore",
    "support": "Local searchable transcript history with export",
    "limitations": [
-    "History is local. The window is unit-tested as activating and key-capable, and distinguishes an empty history from an empty search, but selection and export still lack live UI evidence.",
+    "History is stored locally and presented inside Home. Store persistence and search have component tests; selection, keyboard interaction, and export still lack live evidence for the current surface.",
     "The registry does not record a last successful run for this capability."
    ],
    "verification": {
@@ -1497,11 +1489,7 @@
     },
     {
      "kind": "source",
-     "reference": "App/HistoryWindow.swift"
-    },
-    {
-     "kind": "unit-test",
-     "reference": "AppTests/InteractivePanelTests.swift::func testHistoryPanelCanActivateForSearchAndExport()"
+     "reference": "App/Home/HistoryView.swift"
     },
     {
      "kind": "unit-test",
@@ -2413,10 +2401,10 @@
    "id": "onboarding.guided-tutorial",
    "name": "Guided first-run tutorial",
    "status": "unit-tested",
-   "owner": "PerryGuide",
-   "support": "Local permission walkthrough, runtime detection, and guided-demo offer",
+   "owner": "App",
+   "support": "ChatGPT readiness setup, contextual permissions, and optional practice",
    "limitations": [
-    "The sequence, close recovery, runtime readiness, privacy choices, and failed-demo completion gate are tested. A live deterministic run verifies the welcome screen, denied-permission recovery, disabled continuation gate, and back navigation, but complete fresh-profile onboarding, real TCC recovery, keyboard-only and VoiceOver completion, 200% text, and timing evidence remain missing.",
+    "Current component tests cover provider readiness, permission sequencing, explicit practice, and interrupted setup recovery. Complete fresh-profile onboarding, real TCC recovery, keyboard-only and VoiceOver completion, enlarged text, and timing evidence remain unverified for the current Home surface.",
     "The registry does not record a last successful run for this capability."
    ],
    "verification": {
@@ -2432,52 +2420,28 @@
    },
    "evidence": [
     {
-     "kind": "audit",
-     "reference": "docs/heyclicky-feature-audit.md:45"
+     "kind": "source",
+     "reference": "App/Onboarding/OnboardingDirector.swift"
     },
     {
      "kind": "source",
-     "reference": "Packages/PerryGuide/Sources/PerryGuide/OnboardingFlow.swift"
-    },
-    {
-     "kind": "source",
-     "reference": "App/OnboardingWindow.swift"
+     "reference": "App/Home/HomeOnboardingView.swift"
     },
     {
      "kind": "unit-test",
-     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testSequenceWalksEveryStepInOrderWhenNothingGranted()"
+     "reference": "AppTests/OnboardingDirectorTests.swift::testProviderReadinessPrecedesTheFirstConversation"
     },
     {
      "kind": "unit-test",
-     "reference": "Packages/PerryGuide/Tests/PerryGuideTests/OnboardingFlowTests.swift::func testBackSkipsPermissionStepsThatAdvanceSkipped()"
+     "reference": "AppTests/OnboardingDirectorTests.swift::testPermissionsDoNotOpenSettingsUntilRequested"
     },
     {
      "kind": "unit-test",
-     "reference": "AppTests/OnboardingWindowTests.swift::testClosingWindowReleasesOnboardingOwnershipWithoutCompleting"
+     "reference": "AppTests/OnboardingDirectorTests.swift::testPracticeRequiresAnExplicitStartAndActualCompletionEvents"
     },
     {
      "kind": "unit-test",
-     "reference": "AppTests/OnboardingWindowTests.swift::testReadinessRequiresPermissionsAndAnAvailableRuntime"
-    },
-    {
-     "kind": "unit-test",
-     "reference": "AppTests/DemoDirectorTests.swift::testBlockedTaskFailsDemoAndDoesNotReportCompletion"
-    },
-    {
-     "kind": "live-test",
-     "reference": "docs/release-readiness/ui/onboarding-live-2026-08-30.json"
-    },
-    {
-     "kind": "live-test",
-     "reference": "docs/release-readiness/ui/onboarding-accessibility3-2026-08-30.json"
-    },
-    {
-     "kind": "live-test",
-     "reference": "docs/release-readiness/ui/keyboard-navigation-2026-08-30.json"
-    },
-    {
-     "kind": "source",
-     "reference": "App/DemoRecipe.swift"
+     "reference": "AppTests/OnboardingDirectorTests.swift::testInterruptedSetupResumesAndCompletionClearsCheckpoint"
     }
    ]
   },
@@ -2667,7 +2631,7 @@
     },
     {
      "kind": "source",
-     "reference": "App/WhatsNewWindow.swift"
+     "reference": "App/Home/WhatsNewView.swift"
     },
     {
      "kind": "source",
@@ -3262,7 +3226,7 @@
    "evidence": [
     {
      "kind": "source",
-     "reference": "App/HistoryWindow.swift"
+     "reference": "App/Home/HistoryView.swift"
     },
     {
      "kind": "source",

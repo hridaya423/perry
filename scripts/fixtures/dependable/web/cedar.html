@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cedar fixture</title>
+<style>body{font:18px system-ui;max-width:780px;margin:40px auto;padding:0 24px;background:#fff;color:#17241e} @media(prefers-color-scheme:dark){body{background:#15201b;color:#eef5f0}} label,input,select,button{display:block;margin:12px 0;font:inherit} table{border-collapse:collapse;width:100%}th,td{padding:12px;text-align:left;border:1px solid #888}input,select{padding:8px}button{padding:10px 16px}@media(max-width:650px){#settings{margin-top:90px}} </style>
+<h1>Cedar Community Day</h1><p>Synthetic local fixture. This page makes no network requests.</p>
+<table><caption>Sessions</caption><thead><tr><th>Session</th><th>Time</th><th>Open places</th></tr></thead><tbody><tr><td>Drawing</td><td>09:30</td><td>12</td></tr><tr><td>Writing</td><td>11:00</td><td>8</td></tr><tr><td>Music</td><td>14:00</td><td>5</td></tr></tbody></table>
+<form id="booking"><label for="name">Name</label><input id="name" name="name" autocomplete="off"><label for="session">Session</label><select id="session" name="session"><option>Drawing</option><option>Writing</option><option>Music</option></select><button type="submit">Save local draft</button></form>
+<p id="result" role="status">No draft saved.</p>
+<button id="settings" type="button" aria-expanded="false">Session preferences</button>
+<section id="preferences" hidden><h2>Session preferences</h2><label><input id="quiet" type="checkbox">Prefer a quiet session</label></section>
+<script>
+document.querySelector('#booking').addEventListener('submit',event=>{event.preventDefault();document.querySelector('#result').textContent='Draft saved for '+document.querySelector('#name').value+': '+document.querySelector('#session').value;});
+document.querySelector('#settings').addEventListener('click',event=>{const panel=document.querySelector('#preferences');panel.hidden=!panel.hidden;event.currentTarget.setAttribute('aria-expanded',String(!panel.hidden));});
+</script></html>

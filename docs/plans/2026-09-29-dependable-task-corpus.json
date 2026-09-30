@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "version": "2026-09-29",
+  "status": "planned_not_run",
+  "repetitions_per_product": 3,
+  "products": [
+    "Perry",
+    "HeyClicky"
+  ],
+  "fixture_root": "scripts/fixtures/dependable",
+  "tasks": [
+    {
+      "id": "F01",
+      "app": "Finder",
+      "title": "Rename one file",
+      "request": "Rename draft-a.txt to cedar-a.txt.",
+      "fixture": "finder/inbox/draft-a.txt",
+      "setup": "Open a fresh copy of finder/inbox and select draft-a.txt.",
+      "pass_condition": "New name exists, old name is absent, content hash is unchanged."
+    },
+    {
+      "id": "F02",
+      "app": "Finder",
+      "title": "Rename a set and undo",
+      "request": "Rename the three drafts to cedar-a.txt, cedar-b.txt, and cedar-c.txt, then undo.",
+      "fixture": "finder/inbox",
+      "setup": "Select the three draft files in a fresh inbox.",
+      "pass_condition": "Verify all three intermediate names and hashes, then all three original names and hashes."
+    },
+    {
+      "id": "F03",
+      "app": "Finder",
+      "title": "Move files into a new folder",
+      "request": "Create Review in inbox and move only drafts b and c into it.",
+      "fixture": "finder/inbox",
+      "setup": "Open a fresh inbox with no Review folder.",
+      "pass_condition": "Review contains exactly b and c; a remains in inbox; every content hash matches."
+    },
+    {
+      "id": "F04",
+      "app": "Finder",
+      "title": "Preserve a destination conflict",
+      "request": "Move draft-a.txt to conflicts and name it report-final.txt.",
+      "fixture": "finder/conflicts/report-final.txt",
+      "setup": "Open the inbox and conflicts folders. Preserve the conflict sentinel.",
+      "pass_condition": "Perry pauses for a concrete conflict decision. Cancel it; the existing file and source remain unchanged."
+    },
+    {
+      "id": "F05",
+      "app": "Finder",
+      "title": "Stop before the next effect",
+      "request": "Rename the drafts one at a time; stop immediately after the first verified rename.",
+      "fixture": "finder/inbox",
+      "setup": "Reset inbox. Record action dispatch and Stop timestamps.",
+      "pass_condition": "No further rename is dispatched after Stop; report and files agree on partial completion."
+    },
+    {
+      "id": "F06",
+      "app": "Finder",
+      "title": "Run a routine once after interruption",
+      "request": "Create a routine that writes a Cedar status note into this trial folder. Interrupt once before the run completes.",
+      "fixture": "notes/meeting.txt",
+      "setup": "Use a test schedule and trial folder. Include one sleep/offline interval; record timing and output identities.",
+      "pass_condition": "The routine resumes or asks for reconciliation; it never creates duplicate external effects."
+    },
+    {
+      "id": "P01",
+      "app": "Preview",
+      "title": "Summarize a document into an artifact",
+      "request": "Summarize the Cedar brief in a usable text file with date, location, capacity, budget, and open questions.",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Open the PDF and keep the original unchanged.",
+      "pass_condition": "Artifact says 14 June 2030, Lantern Hall, 60, planning budget 2500, and unconfirmed menu/photographer."
+    },
+    {
+      "id": "P02",
+      "app": "Preview",
+      "title": "Revise the same artifact",
+      "request": "Revise that summary into a short email draft for Ada, preserving the uncertainty about spending.",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Complete P01 in this conversation before timing the follow-up.",
+      "pass_condition": "The follow-up uses the prior document and revises the artifact; it does not invent confirmed spending."
+    },
+    {
+      "id": "P03",
+      "app": "Preview",
+      "title": "Read beyond the visible page",
+      "request": "What is the archive code and who owns the next review?",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Show only page one initially.",
+      "pass_condition": "Answer is LANTERN-27 and Ada Chen, grounded in the last page."
+    },
+    {
+      "id": "P04",
+      "app": "Preview",
+      "title": "Guide a document search",
+      "request": "Show me how to find the archive code in this PDF.",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Start on page one. Include one prescribed wrong click before the correct action.",
+      "pass_condition": "User reaches the correct text with one grounded instruction at a time."
+    },
+    {
+      "id": "P05",
+      "app": "Preview",
+      "title": "Recover after moving the window",
+      "request": "Show me the public welcome time, then let Perry take over the next navigation step.",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Move and resize Preview between two guidance steps.",
+      "pass_condition": "Correct answer is 09:30; guidance re-grounds after the window moves and takeover remains in the same conversation."
+    },
+    {
+      "id": "N01",
+      "app": "Notes",
+      "title": "Create and revise a note",
+      "request": "Create a note from the meeting fixture, then change its title to Cedar review checklist.",
+      "fixture": "notes/meeting.txt",
+      "setup": "Use a dedicated local acceptance folder with a new blank note.",
+      "pass_condition": "Title and all three owners plus review time are correct in the intended note."
+    },
+    {
+      "id": "N02",
+      "app": "Notes",
+      "title": "Dictate names accurately",
+      "request": "Dictate the sentence in notes/dictation.txt into this note.",
+      "fixture": "notes/dictation.txt",
+      "setup": "Focus the blank acceptance note; use the declared microphone path.",
+      "pass_condition": "Noor Patel, Jun Park, Ada Chen, and Lantern Hall remain correct; no text is lost."
+    },
+    {
+      "id": "N03",
+      "app": "Notes",
+      "title": "Recover when dictation loses focus",
+      "request": "Start dictating the fixture, then change focus before insertion.",
+      "fixture": "notes/dictation.txt",
+      "setup": "Prepare an empty acceptance note and an empty local browser form.",
+      "pass_condition": "Perry preserves recoverable text and does not silently paste into the newly focused app."
+    },
+    {
+      "id": "N04",
+      "app": "Notes",
+      "title": "Use and pause a persistent Perry",
+      "request": "Create a Perry whose job is turning Cedar meeting notes into owner/action lists; ask it to process the fixture, then pause it.",
+      "fixture": "notes/meeting.txt",
+      "setup": "Use a new named acceptance Perry with memory explicitly enabled, then inspect its saved state.",
+      "pass_condition": "Job affects the result; thread and permitted memory remain connected; pause prevents scheduled execution."
+    },
+    {
+      "id": "M01",
+      "app": "Mail",
+      "title": "Prepare a draft in the right destination",
+      "request": "Prepare the supplied email draft and leave it unsent.",
+      "fixture": "mail/draft.txt",
+      "setup": "Use a dedicated acceptance mailbox and a new draft. Do not capture or use a personal inbox.",
+      "pass_condition": "Recipient, subject, and body match the fixture; no send occurs."
+    },
+    {
+      "id": "M02",
+      "app": "Mail",
+      "title": "Cancel a concrete send approval",
+      "request": "Ask Perry to send the prepared acceptance draft, then cancel its approval.",
+      "fixture": "mail/draft.txt",
+      "setup": "Use the dedicated mailbox and the M01 draft. Never approve the send during this drill.",
+      "pass_condition": "Approval names the concrete recipient/content; cancellation leaves an unsent draft with zero send dispatches."
+    },
+    {
+      "id": "M03",
+      "app": "Mail",
+      "title": "Guide an attachment",
+      "request": "Show me how to attach the Cedar brief to this draft.",
+      "fixture": "documents/cedar-brief.pdf",
+      "setup": "Use a new draft in the dedicated mailbox.",
+      "pass_condition": "The intended file is attached once, the original is unchanged, and the draft remains unsent."
+    },
+    {
+      "id": "B01",
+      "app": "Safari",
+      "title": "Read a visible table",
+      "request": "Which session has the most open places, and how many more than Music?",
+      "fixture": "web/cedar.html",
+      "setup": "Open the local Cedar page with its table visible.",
+      "pass_condition": "Drawing has 12, seven more than Music."
+    },
+    {
+      "id": "B02",
+      "app": "Chrome",
+      "title": "Fill a local form",
+      "request": "Prepare a local draft for Noor Patel in the Writing session.",
+      "fixture": "web/cedar.html",
+      "setup": "Open the local Cedar page in Chrome with empty fields.",
+      "pass_condition": "Name and session are correct; after approved execution the local status confirms Noor Patel: Writing. No network request occurs."
+    },
+    {
+      "id": "B03",
+      "app": "Safari",
+      "title": "Recover from a wrong guide click",
+      "request": "Show me how to prefer a quiet session.",
+      "fixture": "web/cedar.html",
+      "setup": "Start with preferences closed; click the session dropdown once instead of the highlighted preferences control.",
+      "pass_condition": "Perry recovers from the prescribed wrong click and the quiet checkbox ends checked."
+    },
+    {
+      "id": "B04",
+      "app": "Chrome",
+      "title": "Disambiguate two similar windows",
+      "request": "Point ambiguously between Cedar and Birch and ask to prepare a draft for Jun Park.",
+      "fixture": "web",
+      "setup": "Open Cedar and Birch in separate, overlapping windows with empty forms.",
+      "pass_condition": "Perry clarifies the intended page before changing it; only the chosen page changes."
+    },
+    {
+      "id": "B05",
+      "app": "Safari",
+      "title": "Recover from a moved control",
+      "request": "Show me how to open session preferences, then resize the window before clicking.",
+      "fixture": "web/cedar.html",
+      "setup": "Resize across the fixture’s 650-pixel responsive breakpoint between instruction and action.",
+      "pass_condition": "The pointer re-grounds the moved control and never covers its hit target."
+    },
+    {
+      "id": "B06",
+      "app": "Chrome",
+      "title": "Keep point-and-ask context through Home",
+      "request": "Point at Writing, ask about availability, then open Home and ask what time it starts.",
+      "fixture": "web/cedar.html",
+      "setup": "Start with the local Cedar table visible and a new conversation.",
+      "pass_condition": "Answers are eight places and 11:00; the follow-up retains the target and does not capture Home as source."
+    },
+    {
+      "id": "K01",
+      "app": "Keynote",
+      "title": "Make a title slide",
+      "request": "Create a title slide using the creative fixture text.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Create a new blank-theme deck in this trial folder; do not modify another presentation.",
+      "pass_condition": "All four fixture facts are visible and correct in the saved trial deck."
+    },
+    {
+      "id": "K02",
+      "app": "Keynote",
+      "title": "Guide a layout change",
+      "request": "Show me how to make the event title more prominent.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Use the K01 deck; move the inspector once during guidance.",
+      "pass_condition": "One grounded step at a time changes the intended title, while date/location/capacity remain intact."
+    },
+    {
+      "id": "K03",
+      "app": "Keynote",
+      "title": "Hand over and undo an edit",
+      "request": "Make the title Cedar Community Day 2030, then undo that edit.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Use a fresh copy of the K01 deck.",
+      "pass_condition": "The exact intermediate title is verified, then the original title returns without changing other slide text."
+    },
+    {
+      "id": "C01",
+      "app": "Blender",
+      "title": "Guide an object rename",
+      "request": "Show me how to rename Cube to CedarMarker.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Use a separate factory-startup scene saved in the trial folder; no user scene may be open in that process.",
+      "pass_condition": "The user completes the rename on the intended object; ambiguity is clarified before any action."
+    },
+    {
+      "id": "C02",
+      "app": "Blender",
+      "title": "Edit and verify a transform",
+      "request": "Move CedarMarker to X = 2 without changing Y or Z.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Use a reset factory scene with Cube renamed CedarMarker and position 0,0,0.",
+      "pass_condition": "The saved scene and transform panel independently show X=2, Y=0, Z=0 for CedarMarker."
+    },
+    {
+      "id": "C03",
+      "app": "Blender",
+      "title": "Stop a consequential edit",
+      "request": "Ask Perry to delete CedarMarker, then stop before execution.",
+      "fixture": "creative/slide-copy.txt",
+      "setup": "Use the C02 reset scene and record approval/dispatch/Stop timestamps.",
+      "pass_condition": "No deletion is dispatched after Stop; CedarMarker remains in the saved scene and the result does not claim completion."
+    }
+  ]
+}

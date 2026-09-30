@@ -1,0 +1,9 @@
+To: perry-fixture@example.invalid
+Subject: Cedar review draft
+
+Hi Ada,
+Please review the Cedar event plan. The planning budget is 2500 units, and the menu is still unconfirmed.
+Thanks,
+Noor
+
+Acceptance fixture only. Do not send.

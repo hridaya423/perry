@@ -11,15 +11,15 @@
       "version": "2.9.4"
     },
     {
-      "archive_sha256": "73258e01c122941c21bb8afbb81daff2ffdd8d3e803754fd411340c24257fdce",
-      "binary_sha256": "60aead7e8cca6c534cb1e5e74a06d7ea679887bca77e5e7549619426018b8713",
+      "archive_sha256": "341c4a08f9ce1935b3007376dc2a3d50a0a89112930e9a474ae61367218f6e8a",
+      "binary_sha256": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8",
       "id": "runtime.codex",
       "license": "Apache-2.0",
-      "license_url": "https://github.com/openai/codex/blob/rust-v0.132.0/LICENSE",
+      "license_url": "https://github.com/openai/codex/blob/rust-v0.158.0/LICENSE",
       "name": "Codex",
       "source": "https://github.com/openai/codex",
       "target": "aarch64-apple-darwin",
-      "version": "0.132.0"
+      "version": "0.158.0"
     },
     {
       "archive_binary_sha256": "3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d",
