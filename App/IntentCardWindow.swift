@@ -129,7 +129,7 @@ struct IntentCardView: View {
             }
 
             if card.tier >= .red {
-                Text("This one needs real attention. Type \"\(card.redPhrase)\" exactly; I won't take a voice yes for this.")
+                Text("This one needs real attention. Type \"\(card.redPhrase)\" exactly; I won’t take a voice yes for this.")
                     .font(PerryTheme.Typography.note)
                     .foregroundStyle(.secondary)
                 TextField(card.redPhrase, text: $typedConfirmation)

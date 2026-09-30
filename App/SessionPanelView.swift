@@ -118,7 +118,7 @@ struct SessionPanelView: View {
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
                 .accessibilityLabel("Close session panel")
-                .accessibilityHint("Dismiss Perry's request panel")
+                .accessibilityHint("Dismiss Perry’s request panel")
             }
 
             Picker("Ask, Guide, or Do", selection: $mode) {
@@ -265,7 +265,7 @@ struct SessionPanelView: View {
                                 .font(PerryTheme.Typography.panelBody)
                                 .foregroundStyle(PerryTheme.Colors.text)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityLabel("Perry's answer")
+                                .accessibilityLabel("Perry’s answer")
                         }
                         if let followUp = ask.followUpPrompt {
                             Text("Try: \(followUp)")

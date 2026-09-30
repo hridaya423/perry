@@ -371,7 +371,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry's GitHub repository so the problem can be reproduced.")
+            Text("Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository so the problem can be reproduced.")
         }
     }
 
@@ -429,7 +429,7 @@ struct SettingsView: View {
                         NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
                     }
                 }
-                Text("Perry copies the verified runtime's exact executable path and official authentication command. Run it in Terminal, then refresh the status here.")
+                Text("Perry copies the verified runtime’s exact executable path and official authentication command. Run it in Terminal, then refresh the status here.")
                     .settingNote()
             }
             Section("Computer use") {
@@ -763,7 +763,7 @@ private enum SettingsError: LocalizedError {
         case .couldNotOpenSkillsFolder:
             return "Perry could not open the local skills folder."
         case .couldNotCopyRuntimeCommand:
-            return "Perry could not copy the authentication command. Open Terminal and run the runtime's official sign-in command manually."
+            return "Perry could not copy the authentication command. Open Terminal and run the runtime’s official sign-in command manually."
         }
     }
 }

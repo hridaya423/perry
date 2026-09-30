@@ -47,7 +47,7 @@ struct HomeView: View {
                 Section("Settings") {
                     Label("Settings", systemImage: "gear")
                         .tag(HomeModel.Selection.settings)
-                    Label("What's New", systemImage: "sparkles")
+                    Label("What’s New", systemImage: "sparkles")
                         .tag(HomeModel.Selection.whatsNew)
                 }
             }

@@ -154,7 +154,7 @@ private struct BackgroundTaskRow: View {
             }
         }
         .confirmationDialog(
-            "Undo Perry's changes?",
+            "Undo Perry’s changes?",
             isPresented: $showUndoConfirmation,
             titleVisibility: .visible
         ) {

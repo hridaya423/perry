@@ -135,7 +135,7 @@ struct GuideControlsView: View {
                 Button(state.pendingChoices[index]) { onChooseInput(index) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .accessibilityHint("Answer the guide's question with this choice")
+                    .accessibilityHint("Answer the guide’s question with this choice")
             }
             HStack {
                 Spacer(minLength: 0)
