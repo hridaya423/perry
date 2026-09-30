@@ -799,6 +799,26 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(controller.sessionState, .idle)
     }
 
+    func testAgentRunnerRouteSkipsTheTypedPlanner() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let planner = ForegroundPlanner()
+        let provider = AgentRouteProvider()
+        let controller = makeController(directory: directory, planner: planner)
+        controller.foreground.agentCoordinator = AgentCoordinator(
+            provider: { _ in provider },
+            host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: directory.appendingPathComponent("Threads")),
+            consent: ToolConsentStore(directory: nil)
+        )
+
+        let outcome = try await controller.foreground.debugRun(goal: "agent routed goal")
+
+        XCTAssertNil(planner.requestedTaskID, "typed planner ran — the goal did not route to the agent loop")
+        XCTAssertEqual(provider.requests.count, 1, "agent loop did not reach the provider")
+        XCTAssertEqual(outcome, .completed(stepsRun: 0))
+    }
+
     func testFailedForegroundTaskRetryDispatchesTheReplacementOnce() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try FileManager.default.removeItem(at: directory) }
@@ -1819,6 +1839,27 @@ private struct ForegroundAnswerProvider: ModelProvider {
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+}
+
+/// Records provider dispatches so tests can prove the agent-loop route was
+/// taken; answers immediately with a fixed text stream.
+private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.agent-route"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
+    private let lock = NSLock()
+    private var recorded: [ModelRequest] = []
+    var requests: [ModelRequest] { lock.withLock { recorded } }
+    func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        lock.withLock { recorded.append(request) }
+        return AsyncThrowingStream { continuation in
+            continuation.yield(.textDelta("Done."))
+            continuation.yield(.done(.endTurn))
+            continuation.finish()
         }
     }
 }
