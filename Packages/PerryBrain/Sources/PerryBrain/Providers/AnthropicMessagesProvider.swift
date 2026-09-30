@@ -41,7 +41,6 @@ public struct AnthropicMessagesProvider: ModelProvider {
 
         var parser = SSEParser()
         var blocks: [Int: (id: String, name: String, json: String)] = [:]
-        var sawToolCall = false
         var inputTokens = 0
         var outputTokens = 0
         var stopReason: ModelStopReason?
@@ -89,7 +88,6 @@ public struct AnthropicMessagesProvider: ModelProvider {
                     throw ModelProviderError(kind: .malformed, provider: id, message: "tool_use input was not valid JSON")
                 }
                 continuation.yield(.toolCall(ToolCall(id: block.id, name: block.name, arguments: arguments)))
-                sawToolCall = true
             case "message_delta":
                 if let usage = payload["usage"]?.objectValue,
                    let output = usage["output_tokens"]?.doubleValue {
@@ -107,7 +105,10 @@ public struct AnthropicMessagesProvider: ModelProvider {
                 if inputTokens > 0 || outputTokens > 0 {
                     continuation.yield(.usage(inputTokens: inputTokens, outputTokens: outputTokens))
                 }
-                continuation.yield(.done(stopReason ?? (sawToolCall ? .toolUse : .endTurn)))
+                guard let stopReason, blocks.isEmpty else {
+                    throw ModelProviderError(kind: .malformed, provider: id, message: "The response ended without a complete result.")
+                }
+                continuation.yield(.done(stopReason))
                 finished = true
             case "error":
                 let message = payload["error"]?["message"]?.stringValue ?? "stream failed"
@@ -128,7 +129,7 @@ public struct AnthropicMessagesProvider: ModelProvider {
             try handleEvent(event)
         }
         if !finished {
-            continuation.yield(.done(stopReason ?? .endTurn))
+            throw ModelProviderError(kind: .malformed, provider: id, message: "The response ended before the model confirmed completion.")
         }
     }
 

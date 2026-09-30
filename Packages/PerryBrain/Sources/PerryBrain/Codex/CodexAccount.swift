@@ -52,14 +52,26 @@ public struct CodexAccount: Sendable {
         }
     }
 
-    public func signIn() async throws -> URL? {
+    public struct SignInSession: Sendable {
+        public let id: String
+        public let url: URL
+    }
+
+    public func signIn() async throws -> SignInSession {
         let result = try await connection().request("account/login/start", params: .object([
             "type": .string("chatgpt"),
         ]))
-        guard let raw = result["authUrl"]?.stringValue, let url = URL(string: raw) else {
-            return nil
+        guard let id = result["loginId"]?.stringValue,
+              let raw = result["authUrl"]?.stringValue, let url = URL(string: raw) else {
+            throw ModelProviderError(kind: .unauthenticated, provider: .codex, message: "No sign-in link was returned. Try again.")
         }
-        return url
+        return SignInSession(id: id, url: url)
+    }
+
+    public func cancelSignIn(id: String) async throws {
+        _ = try await connection().request("account/login/cancel", params: .object([
+            "loginId": .string(id)
+        ]))
     }
 
     public func signOut() async throws {

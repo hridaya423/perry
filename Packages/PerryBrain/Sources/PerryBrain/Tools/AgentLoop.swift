@@ -2,7 +2,7 @@ import Foundation
 import PerryCore
 
 public enum AgentFinish: Sendable, Equatable {
-    case completed, interrupted, paused, budgetToolCalls, budgetTime, providerError(String)
+    case completed, interrupted, paused, budgetToolCalls, budgetTime, providerError(String), failed(String)
 }
 
 public enum AgentLoopEvent: Sendable, Equatable {
@@ -32,6 +32,7 @@ public actor AgentLoop {
     private var steerQueue: [String] = []
     private var pauseRequested = false
     private var loopTask: Task<Void, Never>?
+    private var toolCallCount = 0
 
     public init(provider: any ModelProvider, host: PerryToolHost, budgets: Budgets = .init()) {
         self.provider = provider
@@ -65,6 +66,28 @@ public actor AgentLoop {
 
     private func attach(_ task: Task<Void, Never>) { loopTask = task }
 
+    private func request(system: String, messages: [ModelMessage], context: ToolContext, tier: ModelTier) -> ModelRequest {
+        let tools = host.specs(for: context.surface).filter { provider.capabilities.isSuperset(of: $0.requiredCapabilities) }
+        var system = system
+        if !provider.capabilities.contains(.tools) {
+            system += "\nThis model can answer using this conversation only. It cannot read apps or files, control the screen, or perform actions. Ask the user to paste needed text or choose a capable model in Settings. Never claim to have performed an action."
+        } else if !provider.capabilities.contains(.vision) {
+            system += "\nThis model cannot interpret screenshots or perform screen-grounded actions. Use only the supplied text-based tools. Ask the user to choose an image-capable model for screen tasks."
+        }
+
+        return ModelRequest(system: system, messages: messages, tools: tools, tier: tier)
+    }
+
+    public func prepareConversation(
+        thread: PerryThread, question: String, runID: UUID, store: ThreadStore,
+        system: String, context: ToolContext, tier: ModelTier, currentParts: [ModelContentPart]
+    ) async throws -> [ModelMessage] {
+        let base = request(system: system, messages: [.user(currentParts)], context: context, tier: tier)
+        return try await ConversationContext().prepare(
+            thread: thread, question: question, runID: runID, store: store, provider: provider, baseRequest: base
+        )
+    }
+
     private func loop(
         system: String,
         messages: [ModelMessage],
@@ -74,8 +97,11 @@ public actor AgentLoop {
     ) async {
         var messages = messages
         let deadline = Date().addingTimeInterval(budgets.wallClock)
-        var toolCallCount = 0
-        let tools = host.specs(for: context.surface)
+        toolCallCount = 0
+        let base = request(system: system, messages: messages, context: context, tier: tier)
+        let tools = base.tools
+        let system = base.system
+        let allowedTools = Set(tools.map(\.name))
 
         func finish(_ reason: AgentFinish) {
             sink.yield(.finished(reason))
@@ -99,18 +125,47 @@ public actor AgentLoop {
 
             var text = ""
             var calls: [ToolCall] = []
+            var stopReason: ModelStopReason?
+            if !provider.capabilities.contains(.vision), messages.contains(where: { message in
+                switch message {
+                case .user(let parts), .toolResult(_, let parts, _):
+                    return parts.contains { if case .image = $0 { return true }; return false }
+                case .assistant: return false
+                }
+            }) {
+                finish(.failed("This conversation contains an image the selected model cannot read. Choose an image-capable model in Settings."))
+                return
+            }
             do {
-                let stream = provider.stream(ModelRequest(
-                    system: system, messages: messages, tools: tools, tier: tier
-                ))
+                let capacity = try await provider.contextWindow(for: tier)
+                try Task.checkCancellation()
+                let request = try ModelRequest(system: system, messages: messages, tools: tools, tier: tier).reservingOutput(in: capacity)
+                let stream: AsyncThrowingStream<ModelEvent, Error>
+                if let native = provider as? any ToolExecutingModelProvider {
+                    stream = native.stream(request) { call in
+                        try await self.executeTool(call, context: context, allowedTools: allowedTools, deadline: deadline, sink: sink)
+                    }
+                } else {
+                    stream = provider.stream(request)
+                }
                 for try await event in stream {
                     if Task.isCancelled { finish(.interrupted); return }
                     switch event {
                     case .textDelta(let delta): text += delta; sink.yield(.textDelta(delta))
-                    case .toolCall(let call): calls.append(call)
-                    case .usage, .done: break
+                    case .toolCall(let call):
+                        if !(provider is any ToolExecutingModelProvider) { calls.append(call) }
+                    case .done(.cancelled): finish(.interrupted); return
+                    case .done(.maxTokens): finish(.failed("The answer reached the model’s output limit.")); return
+                    case .done(let reason): stopReason = reason
+                    case .usage: break
                     }
                 }
+            } catch let stopped as ToolExecutionStopped {
+                finish(stopped.reason)
+                return
+            } catch is CancellationError {
+                finish(.interrupted)
+                return
             } catch let error as ModelProviderError {
                 finish(.providerError(Self.describe(error)))
                 return
@@ -119,25 +174,58 @@ public actor AgentLoop {
                 return
             }
 
+            if Task.isCancelled { finish(.interrupted); return }
+            guard stopReason == (calls.isEmpty ? .endTurn : .toolUse) else {
+                finish(.failed("The model stopped before completing its response. Review any earlier changes before retrying."))
+                return
+            }
             if calls.isEmpty { finish(.completed); return }
             messages.append(.assistant(text: text, toolCalls: calls))
 
             for call in calls {
-                if Task.isCancelled { finish(.interrupted); return }
-                if pauseRequested {
-                    sink.yield(.note("paused after \(toolCallCount) tool calls"))
-                    await suspendUntilResumed()
-                    if Task.isCancelled { finish(.interrupted); return }
-                    sink.yield(.note("resumed"))
+                do {
+                    let result = try await executeTool(call, context: context, allowedTools: allowedTools, deadline: deadline, sink: sink)
+                    messages.append(.toolResult(callID: result.callID, content: result.content, isError: result.isError))
+                } catch let stopped as ToolExecutionStopped {
+                    finish(stopped.reason)
+                    return
+                } catch {
+                    finish(.interrupted)
+                    return
                 }
-                toolCallCount += 1
-                if toolCallCount > budgets.maxToolCalls { finish(.budgetToolCalls); return }
-                sink.yield(.toolCallStarted(call))
-                let result = await host.handle(call, context: context)
-                sink.yield(.toolCallFinished(result))
-                messages.append(.toolResult(callID: result.callID, content: result.content, isError: result.isError))
             }
         }
+    }
+
+    private struct ToolExecutionStopped: Error {
+        let reason: AgentFinish
+    }
+
+    private func executeTool(
+        _ call: ToolCall,
+        context: ToolContext,
+        allowedTools: Set<String>,
+        deadline: Date,
+        sink: AsyncStream<AgentLoopEvent>.Continuation
+    ) async throws -> ToolResult {
+        try Task.checkCancellation()
+        guard allowedTools.contains(call.name) else {
+            throw ToolExecutionStopped(reason: .failed("The model requested an action unavailable in this conversation. That action was not run. Review earlier results, then choose a model with the required capabilities in Settings."))
+        }
+        if pauseRequested {
+            sink.yield(.note("paused after \(toolCallCount) tool calls"))
+            await suspendUntilResumed()
+            try Task.checkCancellation()
+            sink.yield(.note("resumed"))
+        }
+        if Date() > deadline { throw ToolExecutionStopped(reason: .budgetTime) }
+        guard toolCallCount < budgets.maxToolCalls else { throw ToolExecutionStopped(reason: .budgetToolCalls) }
+        toolCallCount += 1
+        sink.yield(.toolCallStarted(call))
+        let result = await host.handle(call, context: context)
+        sink.yield(.toolCallFinished(result))
+        try Task.checkCancellation()
+        return result
     }
 
     /// Holds at a tool boundary until resumed or interrupted. Steers queued

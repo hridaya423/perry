@@ -70,6 +70,21 @@ final class MCPServerTests: XCTestCase {
         XCTAssertEqual(response["result"]?["isError"], .bool(false))
     }
 
+    func testToolsCallPreservesCapturedImage() async throws {
+        let server = MCPServer(
+            bridge: StubBridge(result: ToolResult(callID: "capture", content: [
+                .text("Window"), .image(data: Data([1, 2]), mimeType: "image/png")
+            ])), version: "1.0"
+        )
+        let response = try await parse(server.handle(
+            #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"screen.observe"}}"#
+        ))
+        XCTAssertEqual(response["result"]?["content"]?.arrayValue, [
+            .object(["type": .string("text"), "text": .string("Window")]),
+            .object(["type": .string("image"), "data": .string("AQI="), "mimeType": .string("image/png")])
+        ])
+    }
+
     func testToolsCallMissingName() async throws {
         let server = MCPServer(bridge: StubBridge(), version: "1.0")
         let response = try await parse(server.handle(

@@ -3,20 +3,21 @@ import Foundation
 import PerryCore
 import PerryRuntimes
 
-/// Provider-neutral Guide planner: one receding-horizon step at a time,
-/// grounded in the live observation. It speaks to every supported provider
-/// through DirectProviderClient — OpenAI, Anthropic, Gemini, OpenRouter, and
-/// safe custom endpoints share the same adapters, so there is no
-/// Guide-specific HTTP path. Model output is decoded strictly and every
-/// returned target is validated against the observation before it can be
-/// presented; invented element IDs and dead coordinates are rejected here
-/// and again by the engine's validator.
 public struct RuntimeGuidePlanner: GuidePlanner {
-    private let client: DirectProviderClient
+    private let complete: @Sendable (String, (Data, String)?) async throws -> String
     private let skillLibrary: AppSkillLibrary
 
     public init(client: DirectProviderClient, skillLibrary: AppSkillLibrary = AppSkillLibrary()) {
-        self.client = client
+        self.init(complete: { prompt, screenshot in
+            try await client.complete(prompt: prompt, screenshot: screenshot)
+        }, skillLibrary: skillLibrary)
+    }
+
+    public init(
+        complete: @escaping @Sendable (String, (Data, String)?) async throws -> String,
+        skillLibrary: AppSkillLibrary = AppSkillLibrary()
+    ) {
+        self.complete = complete
         self.skillLibrary = skillLibrary
     }
 
@@ -43,9 +44,9 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         context: GuideContext
     ) async throws -> GuideDecision {
         try Task.checkCancellation()
-        let text = try await client.complete(
-            prompt: Self.nextStepPrompt(goal: goal, observation: observation, progress: progress, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
-            screenshot: observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
+        let text = try await complete(
+            Self.nextStepPrompt(goal: goal, observation: observation, progress: progress, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
+            observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
         )
         try Task.checkCancellation()
         return try Self.parseNextStep(text: text, observation: observation)
@@ -57,9 +58,9 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         context: GuideContext
     ) async throws -> [GuideStep] {
         try Task.checkCancellation()
-        let text = try await client.complete(
-            prompt: Self.visiblePathPrompt(goal: goal, observation: observation, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
-            screenshot: observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
+        let text = try await complete(
+            Self.visiblePathPrompt(goal: goal, observation: observation, context: context, skill: skillLibrary.promptContext(for: observation.snapshot.appBundleID)),
+            observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
         )
         try Task.checkCancellation()
         return try Self.parsePath(text: text, observation: observation)

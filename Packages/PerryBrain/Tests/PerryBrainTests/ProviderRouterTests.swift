@@ -104,4 +104,33 @@ final class ProviderRouterTests: XCTestCase {
         let decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
         XCTAssertEqual(decision.provider.id, "local.ollama")
     }
+
+    func testExplicitProviderCannotFallBackWhenMissingIncapableOrUnhealthy() async throws {
+        let router = router([
+            StubProvider(id: .openAI, displayName: "OpenAI", capabilities: [.vision, .tools, .streaming]),
+            StubProvider(id: "local.text", displayName: "Local text", capabilities: [.local, .streaming]),
+        ])
+        let selected = try await router.route(RouteRequirement(providerID: "local.text"))
+        XCTAssertEqual(selected.provider.id, "local.text")
+        await router.reportFailure("local.text")
+        await router.reportFailure("local.text")
+        for requirement in [
+            RouteRequirement(providerID: "missing"),
+            RouteRequirement(capabilities: [.vision], providerID: "local.text"),
+            RouteRequirement(providerID: "local.text"),
+            RouteRequirement(capabilities: [.local, .vision])
+        ] {
+            do {
+                _ = try await router.route(requirement)
+                XCTFail("A restricted request must not escape to OpenAI")
+            } catch let error as ModelProviderError {
+                XCTAssertEqual(error.kind, .notConfigured)
+                XCTAssertTrue(error.localizedDescription.contains("Settings"))
+                XCTAssertFalse(error.localizedDescription.contains("router:"))
+                if requirement.capabilities.contains(.local) {
+                    XCTAssertTrue(error.localizedDescription.contains("No remote model was used"))
+                }
+            }
+        }
+    }
 }

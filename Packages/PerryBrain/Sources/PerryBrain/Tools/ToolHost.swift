@@ -27,6 +27,7 @@ public enum ToolApproval: Sendable, Equatable {
 }
 
 public struct ToolContext: Sendable {
+    public let runID: UUID
     public var surface: ToolSurface
     public var threadID: String?
     /// Set by the UI only after the user typed the confirmation phrase for this call.
@@ -36,10 +37,12 @@ public struct ToolContext: Sendable {
 
     public init(
         surface: ToolSurface,
+        runID: UUID = UUID(),
         threadID: String? = nil,
         redConfirmed: Bool = false,
         approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)? = nil
     ) {
+        self.runID = runID
         self.surface = surface
         self.threadID = threadID
         self.redConfirmed = redConfirmed
@@ -48,6 +51,7 @@ public struct ToolContext: Sendable {
 }
 
 public enum ToolHostError: Error, Sendable, Equatable, LocalizedError {
+    case cancelled
     case unknownTool(String)
     case surfaceDenied(name: String, surface: ToolSurface)
     case schemaViolation(name: String, detail: String)
@@ -56,6 +60,7 @@ public enum ToolHostError: Error, Sendable, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
+        case .cancelled: return "The task was stopped before this action ran."
         case .unknownTool(let name): return "unknown tool: \(name)"
         case .surfaceDenied(let name, let surface): return "\(name) is not allowed on \(surface.rawValue)"
         case .schemaViolation(let name, let detail): return "\(name): invalid arguments — \(detail)"
@@ -102,6 +107,7 @@ public final class PerryToolHost: Sendable {
         func fail(_ error: ToolHostError) -> ToolResult {
             .text(call.id, error.localizedDescription, isError: true)
         }
+        guard !Task.isCancelled else { return fail(.cancelled) }
         guard let executor = executors[call.name], let spec = specsByName[call.name] else {
             return fail(.unknownTool(call.name))
         }
@@ -140,6 +146,7 @@ public final class PerryToolHost: Sendable {
                     : .confirmationRequired(name: call.name, tier: spec.tier))
             }
         }
+        guard !Task.isCancelled else { return fail(.cancelled) }
         do {
             return try await executor.run(call, context: context)
         } catch {

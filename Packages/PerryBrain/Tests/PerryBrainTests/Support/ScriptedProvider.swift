@@ -5,13 +5,18 @@ import Foundation
 final class ScriptedProvider: ModelProvider, @unchecked Sendable {
     let id: ProviderID = "scripted"
     let displayName = "Scripted"
-    let capabilities: ModelCapabilities = [.tools, .streaming]
+    let capabilities: ModelCapabilities
+    let capacity: Int?
 
     private let lock = NSLock()
     private var queue: [[ModelEvent]]
     private(set) var requests: [ModelRequest] = []
 
-    init(responses: [[ModelEvent]]) { self.queue = responses }
+    init(responses: [[ModelEvent]], capabilities: ModelCapabilities = [.tools, .streaming], capacity: Int? = nil) {
+        self.queue = responses
+        self.capabilities = capabilities
+        self.capacity = capacity
+    }
 
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         let events = lock.withLock { () -> [ModelEvent] in
@@ -25,6 +30,7 @@ final class ScriptedProvider: ModelProvider, @unchecked Sendable {
     }
 
     func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { capacity }
 }
 
 /// Executor that counts invocations and returns a canned result.

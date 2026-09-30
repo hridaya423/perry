@@ -7,6 +7,20 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         OpenAIResponsesProvider(apiKeyProvider: { "sk-test" }, transport: transport)
     }
 
+    func testTruncatedStreamDoesNotInventCompletion() async throws {
+        let body = #"data: {"type":"response.output_text.delta","delta":"Partial"}"# + "\n\n"
+        let transport = FixtureLineStreaming(body: body)
+        var received: [ModelEvent] = []
+        do {
+            for try await event in provider(transport).stream(sampleRequest()) { received.append(event) }
+            XCTFail("A truncated stream must fail")
+        } catch let error as ModelProviderError {
+            XCTAssertEqual(error.kind, .malformed)
+        }
+        XCTAssertEqual(text(received), "Partial")
+        XCTAssertNil(stopReason(received))
+    }
+
     func testRequestBodyShape() async throws {
         let transport = try FixtureLineStreaming(fixture: "openai-text")
         let events = try await drain(provider(transport).stream(ModelRequest(

@@ -3,6 +3,18 @@ import Foundation
 import XCTest
 
 final class OpenAIChatCompatibleProviderTests: XCTestCase {
+    func testVersionedCustomBaseURLsDoNotRepeatTheVersionPath() async throws {
+        for base in ["https://models.example.invalid", "https://models.example.invalid/v1", "https://models.example.invalid/v1/"] {
+            let transport = try FixtureLineStreaming(fixture: "chat-text")
+            let provider = OpenAIChatCompatibleProvider(
+                id: "custom", displayName: "Custom", baseURL: URL(string: base)!,
+                models: BrainModelDefaults(fast: "test-model", deep: "test-model"), transport: transport
+            )
+            _ = try await drain(provider.stream(sampleRequest()))
+            XCTAssertEqual(transport.requests.first?.url?.absoluteString, "https://models.example.invalid/v1/chat/completions")
+        }
+    }
+
     private func provider(_ transport: FixtureLineStreaming) -> OpenAIChatCompatibleProvider {
         OpenAIChatCompatibleProvider(
             id: .openRouter,
@@ -15,6 +27,38 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
         )
     }
 
+    func testTruncatedStreamDoesNotInventCompletion() async throws {
+        let body = #"data: {"choices":[{"delta":{"content":"Partial"},"finish_reason":null}]}"# + "\n\n"
+        let transport = FixtureLineStreaming(body: body)
+        var received: [ModelEvent] = []
+        do {
+            for try await event in provider(transport).stream(sampleRequest()) { received.append(event) }
+            XCTFail("A truncated stream must fail")
+        } catch let error as ModelProviderError {
+            XCTAssertEqual(error.kind, .malformed)
+        }
+        XCTAssertEqual(text(received), "Partial")
+        XCTAssertNil(stopReason(received))
+    }
+
+    func testContextCapacityIsReadThroughTheSelectedProvider() async throws {
+        let provider: any ModelProvider = OpenAIChatCompatibleProvider(
+            id: "local.test", displayName: "Local", baseURL: URL(string: "http://127.0.0.1:11434")!,
+            models: BrainModelDefaults(fast: "model:7b", deep: "model:7b"),
+            contextWindow: { tier in tier == .fast ? 4096 : 8192 }
+        )
+        let fast = try await provider.contextWindow(for: .fast)
+        let deep = try await provider.contextWindow(for: .deep)
+        XCTAssertEqual(fast, 4096)
+        XCTAssertEqual(deep, 8192)
+        let unknown: any ModelProvider = OpenAIChatCompatibleProvider(
+            id: "custom", displayName: "Custom", baseURL: URL(string: "https://models.example.invalid")!,
+            models: BrainModelDefaults(fast: "model", deep: "model")
+        )
+        let capacity = try await unknown.contextWindow(for: .fast)
+        XCTAssertNil(capacity)
+    }
+
     func testRequestBodyShape() async throws {
         let transport = try FixtureLineStreaming(fixture: "chat-text")
         _ = try await drain(provider(transport).stream(ModelRequest(
@@ -25,7 +69,8 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
                 .toolResult(callID: "c1", content: [.text("sunny")], isError: false),
             ],
             tools: [sampleTool],
-            tier: .fast
+            tier: .fast,
+            maxOutputTokens: 64
         )))
         let request = try XCTUnwrap(transport.requests.first)
         XCTAssertEqual(request.url?.path, "/api/v1/chat/completions")
@@ -33,6 +78,7 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
         let body = try XCTUnwrap(JSONValue(parsing: request.httpBody ?? Data()))
         XCTAssertEqual(body["model"], .string("openai/gpt-5-mini"))
         XCTAssertEqual(body["stream_options"]?["include_usage"], .bool(true))
+        XCTAssertEqual(body["max_tokens"], .number(64))
         let messages = try XCTUnwrap(body["messages"]?.arrayValue)
         XCTAssertEqual(messages[0]["role"], .string("system"))
         XCTAssertEqual(messages[1]["role"], .string("user"))

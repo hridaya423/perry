@@ -8,13 +8,14 @@ public struct LocalModel: Equatable, Sendable {
     public let server: Server
     public let baseURL: URL
     public let name: String
-    public let supportsVision: Bool
+    public let revision: String?
+    public var id: ProviderID { ProviderID(rawValue: "local.\(server.rawValue).\(name)") }
 
-    public init(server: Server, baseURL: URL, name: String, supportsVision: Bool) {
+    public init(server: Server, baseURL: URL, name: String, revision: String? = nil) {
         self.server = server
         self.baseURL = baseURL
         self.name = name
-        self.supportsVision = supportsVision
+        self.revision = revision
     }
 }
 
@@ -41,6 +42,37 @@ public struct LocalServerDiscovery: Sendable {
         return await ollama + lmStudio
     }
 
+    public func loadedContextWindow(for model: LocalModel) async throws -> Int? {
+        let path = model.server == .ollama ? "api/ps" : "api/v1/models"
+        var request = URLRequest(url: model.baseURL.appendingPathComponent(path))
+        request.timeoutInterval = timeout
+        let (data, response) = try await fetch(request)
+        guard (200..<300).contains(response.statusCode) else { throw URLError(.badServerResponse) }
+        let payload = try JSONDecoder().decode(JSONValue.self, from: data)
+        guard let models = payload["models"]?.arrayValue else { throw URLError(.cannotParseResponse) }
+        var capacities: [Int] = []
+        for entry in models {
+            switch model.server {
+            case .ollama:
+                guard entry["name"]?.stringValue == model.name || entry["model"]?.stringValue == model.name else { continue }
+                if let capacity = Self.contextLength(entry["context_length"]) { capacities.append(capacity) }
+            case .lmStudio:
+                guard entry["type"]?.stringValue == "llm" else { continue }
+                for instance in entry["loaded_instances"]?.arrayValue ?? [] {
+                    guard entry["key"]?.stringValue == model.name || instance["id"]?.stringValue == model.name else { continue }
+                    if let capacity = Self.contextLength(instance["config"]?["context_length"]) { capacities.append(capacity) }
+                }
+            }
+        }
+        return capacities.min()
+    }
+
+    private static func contextLength(_ value: JSONValue?) -> Int? {
+        guard let count = value?.doubleValue, count.isFinite, count > 0,
+              count.rounded(.down) == count, count < Double(Int.max) else { return nil }
+        return Int(count)
+    }
+
     func probeOllama(baseURL: URL = URL(string: "http://127.0.0.1:11434")!) async -> [LocalModel] {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/tags"))
         request.timeoutInterval = timeout
@@ -50,10 +82,7 @@ public struct LocalServerDiscovery: Sendable {
               let models = payload["models"] as? [[String: Any]] else { return [] }
         return models.compactMap { model in
             guard let name = model["name"] as? String else { return nil }
-            let families = (model["details"] as? [String: Any])?["families"] as? [String] ?? []
-            let vision = families.contains(where: { ["clip", "mllama"].contains($0) })
-                || name.lowercased().range(of: "llava|vision|vl|gemma3|qwen2\\.5vl|qwen3-vl|llama3\\.2-vision|minicpm-v", options: .regularExpression) != nil
-            return LocalModel(server: .ollama, baseURL: baseURL, name: name, supportsVision: vision)
+            return LocalModel(server: .ollama, baseURL: baseURL, name: name, revision: model["digest"] as? String)
         }
     }
 
@@ -66,8 +95,7 @@ public struct LocalServerDiscovery: Sendable {
               let models = payload["data"] as? [[String: Any]] else { return [] }
         return models.compactMap { model in
             guard let name = model["id"] as? String else { return nil }
-            let vision = name.lowercased().range(of: "llava|vision|vl|gemma3|qwen2\\.5vl|qwen3-vl|llama3\\.2-vision|minicpm-v", options: .regularExpression) != nil
-            return LocalModel(server: .lmStudio, baseURL: baseURL, name: name, supportsVision: vision)
+            return LocalModel(server: .lmStudio, baseURL: baseURL, name: name)
         }
     }
 }

@@ -120,7 +120,7 @@ public struct PerryGlassCursorView: View {
         silhouette
             .fill(.ultraThinMaterial)
         silhouette
-            .stroke(PerryOverlayTheme.Colors.ink.opacity(0.85), lineWidth: size * 0.028)
+            .stroke(accent.opacity(0.85), lineWidth: size * 0.028)
         if variant == .faceted {
             FacetLinesShape()
                 .stroke(Color.white.opacity(0.55), lineWidth: size * 0.014)

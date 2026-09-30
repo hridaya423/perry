@@ -20,10 +20,23 @@ public struct URLSessionLineStreaming: HTTPLineStreaming {
         let stream = AsyncThrowingStream<String, Error> { continuation in
             let task = Task {
                 do {
-                    for try await line in bytes.lines {
+                    var line = Data()
+                    var previousWasCR = false
+                    for try await byte in bytes {
                         try Task.checkCancellation()
-                        continuation.yield(line)
+                        if byte == 10, previousWasCR {
+                            previousWasCR = false
+                            continue
+                        }
+                        previousWasCR = byte == 13
+                        if byte == 10 || byte == 13 {
+                            continuation.yield(String(decoding: line, as: UTF8.self))
+                            line.removeAll(keepingCapacity: true)
+                        } else {
+                            line.append(byte)
+                        }
                     }
+                    if !line.isEmpty { continuation.yield(String(decoding: line, as: UTF8.self)) }
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish(throwing: CancellationError())
@@ -124,8 +137,14 @@ enum BrainHTTP {
     }
 
     static func error(for response: HTTPURLResponse, body: Data, provider: ProviderID) -> ModelProviderError {
-        let message = String(decoding: body, as: UTF8.self)
+        var message = String(decoding: body, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        for _ in 0..<3 {
+            guard let payload = try? JSONValue(parsing: Data(message.utf8)),
+                  let detail = payload["error"]?["message"]?.stringValue ?? payload["error"]?.stringValue,
+                  !detail.isEmpty, detail != message else { break }
+            message = detail
+        }
         let detail = message.isEmpty ? "HTTP \(response.statusCode)" : "HTTP \(response.statusCode): \(message)"
         switch response.statusCode {
         case 401, 403:
@@ -151,7 +170,8 @@ enum BrainHTTP {
 
     static func post(_ baseURL: URL, path: String, provider: ProviderID) throws -> URLRequest {
         try NetworkEndpointPolicy.requireSafe(baseURL)
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        let suffix = baseURL.lastPathComponent == "v1" && path.hasPrefix("v1/") ? String(path.dropFirst(3)) : path
+        var request = URLRequest(url: baseURL.appendingPathComponent(suffix))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")

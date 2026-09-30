@@ -9,6 +9,7 @@
 # Every received message is logged as JSONL to FAKE_LOG (if set).
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -66,6 +67,12 @@ def handle_request(message):
     log(message)
 
     if method == "initialize":
+        if SCENARIO == "delayed-initialize":
+            time.sleep(0.3)
+        if SCENARIO == "blocked-initialize":
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            log({"blocked_pid": os.getpid()})
+            time.sleep(60)
         respond(request_id, {"userAgent": "fake-codex/0.0.0"})
         return
 
@@ -90,6 +97,10 @@ def handle_request(message):
                 time.sleep(0.2)
                 notify("account/login/completed", {"success": True, "loginId": "login-1"})
             threading.Thread(target=complete, daemon=True).start()
+        return
+
+    if method == "account/login/cancel":
+        respond(request_id, {"status": "canceled"})
         return
 
     if method == "account/logout":
@@ -142,7 +153,12 @@ def handle_request(message):
         state["turnId"] = "turn_1"
         respond(request_id, {"turn": {"id": "turn_1", "status": "inProgress", "items": []}})
         scenario = effective_scenario()
-        if scenario == "b":
+        if scenario in ("missing-status", "unknown-status"):
+            turn = {"id": "turn_1", "items": []}
+            if scenario == "unknown-status":
+                turn["status"] = "unexpected"
+            notify("turn/completed", {"threadId": "thr_1", "turn": turn})
+        elif scenario == "b":
             for delta in ["Hello", " from", " fake-codex"]:
                 notify("item/agentMessage/delta", {
                     "threadId": "thr_1", "turnId": "turn_1", "itemId": "it_1", "delta": delta,
@@ -165,7 +181,7 @@ def handle_request(message):
                 "id": 9001, "method": "item/tool/call",
                 "params": {
                     "threadId": "thr_1", "turnId": "turn_1", "callId": "call_1",
-                    "tool": "get_weather", "arguments": {"city": "Paris"},
+                    "tool": state["dynamicTools"][0]["name"], "arguments": {"city": "Paris"},
                 },
             })
         elif scenario == "d":

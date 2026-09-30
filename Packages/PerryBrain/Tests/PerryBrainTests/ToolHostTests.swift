@@ -29,6 +29,38 @@ final class ToolHostTests: XCTestCase {
         XCTAssertTrue(result.isError)
     }
 
+    func testCancellationDuringApprovalPreventsExecution() async {
+        let (host, executors) = host([("files.delete", .orange, [.agent])])
+        let request = call("files.delete")
+        let task = Task {
+            await host.handle(request, context: ToolContext(
+                surface: .agent,
+                approve: { _, _ in
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    return .approvedOnce
+                }
+            ))
+        }
+        let result = await task.value
+        XCTAssertTrue(result.isError)
+        XCTAssertEqual(executors[0].callCount, 0)
+    }
+
+    func testSuggestionsCannotUseScreenOrWriteToolsEvenIfRegistered() async {
+        let (host, executors) = host([
+            ("integrations.read", .green, [.agent, .suggestions]),
+            ("integrations.write", .orange, [.agent, .suggestions]),
+            ("screen.observe", .green, [.agent, .suggestions]),
+            ("ui.click", .yellow, [.agent, .suggestions])
+        ])
+        XCTAssertEqual(host.specs(for: .suggestions).map(\.name), ["integrations.read"])
+        for name in ["integrations.write", "screen.observe", "ui.click"] {
+            let result = await host.handle(call(name), context: ToolContext(surface: .suggestions))
+            XCTAssertTrue(result.isError)
+        }
+        XCTAssertTrue(executors.allSatisfy { $0.callCount == 0 })
+    }
+
     func testUnknownKeyRejected() async {
         let executor = RecordingExecutor(spec: echoSpec)
         let host = PerryToolHost(executors: [executor])

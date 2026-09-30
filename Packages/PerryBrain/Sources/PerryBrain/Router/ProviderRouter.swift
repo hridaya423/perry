@@ -3,10 +3,12 @@ import Foundation
 public struct RouteRequirement: Sendable {
     public var capabilities: ModelCapabilities
     public var tier: ModelTier
+    public var providerID: ProviderID?
 
-    public init(capabilities: ModelCapabilities = [], tier: ModelTier = .fast) {
+    public init(capabilities: ModelCapabilities = [], tier: ModelTier = .fast, providerID: ProviderID? = nil) {
         self.capabilities = capabilities
         self.tier = tier
+        self.providerID = providerID
     }
 }
 
@@ -36,7 +38,7 @@ public actor ProviderRouter {
 
     public func route(_ requirement: RouteRequirement) throws -> RouteDecision {
         let now = clock()
-        let order = Self.order(preference: preference, tier: requirement.tier)
+        let order = requirement.providerID.map { [$0] } ?? Self.order(preference: preference, tier: requirement.tier)
         var skipped: [String] = []
         var chosen: (any ModelProvider)?
         for entry in order {
@@ -56,7 +58,10 @@ public actor ProviderRouter {
             if chosen != nil { break }
         }
         guard let provider = chosen else {
-            throw ModelProviderError(kind: .notConfigured, provider: "router", message: "no configured provider satisfies \(requirement.tier.rawValue) + \(requirement.capabilities.rawValue)")
+            let message = requirement.capabilities.contains(.local)
+                ? "No on-device model supports this request. Set up a compatible model in Settings, then try again. No remote model was used."
+                : "The selected model is unavailable or cannot handle this request. Check its connection and capabilities in Settings."
+            throw ModelProviderError(kind: .notConfigured, provider: "router", message: message)
         }
         let explanation: String
         if skipped.isEmpty {

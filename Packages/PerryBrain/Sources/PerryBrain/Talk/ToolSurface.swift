@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 public enum ToolSurface: String, Sendable, Hashable {
-    case talk, guide, agent
+    case talk, guide, agent, suggestions
 }
 
 public enum ToolGate {
@@ -19,6 +19,7 @@ public enum ToolGate {
     public static func allows(_ name: String, on surface: ToolSurface) -> Bool {
         switch surface {
         case .agent: return true
+        case .suggestions: return name == "integrations.list" || name == "integrations.read"
         case .talk, .guide: return observeTools.contains(name) || drawTools.contains(name)
         }
     }

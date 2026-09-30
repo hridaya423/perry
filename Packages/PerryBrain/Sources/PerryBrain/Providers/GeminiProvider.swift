@@ -92,7 +92,10 @@ public struct GeminiProvider: ModelProvider {
         if let event = parser.finish() {
             try handleEvent(event)
         }
-        continuation.yield(.done(stopReason ?? (toolCallCount > 0 ? .toolUse : .endTurn)))
+        guard let stopReason else {
+            throw ModelProviderError(kind: .malformed, provider: id, message: "The response ended before the model confirmed completion.")
+        }
+        continuation.yield(.done(stopReason))
     }
 
     func makeRequest(_ request: ModelRequest) throws -> URLRequest {
@@ -109,8 +112,22 @@ public struct GeminiProvider: ModelProvider {
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.timeoutInterval = 120
 
+        var contents: [JSONValue] = []
+        for message in ModelMessage.separatingToolImages(in: request.messages) {
+            let content = Self.content(for: message)
+            if var previous = contents.last?.objectValue,
+               previous["role"] == content["role"],
+               let previousParts = previous["parts"]?.arrayValue,
+               let parts = content["parts"]?.arrayValue {
+                previous["parts"] = .array(previousParts + parts)
+                contents[contents.count - 1] = .object(previous)
+            } else {
+                contents.append(content)
+            }
+        }
+
         var body: [String: JSONValue] = [
-            "contents": .array(request.messages.map { Self.content(for: $0) }),
+            "contents": .array(contents),
             "generationConfig": .object(["maxOutputTokens": .number(Double(request.maxOutputTokens))]),
         ]
         if !request.system.isEmpty {

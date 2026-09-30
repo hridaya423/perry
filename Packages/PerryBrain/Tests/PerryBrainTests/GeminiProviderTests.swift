@@ -7,6 +7,20 @@ final class GeminiProviderTests: XCTestCase {
         GeminiProvider(apiKeyProvider: { "gm-test" }, transport: transport)
     }
 
+    func testTruncatedStreamDoesNotInventCompletion() async throws {
+        let body = #"data: {"candidates":[{"content":{"parts":[{"text":"Partial"}]}}]}"# + "\n\n"
+        let transport = FixtureLineStreaming(body: body)
+        var received: [ModelEvent] = []
+        do {
+            for try await event in provider(transport).stream(sampleRequest()) { received.append(event) }
+            XCTFail("A truncated stream must fail")
+        } catch let error as ModelProviderError {
+            XCTAssertEqual(error.kind, .malformed)
+        }
+        XCTAssertEqual(text(received), "Partial")
+        XCTAssertNil(stopReason(received))
+    }
+
     func testRequestBodyShape() async throws {
         let transport = try FixtureLineStreaming(fixture: "gemini-text")
         _ = try await drain(provider(transport).stream(ModelRequest(

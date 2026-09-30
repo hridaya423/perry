@@ -122,7 +122,7 @@ public struct OpenAIResponsesProvider: ModelProvider {
             try handleEvent(event)
         }
         if !finished {
-            continuation.yield(.done(.endTurn))
+            throw ModelProviderError(kind: .malformed, provider: id, message: "The response ended before the model confirmed completion.")
         }
     }
 
@@ -161,23 +161,27 @@ public struct OpenAIResponsesProvider: ModelProvider {
         return urlRequest
     }
 
+    private static func inputContent(_ parts: [ModelContentPart]) -> [JSONValue] {
+        parts.map { part in
+            switch part {
+            case .text(let text):
+                return .object(["type": .string("input_text"), "text": .string(text)])
+            case .image(let data, let mimeType):
+                return .object([
+                    "type": .string("input_image"),
+                    "image_url": .string("data:\(mimeType);base64,\(data.base64EncodedString())")
+                ])
+            }
+        }
+    }
+
     static func inputItems(for message: ModelMessage, provider: ProviderID) -> [JSONValue] {
         switch message {
         case .user(let parts):
             return [.object([
                 "type": .string("message"),
                 "role": .string("user"),
-                "content": .array(parts.compactMap { part in
-                    switch part {
-                    case .text(let text):
-                        return .object(["type": .string("input_text"), "text": .string(text)])
-                    case .image(let data, let mimeType):
-                        return .object([
-                            "type": .string("input_image"),
-                            "image_url": .string("data:\(mimeType);base64,\(data.base64EncodedString())"),
-                        ])
-                    }
-                }),
+                "content": .array(inputContent(parts)),
             ])]
         case .assistant(let text, let toolCalls):
             var items: [JSONValue] = []
@@ -205,7 +209,8 @@ public struct OpenAIResponsesProvider: ModelProvider {
             return [.object([
                 "type": .string("function_call_output"),
                 "call_id": .string(callID),
-                "output": .string(text),
+                "output": content.contains { if case .image = $0 { return true }; return false }
+                    ? .array(inputContent(content)) : .string(text),
             ])]
         }
     }

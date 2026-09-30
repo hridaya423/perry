@@ -216,7 +216,7 @@ final class ToolExecutorCoreTests: XCTestCase {
         let host = integrationHost()
         let result = await host.handle(call("integrations.list"), context: ToolContext(surface: .agent))
         let json = try parse(result)
-        XCTAssertEqual(json["services"]?.arrayValue?.first?["id"]?.stringValue, "notion")
+        XCTAssertEqual(json["services"]?.arrayValue?.compactMap { $0["id"]?.stringValue }, ["notion"])
     }
 
     func testIntegrationReadRunsReadOp() async throws {
@@ -418,7 +418,7 @@ private final class FakeIntegrations: IntegrationBackend {
                 ),
                 IntegrationOperation(name: "create_page", description: "Create a page", isWrite: true),
             ]
-        )]
+        ), IntegrationService(id: "slack", name: "Slack", connected: false, writeEnabled: false, operations: [])]
     }
 
     func perform(service: String, operation: String, arguments: JSONValue) async throws -> JSONValue {

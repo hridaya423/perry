@@ -107,10 +107,10 @@ public enum IntegrationToolExecutors {
             name: "integrations.list",
             description: "List connected services and their operations.",
             inputSchema: .object(["type": .string("object"), "properties": .object([:])]),
-            surfaces: [.agent], readOnly: true
+            surfaces: [.agent, .suggestions], readOnly: true
         )
         func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-            let services = try await backend.services()
+            let services = try await backend.services().filter(\.connected)
             let value: JSONValue = .object(["services": .array(services.map { service in
                 .object([
                     "id": .string(service.id),
@@ -136,7 +136,7 @@ public enum IntegrationToolExecutors {
             name: "integrations.read",
             description: "Run a read-only operation on a connected service.",
             inputSchema: IntegrationToolExecutors.callSchema,
-            surfaces: [.agent], readOnly: true
+            surfaces: [.agent, .suggestions], readOnly: true
         )
         func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
             let (service, operation, arguments) = try await IntegrationToolExecutors.resolve(

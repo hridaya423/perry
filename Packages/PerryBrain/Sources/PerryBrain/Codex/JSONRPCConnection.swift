@@ -62,6 +62,7 @@ public actor JSONRPCConnection {
 
     public var events: AsyncStream<JSONRPCEvent> {
         AsyncStream { continuation in
+            guard !isClosed else { continuation.finish(); return }
             let key = UUID()
             eventContinuations[key] = continuation
             continuation.onTermination = { [weak self] _ in

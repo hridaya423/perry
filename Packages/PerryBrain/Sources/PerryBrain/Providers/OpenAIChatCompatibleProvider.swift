@@ -10,6 +10,7 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
     private let apiKeyProvider: @Sendable () -> String?
     private let models: BrainModelDefaults
     private let transport: any HTTPLineStreaming
+    private let readContextWindow: @Sendable (ModelTier) async throws -> Int?
 
     public init(
         id: ProviderID,
@@ -18,7 +19,8 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         apiKeyProvider: @escaping @Sendable () -> String? = { nil },
         models: BrainModelDefaults,
         capabilities: ModelCapabilities = [.tools, .streaming],
-        transport: any HTTPLineStreaming = URLSessionLineStreaming()
+        transport: any HTTPLineStreaming = URLSessionLineStreaming(),
+        contextWindow: @escaping @Sendable (ModelTier) async throws -> Int? = { _ in nil }
     ) {
         self.id = id
         self.displayName = displayName
@@ -32,9 +34,14 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         }
         self.capabilities = resolved
         self.transport = transport
+        self.readContextWindow = contextWindow
     }
 
     public func warm() async {}
+
+    public func contextWindow(for tier: ModelTier) async throws -> Int? {
+        try await readContextWindow(tier)
+    }
 
     public func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         let provider = self
@@ -49,7 +56,6 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         var parser = SSEParser()
         var toolBuffers: [Int: (id: String, name: String, arguments: String)] = [:]
         var stopReason: ModelStopReason?
-        var sawToolCalls = false
 
         func flushToolCalls() throws {
             for index in toolBuffers.keys.sorted() {
@@ -59,7 +65,6 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
                     throw ModelProviderError(kind: .malformed, provider: id, message: "tool call arguments were not valid JSON")
                 }
                 continuation.yield(.toolCall(ToolCall(id: buffered.id, name: buffered.name, arguments: arguments)))
-                sawToolCalls = true
             }
             toolBuffers = [:]
         }
@@ -115,8 +120,11 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         if let event = parser.finish() {
             try handleEvent(event)
         }
+        guard let stopReason else {
+            throw ModelProviderError(kind: .malformed, provider: id, message: "The response ended before the model confirmed completion.")
+        }
         try flushToolCalls()
-        continuation.yield(.done(stopReason ?? (sawToolCalls ? .toolUse : .endTurn)))
+        continuation.yield(.done(stopReason))
     }
 
     func makeRequest(_ request: ModelRequest) throws -> URLRequest {
@@ -129,7 +137,7 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         if !request.system.isEmpty {
             messages.append(.object(["role": .string("system"), "content": .string(request.system)]))
         }
-        for message in request.messages {
+        for message in ModelMessage.separatingToolImages(in: request.messages) {
             messages.append(contentsOf: Self.chatMessages(for: message))
         }
 
@@ -138,6 +146,7 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
             "stream": .bool(true),
             "messages": .array(messages),
             "stream_options": .object(["include_usage": .bool(true)]),
+            "max_tokens": .number(Double(request.maxOutputTokens)),
         ]
         if !request.tools.isEmpty {
             body["tools"] = .array(request.tools.map { tool in

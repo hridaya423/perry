@@ -5,6 +5,8 @@ public struct SuggestionCard: Sendable, Equatable, Identifiable, Codable {
     public var title: String
     public var body: String
     public var sourcePerryID: UUID?
+    public var sourceServiceID: String?
+    public var sourceServiceName: String?
     public var score: Double
 
     public init(id: UUID = UUID(), title: String, body: String,

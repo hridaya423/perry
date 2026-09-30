@@ -99,11 +99,13 @@ public final class MCPServer: Sendable {
                 let toolResult = try await bridge.call(
                     name: name, arguments: params?["arguments"] ?? .object([:])
                 )
-                let content: [JSONValue] = toolResult.content.compactMap { part in
-                    if case .text(let text) = part {
-                        return .object(["type": .string("text"), "text": .string(text)])
+                let content: [JSONValue] = toolResult.content.map { part in
+                    switch part {
+                    case .text(let text):
+                        .object(["type": .string("text"), "text": .string(text)])
+                    case .image(let data, let mimeType):
+                        .object(["type": .string("image"), "data": .string(data.base64EncodedString()), "mimeType": .string(mimeType)])
                     }
-                    return nil // MCP text content only; images are not bridged
                 }
                 response = ok(.object([
                     "content": .array(content),

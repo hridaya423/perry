@@ -31,6 +31,9 @@ public struct CodexAppServerConfiguration: Sendable {
         "--disable", "shell_tool",
         "--disable", "unified_exec",
         "--disable", "image_generation",
+        "--disable", "view_image",
+        "--disable", "code_mode_host",
+        "--disable", "code_mode_only",
         "--disable", "browser_use",
         "--disable", "browser_use_external",
         "--disable", "computer_use",
@@ -45,7 +48,9 @@ public struct CodexAppServerConfiguration: Sendable {
         "--disable", "workspace_dependencies",
         "--disable", "tool_suggest",
         "-c", "tools.web_search=false",
-        "-c", "tools.view_image=false",
+        "-c", "features.code_mode={enabled=false,direct_only_tool_namespaces=[\"functions\"]}",
+        "-c", "skills.include_instructions=false",
+        "-c", "skills.bundled.enabled=false",
     ]
 }
 
@@ -60,6 +65,9 @@ public actor CodexAppServerProcess {
     private var process: Process?
     private var connection: JSONRPCConnection?
     private var restarts: [Date] = []
+    private var startupTask: Task<Void, Never>?
+    private var connectionWaiters: [UUID: CheckedContinuation<JSONRPCConnection, Error>] = [:]
+    private var terminationTask: Task<Void, Never>?
     private let clock: @Sendable () -> Date
     private let sleeps: @Sendable (UInt64) async throws -> Void
 
@@ -80,7 +88,38 @@ public actor CodexAppServerProcess {
     }
 
     public func connection() async throws -> JSONRPCConnection {
+        guard terminationTask == nil else { throw CancellationError() }
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                connectionWaiters[id] = continuation
+                guard startupTask == nil else { return }
+                startupTask = Task {
+                    let result: Result<JSONRPCConnection, Error>
+                    do { result = .success(try await self.readyConnection()) }
+                    catch { result = .failure(error) }
+                    self.startupTask = nil
+                    let waiters = self.connectionWaiters.values
+                    self.connectionWaiters.removeAll()
+                    for waiter in waiters { waiter.resume(with: result) }
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelConnectionWaiter(id) }
+        }
+    }
+
+    private func cancelConnectionWaiter(_ id: UUID) {
+        connectionWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
+    }
+
+    private func readyConnection() async throws -> JSONRPCConnection {
         if let connection, let process, process.isRunning, await !connection.closed {
+            try Task.checkCancellation()
             return connection
         }
         return try await spawn()
@@ -88,7 +127,8 @@ public actor CodexAppServerProcess {
 
     private func spawn() async throws -> JSONRPCConnection {
         try await enforceRestartBudget()
-        terminateCurrent()
+        await terminateCurrent()
+        try Task.checkCancellation()
 
         try FileManager.default.createDirectory(at: configuration.codexHome, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: configuration.workingDirectory, withIntermediateDirectories: true)
@@ -117,7 +157,15 @@ public actor CodexAppServerProcess {
             readHandle: stdoutPipe.fileHandleForReading,
             writeHandle: stdinPipe.fileHandleForWriting
         )
+        self.process = process
+        self.connection = connection
         await connection.start()
+        let deadline = Task {
+            do { try await Task.sleep(for: .seconds(10)) }
+            catch { return }
+            await connection.close()
+        }
+        defer { deadline.cancel() }
         do {
             _ = try await connection.request("initialize", params: .object([
                 "clientInfo": .object([
@@ -128,26 +176,43 @@ public actor CodexAppServerProcess {
             ]))
             try await connection.notify("initialized")
         } catch {
-            process.terminate()
+            await terminateCurrent()
             throw error
         }
-        self.process = process
-        self.connection = connection
+        try Task.checkCancellation()
         return connection
     }
 
-    public func terminate() {
-        terminateCurrent()
+    public func terminate() async {
+        if let terminationTask { return await terminationTask.value }
+        startupTask?.cancel()
+        let task = Task {
+            await self.terminateCurrent()
+            await self.startupTask?.value
+        }
+        terminationTask = task
+        await task.value
     }
 
-    private func terminateCurrent() {
+    private func terminateCurrent() async {
+        let process = self.process
+        let connection = self.connection
+        self.process = nil
+        self.connection = nil
+        if let connection { await connection.close() }
         if let process {
-            if process.isRunning { process.terminate() }
-            self.process = nil
-        }
-        if let connection {
-            Task { await connection.close() }
-            self.connection = nil
+            await Task.detached {
+                if process.isRunning { process.terminate() }
+                let deadline = ContinuousClock.now + .seconds(1)
+                var forced = false
+                while process.isRunning {
+                    if !forced, ContinuousClock.now >= deadline {
+                        kill(process.processIdentifier, SIGKILL)
+                        forced = true
+                    }
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+            }.value
         }
     }
 

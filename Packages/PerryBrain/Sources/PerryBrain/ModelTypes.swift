@@ -53,13 +53,15 @@ public struct ToolSpec: Sendable, Equatable {
     public let surfaces: Set<ToolSurface>
     /// True when the tool cannot change anything (feeds MCP readOnlyHint).
     public let readOnly: Bool
+    public let requiredCapabilities: ModelCapabilities
     public init(
         name: String,
         description: String,
         inputSchema: JSONValue,
         tier: TrustTier = .green,
         surfaces: Set<ToolSurface> = [.talk, .guide, .agent],
-        readOnly: Bool = false
+        readOnly: Bool = false,
+        requiredCapabilities: ModelCapabilities = [.tools]
     ) {
         self.name = name
         self.description = description
@@ -67,6 +69,7 @@ public struct ToolSpec: Sendable, Equatable {
         self.tier = tier
         self.surfaces = surfaces
         self.readOnly = readOnly
+        self.requiredCapabilities = requiredCapabilities.union(.tools)
     }
 }
 
@@ -128,7 +131,7 @@ public struct ModelProviderError: Error, Equatable, LocalizedError {
         self.message = message
     }
 
-    public var errorDescription: String? { "\(provider.rawValue): \(message)" }
+    public var errorDescription: String? { message }
 }
 
 public protocol ModelProvider: Sendable {
@@ -137,4 +140,75 @@ public protocol ModelProvider: Sendable {
     var capabilities: ModelCapabilities { get }
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error>
     func warm() async
+    func contextWindow(for tier: ModelTier) async throws -> Int?
+}
+
+public typealias ToolExecutionHandler = @Sendable (ToolCall) async throws -> ToolResult
+
+public protocol ToolExecutingModelProvider: ModelProvider {
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error>
+}
+
+extension ModelProvider {
+    public func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+}
+
+enum ModelContextError: LocalizedError {
+    case invalidCapacity
+    case requestTooLarge
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidCapacity: "The selected model reported an invalid context size. Check its server settings."
+        case .requestTooLarge: "Perry’s context estimate exceeds this model’s limit. Shorten the request or choose a model with more context. Your conversation is still saved."
+        }
+    }
+}
+
+extension ModelRequest {
+    public func reservingOutput(in contextWindow: Int?) throws -> ModelRequest {
+        guard let contextWindow else { return self }
+        guard contextWindow > 0 else { throw ModelContextError.invalidCapacity }
+        var request = self
+        request.maxOutputTokens = min(maxOutputTokens, max(1, contextWindow / 4))
+        let input = try textTokenEstimate()
+        guard input <= contextWindow - request.maxOutputTokens else { throw ModelContextError.requestTooLarge }
+        return request
+    }
+
+    func remainingInputBudget(in capacity: Int?) throws -> Int? {
+        guard let capacity else { return nil }
+        let request = try reservingOutput(in: capacity)
+        let input = try request.textTokenEstimate()
+        return capacity - request.maxOutputTokens - input
+    }
+
+    private func textTokenEstimate() throws -> Int {
+        var size = system.utf8.count + 512
+        for tool in tools {
+            size += tool.name.utf8.count + tool.description.utf8.count + (try tool.inputSchema.data()).count + 64
+        }
+        for message in messages {
+            size += 32
+            let parts: [ModelContentPart]
+            switch message {
+            case .user(let content): parts = content
+            case .assistant(let text, let calls):
+                parts = [.text(text)]
+                for call in calls {
+                    size += call.id.utf8.count + call.name.utf8.count + (try call.arguments.data()).count + 32
+                }
+            case .toolResult(let id, let content, _):
+                size += id.utf8.count
+                parts = content
+            }
+            for part in parts {
+                switch part {
+                case .text(let text): size += text.utf8.count
+                case .image: break
+                }
+            }
+        }
+        return size
+    }
 }

@@ -25,6 +25,89 @@ final class AgentLoopTests: XCTestCase {
         events.compactMap { if case .finished(let f) = $0 { return f }; return nil }.last
     }
 
+    func testTextModelReceivesNoToolsAndCannotDispatchAnUnexpectedCall() async {
+        let call = ToolCall(id: "unexpected", name: "files.write", arguments: .object([:]))
+        let provider = ScriptedProvider(responses: [[.toolCall(call), .done(.toolUse)]], capabilities: [.streaming])
+        let executor = RecordingExecutor(spec: ToolSpec(name: call.name, description: "write", inputSchema: toolSchema([:])))
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "Perry", messages: [.user([.text("Hello")])], context: context))
+        XCTAssertEqual(provider.requests.first?.tools, [])
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else { return XCTFail("An unavailable tool must fail without effects") }
+    }
+
+    func testToolsWithoutVisionKeepTextToolsAndRejectScreenActions() async {
+        let read = RecordingExecutor(spec: ToolSpec(name: "files.read", description: "read", inputSchema: toolSchema([:])))
+        let screen = RecordingExecutor(spec: ToolSpec(name: "ui.click", description: "click", inputSchema: toolSchema([:]), requiredCapabilities: [.tools, .vision]))
+        let provider = ScriptedProvider(responses: [
+            [.toolCall(ToolCall(id: "read", name: read.spec.name, arguments: .object([:]))), .done(.toolUse)],
+            [.toolCall(ToolCall(id: "screen", name: screen.spec.name, arguments: .object([:]))), .done(.toolUse)]
+        ])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [read, screen]))
+        let events = await collect(loop.run(system: "Perry", messages: [], context: context))
+        XCTAssertEqual(provider.requests.first?.tools.map(\.name), [read.spec.name])
+        XCTAssertEqual(read.callCount, 1)
+        XCTAssertEqual(screen.callCount, 0)
+        guard case .failed = finishReason(events) else { return XCTFail("Screen access must remain gated") }
+    }
+
+    func testImageContextNeverReachesTextOnlyModel() async {
+        let provider = ScriptedProvider(responses: [[.textDelta("Answer"), .done(.endTurn)]], capabilities: [.streaming])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: []))
+        let events = await collect(loop.run(system: "Perry", messages: [.user([.image(data: Data([1]), mimeType: "image/png")])], context: context))
+        XCTAssertTrue(provider.requests.isEmpty)
+        guard case .failed = finishReason(events) else { return XCTFail("Images require a capable model") }
+    }
+
+    func testNativeProviderCannotBypassCapabilityGate() async {
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let loop = AgentLoop(provider: UnexpectedNativeCallProvider(), host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "Perry", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else { return XCTFail("Native calls must use the same gate") }
+    }
+
+    func testIncompleteStreamsNeverCompleteOrDispatchTools() async {
+        let call = ToolCall(id: "unfinished", name: "ui.click", arguments: .object([:]))
+        let cases: [[ModelEvent]] = [
+            [], [.textDelta("Partial answer")], [.toolCall(call)],
+            [.toolCall(call), .done(.other("incomplete"))],
+            [.done(.toolUse)], [.toolCall(call), .done(.endTurn)]
+        ]
+        for response in cases {
+            let (loop, _, _, executor) = makeLoop([response])
+            let events = await collect(loop.run(system: "Perry", messages: [], context: context))
+            guard case .failed = finishReason(events) else {
+                XCTFail("Incomplete response reported success: \(response)")
+                continue
+            }
+            XCTAssertEqual(executor.callCount, 0)
+        }
+    }
+
+    func testContextBudgetIncludesUnicodeToolsAndToolResults() async {
+        let call = ToolCall(id: "read", name: "files.read", arguments: .object([:]))
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.read", description: "Read fixture", inputSchema: toolSchema([:])))
+        executor.body = { .text($0.id, String(repeating: "🪴", count: 2000)) }
+        let provider = ScriptedProvider(responses: [
+            [.toolCall(call), .done(.toolUse)], [.textDelta("Must not dispatch"), .done(.endTurn)]
+        ], capacity: 4096)
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "Read", messages: [.user([.text("Read the fixture")])], context: context))
+        guard case .providerError = finishReason(events) else { return XCTFail("Expected context failure") }
+        XCTAssertEqual(provider.requests.count, 1)
+        XCTAssertEqual(provider.requests.first?.maxOutputTokens, 1024)
+        XCTAssertEqual(executor.callCount, 1)
+
+        let oversized = RecordingExecutor(spec: ToolSpec(name: "files.read", description: String(repeating: "x", count: 4000), inputSchema: toolSchema([:])))
+        let unused = ScriptedProvider(responses: [[.done(.endTurn)]], capacity: 4096)
+        let second = AgentLoop(provider: unused, host: PerryToolHost(executors: [oversized]))
+        let rejected = await collect(second.run(system: "Read", messages: [], context: context))
+        guard case .providerError = finishReason(rejected) else { return XCTFail("Tool schemas must count toward capacity") }
+        XCTAssertTrue(unused.requests.isEmpty)
+        XCTAssertEqual(oversized.callCount, 0)
+    }
+
     func testTextOnlyTurn() async {
         let (loop, provider, _, _) = makeLoop([[.textDelta("Hello"), .textDelta(" there"), .done(.endTurn)]])
         let events = await collect(loop.run(system: "s", messages: [], context: context))
@@ -71,28 +154,6 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertTrue(provider.requests[1].messages.contains(.user([.text("also add pricing")])))
     }
 
-    func testInterrupt() async {
-        let provider = ScriptedProvider(responses: [])
-        let host = PerryToolHost(executors: [])
-        let loop = AgentLoop(provider: provider, host: host)
-        // Provider emits a slow trickle so interrupt lands mid-stream.
-        let slow = AsyncThrowingStream<ModelEvent, Error> { continuation in
-            Task {
-                continuation.yield(.textDelta("one"))
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                continuation.finish()
-            }
-        }
-        _ = slow
-        let stream = loop.run(system: "s", messages: [], context: context)
-        let task = Task { await collect(stream) }
-        try? await Task.sleep(nanoseconds: 20_000_000)
-        await loop.interrupt()
-        let events = await task.value
-        // Empty scripted queue finishes instantly; interrupt must not hang.
-        XCTAssertEqual(finishReason(events), .completed)
-    }
-
     func testInterruptDuringToolCalls() async {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         // Provider keeps issuing the same call forever; interrupt must stop the loop.
@@ -126,6 +187,7 @@ final class AgentLoopTests: XCTestCase {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         let provider = ScriptedProvider(responses: [
             [.toolCall(call), .toolCall(call), .done(.toolUse)],
+            [.textDelta("Done"), .done(.endTurn)]
         ])
         let executor = RecordingExecutor(spec: ToolSpec(name: "ui.click", description: "c", inputSchema: toolSchema([:])))
         executor.body = { call in
@@ -151,6 +213,7 @@ final class AgentLoopTests: XCTestCase {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         let provider = ScriptedProvider(responses: [
             [.toolCall(call), .toolCall(call), .done(.toolUse)],
+            [.textDelta("Done"), .done(.endTurn)]
         ])
         let executor = RecordingExecutor(spec: ToolSpec(name: "ui.click", description: "c", inputSchema: toolSchema([:])))
         executor.body = { call in
@@ -180,6 +243,22 @@ final class AgentLoopTests: XCTestCase {
         let events = await collect(loop.run(system: "s", messages: [], context: context))
         guard case .providerError = finishReason(events) else {
             return XCTFail("expected providerError, got \(String(describing: finishReason(events)))")
+        }
+    }
+}
+
+private struct UnexpectedNativeCallProvider: ToolExecutingModelProvider {
+    let id: ProviderID = "native-test"
+    let displayName = "Native test"
+    let capabilities: ModelCapabilities = [.streaming]
+    func warm() async {}
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        AsyncThrowingStream { $0.finish() }
+    }
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
+        BrainHTTP.eventStream { continuation in
+            _ = try await executeTool(ToolCall(id: "unexpected", name: "files.write", arguments: .object([:])))
+            continuation.yield(.done(.endTurn))
         }
     }
 }
