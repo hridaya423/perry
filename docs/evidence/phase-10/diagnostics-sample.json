@@ -1,0 +1,50 @@
+{
+  "activity" : {
+    "needsChecking" : 0,
+    "outcomes" : {
+
+    },
+    "tiers" : {
+
+    },
+    "total" : 0,
+    "verified" : 0
+  },
+  "app" : {
+    "architecture" : "arm64",
+    "build" : "1",
+    "operatingSystem" : "Version 27.0 (Build 26A428)",
+    "version" : "1.0"
+  },
+  "generatedAt" : "2026-10-01T05:38:09Z",
+  "memory" : {
+    "enabled" : false,
+    "enabledCategories" : [
+      "appWorkflow",
+      "preference",
+      "pastSession"
+    ],
+    "recordCounts" : {
+
+    }
+  },
+  "permissions" : {
+    "accessibility" : false,
+    "microphone" : "notDetermined",
+    "screenRecording" : "denied"
+  },
+  "runtimes" : {
+    "bundledCodex" : true,
+    "installedClaudeCode" : true,
+    "privateLocalPlanner" : true
+  },
+  "transcripts" : {
+    "needsChecking" : 1,
+    "outcomes" : {
+      "completed" : 2,
+      "failed" : 1
+    },
+    "total" : 3,
+    "verified" : 2
+  }
+}

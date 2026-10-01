@@ -1854,12 +1854,12 @@
   {
    "id": "platform.diagnostics",
    "name": "Diagnostics capture, report, document, and error reporting",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local redacted diagnostics export",
    "limitations": [
-    "Perry tests the local diagnostics payload against seeded sensitive values. Live release-credential evidence is still missing.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: Export diagnostics menu → NSSavePanel → real redacted JSON (counts only, no transcript text) verified on disk."
    ],
    "verification": {
     "supported_environments": {
@@ -1884,6 +1884,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/DiagnosticsReporterTests.swift::func testSeededSensitiveValuesNeverEnterDiagnosticsExport()"
+    },
+    {
+     "kind": "live",
+     "reference": "~/Documents/perry-diagnostics.json exported live 2026-10-01"
     }
    ]
   },
@@ -2963,12 +2967,12 @@
   {
    "id": "do.durable-receipts",
    "name": "Durable write-ahead receipts for workspace execution",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Foreground and background workspace transforms journal through TaskCoordinator before dispatch",
    "limitations": [
     "Receipts cover workspace file transforms; GUI operations are verified at execution but do not produce filesystem receipts.",
-    "Crash-recovery coverage is simulated in tests (relaunch fixtures), not a measured live crash drill."
+    "Live: pendingTurn persisted across SIGTERM; relaunch surfaced interrupted banner and user-review resolve."
    ],
    "verification": {
     "supported_environments": {
@@ -3009,6 +3013,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/ForegroundPlanningTests.swift::func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/quit-mid-turn.md"
     }
    ]
   },
