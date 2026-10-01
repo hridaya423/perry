@@ -140,7 +140,7 @@ struct HomeView: View {
         case .routines:
             RoutinesView(model: model)
         case .files:
-            FilesPage(roots: model.deps.fileRoots)
+            FilesPage(roots: model.deps.fileRoots, perrys: model.perrys)
         case .settings:
             if let controller = model.deps.controller {
                 SettingsView(controller: controller)
@@ -288,6 +288,23 @@ private struct RoutinesView: View {
 /// URL), double-click opens, ⌥-click reveals.
 private struct FilesPage: View {
     let roots: [URL]
+    var perrys: [Perry] = []
+
+    private struct Pile {
+        let label: String
+        let root: URL
+    }
+
+    private var piles: [Pile] {
+        let all = roots.map { Pile(label: $0.lastPathComponent, root: $0) }
+            + perrys.compactMap { perry in
+                perry.folderPath.map {
+                    Pile(label: perry.name, root: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath))
+                }
+            }
+        var seen = Set<String>()
+        return all.filter { seen.insert($0.root.standardizedFileURL.path).inserted }
+    }
 
     private func files(in root: URL) -> [URL] {
         (try? FileManager.default.contentsOfDirectory(
@@ -305,10 +322,10 @@ private struct FilesPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(roots, id: \.path) { root in
-                    let files = files(in: root)
+                ForEach(piles, id: \.root.path) { pile in
+                    let files = files(in: pile.root)
                     if !files.isEmpty {
-                        Text(root.lastPathComponent)
+                        Text(pile.label)
                             .font(.headline)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 90))], spacing: 12) {
                             ForEach(files, id: \.path) { url in
@@ -317,7 +334,7 @@ private struct FilesPage: View {
                         }
                     }
                 }
-                if roots.allSatisfy({ files(in: $0).isEmpty }) {
+                if piles.allSatisfy({ files(in: $0.root).isEmpty }) {
                     Text("No files yet — files Perry makes for you show up here.")
                         .foregroundStyle(.secondary)
                 }
