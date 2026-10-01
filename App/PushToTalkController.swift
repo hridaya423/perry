@@ -29,8 +29,17 @@ final class PushToTalkController {
         | (CGEventMask(1) &<< CGEventType.tapDisabledByTimeout.rawValue)
         | (CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue)
 
+    /// Which key listener captured the last `start()` — the event tap needs
+    /// Input Monitoring access; the NSEvent fallback only sees Perry's own
+    /// events, so a missing grant silently leaves the shortcut dead.
+    enum CaptureMode {
+        case eventTap
+        case fallbackMonitors
+    }
+
     private let onPress: () -> Void
     private let onRelease: () -> Void
+    private(set) var captureMode: CaptureMode?
     private(set) var shortcut: PushToTalkShortcut
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -84,6 +93,8 @@ final class PushToTalkController {
             if let runLoopSource {
                 CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
             }
+            captureMode = .eventTap
+            PerfMark.mark("ptt.capture.eventtap")
             return
         }
         installFallbackMonitors()
@@ -106,10 +117,13 @@ final class PushToTalkController {
         if let fallbackLocalMonitor { NSEvent.removeMonitor(fallbackLocalMonitor) }
         fallbackGlobalMonitor = nil
         fallbackLocalMonitor = nil
+        captureMode = nil
         resetCaptureState()
     }
 
     private func installFallbackMonitors() {
+        captureMode = .fallbackMonitors
+        PerfMark.mark("ptt.capture.fallback")
         let events: NSEvent.EventTypeMask = [.keyDown, .keyUp]
         fallbackGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
             self?.handleFallback(event)

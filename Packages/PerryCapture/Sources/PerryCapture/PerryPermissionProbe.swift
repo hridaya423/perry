@@ -33,6 +33,19 @@ public enum PerryPermissionProbe {
         AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
     }
 
+    /// Push-to-talk's event tap needs Input Monitoring (listen-event) access;
+    /// without it the tap fails and the shortcut is dead in other apps.
+    public static func checkInputMonitoring() -> Bool {
+        CGPreflightListenEventAccess()
+    }
+
+    /// Shows the system prompt when the OS allows one; returns the current
+    /// grant state.
+    @discardableResult
+    public static func requestInputMonitoring() -> Bool {
+        CGRequestListenEventAccess()
+    }
+
     public static func checkMicrophone() -> PerryPermissionStatus {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: return .granted
@@ -52,15 +65,18 @@ public struct PerryPermissionSnapshot: Equatable, Sendable {
     public let accessibility: Bool
     public let screenRecording: PerryPermissionStatus
     public let microphone: PerryPermissionStatus
+    public let inputMonitoring: Bool
 
     public init(
         accessibility: Bool,
         screenRecording: PerryPermissionStatus,
-        microphone: PerryPermissionStatus
+        microphone: PerryPermissionStatus,
+        inputMonitoring: Bool = false
     ) {
         self.accessibility = accessibility
         self.screenRecording = screenRecording
         self.microphone = microphone
+        self.inputMonitoring = inputMonitoring
     }
 
     /// True when every permission Guide and Do modes rely on is usable.
@@ -77,7 +93,8 @@ public struct PerryPermissionSnapshot: Equatable, Sendable {
             PerryPermissionSnapshot(
                 accessibility: PerryPermissionProbe.checkAccessibility(),
                 screenRecording: PerryPermissionProbe.checkScreenRecording(),
-                microphone: PerryPermissionProbe.checkMicrophone()
+                microphone: PerryPermissionProbe.checkMicrophone(),
+                inputMonitoring: PerryPermissionProbe.checkInputMonitoring()
             )
         }.value
     }

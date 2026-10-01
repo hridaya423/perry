@@ -114,6 +114,17 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.presses, 1)
         XCTAssertEqual(state.releases, 1)
     }
+
+    func testPushToTalkStartReportsCaptureModeAndStopClearsIt() {
+        let controller = PushToTalkController(onPress: {}, onRelease: {})
+        XCTAssertNil(controller.captureMode)
+
+        controller.start()
+        XCTAssertNotNil(controller.captureMode)
+
+        controller.stop()
+        XCTAssertNil(controller.captureMode)
+    }
 }
 
 @MainActor

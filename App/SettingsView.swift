@@ -195,6 +195,14 @@ struct SettingsView: View {
                     openPrivacyPane("Privacy_Microphone")
                 }
             }
+            permissionRow(
+                name: "Input Monitoring",
+                why: "Lets Perry hear the push-to-talk key while other apps are focused.",
+                granted: permissions?.inputMonitoring
+            ) {
+                _ = PerryPermissionProbe.requestInputMonitoring()
+                openPrivacyPane("Privacy_ListenEvent")
+            }
             Text("Enabling Screen Recording may ask you to quit and reopen Perry.")
                 .settingNote()
         }

@@ -9,7 +9,8 @@ final class PermissionProbeTests: XCTestCase {
             PerryPermissionSnapshot(
                 accessibility: PerryPermissionProbe.checkAccessibility(),
                 screenRecording: PerryPermissionProbe.checkScreenRecording(),
-                microphone: PerryPermissionProbe.checkMicrophone()
+                microphone: PerryPermissionProbe.checkMicrophone(),
+                inputMonitoring: PerryPermissionProbe.checkInputMonitoring()
             )
         }.value
         XCTAssertEqual(snapshot, direct)
