@@ -13,7 +13,7 @@ enum CuaCodeIdentity: Sendable, Equatable {
 
 struct CuaDriverConfiguration: Sendable {
     let executableURL: URL
-    let capabilityManifestURL: URL
+    var capabilityManifestURL: URL
     let hostBundleID: String
 
     static let driverPathKey = "perry.cua.driver.path"
@@ -782,7 +782,16 @@ actor CuaDriverClient {
     private func resolvedConfiguration() -> CuaDriverConfiguration? {
         switch configurationSource {
         case .discover:
-            let configuration = CuaDriverConfiguration.discover()
+            var configuration = CuaDriverConfiguration.discover()
+            if var discovered = configuration,
+               let supportDirectory = AppController.supportDirectory,
+               let generated = CuaCapabilityManifest.materialize(
+                   into: supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true),
+                   hostBundleID: discovered.hostBundleID
+               ) {
+                discovered.capabilityManifestURL = generated
+                configuration = discovered
+            }
             configurationSource = .resolved(configuration)
             return configuration
         case .resolved(let configuration):

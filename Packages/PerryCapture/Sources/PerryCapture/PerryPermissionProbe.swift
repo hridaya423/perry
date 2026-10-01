@@ -19,6 +19,20 @@ public enum PerryPermissionProbe {
         CGPreflightScreenCaptureAccess() ? .granted : .denied
     }
 
+    /// Shows the system prompt when the OS allows one and registers Perry in
+    /// the Screen Recording list either way; returns the current grant state.
+    @discardableResult
+    public static func requestScreenRecording() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+
+    /// Shows the Accessibility prompt when the OS allows one; returns the
+    /// current grant state.
+    @discardableResult
+    public static func requestAccessibility() -> Bool {
+        AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
+    }
+
     public static func checkMicrophone() -> PerryPermissionStatus {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: return .granted

@@ -851,7 +851,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-    static var supportDirectory: URL? {
+    nonisolated static var supportDirectory: URL? {
         try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Perry", isDirectory: true)
     }
@@ -931,11 +931,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         )
         ensureSupportDirectory()
-        installStatusItem()
-        installHotkey()
-        voice.startInputListeners()
-        modifierHoldMonitor.start()
-        DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
+        if ProcessInfo.processInfo.environment["PERRY_BARE"] == nil {
+            installStatusItem()
+            installHotkey()
+            voice.startInputListeners()
+            modifierHoldMonitor.start()
+            DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
+        }
         homeController.start()
         perryScheduler?.start()
         suggestionController.start()
@@ -2350,7 +2352,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             self?.overlayState.taskBubbleText = line
             self?.onboardingSpeech.speak(line)
         }
+        effects.requestScreenAccess = {
+            _ = PerryPermissionProbe.requestAccessibility()
+            _ = PerryPermissionProbe.requestScreenRecording()
+        }
         effects.openScreenAccessSettings = {
+            _ = PerryPermissionProbe.requestAccessibility()
             if let url = URL(
                 string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             ) {
@@ -2358,6 +2365,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
         effects.openScreenRecordingSettings = {
+            _ = PerryPermissionProbe.requestScreenRecording()
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)
             }

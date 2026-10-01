@@ -24,8 +24,10 @@ final class OnboardingDirectorTests: XCTestCase {
 
     func testPermissionsDoNotOpenSettingsUntilRequested() async {
         var opened = 0
+        var requested = 0
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { self.denied }
+        effects.requestScreenAccess = { requested += 1 }
         effects.openScreenAccessSettings = { opened += 1 }
         let director = OnboardingDirector(effects: effects)
         director.start()
@@ -34,6 +36,7 @@ final class OnboardingDirectorTests: XCTestCase {
         director.skip()
         await director.refreshPermissions()
         XCTAssertEqual(director.beat, .screenAccess)
+        XCTAssertEqual(requested, 1)
         XCTAssertEqual(opened, 0)
         director.openAccessibilitySettings()
         XCTAssertEqual(opened, 1)

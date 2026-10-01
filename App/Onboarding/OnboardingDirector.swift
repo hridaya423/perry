@@ -15,6 +15,7 @@ final class OnboardingDirector: ObservableObject {
     struct Effects {
         var permissionProbe: () async -> PerryPermissionSnapshot = { await PerryPermissionSnapshot.probe() }
         var speak: (String) -> Void = { _ in }
+        var requestScreenAccess: () -> Void = {}
         var openScreenAccessSettings: () -> Void = {}
         var openScreenRecordingSettings: () -> Void = {}
         var beginPractice: () -> Void = {}
@@ -146,6 +147,7 @@ final class OnboardingDirector: ObservableObject {
         case .firstTalk: effects.speak(micDenied ? Self.scriptNoMicTalk : Self.scriptTalk)
         case .screenAccess:
             effects.speak(Self.scriptPermissions)
+            effects.requestScreenAccess()
             permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 Task { @MainActor in await self?.refreshPermissions() }
             }
