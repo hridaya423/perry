@@ -240,6 +240,16 @@ struct PerryBuddyView: View {
     /// so an idle Perry keeps zero timers ticking. The global monitor covers
     /// events aimed at other apps; the local monitor covers our own.
     @State private var cursorMoveMonitors: [Any] = []
+    /// Global monitors deliver nothing without Input Monitoring — they install
+    /// fine and just never fire, which used to freeze the buddy silently. A
+    /// 0.5 s watchdog compares `NSEvent.mouseLocation` (permission-free) with
+    /// the monitor event count; movement without events means starvation, and
+    /// follow switches to a permission-free poll until monitors wake.
+    @State private var cursorWatchdog: Timer?
+    @State private var cursorPollTimer: Timer?
+    @State private var lastProbePoint: CGPoint = .zero
+    @State private var monitorEventCount = 0
+    @State private var stationaryPolls = 0
     @State private var welcomeText: String = ""
     @State private var showWelcome: Bool = true
     @State private var bubbleSize: CGSize = .zero
@@ -886,21 +896,67 @@ struct PerryBuddyView: View {
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { _ in
             // Global-monitor callbacks arrive on a background thread; the
             // state write still lands inside the frame the event produced.
-            DispatchQueue.main.async { updateCursorTracking() }
+            DispatchQueue.main.async {
+                monitorEventCount += 1
+                updateCursorTracking()
+            }
         }) {
             cursorMoveMonitors.append(global)
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { event in
+            monitorEventCount += 1
             updateCursorTracking()
             return event
         }) {
             cursorMoveMonitors.append(local)
+        }
+        monitorEventCount = 0
+        lastProbePoint = NSEvent.mouseLocation
+        cursorWatchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            cursorWatchdogTick()
         }
     }
 
     private func stopTrackingCursor() {
         for monitor in cursorMoveMonitors { NSEvent.removeMonitor(monitor) }
         cursorMoveMonitors = []
+        cursorWatchdog?.invalidate()
+        cursorWatchdog = nil
+        cursorPollTimer?.invalidate()
+        cursorPollTimer = nil
+    }
+
+    private func cursorWatchdogTick() {
+        let location = NSEvent.mouseLocation
+        guard location != lastProbePoint else { return }
+        lastProbePoint = location
+        if monitorEventCount > 0 {
+            cursorWatchdog?.invalidate()
+            cursorWatchdog = nil
+            if OverlayPerfProbe.shared.cursorTrackingDegraded {
+                OverlayPerfProbe.shared.markCursorTrackingDegraded(false)
+                cursorPollTimer?.invalidate()
+                cursorPollTimer = nil
+            }
+            return
+        }
+        OverlayPerfProbe.shared.markCursorTrackingDegraded(true)
+        guard cursorPollTimer == nil else { return }
+        stationaryPolls = 0
+        cursorPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
+            let point = NSEvent.mouseLocation
+            if point != lastProbePoint {
+                lastProbePoint = point
+                stationaryPolls = 0
+                updateCursorTracking()
+            } else {
+                stationaryPolls += 1
+                if stationaryPolls > 45 {
+                    cursorPollTimer?.invalidate()
+                    cursorPollTimer = nil
+                }
+            }
+        }
     }
 
     private func updateCursorTracking() {

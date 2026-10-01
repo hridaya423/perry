@@ -83,3 +83,29 @@ touch the clipboard on muted output; answer content still does.
 - **Diagnostics** — `PermissionInfo` now serializes `inputMonitoring`
   alongside accessibility/screenRecording/microphone, so exported
   reports show the PTT-blocking grant.
+
+## Iteration 15 — cursor-follow starvation fallback
+
+Same invisible-failure class as PTT: `PerryBuddyView` tracks the pointer
+via `NSEvent` global `.mouseMoved`/drag monitors, which install fine but
+deliver zero events without Input Monitoring or Accessibility trust —
+the living cursor froze silently on untrusted identities (the running
+adhoc build shows both grants ungranted, and no windows/peek respond).
+
+Fix (`PerryOverlay`): a 0.5 s watchdog compares `NSEvent.mouseLocation`
+(permission-free) against the monitor event count. Movement without
+events → `cursor.follow.fallback` marker + `OverlayPerfProbe.
+cursorTrackingDegraded`, and follow switches to a 30 Hz poll that parks
+itself after ~1.5 s of no motion. First real monitor event permanently
+stands the watchdog down, so a granted Perry keeps the zero-timer
+event-driven design. Probe hook + degraded flag unit-tested
+(`PerryOverlaySmokeTests`).
+
+Empirical check this machine: a probe binary under Terminal's identity
+(`axTrusted=true`) received 275 global monitor events in ~7 s of
+synthetic pointer moves — delivery works when trusted; Perry's own
+identity is untrusted (Settings rows show Enable…), so the fallback
+path is the operative one on this host until the grants land.
+
+Live confirmation deferred: `cursor.follow.fallback` will appear in the
+markers log on the next Perry launch (the 8-h soak pins pid 11222).

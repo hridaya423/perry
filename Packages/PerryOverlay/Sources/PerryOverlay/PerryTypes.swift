@@ -183,6 +183,12 @@ public struct PerryExternalCursor: Identifiable, Equatable {
 public final class OverlayPerfProbe {
     public static let shared = OverlayPerfProbe()
     public var isEnabled = false
+    /// Fires once when cursor-follow monitors prove dead (pointer moves but
+    /// no events arrive — Input Monitoring denied) and the view switches to
+    /// polling `NSEvent.mouseLocation`, which needs no grant.
+    public var onCursorTrackingDegraded: (() -> Void)?
+    /// True while the view is on the permission-free polling path.
+    public private(set) var cursorTrackingDegraded = false
     private var lastTick: CFAbsoluteTime = 0
     private var intervals: [Double] = []
     private let lock = NSLock()
@@ -214,6 +220,12 @@ public final class OverlayPerfProbe {
         intervals.removeAll()
         lastTick = 0
         return drained
+    }
+
+    public func markCursorTrackingDegraded(_ degraded: Bool) {
+        guard degraded != cursorTrackingDegraded else { return }
+        cursorTrackingDegraded = degraded
+        if degraded { onCursorTrackingDegraded?() }
     }
 }
 

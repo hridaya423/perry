@@ -186,6 +186,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 )
             }
         }
+        OverlayPerfProbe.shared.onCursorTrackingDegraded = {
+            PerfMark.markDynamic("cursor.follow.fallback")
+        }
         return manager
     }()
     private var statusItem: NSStatusItem?
