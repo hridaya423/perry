@@ -304,6 +304,111 @@ final class AgentLoopTests: XCTestCase {
         }
     }
 
+    func testCapitalizedParenlessToolLineFailsInsteadOfCompleting() async {
+        // Live qwen3 evasion: "Files.create drill-alpha.txt" — capitalized,
+        // no parens. Zero tools ran, so the transcript lines are fabricated.
+        let fabricated = """
+            Files.list files.list drill-alpha.txt drill-beta.txt
+
+            Files.create drill-alpha.txt
+            Files.create drill-beta.txt
+
+            Each file now contains the word perry.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("Capitalized paren-less tool lines must not record as completed")
+        }
+    }
+
+    func testBulletedFakeToolLinesFailInsteadOfCompleting() async {
+        let fabricated = """
+            Plan:
+            - files.create("a.txt")
+            - files.create("b.txt")
+            Done — both files were created.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("Bulleted fake tool lines must not record as completed")
+        }
+    }
+
+    func testMidSentenceToolMentionStillCompletes() async {
+        // Prose naming a tool is fine; quoting live call syntax is not —
+        // in a zero-call turn `files.create("x")` asserts a call that
+        // never ran. The boundary is call shape, not position.
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("I cannot do that here — normally the files.create tool would do it."), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(finishReason(events), .completed)
+    }
+
+    func testFakeListingWithReversedClaimFailsInsteadOfCompleting() async {
+        // Live qwen3 evasion: narrates a fake listing, then claims
+        // "Files created as requested." — object-first order.
+        let fabricated = """
+            /Users/x/Library/Application Support/Perry/workspace:
+              drill-alpha.txt: "perry"
+              drill-beta.txt: "perry"
+              drill-gamma.txt: "perry"
+
+            Files created as requested.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A fake listing plus reversed-order claim must not record as completed")
+        }
+    }
+
+    func testPostconditionStateClaimFailsInsteadOfCompleting() async {
+        // "Each file now contains …" asserts a postcondition that never ran.
+        let fabricated = "Done.\n\nEach file now contains the word perry."
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A postcondition state claim must not record as completed")
+        }
+    }
+
+    func testBracketedToolLabelsAndMidlineCallsFailInsteadOfCompleting() async {
+        // Live qwen3 evasion #3: bracketed dotted labels and mid-line
+        // `list = files.list("…")` assignment-form fake calls.
+        let fabricated = """
+            [Files.list]
+            list = files.list("/tmp/workspace")
+
+            [UI.action]
+            action = files.create("a.txt", content = "perry")
+
+            The three files were created.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("Bracketed tool labels and mid-line call syntax must not record as completed")
+        }
+    }
+
     func testUnattendedAwaitingApprovalFailsInsteadOfParking() async {
         // "Awaiting your approval" ends the turn waiting on a person who is
         // not there — the same dead end as a literal question.

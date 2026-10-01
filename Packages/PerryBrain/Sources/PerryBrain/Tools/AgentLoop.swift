@@ -223,19 +223,25 @@ public actor AgentLoop {
         if text.range(of: #"(?m)^\s*\[(Observation|Action)\s*:"#, options: .regularExpression) != nil {
             return true
         }
+        // [Files.list] / [UI.action] — a line that is only a bracketed dotted label.
+        if text.range(of: #"(?im)^\s*\[\s*[A-Za-z]+\.[A-Za-z]+\s*\]\s*$"#, options: .regularExpression) != nil {
+            return true
+        }
         if text.range(of: #"(?i)\baction (was |is )?(not )?(completed|done|approved|denied|declined)\b"#, options: .regularExpression) != nil {
             return true
         }
         if text.range(of: #"(?i)\bapproval (was |is )?(not )?(given|granted|denied|declined)\b|\b(not|wasn'?t) approved\b"#, options: .regularExpression) != nil {
             return true
         }
-        let claimPattern = #"(?i)\b(created|wrote|written|saved|deleted|renamed|moved|copied|sent)\b[^.\n]{0,40}\b(file|folder|document|note|message|email|task)\b|\b(file|folder|document|note)\s+\S+\s+(was\s+)?(created|written|saved|deleted|renamed|moved|copied|sent)\b"#
+        let claimPattern = #"(?i)\b(created|wrote|written|saved|deleted|renamed|moved|copied|sent)\b[^.\n]{0,40}\b(file|folder|document|note|message|email|task)\b|\b(files?|folders?|documents?|notes?)\s+(\S+\s+)?(was\s+|were\s+|are\s+|has been\s+|have been\s+|now\s+)?(created|written|saved|deleted|renamed|moved|copied|sent)\b|\b(each|every|all|both|these|those|\d+)\s+files?\s+(now\s+)?(contain|hold|include)s?\b"#
         if text.range(of: claimPattern, options: .regularExpression) != nil {
             return true
         }
         for name in toolNames where name.contains(".") {
-            let pattern = "(?m)^\\s*" + NSRegularExpression.escapedPattern(for: name) + "\\s*\\("
-            if text.range(of: pattern, options: .regularExpression) != nil { return true }
+            let lineStart = "(?im)^\\s*(?:[-*•]\\s*)?" + NSRegularExpression.escapedPattern(for: name) + "\\b"
+            if text.range(of: lineStart, options: .regularExpression) != nil { return true }
+            let callSyntax = "(?i)" + NSRegularExpression.escapedPattern(for: name) + "\\s*\\("
+            if text.range(of: callSyntax, options: .regularExpression) != nil { return true }
         }
         return false
     }
