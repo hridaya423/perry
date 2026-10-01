@@ -158,3 +158,7 @@ Note: two earlier lasso attempts on instance 11222 produced no markers
 because the panel had been dismissed (monitor only runs while invoked)
 — diagnosed via the window list; new markers make this a one-grep
 check next time.
+
+**Measured latencies (n=1, this log):** invoke→panel 31 ms;
+panel→wake-cue 225 ms; gesture duration 857 ms (posted pace);
+select→reply 161 ms (includes the fast-failing AX-capture leg).
