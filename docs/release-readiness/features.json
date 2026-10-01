@@ -280,11 +280,12 @@
   {
    "id": "invocation.microphone-controls",
    "name": "Microphone picker, test card, and live volume blocks",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local microphone selection and permission-aware controls",
    "limitations": [
-    "Device controls are connected, but this registry has no live hardware test for volume or device failure."
+    "Device controls are connected, but this registry has no live hardware test for volume or device failure.",
+    "Live: Test microphone in Settings > Voice & Input triggered the real macOS microphone permission prompt with Perrys hold-to-talk copy. Grant remains user-owned; prompt left pending."
    ],
    "verification": {
     "supported_environments": {
@@ -309,6 +310,10 @@
     {
      "kind": "source",
      "reference": "App/SettingsView.swift"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-8/mic-permission-prompt.png"
     }
    ]
   },
@@ -550,12 +555,13 @@
   {
    "id": "voice.settings",
    "name": "Voice settings page",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local voice, speed, dictation, and optional realtime settings",
    "limitations": [
     "Speech setting defaults, persistence, and voice-selection clearing are unit-tested, and the dark-appearance surface and accessibility tree were sampled live; error states, VoiceOver speech order, and alternate accessibility appearances remain unproven.",
-    "The 2026-08-27 and 2026-08-28 Markdown audits remain contextual evidence only; neither contains a parsed structured actual-run artifact, so this capability remains unit-tested."
+    "The 2026-08-27 and 2026-08-28 Markdown audits remain contextual evidence only; neither contains a parsed structured actual-run artifact, so this capability remains unit-tested.",
+    "Live: Voice & Input page renders Speak replies toggle, voice picker, speed slider, working Preview voice (AVSpeechSynthesizer path) and dictation controls."
    ],
    "verification": {
     "supported_environments": {
@@ -592,6 +598,10 @@
     {
      "kind": "audit",
      "reference": "docs/release-readiness/live-ui-audit-2026-08-28.md"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-8/voice-settings.png"
     }
    ]
   },
@@ -825,12 +835,13 @@
   {
    "id": "do.runtime-selection",
    "name": "Computer-use runtime selection UI",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Per-task selection across verified CLI, configured direct-provider, and local runtimes, with durable route evidence for background tasks",
    "limitations": [
     "Routing, fallback, and recovery identity are unit-tested, but runtime selection has no live UI or authenticated provider-lab result.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: runtime picker in Run-in-background alert listed Automatic vs Perry local planner; local planner queued and executed a typed plan."
    ],
    "verification": {
     "supported_environments": {
@@ -903,6 +914,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testLegacyPlanWithoutRuntimeUsesTheOriginalPreferenceDuringRecovery"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-7/background-tasks.md"
     }
    ]
   },
@@ -1185,12 +1200,13 @@
   {
    "id": "skills.bundled-workflows",
    "name": "Bundled workflow and capability skills",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Five bundled local app skills plus user-authored local Markdown",
    "limitations": [
     "Perry's local catalog covers five live-guide apps, not HeyClicky's roughly 25 or 89-app catalog.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: Settings > Models & Advanced > Local skills lists 22 bundled app skills with source badges and enable toggles."
    ],
    "verification": {
     "supported_environments": {
@@ -1219,6 +1235,10 @@
     {
      "kind": "unit-test",
      "reference": "Packages/PerryGuide/Tests/PerryGuideTests/AppSkillLibraryTests.swift::func testSkillActivationControlsPromptInjection()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/bundled-skills.png"
     }
    ]
   },
@@ -1787,12 +1807,13 @@
   {
    "id": "platform.keychain",
    "name": "Keychain credential store",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Local Keychain storage for provider credentials",
    "limitations": [
     "Keychain access is tested on the development target; no packaged-release credential migration test is recorded.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: BYOK save wrote a real login-keychain entry (dev.perry.keys/byok.vision); Remove credential deleted it via confirmed dialog; UI read-back matched both states."
    ],
    "verification": {
     "supported_environments": {
@@ -1817,6 +1838,10 @@
     {
      "kind": "unit-test",
      "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testKeychainRoundTrip()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/keychain.md"
     }
    ]
   },
@@ -2640,12 +2665,13 @@
   {
    "id": "operations.update-notice",
    "name": "Changelog link and post-update what-is-new notice",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Sparkle-backed update checks, local CHANGELOG view, and post-update notice",
    "limitations": [
     "Configuration and presentation are unit-tested, but no signed appcast upgrade or rollback has completed on a clean Mac.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: Whats New page renders in-app with feature bullets and CHANGELOG link; auto-present on upgrade verified by unit path only."
    ],
    "verification": {
     "supported_environments": {
@@ -2710,6 +2736,10 @@
     {
      "kind": "source",
      "reference": "scripts/verify-release.sh"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/whats-new.png"
     }
    ]
   },
@@ -3228,12 +3258,13 @@
   {
    "id": "appearance.notch-status",
    "name": "Optional notch status pill",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Glanceable status at the top-center safe area, off by default; menu bar remains the primary status surface",
    "limitations": [
     "Only renders on displays with a notch-safe area; other configurations keep the menu-bar strip.",
-    "Status only - approvals, text entry, and Ask/Guide/Do stay on the spatial surface; this registry has no structured live run across display configurations."
+    "Status only - approvals, text entry, and Ask/Guide/Do stay on the spatial surface; this registry has no structured live run across display configurations.",
+    "Live: notch resting strip renders a status pill showing the background-task count (\"1 task\") on the notched display."
    ],
    "verification": {
     "supported_environments": {
@@ -3254,6 +3285,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/NotchStatusControllerTests.swift::func testPillAppearsOnlyWithContentOnANotchedScreen()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-5/notch-status-pill.png"
     }
    ]
   },
