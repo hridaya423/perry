@@ -44,6 +44,8 @@ struct HomeOnboardingView: View {
                 Text("Try Perry in a practice window").font(.headline)
                 if director.practiceStarted, let step = director.practiceStep {
                     Text(OnboardingDirector.practiceScript(for: step))
+                    Button("Skip step") { director.notePracticeStepCompleted() }
+                        .controlSize(.small)
                 } else {
                     Text("Practice pointing, guidance, renaming with undo, and dictation using sample content.")
                     Button("Start practice") { director.startPractice() }
