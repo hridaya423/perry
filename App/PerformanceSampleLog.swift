@@ -7,8 +7,18 @@ enum PerfMark {
 
     static func mark(_ name: StaticString) {
         signposter.emitEvent(name)
+        write(name.description)
+    }
+
+    /// Runtime-composed marker names skip the signposter, which requires a
+    /// static name.
+    static func markDynamic(_ name: String) {
+        write(name)
+    }
+
+    private static func write(_ name: String) {
         guard let log else { return }
-        let marker = PerformanceMarker(name: name.description, capturedAt: Date())
+        let marker = PerformanceMarker(name: name, capturedAt: Date())
         Task { try? await log.append(marker) }
     }
 }

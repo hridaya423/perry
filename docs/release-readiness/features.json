@@ -107,7 +107,8 @@
    "owner": "App",
    "support": "Configurable local macOS push-to-talk",
    "limitations": [
-    "The event-tap and fallback monitor paths are wired, but no hardware live test is recorded."
+    "The event-tap and fallback monitor paths are wired and report which captured via ptt.capture.eventtap / ptt.capture.fallback markers; the live debug instance showed fallback — Input Monitoring ungranted on the adhoc build.",
+    "No hardware live test is recorded; synthetic HID injection does not reach session taps on this machine, so hold-to-talk needs a physical-keyboard check after the user grants Input Monitoring (Settings > Permissions row added)."
    ],
    "verification": {
     "supported_environments": {
@@ -128,17 +129,22 @@
     {
      "kind": "source",
      "reference": "App/PushToTalkController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "Packages/PerryCapture/Sources/PerryCapture/PerryPermissionProbe.swift"
     }
    ]
   },
   {
    "id": "invocation.caps-lock-trigger",
    "name": "Caps Lock as a trigger",
-   "status": "absent",
-   "owner": "Product scope",
-   "support": "Unavailable in Perry M0",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Optional Caps Lock double-tap push-to-talk trigger",
    "limitations": [
-    "Perry removed proactive behavior and keeps it out of scope, so this debug/proactive trigger is not shipped."
+    "Shipped as a Push to talk picker option (double-tap starts, next tap stops); the 0.35 s double-tap window and release semantics are unit-tested.",
+    "No hardware live test is recorded — Caps Lock injection is not available through the lab driver, and the listening path shares the Input Monitoring grant with the event tap."
    ],
    "verification": {
     "supported_environments": {
@@ -159,6 +165,22 @@
     {
      "kind": "audit",
      "reference": "docs/heyclicky-feature-audit.md:202"
+    },
+    {
+     "kind": "source",
+     "reference": "App/PushToTalkController.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/SettingsView.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/VoiceInputLifecycleTests.swift::func testPushToTalkCapsLockDoubleTapWithinWindowPressesThenNextTapReleases()"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/VoiceInputLifecycleTests.swift::func testPushToTalkCapsLockTapsOutsideWindowDoNotPress()"
     }
    ]
   },

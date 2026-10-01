@@ -297,7 +297,9 @@ final class VoiceController: NSObject, ObservableObject {
         )
     }
 
-    func speak(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil) {
+    /// `copiesReplyWhenMuted` is reserved for reply content — acknowledgments
+    /// and prompts must never clobber the user's clipboard.
+    func speak(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil, copiesReplyWhenMuted: Bool = false) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         let preferences = Self.currentSpeechPreferences()
@@ -310,12 +312,19 @@ final class VoiceController: NSObject, ObservableObject {
         let outputAvailable = AudioRouteMonitor.defaultOutputAvailable()
         let outputMuted = AudioRouteMonitor.defaultOutputMuted()
         guard outputAvailable, !outputMuted else {
-            copyReplyToClipboard(
-                cleaned,
-                status: outputAvailable
-                    ? "Audio output is muted; the reply is on your clipboard."
-                    : "No audio output is available; the reply is on your clipboard."
-            )
+            if copiesReplyWhenMuted {
+                PerfMark.mark("talk.muted_clipboard")
+                copyReplyToClipboard(
+                    cleaned,
+                    status: outputAvailable
+                        ? "Audio output is muted; the reply is on your clipboard."
+                        : "No audio output is available; the reply is on your clipboard."
+                )
+            } else {
+                PerfMark.mark("talk.speak.muted")
+                currentSpeechText = nil
+                hooks.setStatus(outputAvailable ? "Audio output is muted." : "No audio output is available.")
+            }
             return
         }
         synthesizer.stopSpeaking(at: .immediate)
@@ -328,6 +337,7 @@ final class VoiceController: NSObject, ObservableObject {
             guideSpeechIdentities[ObjectIdentifier(utterance)] = guideSpeechIdentity
         }
         synthesizer.speak(utterance)
+        PerfMark.mark("talk.speak.start")
     }
 
     func deliverVoiceReply(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil) {
@@ -342,7 +352,7 @@ final class VoiceController: NSObject, ObservableObject {
                 break
             }
         }
-        speak(cleaned, guideSpeechIdentity: guideSpeechIdentity)
+        speak(cleaned, guideSpeechIdentity: guideSpeechIdentity, copiesReplyWhenMuted: true)
     }
 
     func previewSpeechVoice(_ voice: AVSpeechSynthesisVoice) {
@@ -911,6 +921,7 @@ extension VoiceController: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            PerfMark.mark("talk.speak.end")
             let guideIdentity = self.guideSpeechIdentities.removeValue(forKey: ObjectIdentifier(utterance))
             if !self.dictation.isRunning {
                 self.overlayState.voiceState = .idle

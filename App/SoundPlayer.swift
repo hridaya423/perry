@@ -28,6 +28,7 @@ enum SoundPlayer {
         sound.stop()
         sound.currentTime = 0
         sound.play()
+        PerfMark.markDynamic("sound.cue.\(cue.rawValue)")
     }
 
     private static func load(_ cue: Cue) -> NSSound? {

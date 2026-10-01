@@ -125,6 +125,42 @@ final class VoiceInputLifecycleTests: XCTestCase {
         controller.stop()
         XCTAssertNil(controller.captureMode)
     }
+
+    func testPushToTalkCapsLockDoubleTapWithinWindowPressesThenNextTapReleases() {
+        let state = PushToTalkTestState()
+        let controller = PushToTalkController(
+            shortcut: .capsLockDoubleTap,
+            onPress: { state.presses += 1 },
+            onRelease: { state.releases += 1 }
+        )
+
+        controller.handle(keyCode: 57, timestamp: 1.0, isKeyDown: true, isKeyUp: false, modifiers: false, tapDisabled: false)
+        controller.handle(keyCode: 57, timestamp: 1.1, isKeyDown: false, isKeyUp: true, modifiers: false, tapDisabled: false)
+        XCTAssertEqual(state.presses, 0)
+
+        controller.handle(keyCode: 57, timestamp: 1.2, isKeyDown: true, isKeyUp: false, modifiers: false, tapDisabled: false)
+        XCTAssertEqual(state.presses, 1)
+
+        controller.handle(keyCode: 57, timestamp: 1.3, isKeyDown: false, isKeyUp: true, modifiers: false, tapDisabled: false)
+        controller.handle(keyCode: 57, timestamp: 1.4, isKeyDown: true, isKeyUp: false, modifiers: false, tapDisabled: false)
+        XCTAssertEqual(state.releases, 1)
+    }
+
+    func testPushToTalkCapsLockTapsOutsideWindowDoNotPress() {
+        let state = PushToTalkTestState()
+        let controller = PushToTalkController(
+            shortcut: .capsLockDoubleTap,
+            onPress: { state.presses += 1 },
+            onRelease: { state.releases += 1 }
+        )
+
+        controller.handle(keyCode: 57, timestamp: 1.0, isKeyDown: true, isKeyUp: false, modifiers: false, tapDisabled: false)
+        controller.handle(keyCode: 57, timestamp: 1.1, isKeyDown: false, isKeyUp: true, modifiers: false, tapDisabled: false)
+        controller.handle(keyCode: 57, timestamp: 2.0, isKeyDown: true, isKeyUp: false, modifiers: false, tapDisabled: false)
+
+        XCTAssertEqual(state.presses, 0)
+        XCTAssertEqual(state.releases, 0)
+    }
 }
 
 @MainActor
