@@ -51,3 +51,20 @@ Working recipe: CGEvent click → `AXFocused` on the composer field →
 `keystroke` → AXPress on the Send button (36×36 AXButton, unlabeled in AX).
 Send-button AX node exposes no actions — a real a11y gap already recorded in
 phase-4 evidence.
+
+## Audio failure drills (status menu, DEBUG build)
+
+- `Simulate muted output` — ran live on pid 75351 via the status menu:
+  reply text arrived on the clipboard
+  ("This reply is from the muted-output recovery drill."),
+  status set to "Muted-output drill passed…". The muted→clipboard
+  failover path is verified end to end. User clipboard preserved and
+  restored.
+- `Simulate wedged microphone` — reviewed in code
+  (`DictationController.simulateInputFailure`): both `onFallback` and
+  `onFailure` are invocation-gated (`voiceInvocation.id`), so it is a
+  no-op outside a live dictation — needs mic TCC to verify live.
+- `Simulate audio route flip` — TTS + `handleAudioRouteChange`; not run
+  (audible output, low marginal evidence vs. muted-output drill).
+- `Simulate missing runtime` — forces onboarding + honest stop; not run
+  (would re-enter onboarding UI over the user's completed state).
