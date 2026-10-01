@@ -82,6 +82,19 @@ Dwell reduced to 110 ms (`HomeHoverIntentTests` updated to pin it).
   jitter). The budget row is unqualified — calling this a pass on
   distribution, with the max noted honestly.
 
+## Files page — Perry piles (verified live)
+
+`2a306b3` added each Perry's `folderPath` as a named pile on the Files
+page. Live check on Release 80433: created Perry "Pile Tester" with
+`folderPath=/tmp/perry-test-folder` via `perry.createPerry`, opened Home
+→ Files — the pile renders under the Perry's name with the folder's
+`note.txt` (`files-perry-pile.png`). Test Perry and folder removed
+after.
+
+Also verified live: the Home window in dark mode renders sidebar labels
+correctly (`home-dark-live.png`) — the offscreen-bitmap "black sidebar
+labels" finding is a fixture artifact, not app behavior.
+
 ## Not yet verified (live-only)
 
 - Fuzzed *physical* pointer paths (synthetic fuzz covers the state machine;
