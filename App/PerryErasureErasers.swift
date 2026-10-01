@@ -34,6 +34,7 @@ struct PerryErasurePaths: Sendable {
         cuaArtifactDirectories = [
             supportDirectory?.appendingPathComponent("Cua", isDirectory: true),
             supportDirectory?.appendingPathComponent("CuaArtifacts", isDirectory: true),
+            supportDirectory?.appendingPathComponent("CuaDriver", isDirectory: true),
             temporaryRoot.appendingPathComponent("Cua", isDirectory: true),
         ].compactMap { $0 }
         completeErasureRoots = [
