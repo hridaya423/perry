@@ -2386,6 +2386,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             default: break
             }
         }
+        practiceWindow.onClose = { [weak director] in
+            director?.notePracticeWindowClosed()
+        }
         if PerryPermissionProbe.checkMicrophone() == .denied {
             director.noteMicrophoneDenied()
         }

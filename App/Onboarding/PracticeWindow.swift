@@ -18,6 +18,7 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
     }
 
     var onEvent: ((Event) -> Void)?
+    var onClose: (() -> Void)?
 
     private(set) var window: NSWindow?
     private let state = PracticeState()
@@ -126,6 +127,7 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         window = nil
+        onClose?()
     }
 }
 

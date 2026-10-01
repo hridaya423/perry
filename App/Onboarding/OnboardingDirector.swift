@@ -83,6 +83,11 @@ final class OnboardingDirector: ObservableObject {
         if let practiceStep { effects.speak(Self.practiceScript(for: practiceStep)) }
     }
 
+    func notePracticeWindowClosed() {
+        guard beat == .practice else { return }
+        practiceStarted = false
+    }
+
     func notePracticeStepCompleted() {
         guard beat == .practice, practiceStarted, let step = practiceStep else { return }
         if let next = PracticeStep.allCases.drop(while: { $0 != step }).dropFirst().first {

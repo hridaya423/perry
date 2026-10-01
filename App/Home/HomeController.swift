@@ -659,6 +659,7 @@ final class HomeController {
             threadID = UUID()
         }
         let request = PerryThread.WaitingInput(text: text)
+        PerfMark.mark("home.question.sent")
         let saved = saveInput(request, to: threadID)
         homeModel.sidebarSelection = .thread(threadID)
         return AcceptedInput(threadID: threadID, request: request, saved: saved)
@@ -763,8 +764,18 @@ final class HomeController {
             return .interrupted
         }
         homeModel.threadErrors[threadID] = nil
+        var markedFirstText = false
         let finish = await operation { [weak self] partial in
+            if !markedFirstText, !partial.isEmpty {
+                markedFirstText = true
+                PerfMark.mark("home.answer.first_text")
+            }
             self?.homeModel.streamingAnswers[threadID] = partial
+        }
+        if !markedFirstText, finish == .completed {
+            // Non-streaming providers answer only at finish — the first
+            // visible text lands here.
+            PerfMark.mark("home.answer.first_text")
         }
         homeModel.threadErrors[threadID] = finish.failureReason
         if finish == .completed, homeModel.drafts[threadID] == text { homeModel.drafts[threadID] = nil }

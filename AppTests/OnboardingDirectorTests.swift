@@ -80,6 +80,23 @@ final class OnboardingDirectorTests: XCTestCase {
         director.stop()
     }
 
+    func testPracticeWindowCloseAllowsRestart() {
+        var starts = 0
+        var effects = OnboardingDirector.Effects()
+        effects.beginPractice = { starts += 1 }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        for _ in 0..<4 { director.skip() }
+        director.startPractice()
+        XCTAssertTrue(director.practiceStarted)
+        director.notePracticeWindowClosed()
+        XCTAssertFalse(director.practiceStarted)
+        director.startPractice()
+        XCTAssertEqual(starts, 2)
+        XCTAssertEqual(director.practiceStep, .pointAsk)
+        director.stop()
+    }
+
     func testInterruptedSetupResumesAndCompletionClearsCheckpoint() throws {
         let name = "perry.onboarding.tests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
