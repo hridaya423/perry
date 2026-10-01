@@ -55,3 +55,34 @@ end-to-end, and isolating exactly where model execution is blocked.
   directory was removed).
 - USER ACTION to unblock completions: wait for quota reset (Oct 5) or
   re-pull a local model and select it in Settings → Models.
+
+## Follow-up — 2026-10-01 ~19:12Z — quota reset, COMPLETED turn
+
+User confirmed the Codex quota reset early. Verified at two depths:
+
+**Provider level** (`perry-brain-smoke`, same Codex home/auth):
+
+```
+$ perry-brain-smoke "Reply with exactly the word done."
+done
+usage in=11394 out=5
+first_delta_ms=4177 total_ms=4674 provider=codex stop=endTurn
+
+$ perry-brain-smoke --tool-check
+tool_calls=1 tool_check=passed answer=orchid-tool-confirmed
+```
+
+Real streamed answer, real tool call — Codex auth, streaming, and
+tool-calling all live-verified.
+
+**App level** (pid 23697, modelChoice=chatGPT via relaunch): probe
+Perry `lab-probe-3` (same job) scheduled on 70s interval →
+19:12:21Z turn persisted `outcome: completed, answer: "done"`.
+
+The complete unattended path is now live-verified end-to-end with a
+real model: `perry.createPerry` → `perry.schedule` → scheduler tick →
+coordinator → `route()` chatGPT → Codex provider → streamed answer →
+`completed` + thread append.
+
+Cleanup: schedule → `off`, `lab-probe-3` + thread deleted,
+`modelChoice` restored to `local`, final relaunch for the soak.
