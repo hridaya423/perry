@@ -1111,11 +1111,11 @@
   {
    "id": "do.proactive-suggestions",
    "name": "Proactive agent suggestions",
-   "status": "absent",
-   "owner": "Product scope",
-   "support": "Unavailable in Perry M0",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Opt-in morning suggestions built from connected apps only",
    "limitations": [
-    "Perry deliberately removed proactive behavior and does not watch or suggest work between explicit sessions."
+    "Suggestions are opt-in, Focus-quiet, ignore-backoffed, and never watch the screen; live acceptance run pending."
    ],
    "verification": {
     "supported_environments": {
@@ -1130,12 +1130,12 @@
    },
    "evidence": [
     {
-     "kind": "audit",
-     "reference": "docs/heyclicky-feature-audit.md:116"
+     "kind": "test",
+     "reference": "AppTests/PhaseNineControllerTests.swift (SuggestionControllerTests)"
     },
     {
-     "kind": "audit",
-     "reference": "docs/heyclicky-feature-audit.md:202"
+     "kind": "code",
+     "reference": "App/SuggestionController.swift"
     }
    ]
   },
@@ -1602,11 +1602,12 @@
   {
    "id": "appearance.notch-home",
    "name": "Notch home with tabs and pinned skills",
-   "status": "absent",
-   "owner": "Product scope",
-   "support": "Out of scope for Perry v1",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Notch Home shipped: hover peek, Esc latch, slim-dot fallback, full Home window",
    "limitations": [
-    "Perry uses a menu-bar companion and explicitly rejects the notch stack."
+    "Hover-to-peek live-drilled on a notched display (p50 113 ms vs <=120 ms budget); the full feature run is not yet bound to a parsed structured artifact.",
+    "Per-domain Settings page split remains follow-up polish; all controls reachable in Home."
    ],
    "verification": {
     "supported_environments": {
@@ -1621,12 +1622,16 @@
    },
    "evidence": [
     {
-     "kind": "audit",
-     "reference": "docs/heyclicky-feature-audit.md:141"
+     "kind": "test",
+     "reference": "AppTests/HomeHoverIntentTests.swift (8 tests, 20k-iteration seeded fuzz)"
     },
     {
-     "kind": "audit",
-     "reference": "docs/heyclicky-feature-audit.md:202"
+     "kind": "live-drill",
+     "reference": "docs/evidence/phase-5/README.md + docs/evidence/lab/perf-20261001T015009Z.markers.jsonl"
+    },
+    {
+     "kind": "live-screenshot",
+     "reference": "docs/evidence/phase-5/home-dark-live.png"
     }
    ]
   },
