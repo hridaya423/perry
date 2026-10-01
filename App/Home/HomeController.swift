@@ -299,12 +299,14 @@ final class HomeController {
         deadlineTimer = nil
         guard let deadline = intent.pendingDeadline else { return }
         let delay = max(0, deadline - now)
-        deadlineTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.apply(self.intent.deadlineReached(at: self.now))
             }
         }
+        timer.tolerance = 0
+        deadlineTimer = timer
     }
 
     // MARK: - Panels

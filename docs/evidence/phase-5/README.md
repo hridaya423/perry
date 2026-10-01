@@ -95,11 +95,27 @@ Also verified live: the Home window in dark mode renders sidebar labels
 correctly (`home-dark-live.png`) — the offscreen-bitmap "black sidebar
 labels" finding is a fixture artifact, not app behavior.
 
+## Hover → peek budget (verified live, 2026-10-01)
+
+Synthetic `cghidEventTap` pointer moves through the real
+`.mouseMoved` global monitor — the physical pointer path, not the
+state-machine fuzz. Debug build pid 69178, markers in
+`docs/evidence/lab/perf-20261001T061700Z.jsonl.markers.jsonl`.
+
+First measurement (pre-fix build) showed dwell-deadline jitter:
+n=7, p50 113 ms, p95 121 ms, max 124 ms against the ≤120 ms budget —
+`Timer.scheduledTimer`'s default ~10% tolerance was the overrun. With
+`tolerance = 0` on the deadline timer: **n=6, p50 113 ms, p95 117.5 ms,
+max 119 ms — all under budget.** Tuck + re-entry behaved correctly on
+every cycle (no stuck-open state).
+
+## Idle CPU with Home closed (verified)
+
+`docs/evidence/perf/idle-20261001T030722Z.csv`: 910 samples over the
+30-minute soak on the Debug build — avg CPU 0.0%, RSS ~151 MB — with
+Home closed and the hover monitors armed (event-driven; no polling
+cost). Meets the §8 idle budget and confirms the closed-Home case.
+
 ## Not yet verified (live-only)
 
-- Fuzzed *physical* pointer paths (synthetic fuzz covers the state machine;
-  the NSEvent monitor path needs the running app).
-- Idle CPU with Home closed (monitors are event-driven; idle-probe run
-  pending).
-- File piles in the preview pane and per-domain Settings page split remain
-  open (see above).
+- File piles in the preview pane remain open.
