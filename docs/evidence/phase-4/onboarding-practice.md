@@ -34,11 +34,11 @@ relaunches.
 
 ## UX findings filed during the drill
 
-1. **Send button invisible to AX**: the Home composer send control never
-   appears in the accessibility tree (label `Send message` is set but not
-   emitted). Keyboard submit is `⌘Return`, not Return
-   (`HomeConversationView.swift` `.keyboardShortcut(.return, modifiers:
-   .command)`). A11y gap: no AX-reachable submit path.
+1. **Composer submit is keyboard-only in practice**: `Return` does not send;
+   the send Button carries `.keyboardShortcut(.return, modifiers: .command)`.
+   The button does appear in the AX tree as `AXButton (Send message)`, but the
+   driver's element walk truncated before indexing it, so whether it's
+   AX-pressable is unverified. Plain-Return submit is a discoverability gap.
 2. **AX `set_value` doesn't drive SwiftUI submission**: writing the composer
    field via accessibility updates the visible text but not the binding path
    the send action needs; real key events (`type_text` foreground) work.
