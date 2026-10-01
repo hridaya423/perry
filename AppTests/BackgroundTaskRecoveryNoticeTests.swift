@@ -9,7 +9,7 @@ import PerryRuntimes
 final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
     func testActiveUnverifiedActionKeepsLiveControlsButInterruptedActionExplainsRecovery() async throws {
         let directory = try temporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let plan = try executablePlan(taskID: "action", workspace: directory)
         let queued = try await coordinator.enqueue(executablePlan: plan)
@@ -37,7 +37,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
 
     func testOrdinaryApprovalDoesNotShowRecoveryWarning() async throws {
         let directory = try temporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let queued = try await coordinator.enqueue(
             executablePlan: try executablePlan(taskID: "approval", workspace: directory)
@@ -54,7 +54,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
     func testRestoredBackupTakesPrecedenceOverPreparedApprovalAndLiveFlag() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let fileURL = directory.appendingPathComponent("tasks.json")
         let coordinator = TaskCoordinator(fileURL: fileURL)
         let queued = try await coordinator.enqueue(
@@ -81,7 +81,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
 
     func testLaunchPolicyRejectsCancelledAndRetiredPlanTasks() async throws {
         let directory = try temporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let queued = try await coordinator.enqueue(
             executablePlan: try executablePlan(taskID: "cancelled", workspace: directory)

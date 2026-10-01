@@ -116,7 +116,7 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
             await gate.release()
             let cleanup = Task { @MainActor in try await scope.closeAndDrain() }
             try await finishControlTask(cleanup)
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
 
         let coordinator = TaskCoordinator(storageDirectory: directory)
@@ -210,7 +210,7 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
             await gate.release()
             let cleanup = Task { @MainActor in try await scope.closeAndDrain() }
             try await finishControlTask(cleanup)
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
 
         XCTAssertEqual(dispatched.state, .running)

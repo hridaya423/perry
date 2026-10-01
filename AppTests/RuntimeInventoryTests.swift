@@ -9,7 +9,7 @@ final class RuntimeInventoryTests: XCTestCase {
         let fixture = Fixture()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let executable = directory.appendingPathComponent("runtime")
         try Data("fixture".utf8).write(to: executable)
         fixture.executable = directory.appendingPathComponent("alias")

@@ -15,7 +15,7 @@ final class CompositeActionVerifierTests: XCTestCase {
     override func tearDownWithError() throws {
         defer { workspace = nil }
         if let workspace {
-            try FileManager.default.removeItem(at: workspace)
+            try TestTempDirectory.remove(workspace)
         }
         try super.tearDownWithError()
     }

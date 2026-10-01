@@ -8,7 +8,7 @@ final class BackgroundTaskLaunchGateTests: XCTestCase {
     func testTypedTaskRequiresApprovalBeforeLaunch() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-typed-launch-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(goal: #"create file "report.txt" with "report""#, workspace: directory, taskID: "task")
         let plan = try XCTUnwrap(proposed)
         let coordinator = TaskCoordinator(storageDirectory: directory)
@@ -28,7 +28,7 @@ final class BackgroundTaskLaunchGateTests: XCTestCase {
     func testCancelledVerifiedTaskCanLaunchReportingWithoutNewApproval() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-report-launch-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(goal: #"create file "report.txt" with "report""#, workspace: directory, taskID: "task")
         let plan = try XCTUnwrap(proposed)
         let coordinator = TaskCoordinator(storageDirectory: directory)

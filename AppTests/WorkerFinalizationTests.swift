@@ -11,7 +11,7 @@ final class WorkerFinalizationTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-worker-finalization-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
 
         let transcriptStore = TranscriptStore(directory: directory)
         let memoryStore = MemoryStore(

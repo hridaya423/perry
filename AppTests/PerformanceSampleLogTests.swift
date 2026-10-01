@@ -18,7 +18,7 @@ final class PerformanceSampleLogTests: XCTestCase {
             .appendingPathComponent("perry-performance-log-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock {
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
         let fileURL = directory.appendingPathComponent("events.jsonl")
         let date = Date(timeIntervalSince1970: 1_788_000_000)
@@ -54,7 +54,7 @@ final class PerformanceSampleLogTests: XCTestCase {
             .appendingPathComponent("perry-performance-marker-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock {
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
         let fileURL = directory.appendingPathComponent("events.jsonl")
         let log = try PerformanceSampleLog(fileURL: fileURL)
@@ -80,7 +80,7 @@ final class PerformanceSampleLogTests: XCTestCase {
             .appendingPathComponent("perry-performance-tasks-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock {
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
         let fileURL = directory.appendingPathComponent("events.jsonl")
         let date = Date(timeIntervalSince1970: 1_788_000_000.123)

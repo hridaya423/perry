@@ -13,7 +13,7 @@ import PerryRuntimes
 final class ForegroundPlanningTests: XCTestCase {
     func testGuideTakeoverRetainsConversationTargetAndRejectsDuplicateClicks() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
@@ -66,7 +66,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testGuideTakeoverSaveFailurePreventsDo() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
@@ -109,7 +109,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDismissedTakeoverCannotStartAfterGuideRetires() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
@@ -158,7 +158,7 @@ final class ForegroundPlanningTests: XCTestCase {
     func testProductionAgentRouteConsumesAnswerAndTerminalOutcome() async throws {
         for reason: ModelStopReason? in [.endTurn, .maxTokens, nil] {
             let directory = try makeTemporaryDirectory()
-            addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+            addTeardownBlock { try TestTempDirectory.remove(directory) }
             let session = SessionController()
             let controller = makeWakingController(directory: directory, session: session)
             let store = ThreadStore(directory: directory.appendingPathComponent("agent-threads"))
@@ -191,7 +191,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testProductionAgentStopPreservesPartialAnswerWithoutReportingSuccess() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = makeWakingController(directory: directory, session: SessionController())
         let store = ThreadStore(directory: directory.appendingPathComponent("agent-threads"))
         let gate = FinalizationGate()
@@ -223,7 +223,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testStaleAgentStreamCannotFinalizeReplacementExecution() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
         let gate = FinalizationGate()
@@ -270,7 +270,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let newlySelected = CuaTargetHint(bundleID: "fixture.browser", processID: 43, windowID: 74, windowTitle: "Cedar")
         for override in [nil, newlySelected] as [CuaTargetHint?] {
             let directory = try makeTemporaryDirectory()
-            addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+            addTeardownBlock { try TestTempDirectory.remove(directory) }
             let threadID = UUID()
             let expected = override ?? remembered
             var captured = false
@@ -299,7 +299,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testExplicitAskGuideTransitionRetainsConversationAndTarget() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
         let thread = try await store.upsert(PerryThread(draft: "Unrelated conversation draft", turns: [.init(question: "Explain saving", answer: "Use Save")]))
@@ -334,7 +334,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testRenderCompactWithUnsavedRequestRecovery() throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = makeController(directory: directory, planner: ForegroundPlanner())
         controller.homeController.homeModel.unsavedInputs = [
             .init(threadID: UUID(), request: .init(text: "Explain this document, keeping the original names and dates."), error: "The disk is full.")
@@ -360,7 +360,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testRenderWaitingGuideRequestInSessionPanel() throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeController(directory: directory, planner: ForegroundPlanner(), session: session)
         try session.wake()
@@ -388,7 +388,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testUnsavedAskGuideRequestRemainsAvailableAndCannotCapture() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         try Data("Storage unavailable".utf8).write(to: directory.appendingPathComponent("Threads"))
         let session = SessionController()
         var captured = false
@@ -410,7 +410,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testGuideDismissedBeforeScheduledStartDoesNotCapture() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         var captured = false
         let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, _ in
             captured = true
@@ -426,7 +426,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testHomeGuidePersistsFailureInOriginatingConversation() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let prompt = "show me everything for saving this document"
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
         let thread = try await store.upsert(PerryThread(draft: prompt))
@@ -455,7 +455,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testHomeStopWaitsForGuideRetirementAndPreservesInput() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let prompt = "show me everything for saving"
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
@@ -493,7 +493,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testGuideStorageFailureStopsBeforeCapture() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         try Data("blocked store".utf8).write(to: directory.appendingPathComponent("Threads"))
         var captured = false
         let controller = AppController(
@@ -515,7 +515,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testInvocationKeepsItsWindowUntilExplicitSelectionOrNewInvocation() throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         var selection: SpatialSelection?
         let probe = EnvironmentProbe(
             workers: CuaWorkerService(), memoryStore: MemoryStore(storageDirectory: directory),
@@ -545,7 +545,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let workspace = WorkspaceCapture()
         let inspector = RuntimeInventoryInspector(
             readDirectProvider: { nil },
@@ -594,7 +594,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDoStartDuringPendingInvocationAdoptsIt() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let workspace = WorkspaceCapture()
         let session = SessionController()
         let controller = makeWakingController(
@@ -628,7 +628,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testGuideStartDuringPendingInvocationAdoptsIt() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
 
@@ -645,7 +645,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDispatchPlainRequestDuringPendingInvocationStartsAsk() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
 
@@ -664,7 +664,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDispatchDuringAskingKeepsDictatedIntentAsFollowUp() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
 
@@ -692,7 +692,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testSystemSleepHandsAnActiveRunToTheUser() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
         let controller = makeController(
             directory: directory,
@@ -728,7 +728,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDispatchDismissDuringAskingDismisses() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
 
@@ -750,7 +750,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testFileGoalRoutesAwayFromConfiguredDirectProvider() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let endpoint = BYOKAgentEndpoint(
             baseURL: try XCTUnwrap(URL(string: "https://api.openai.com")),
             model: "fixture-model"
@@ -782,7 +782,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testTypedPlanningErrorDoesNotCallLegacyPlannerOrExecute() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let planner = ForegroundPlanner(error: PlanningError.typedPlanRejected("fixture planning failure"))
         let controller = makeController(
             directory: directory,
@@ -801,7 +801,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testAgentRunnerRouteSkipsTheTypedPlanner() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let planner = ForegroundPlanner()
         let provider = AgentRouteProvider()
         let controller = makeController(directory: directory, planner: planner)
@@ -821,7 +821,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testFailedForegroundTaskRetryDispatchesTheReplacementOnce() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let planner = ForegroundPlanner()
         let askUser = FailOnceAskUser()
         let controller = makeController(
@@ -877,7 +877,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testStoppingDuringForegroundFinalizationReportsStopped() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
         let planner = ForegroundPlanner()
         let controller = makeController(
@@ -908,7 +908,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testStopDuringFinalizationPersistenceKeepsCommittedCompletion() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
         let controller = makeController(
             directory: directory,
@@ -936,7 +936,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testBlockedFullGuideContinuationCannotMutateReplacementGuide() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuideContinuationGate()
         let snapshot = AXSnapshot(
             appBundleID: "fixture.app",
@@ -994,7 +994,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testThrowingFullGuidePlannerFinalizesFailedGuideAfterWorkerRelease() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let snapshot = AXSnapshot(
             appBundleID: "fixture.app",
             windowTitle: "Fixture window",
@@ -1039,7 +1039,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testDismissedGuidePlannerFailurePersistsStoppedHistoryOnceWhileReplacementRuns() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let snapshot = AXSnapshot(
             appBundleID: "fixture.app",
@@ -1112,7 +1112,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testErasureClosesAllGuideScopesAndSuppressesDismissedScopeHistory() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app",
@@ -1165,7 +1165,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testTerminationJoinsSuspendedCurrentGuideScope() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let controller = makeController(
             directory: directory,
@@ -1204,7 +1204,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testTerminationJoinsReplacedGuideScopes() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FullGuidePlannerGate()
         let controller = makeController(
             directory: directory,
@@ -1254,7 +1254,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testStaleGuideSpeechCompletionCannotClearReplacementHighlight() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app",
             windowTitle: "Fixture window",
@@ -1306,7 +1306,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testStaleStartupErrorCannotOverwriteReplacementAttempt() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = StartupPlanningGate()
         let planner = StaleErrorPlanner(gate: gate)
         let controller = makeController(

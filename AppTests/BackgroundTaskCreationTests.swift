@@ -12,7 +12,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
 
         let probe = BackgroundCreationProbe()
         let inspector = RuntimeInventoryInspector(readDirectProvider: { nil }, commandLineProviders: [])
@@ -102,7 +102,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
     /// instead of re-dispatching or touching intervening state.
     func testUndoRunsOncePerRecordAndStopsAtConflict() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
@@ -171,7 +171,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
     /// and no new recovery may start once controls are closed.
     func testWorkerStopDrainsAnInFlightUndoAndRefusesNewRecovery() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
@@ -219,7 +219,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
     func testPlanningFailureLeavesNoRecordOrMetadata() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let probe = BackgroundCreationProbe()
         let planner = FailingTaskPlanner(error: PlanningError.typedPlanRejected("fixture failure"))
         let controller = makeController(
@@ -248,7 +248,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
     func testPlanningCancellationLeavesNoRecordOrMetadata() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let probe = BackgroundCreationProbe()
         let planner = FailingTaskPlanner(error: CancellationError())
         let controller = makeController(
@@ -277,7 +277,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
     func testCancellationReachesSuspendedPlannerAndRejectsItsLatePlan() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let probe = BackgroundCreationProbe()
         let planner = SuspendedTaskPlanner()
         let controller = makeController(directory: directory, planner: planner, probe: probe)
@@ -314,7 +314,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
     func testMetadataWriteFailureRollsBackTheQueuedPlan() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let contextPath = directory.appendingPathComponent("background-task-context.json")
         try FileManager.default.createDirectory(at: contextPath, withIntermediateDirectories: false)
         let probe = BackgroundCreationProbe()

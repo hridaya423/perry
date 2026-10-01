@@ -178,7 +178,7 @@ final class ExecutionFinalizerTests: XCTestCase {
             .appendingPathComponent("perry-execution-finalizer-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock {
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
         return directory
     }

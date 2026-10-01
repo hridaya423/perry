@@ -30,7 +30,7 @@ final class RuntimeExecutableVerifierTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-hash-vector-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let file = directory.appendingPathComponent("vector")
         try Data("abc".utf8).write(to: file)
 
@@ -60,7 +60,7 @@ final class RuntimeExecutableVerifierTests: XCTestCase {
         let executable = directory.appendingPathComponent("codex")
         try Data("not codex".utf8).write(to: executable)
         addTeardownBlock {
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
 
         let status = try await RuntimeExecutableVerifier.codex(at: executable)
@@ -102,7 +102,7 @@ final class RuntimeExecutableVerifierTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let executable = directory.appendingPathComponent("opencode")
         try Data("changed".utf8).write(to: executable)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
 
         let status = try await RuntimeExecutableVerifier.openCode(at: executable)
 

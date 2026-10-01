@@ -48,7 +48,7 @@ final class CuaWorkerProcessTests: XCTestCase {
                     throw CuaDriverError.terminationUnconfirmed
                 }
             }
-            try FileManager.default.removeItem(at: directory)
+            try TestTempDirectory.remove(directory)
         }
         return (service, directory)
     }
@@ -252,7 +252,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         try server.start()
         addTeardownBlock {
             await server.stop()
-            try FileManager.default.removeItem(at: socketDirectory)
+            try TestTempDirectory.remove(socketDirectory)
         }
         let client = try MCPFixtureClient(directory: socketDirectory)
         defer { client.close() }
@@ -292,7 +292,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             try server.start()
             addTeardownBlock {
                 await server.stop()
-                try FileManager.default.removeItem(at: socketDirectory)
+                try TestTempDirectory.remove(socketDirectory)
             }
             let client = try MCPFixtureClient(directory: socketDirectory)
             defer { client.close() }
@@ -329,7 +329,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         try server.start()
         addTeardownBlock {
             await server.stop()
-            try FileManager.default.removeItem(at: socketDirectory)
+            try TestTempDirectory.remove(socketDirectory)
         }
         let client = try MCPFixtureClient(directory: socketDirectory)
         defer { client.close() }
@@ -482,7 +482,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             XCTAssertEqual(kill(record.pid, 0), -1)
             XCTAssertEqual(errno, ESRCH)
         }
-        try FileManager.default.removeItem(at: directory)
+        try TestTempDirectory.remove(directory)
     }
 
     func testResourceConflictBlocksPixelsAndTextBeforeDispatch() async throws {

@@ -264,7 +264,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testUnsupportedTaskStoreSurfacesRecoveryErrorWithoutChangingData() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-future-store-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
-        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let fileURL = directory.appendingPathComponent("tasks.json")
         let future = Data(#"{"version":9001,"tasks":[]}"#.utf8)
         try future.write(to: fileURL)
@@ -564,7 +564,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
 
     private func removeFixture(_ directory: URL) throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
+        try TestTempDirectory.remove(directory)
     }
 
     private func finishFixtureTask(
