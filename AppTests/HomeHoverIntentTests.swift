@@ -10,9 +10,9 @@ final class HomeHoverIntentTests: XCTestCase {
 
     func testDwellThenPeek() {
         XCTAssertEqual(intent.entered(at: 0), .none)
-        XCTAssertEqual(intent.pendingDeadline, 0.120)
-        XCTAssertEqual(intent.deadlineReached(at: 0.119), .none)
-        XCTAssertEqual(intent.deadlineReached(at: 0.120), .showPeek)
+        XCTAssertEqual(intent.pendingDeadline, 0.110)
+        XCTAssertEqual(intent.deadlineReached(at: 0.109), .none)
+        XCTAssertEqual(intent.deadlineReached(at: 0.110), .showPeek)
     }
 
     func testLeaveBeforeDwellCloses() {

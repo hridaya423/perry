@@ -20,7 +20,7 @@ struct HomeHoverIntent: Equatable {
         case hidePeek
     }
 
-    var dwell: TimeInterval = 0.120
+    var dwell: TimeInterval = 0.110
     var tuck: TimeInterval = 0.250
     /// Full Home window is open: peek is suppressed entirely.
     var homeOpen = false
