@@ -931,17 +931,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         )
         ensureSupportDirectory()
-        if ProcessInfo.processInfo.environment["PERRY_BARE"] == nil {
-            installStatusItem()
-            installHotkey()
-            voice.startInputListeners()
-            modifierHoldMonitor.start()
-            DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
-        }
+        installStatusItem()
+        installHotkey()
+        voice.startInputListeners()
+        modifierHoldMonitor.start()
+        DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         homeController.start()
         perryScheduler?.start()
         suggestionController.start()
-        if let dir = storageDirectory {
+        if let dir = storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             mcpStartupTask = Task { @MainActor [weak self] in
                 do {
                     try await Task.sleep(for: .seconds(1))
