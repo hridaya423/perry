@@ -24,7 +24,7 @@
    "owner": "App",
    "support": "Local macOS app",
    "limitations": [
-    "Live: cghidEventTap cmd+option+P produced invoke.keydown → wake.pinned → wake.overlay → panel.visible (~26-47 ms warm) across launches."
+    "Live: cghidEventTap cmd+option+P produced invoke.keydown \u2192 wake.pinned \u2192 wake.overlay \u2192 panel.visible (~26-47 ms warm) across launches."
    ],
    "verification": {
     "supported_environments": {
@@ -1859,7 +1859,7 @@
    "support": "Local redacted diagnostics export",
    "limitations": [
     "The registry does not record a last successful run for this capability.",
-    "Live: Export diagnostics menu → NSSavePanel → real redacted JSON (counts only, no transcript text) verified on disk."
+    "Live: Export diagnostics menu \u2192 NSSavePanel \u2192 real redacted JSON (counts only, no transcript text) verified on disk."
    ],
    "verification": {
     "supported_environments": {
@@ -3023,10 +3023,11 @@
   {
    "id": "do.undo",
    "name": "Agent Undo: conflict-safe reversal of verified workspace changes",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Typed inverse actions, approved and journaled like forward work; stops at the first conflict",
    "limitations": [
+    "Workspace trash is the per-workspace .trash directory, not Finder Trash; restore is handled by Perry undo, not Finder Put Back.",
     "Covers workspace file transforms only (create, rename, trash, restore). GUI actions and integration writes are reported with no Undo.",
     "Removing a task record removes its receipts and ends reversibility for that task."
    ],
@@ -3073,6 +3074,14 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/BackgroundTaskCreationTests.swift::func testUndoRunsOncePerRecordAndStopsAtConflict()"
+    },
+    {
+     "kind": "live-drill",
+     "reference": "docs/evidence/phase-7/workspace-undo.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedWorkspaceFileRuntimeTests.swift::func testDefaultTrashLandsInWorkspaceTrashAndRestores()"
     }
    ]
   },

@@ -114,6 +114,79 @@ final class TypedWorkspaceFileRuntimeTests: XCTestCase {
         }
     }
 
+    func testDefaultTrashLandsInWorkspaceTrashAndRestores() async throws {
+        let source = directory.appendingPathComponent("report.txt")
+        try Data("report".utf8).write(to: source)
+        var sourceIdentity = stat()
+        XCTAssertEqual(lstat(source.path, &sourceIdentity), 0)
+        let device = UInt64(sourceIdentity.st_dev)
+        let inode = UInt64(sourceIdentity.st_ino)
+        let trashAction = try ExecutableAction(
+            id: "trash",
+            summary: "Move report to the workspace trash",
+            approvalRequirement: .action,
+            operation: .transform(workspace: directory, command: .moveToTrash(path: "report.txt")),
+            postcondition: .trashedItem(device: device, inode: inode)
+        )
+        let trashPlan = try PerryRuntimes.ExecutionPlan(
+            taskID: "default-trash-task",
+            goal: "Move report to the workspace trash",
+            actions: [trashAction],
+            requestedScopes: [.workspaceWrite]
+        )
+        let trashGrant = try ExecutionApprovalGrant(plan: trashPlan, scope: .action(trashAction.id))
+        let approved = try ApprovedExecutableAction(plan: trashPlan, actionID: trashAction.id, grant: trashGrant)
+        let runtime = WorkspaceFileRuntime(baseURL: directory)
+        let verifier = WorkspaceFileVerifier(baseURL: directory)
+
+        // The workspace `.trash/` must be created lazily by the first trash.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(".trash").path))
+        let result = try await runtime.execute(approved)
+        guard case .workspaceFile(let receipt) = result.evidence,
+              case .trashed(_, let entryName, let receiptDevice, let receiptInode) = receipt.effect else {
+            return XCTFail("typed execution must return a trash receipt")
+        }
+        XCTAssertEqual(receiptDevice, device)
+        XCTAssertEqual(receiptInode, inode)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent(".trash/\(entryName)").path
+        ))
+        let verified = await verifier.verify(approvedAction: approved, result: result, context: ScreenContext.empty)
+        XCTAssertEqual(verified, .verified(evidence: "the trashed item was read back with its approved identity"))
+
+        let restoreAction = try ExecutableAction(
+            id: "restore",
+            summary: "Restore report from the workspace trash",
+            approvalRequirement: .action,
+            operation: .transform(
+                workspace: directory,
+                command: .restoreFromTrash(entryName: entryName, destination: "report.txt")
+            ),
+            postcondition: .renamedItem(device: device, inode: inode)
+        )
+        let restorePlan = try PerryRuntimes.ExecutionPlan(
+            taskID: "default-restore-task",
+            goal: "Restore report from the workspace trash",
+            actions: [restoreAction],
+            requestedScopes: [.workspaceWrite]
+        )
+        let restoreGrant = try ExecutionApprovalGrant(plan: restorePlan, scope: .action(restoreAction.id))
+        let restoreApproved = try ApprovedExecutableAction(
+            plan: restorePlan, actionID: restoreAction.id, grant: restoreGrant
+        )
+        _ = try await runtime.execute(restoreApproved)
+        XCTAssertEqual(try String(contentsOf: source, encoding: .utf8), "report")
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent(".trash/\(entryName)").path
+        ))
+    }
+
+    func testExecutionErrorSurfacesItsMessage() {
+        let error = ExecutionError(message: "the real reason it failed")
+        XCTAssertEqual(error.localizedDescription, "execution error: the real reason it failed")
+    }
+
     func testVerifierRejectsReceiptFromAnotherExecutionPlan() async throws {
         let plan = try makePlan(workspace: directory, path: "cross-execution.txt", contents: "receipt")
         let action = try XCTUnwrap(plan.actions.first)

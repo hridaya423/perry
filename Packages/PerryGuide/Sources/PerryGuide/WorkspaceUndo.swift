@@ -32,8 +32,11 @@ public struct WorkspaceUndoEngine: Sendable {
 
     public init(
         workspace: URL,
-        trashURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+        trashURL: URL? = nil
     ) {
+        let trashURL = trashURL ?? workspace
+            .resolvingSymlinksInPath().standardizedFileURL
+            .appendingPathComponent(".trash", isDirectory: true)
         workspacePath = workspace.resolvingSymlinksInPath().standardizedFileURL.path
         trashPath = trashURL.resolvingSymlinksInPath().standardizedFileURL.path
     }
@@ -43,15 +46,15 @@ public struct WorkspaceUndoEngine: Sendable {
     public func inverseDescription(for receipt: WorkspaceFileExecutionReceipt) -> String? {
         switch receipt.effect {
         case .createdFile(let path, _):
-            return "Move the created file “\(path)” to the Trash"
+            return "Move the created file “\(path)” to the workspace trash"
         case .createdDirectory(let path):
-            return "Remove the empty directory “\(path)”"
+            return "Move the empty directory “\(path)” to the workspace trash"
         case .renamed(let source, let destination, _, _):
             return "Rename “\(destination)” back to “\(source)”"
         case .trashed(let source, _, _, _):
-            return "Restore “\(source)” from the Trash"
+            return "Restore “\(source)” from the workspace trash"
         case .restored(let source, _, _, _):
-            return "Move the restored item “\(source)” back to the Trash"
+            return "Move the restored item “\(source)” back to the workspace trash"
         case .legacy:
             return nil
         }

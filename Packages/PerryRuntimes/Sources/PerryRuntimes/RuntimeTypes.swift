@@ -175,18 +175,20 @@ public enum DoEvent: Sendable {
     case failed(stepSummary: String, reason: String)
 }
 
-public struct PlanError: Error, CustomStringConvertible {
+public struct PlanError: Error, CustomStringConvertible, LocalizedError {
     public let message: String
     public var description: String { "plan error: \(message)" }
+    public var errorDescription: String? { description }
 
     public init(message: String) {
         self.message = message
     }
 }
 
-public struct ExecutionError: Error, CustomStringConvertible {
+public struct ExecutionError: Error, CustomStringConvertible, LocalizedError {
     public let message: String
     public var description: String { "execution error: \(message)" }
+    public var errorDescription: String? { description }
 
     public init(message: String) {
         self.message = message

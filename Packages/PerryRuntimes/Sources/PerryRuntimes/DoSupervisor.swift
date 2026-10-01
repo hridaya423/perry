@@ -58,7 +58,9 @@ public enum DoOutcome: Equatable, Sendable {
     case failed(stepSummary: String, reason: String)
 }
 
-private enum ActionExecutionError: Error, CustomStringConvertible {
+private enum ActionExecutionError: Error, CustomStringConvertible, LocalizedError {
+    var errorDescription: String? { description }
+
     case timedOut(actionID: ActionID, timeout: TimeInterval)
     case duplicateAction(actionID: ActionID, policy: IdempotencyPolicy)
     case conflictingIdempotencyKey(String)

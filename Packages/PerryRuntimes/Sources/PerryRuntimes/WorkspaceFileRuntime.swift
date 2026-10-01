@@ -215,19 +215,19 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
 
     private let baseURL: URL
     private let typedRoot: (path: String, device: dev_t, inode: ino_t)?
-    private let trashRoot: (path: String, device: dev_t, inode: ino_t)?
+    private let trashURL: URL
 
     public init(baseURL: URL) {
         self.init(
             baseURL: baseURL,
-            trashURL: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+            trashURL: baseURL.appendingPathComponent(".trash", isDirectory: true)
         )
     }
 
     public init(baseURL: URL, trashURL: URL) {
         self.baseURL = baseURL.resolvingSymlinksInPath().standardizedFileURL
+        self.trashURL = trashURL.resolvingSymlinksInPath().standardizedFileURL
         typedRoot = Self.bindDirectory(baseURL)
-        trashRoot = Self.bindDirectory(trashURL)
     }
 
     private static func bindDirectory(_ url: URL) -> (path: String, device: dev_t, inode: ino_t)? {
@@ -531,15 +531,24 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
         }
     }
 
+    // The Trash lives inside the workspace (`.trash/`): ~/.Trash cannot be
+    // opened without Full Disk Access, and a workspace-local trash keeps
+    // trashed work restorable by Perry for as long as the workspace exists.
+    // Created lazily so runs that never trash leave no empty directory.
+    private func openTrashDirectory() throws -> (descriptor: Int32, device: dev_t) {
+        try? FileManager.default.createDirectory(at: trashURL, withIntermediateDirectories: true)
+        guard let root = Self.bindDirectory(trashURL) else {
+            throw ExecutionError(message: "Trash directory binding is unavailable")
+        }
+        return (try openBoundDirectory(root), root.device)
+    }
+
     private func moveTypedItemToTrash(
         path: String,
         expectedDevice: UInt64,
         expectedInode: UInt64
     ) throws -> String {
-        guard let trashRoot else {
-            throw ExecutionError(message: "Trash directory binding is unavailable")
-        }
-        let trash = try openBoundDirectory(trashRoot)
+        let (trash, trashDevice) = try openTrashDirectory()
         defer { close(trash) }
         return try withOpenParent(of: path) { sourceParent, sourceName in
             var original = stat()
@@ -552,24 +561,32 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
                   UInt64(original.st_ino) == expectedInode else {
                 throw ExecutionError(message: "typed trash source identity does not match approval")
             }
-            guard original.st_dev == trashRoot.device else {
+            guard original.st_dev == trashDevice else {
                 throw ExecutionError(message: "typed trash cannot move an item across filesystems")
             }
 
-            let destinationName = "Perry-\(UUID().uuidString)"
-            let moved = sourceName.withCString { sourceComponent in
-                destinationName.withCString { destinationComponent in
-                    Darwin.renameatx_np(
-                        sourceParent,
-                        sourceComponent,
-                        trash,
-                        destinationComponent,
-                        UInt32(RENAME_EXCL)
-                    )
+            let stamp = Int(Date().timeIntervalSince1970 * 1000)
+            var destinationName = "\(stamp)-\(sourceName)"
+            var counter = 0
+            while true {
+                let candidate = destinationName
+                let moved = sourceName.withCString { sourceComponent in
+                    candidate.withCString { destinationComponent in
+                        Darwin.renameatx_np(
+                            sourceParent,
+                            sourceComponent,
+                            trash,
+                            destinationComponent,
+                            UInt32(RENAME_EXCL)
+                        )
+                    }
                 }
-            }
-            guard moved == 0 else {
-                throw ExecutionError(message: "could not move typed workspace item to Trash")
+                if moved == 0 { break }
+                guard errno == EEXIST, counter < 100 else {
+                    throw ExecutionError(message: "could not move typed workspace item to Trash")
+                }
+                counter += 1
+                destinationName = "\(stamp)-\(counter)-\(sourceName)"
             }
 
             var trashed = stat()
@@ -598,9 +615,6 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
         expectedDevice: UInt64,
         expectedInode: UInt64
     ) throws {
-        guard let trashRoot else {
-            throw ExecutionError(message: "Trash directory binding is unavailable")
-        }
         guard !entryName.isEmpty,
               entryName != ".", entryName != "..",
               !entryName.hasPrefix("/"),
@@ -608,12 +622,12 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
               !entryName.contains("\0") else {
             throw ExecutionError(message: "typed restore entry name is unsafe")
         }
-        let trash = try openBoundDirectory(trashRoot)
+        let (trash, trashDevice) = try openTrashDirectory()
         defer { close(trash) }
         try withOpenParent(of: destination) { destinationParent, destinationName in
             var parentInfo = stat()
             guard Darwin.fstat(destinationParent, &parentInfo) == 0,
-                  parentInfo.st_dev == trashRoot.device else {
+                  parentInfo.st_dev == trashDevice else {
                 throw ExecutionError(message: "typed restore cannot move an item across filesystems")
             }
             var original = stat()
@@ -852,10 +866,11 @@ public struct WorkspaceFileVerifier: TypedActionVerifier {
 
     public init(
         baseURL: URL,
-        trashURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+        trashURL: URL? = nil
     ) {
         self.baseURL = baseURL.resolvingSymlinksInPath().standardizedFileURL
-        self.trashURL = trashURL.resolvingSymlinksInPath().standardizedFileURL
+        self.trashURL = (trashURL ?? self.baseURL.appendingPathComponent(".trash", isDirectory: true))
+            .resolvingSymlinksInPath().standardizedFileURL
     }
 
     public func verify(

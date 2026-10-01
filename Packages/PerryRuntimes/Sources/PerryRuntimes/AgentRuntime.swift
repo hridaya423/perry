@@ -39,8 +39,9 @@ public protocol ExecutableActionExecutor: Sendable {
 
 public typealias TypedActionExecutor = ExecutableActionExecutor
 
-public struct CLIUnavailableError: Error, CustomStringConvertible {
+public struct CLIUnavailableError: Error, CustomStringConvertible, LocalizedError {
     public let searchedPaths: [String]
+    public var errorDescription: String? { description }
 
     public init(searchedPaths: [String]) {
         self.searchedPaths = searchedPaths
