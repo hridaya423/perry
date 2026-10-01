@@ -5,6 +5,7 @@ import PerryCore
 import PerryGuide
 import PerryOverlay
 import PerryRuntimes
+import PerryCapture
 
 enum SettingsTab: String, CaseIterable {
     case general
@@ -60,6 +61,7 @@ struct SettingsView: View {
     @State private var settingsError: String?
     @State private var showRemoveVisionCredentialConfirmation = false
     @State private var showReportProblem = false
+    @State private var permissions: PerryPermissionSnapshot?
 
     init(controller: AppController) {
         self.controller = controller
@@ -156,8 +158,80 @@ struct SettingsView: View {
                 Text("If voice input is unavailable, Perry leaves the panel ready for typing.")
                     .settingNote()
             }
+            permissionsSection
         }
         .formStyle(.grouped)
+        .task { await refreshPermissions() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshPermissions() }
+        }
+    }
+
+    private var permissionsSection: some View {
+        Section("Permissions") {
+            permissionRow(
+                name: "Accessibility",
+                why: "Lets Perry read and act on whatever you point at.",
+                granted: permissions?.accessibility
+            ) {
+                _ = PerryPermissionProbe.requestAccessibility()
+                openPrivacyPane("Privacy_Accessibility")
+            }
+            permissionRow(
+                name: "Screen Recording",
+                why: "Lets Perry see window contents so answers stay grounded.",
+                granted: permissions?.screenRecording.isUsable
+            ) {
+                _ = PerryPermissionProbe.requestScreenRecording()
+                openPrivacyPane("Privacy_ScreenCapture")
+            }
+            permissionRow(
+                name: "Microphone",
+                why: "Lets Perry hear you for talk and dictation.",
+                granted: permissions?.microphone.isUsable
+            ) {
+                Task {
+                    _ = await PerryPermissionProbe.requestMicrophone()
+                    openPrivacyPane("Privacy_Microphone")
+                }
+            }
+            Text("Enabling Screen Recording may ask you to quit and reopen Perry.")
+                .settingNote()
+        }
+    }
+
+    private func permissionRow(name: String, why: String, granted: Bool?, action: @escaping () -> Void) -> some View {
+        HStack(spacing: PerryTheme.Spacing.inline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                Text(why)
+                    .settingNote()
+            }
+            Spacer()
+            switch granted {
+            case .some(true):
+                Label("On", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(PerryTheme.Colors.success)
+                    .labelStyle(.iconOnly)
+                    .accessibilityLabel("\(name) permission granted")
+            case .some(false):
+                Button("Enable…", action: action)
+                    .accessibilityLabel("Enable \(name) permission")
+            case nil:
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Checking \(name) permission")
+            }
+        }
+    }
+
+    private func refreshPermissions() async {
+        permissions = await PerryPermissionSnapshot.probe()
+    }
+
+    private func openPrivacyPane(_ anchor: String) {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private var voiceAndInputTab: some View {
