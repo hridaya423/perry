@@ -1460,7 +1460,7 @@
   {
    "id": "history.response-store",
    "name": "Response history store and tab",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryCore",
    "support": "Local searchable transcript history with export",
    "limitations": [
@@ -1602,7 +1602,7 @@
   {
    "id": "appearance.notch-home",
    "name": "Notch home with tabs and pinned skills",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Notch Home shipped: hover peek, Esc latch, slim-dot fallback, full Home window",
    "limitations": [
@@ -2405,7 +2405,7 @@
   {
    "id": "onboarding.guided-tutorial",
    "name": "Guided first-run tutorial",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "ChatGPT readiness setup, contextual permissions, and optional practice",
    "limitations": [
@@ -3250,7 +3250,7 @@
   {
    "id": "onboarding.first-value-demo",
    "name": "Onboarding demo answers about the screen before guiding or doing",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "The guided demo proves spatial Ask first, then Guide, then a small verified Do task",
    "limitations": [
