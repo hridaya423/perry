@@ -414,8 +414,12 @@ final class HomeController {
                 self.homeModel.perrys = await perryListProvider()
             }
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            window.orderFront(nil)
+        }
         apply(intent.setHomeOpen(true))
         PerfMark.mark("home.opened")
     }
