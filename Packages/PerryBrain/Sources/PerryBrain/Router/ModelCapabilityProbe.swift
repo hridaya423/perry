@@ -31,7 +31,7 @@ public struct ModelCapabilityProbe: Sendable {
 
     public func run(image: Data, expectedImageText: String) async throws -> Result {
         let text = try await check {
-            let events = try await collect(ModelRequest(messages: [.user([.text("Reply with exactly PERRY_READY and nothing else.")])], maxOutputTokens: 64))
+            let events = try await collect(ModelRequest(messages: [.user([.text("Reply with exactly PERRY_READY and nothing else.")])], maxOutputTokens: 512))
             return answer(events) == "PERRY_READY"
         }
         guard text == .passed else { return Result(text: text, vision: .notRun, tools: .notRun) }
@@ -39,7 +39,7 @@ public struct ModelCapabilityProbe: Sendable {
             let events = try await collect(ModelRequest(messages: [.user([
                 .text("Read the digits in this image. Reply with only those digits."),
                 .image(data: image, mimeType: "image/png")
-            ])], maxOutputTokens: 64))
+            ])], maxOutputTokens: 512))
             return answer(events) == expectedImageText
         }
         let tools = try await check {
@@ -52,7 +52,7 @@ public struct ModelCapabilityProbe: Sendable {
                 ]), readOnly: true
             )
             let prompt = ModelMessage.user([.text("Call perry_capability_check with value test. After its result arrives, reply with only the returned text.")])
-            let events = try await collect(ModelRequest(messages: [prompt], tools: [spec], maxOutputTokens: 128))
+            let events = try await collect(ModelRequest(messages: [prompt], tools: [spec], maxOutputTokens: 2048))
             let calls = events.compactMap { event -> ToolCall? in
                 if case .toolCall(let call) = event { return call }
                 return nil
@@ -63,7 +63,7 @@ public struct ModelCapabilityProbe: Sendable {
             let followUp = try await collect(ModelRequest(messages: [
                 prompt, .assistant(text: answer(events), toolCalls: calls),
                 .toolResult(callID: call.id, content: [.text(returned)], isError: false)
-            ], tools: [spec], maxOutputTokens: 128))
+            ], tools: [spec], maxOutputTokens: 2048))
             return answer(followUp) == returned && !followUp.contains { if case .toolCall = $0 { return true }; return false }
         }
         return Result(text: text, vision: vision, tools: tools)
