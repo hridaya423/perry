@@ -127,7 +127,7 @@ struct SettingsView: View {
                     .onChange(of: wakeWordEnabled) { _, value in
                         controller.voice.updateWakeWordEnabled(value)
                     }
-                Text("Off by default. When on, Perry listens on device for the phrase and keeps no ambient transcript.")
+                Text("Perry listens on device for the phrase and keeps no ambient transcript.")
                     .settingNote()
                 Picker("Wake shortcut", selection: $wakeShortcutRaw) {
                     ForEach(WakeShortcut.allCases) { shortcut in
@@ -313,7 +313,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("On-device dictation is the everyday path — endpoint mechanics stay behind this disclosure. When configured, audio and responses stream through your realtime provider under its data policies; Perry keeps one duplex session open and cancels playback when you barge in.")
+                Text("When configured, audio and responses stream through your realtime provider under its data policies.")
                     .settingNote()
             }
         }
@@ -453,7 +453,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository so the problem can be reproduced.")
+            Text("Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository.")
         }
     }
 
@@ -527,7 +527,7 @@ struct SettingsView: View {
                     controller.reloadCuaDriverConfiguration()
                     refreshRuntimeStatus()
                 }
-                Text("Perry requires Cua Driver for window screenshots, accessibility grounding, and GUI actions. Grounded tasks stop when Cua is unavailable or unhealthy.")
+                Text("Perry requires Cua Driver for window screenshots, accessibility grounding, and GUI actions.")
                     .settingNote()
             }
             Section("Direct AI provider") {
@@ -609,7 +609,7 @@ struct SettingsView: View {
                         .accessibilityLabel("\(skill.displayName), \(skill.source.rawValue) skill")
                     }
                 }
-                Text("Skills are local Markdown notes injected only for the matching foreground app. Disable any skill you do not want Perry to use.")
+                Text("Skills are local Markdown notes injected only for the matching foreground app.")
                     .settingNote()
                 Button("Open local skills folder") {
                     guard let directory = AppController.supportDirectory?.appendingPathComponent("AppSkills", isDirectory: true) else { return }
