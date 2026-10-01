@@ -56,11 +56,11 @@ final class AgentCoordinator: ObservableObject {
 
     typealias GuidedOperation = @MainActor (PerryThread) async throws -> (answer: String, finish: AgentFinish)
 
-    func run(threadID: UUID, goal: String, perryID: String? = nil, surface: ToolSurface = .agent, runID: UUID = UUID(), target: CuaTargetHint? = nil, spatialContext: SpatialContext? = nil, waitingInputID: UUID? = nil) -> AsyncStream<AgentLoopEvent> {
+    func run(threadID: UUID, goal: String, perryID: String? = nil, surface: ToolSurface = .agent, runID: UUID = UUID(), target: CuaTargetHint? = nil, spatialContext: SpatialContext? = nil, waitingInputID: UUID? = nil, unattended: Bool = false) -> AsyncStream<AgentLoopEvent> {
         AsyncStream { continuation in
             let task = start(
                 threadID: threadID, goal: goal, perryID: perryID, surface: surface, runID: runID,
-                target: spatialContext?.target ?? target, spatialContext: spatialContext, waitingInputID: waitingInputID
+                target: spatialContext?.target ?? target, spatialContext: spatialContext, waitingInputID: waitingInputID, unattended: unattended
             ) { event in
                 continuation.yield(event)
                 if case .finished = event { continuation.finish() }
@@ -82,7 +82,7 @@ final class AgentCoordinator: ObservableObject {
     private func start(
         threadID: UUID, goal: String, perryID: String? = nil, surface: ToolSurface = .agent,
         runID: UUID, target: CuaTargetHint? = nil, spatialContext: SpatialContext? = nil,
-        operation: GuidedOperation? = nil, waitingInputID: UUID? = nil,
+        operation: GuidedOperation? = nil, waitingInputID: UUID? = nil, unattended: Bool = false,
         sink: @escaping @MainActor (AgentLoopEvent) -> Void
     ) -> Task<Void, Never>? {
         guard acceptsRuns else {
@@ -101,7 +101,7 @@ final class AgentCoordinator: ObservableObject {
             }
             await execute(
                 threadID: threadID, goal: goal, perryID: perryID, surface: surface, runID: runID,
-                target: target, spatialContext: spatialContext, operation: operation, waitingInputID: waitingInputID, sink: sink
+                target: target, spatialContext: spatialContext, operation: operation, waitingInputID: waitingInputID, unattended: unattended, sink: sink
             )
         }
         tasks[threadID] = task
@@ -176,6 +176,7 @@ final class AgentCoordinator: ObservableObject {
         spatialContext: SpatialContext?,
         operation: GuidedOperation?,
         waitingInputID: UUID?,
+        unattended: Bool = false,
         sink: @escaping @MainActor (AgentLoopEvent) -> Void
     ) async {
         defer { observations.remove(runID: runID) }
@@ -213,7 +214,7 @@ final class AgentCoordinator: ObservableObject {
                 let tier = spatialContext.map {
                     TierClassifier.tier(question: goal, bindingCount: $0.bindings.count, elementCount: $0.observation.observedElements.count)
                 } ?? .deep
-                let capabilities: ModelCapabilities = spatialContext != nil ? [.vision, .streaming] : (surface == .suggestions ? [.tools] : [.streaming])
+                let capabilities: ModelCapabilities = spatialContext != nil ? [.vision, .streaming] : (surface == .suggestions || unattended ? [.tools] : [.streaming])
                 let selected = try await provider(RouteRequirement(capabilities: capabilities, tier: tier))
                 try Task.checkCancellation()
                 var system = await systemPrompt(for: thread)
@@ -242,9 +243,11 @@ final class AgentCoordinator: ObservableObject {
                     threadID: threadID.uuidString,
                     approve: { call, spec in
                         await ToolApprovalPresenter.present(
-                            call: call, spec: spec, consentScope: scope, consentStore: self.consent
+                            call: call, spec: spec, consentScope: scope, consentStore: self.consent,
+                            unattended: unattended
                         )
-                    }
+                    },
+                    unattended: unattended
                 )
                 let loop = AgentLoop(provider: selected, host: host)
                 loops[threadID] = loop

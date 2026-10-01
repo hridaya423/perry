@@ -98,7 +98,8 @@ final class PerrySchedulerController {
                 for await event in coordinator.run(
                     threadID: threadID,
                     goal: perry.job,
-                    perryID: perry.id.uuidString
+                    perryID: perry.id.uuidString,
+                    unattended: true
                 ) {
                     if case .finished(.completed) = event { succeeded = true }
                 }

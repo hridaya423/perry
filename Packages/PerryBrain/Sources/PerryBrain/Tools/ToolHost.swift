@@ -34,19 +34,24 @@ public struct ToolContext: Sendable {
     public var redConfirmed: Bool
     /// App-injected approval for orange/red intent cards; nil means nobody is there to ask.
     public var approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)?
+    /// True when the turn runs without a user present (scheduled Perrys). The
+    /// loop fails answers that park the job on an unanswerable question.
+    public var unattended: Bool
 
     public init(
         surface: ToolSurface,
         runID: UUID = UUID(),
         threadID: String? = nil,
         redConfirmed: Bool = false,
-        approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)? = nil
+        approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)? = nil,
+        unattended: Bool = false
     ) {
         self.runID = runID
         self.surface = surface
         self.threadID = threadID
         self.redConfirmed = redConfirmed
         self.approve = approve
+        self.unattended = unattended
     }
 }
 

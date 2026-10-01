@@ -184,9 +184,15 @@ public actor AgentLoop {
                 return
             }
             if calls.isEmpty {
-                if toolCallCount == 0, Self.looksFabricatedToolTranscript(text, toolNames: surfaceToolNames) {
-                    finish(.failed("The answer describes tool results Perry did not run — nothing was executed. Retry, or choose a different model in Settings."))
-                    return
+                if toolCallCount == 0 {
+                    if Self.looksFabricatedToolTranscript(text, toolNames: surfaceToolNames) {
+                        finish(.failed("The answer describes actions Perry did not run — nothing was executed. Retry, or choose a different model in Settings."))
+                        return
+                    }
+                    if context.unattended, Self.looksLikeUserQuestion(text) {
+                        finish(.failed("The Perry asked for confirmation on a scheduled turn — nobody is there to answer. Rewrite the job so it can act on its own, or pick a tools-capable model in Settings."))
+                        return
+                    }
                 }
                 finish(.completed)
                 return
@@ -209,10 +215,22 @@ public actor AgentLoop {
     }
 
     /// Some models write a fake transcript into the answer — `files.list("…")`
-    /// or `[Observation: …]` — instead of emitting a real tool call. When no
-    /// call ran in the whole turn, those claims are fabricated.
+    /// or `[Observation: …]` — instead of emitting a real tool call. Others
+    /// narrate a completed action in prose ("Action completed", "file X
+    /// created") with no call at all. When no call ran in the whole turn,
+    /// those claims are fabricated.
     static func looksFabricatedToolTranscript(_ text: String, toolNames: Set<String>) -> Bool {
         if text.range(of: #"(?m)^\s*\[(Observation|Action)\s*:"#, options: .regularExpression) != nil {
+            return true
+        }
+        if text.range(of: #"(?i)\baction (was |is )?(not )?(completed|done|approved|denied|declined)\b"#, options: .regularExpression) != nil {
+            return true
+        }
+        if text.range(of: #"(?i)\bapproval (was |is )?(not )?(given|granted|denied|declined)\b|\b(not|wasn'?t) approved\b"#, options: .regularExpression) != nil {
+            return true
+        }
+        let claimPattern = #"(?i)\b(created|wrote|written|saved|deleted|renamed|moved|copied|sent)\b[^.\n]{0,40}\b(file|folder|document|note|message|email|task)\b|\b(file|folder|document|note)\s+\S+\s+(was\s+)?(created|written|saved|deleted|renamed|moved|copied|sent)\b"#
+        if text.range(of: claimPattern, options: .regularExpression) != nil {
             return true
         }
         for name in toolNames where name.contains(".") {
@@ -220,6 +238,17 @@ public actor AgentLoop {
             if text.range(of: pattern, options: .regularExpression) != nil { return true }
         }
         return false
+    }
+
+    /// A trailing question to the user ("Do you want to proceed?", "Which
+    /// folder should I use?") can never be answered on an unattended turn.
+    static func looksLikeUserQuestion(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix("?") { return true }
+        return trimmed.range(
+            of: #"(?i)\b(do you want (me )?to|please confirm|shall i|would you like me to|let me know if|awaiting (your )?(approval|confirmation|input|response)|waiting for (your )?(approval|confirmation|input|response|reply))\b"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private struct ToolExecutionStopped: Error {

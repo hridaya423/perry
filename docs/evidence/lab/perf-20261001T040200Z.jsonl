@@ -8,3 +8,6 @@
 {"captured_at":"2026-10-01T04:03:37Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":72.79396057128906}
 {"captured_at":"2026-10-01T04:03:40Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":477.14197635650635}
 {"captured_at":"2026-10-01T04:03:40Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.4709959030151367}
+{"captured_at":"2026-10-01T04:15:45Z","collector":"overlay","metric_id":"overlay.cleanup_ms","scenario":"overlay","unit":"ms","value":0.0050067901611328125}
+{"captured_at":"2026-10-01T04:15:45Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":132.42506980895996}
+{"captured_at":"2026-10-01T04:15:45Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":125.33891201019287}

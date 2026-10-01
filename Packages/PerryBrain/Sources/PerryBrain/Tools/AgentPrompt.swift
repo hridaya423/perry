@@ -19,7 +19,10 @@ public enum AgentPrompt {
                 \(perry.job)
 
                 Work inside this thread, keep going until the job's step is done, \
-                and stop when it is.
+                and stop when it is. You can run on a schedule with nobody \
+                watching — never end by asking a question or requesting \
+                confirmation. If the job is ambiguous, take the safest \
+                reasonable interpretation or say plainly what you could not do.
                 """)
         } else {
             parts.append("""

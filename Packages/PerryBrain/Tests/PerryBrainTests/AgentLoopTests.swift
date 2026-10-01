@@ -275,6 +275,83 @@ final class AgentLoopTests: XCTestCase {
         }
     }
 
+    func testFabricatedActionClaimFailsInsteadOfCompleting() async {
+        // qwen-style narration: "**Action completed:** File X created" with
+        // zero tool calls — a fabricated mutation claim, not a completion.
+        let fabricated = """
+            **Action completed:** File drill-proof.txt created in /tmp/workspace with content hello.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A fabricated action claim must not record as completed")
+        }
+    }
+
+    func testFabricatedDenialClaimFailsInsteadOfCompleting() async {
+        // Zero tools ran, so no approval card could ever have been shown —
+        // "not approved" fabricates an approval decision that never happened.
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("Action not completed: The file creation action was not approved."), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A fabricated approval-denial claim must not record as completed")
+        }
+    }
+
+    func testUnattendedAwaitingApprovalFailsInsteadOfParking() async {
+        // "Awaiting your approval" ends the turn waiting on a person who is
+        // not there — the same dead end as a literal question.
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("The change is ready and awaiting your approval."), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: ToolContext(surface: .agent, unattended: true)))
+        guard case .failed = finishReason(events) else {
+            return XCTFail("An approval wait on an unattended turn must fail")
+        }
+    }
+
+    func testAttendedAwaitingApprovalStillCompletes() async {
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("The change is ready and awaiting your approval."), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(finishReason(events), .completed)
+    }
+
+    func testUnattendedQuestionTurnFailsInsteadOfParking() async {
+        // Scheduled Perrys have no one to answer "Do you want to proceed?" —
+        // recording completed would park the job and poison future context.
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("Please confirm the following action: Create drill.txt. Do you want to proceed?"), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: ToolContext(surface: .agent, unattended: true)))
+        guard case .failed = finishReason(events) else {
+            return XCTFail("An unanswerable question on an unattended turn must fail")
+        }
+    }
+
+    func testAttendedQuestionTurnStillCompletes() async {
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("Which folder should I use?"), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(finishReason(events), .completed)
+    }
+
+    func testPlainAnswerWithoutActionClaimsStillCompletes() async {
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.list", description: "list", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta("The workspace listing is empty — nothing was found."), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(finishReason(events), .completed)
+    }
+
     func testToolNameMentionAfterRealCallsStillCompletes() async {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         let (loop, _, _, executor) = makeLoop([

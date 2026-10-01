@@ -12,19 +12,24 @@ import PerryRuntimes
 /// When a `consentScope` is supplied (thread ID), orange-tier cards offer
 /// "Always allow" which records a per-thread grant; future calls of the same
 /// tool in that thread skip the card. Red-tier calls are never auto-approved.
+/// On `unattended` turns nobody can answer a card — anything without a
+/// recorded grant denies immediately rather than parking the job on a window
+/// nobody will ever see.
 @MainActor
 enum ToolApprovalPresenter {
     static func present(
         call: ToolCall,
         spec: ToolSpec,
         consentScope: String? = nil,
-        consentStore: ToolConsentStore
+        consentStore: ToolConsentStore,
+        unattended: Bool = false
     ) async -> ToolApproval {
         if let consentScope,
            spec.tier < .red,
            await consentStore.isGranted(tool: spec.name, threadID: consentScope) {
             return .approvedOnce
         }
+        guard !unattended else { return .denied }
         let presentation = ToolApprovalPresentation()
         return await withTaskCancellationHandler {
             guard !Task.isCancelled else { return .denied }
