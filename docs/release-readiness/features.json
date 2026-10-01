@@ -24,7 +24,7 @@
    "owner": "App",
    "support": "Local macOS app",
    "limitations": [
-    "Live: cghidEventTap cmd+option+P produced invoke.keydown \u2192 wake.pinned \u2192 wake.overlay \u2192 panel.visible (~26-47 ms warm) across launches."
+    "Live: cghidEventTap cmd+option+P produced invoke.keydown → wake.pinned → wake.overlay → panel.visible (~26-47 ms warm) across launches."
    ],
    "verification": {
     "supported_environments": {
@@ -369,11 +369,11 @@
   {
    "id": "voice.audio-prewarm",
    "name": "Pre-warmed audio output",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local sound cues are preloaded before playback",
    "limitations": [
-    "The chime warmer is wired, but no measured first-play latency evidence is recorded."
+    "Live: sound.warmup fired at launch (17:49:41.822Z) before any wake; invoke.keydown → sound.cue.wake measured 225 ms on a warm path (single sample, no cold-path control)."
    ],
    "verification": {
     "supported_environments": {
@@ -394,6 +394,10 @@
     {
      "kind": "source",
      "reference": "App/SoundPlayer.swift"
+    },
+    {
+     "kind": "marker-log",
+     "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl (sound.warmup at launch; invoke.keydown → sound.cue.wake 225 ms)"
     }
    ]
   },
@@ -1915,7 +1919,7 @@
    "support": "Local redacted diagnostics export",
    "limitations": [
     "The registry does not record a last successful run for this capability.",
-    "Live: Export diagnostics menu \u2192 NSSavePanel \u2192 real redacted JSON (counts only, no transcript text) verified on disk."
+    "Live: Export diagnostics menu → NSSavePanel → real redacted JSON (counts only, no transcript text) verified on disk."
    ],
    "verification": {
     "supported_environments": {
@@ -2462,7 +2466,7 @@
    "owner": "App",
    "support": "Local drawn screen region passed into planner context",
    "limitations": [
-    "Live: synthetic \u2300\u2318 lasso accepted on a running instance (spatial.down \u2192 spatial.select) and produced a spoken reply; single-display only.",
+    "Live: synthetic ⌥⌘ lasso accepted on a running instance (spatial.down → spatial.select) and produced a spoken reply; single-display only.",
     "AX-label enrichment degraded gracefully to the label-less reply because no capture worker was available.",
     "The registry does not record a last successful run for this capability."
    ],

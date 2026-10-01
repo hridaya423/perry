@@ -162,3 +162,38 @@ check next time.
 **Measured latencies (n=1, this log):** invoke→panel 31 ms;
 panel→wake-cue 225 ms; gesture duration 857 ms (posted pace);
 select→reply 161 ms (includes the fast-failing AX-capture leg).
+
+## Iteration 17 — route-switch drill attempt + first fallback firing
+
+**Barge-in → silence measured**: three live firings —
+16:37:29.889→.890 (1 ms), 17:15:30.144→.150 (6 ms),
+17:49:39.765→.766 (1 ms). All far inside the ≤150 ms budget, though
+all three were shutdown/launch cancellations rather than a user
+barge-in mid-reply.
+
+**Route-switch live drill — inconclusive.** `handleAudioRouteChange`
+announces only while `synthesizer.isSpeaking`; the wake greeting is
+~0.7–1.7 s, and lab route flips (CoreAudio `DefaultOutputDevice` set
+via a new `/tmp/monprobe/route` helper) kept landing just outside the
+utterance window — first attempt raced the *previous* wake's stale
+marker, later attempts fought panel dismissals from the user's own
+clicks. Three flips executed cleanly (Speakers ↔ Teams Audio,
+verified by `system_profiler` device list) but none provably inside
+`isSpeaking`. No Bluetooth output device exists on this machine
+(AirPods absent from CoreAudio device list — only Built-in + a Teams
+virtual device), so `audio.preroll.bt` remains hardware-blocked
+either way.
+
+**First `cursor.follow.fallback` firing** at 18:17:58.615 on pid
+97513 — during a synthetic `CGWarpMouseCursorPosition` burst from the
+lasso driver while user input was also active. Ambiguous trigger:
+warp moves the pointer without necessarily producing monitor-visible
+`.mouseMoved` events, so this may be a warp-delivery quirk rather than
+real starvation. The marker path and watchdog-to-poll transition work
+live, which is what the mechanism exists to prove. Consistent with —
+not contradictory to — the iter-15 finding that session-posted moves
+DO reach monitors (`home.hover_start` on an untrusted instance).
+
+**Ledger:** `voice.audio-prewarm` wired → live-tested
+(`sound.warmup` at launch + 225 ms warm invoke→cue latency).
+Now 28 live / 23 unit / 9 wired / 19 absent.
