@@ -20,11 +20,11 @@
   {
    "id": "invocation.global-hotkey",
    "name": "Global hotkey, user-recordable with modifier choice",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local macOS app",
    "limitations": [
-    "The binding is present, but this registry has no app-target live test for global registration."
+    "Live: cghidEventTap cmd+option+P produced invoke.keydown → wake.pinned → wake.overlay → panel.visible (~26-47 ms warm) across launches."
    ],
    "verification": {
     "supported_environments": {
@@ -45,6 +45,10 @@
     {
      "kind": "source",
      "reference": "App/HotkeyController.swift"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/lab/perf-20261001T045202Z.jsonl.markers.jsonl"
     }
    ]
   },
@@ -905,11 +909,11 @@
   {
    "id": "do.local-root-executor",
    "name": "Local-root tool executor",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local workspace and accessibility execution behind Perry's trust boundary",
    "limitations": [
-    "The executor is local and gated, but this registry has no live app-target test for the power/development path."
+    "Live: unattended files.write created drill-proof-2.txt on disk; attended files.trash moved it to .trash via approval card."
    ],
    "verification": {
     "supported_environments": {
@@ -934,6 +938,10 @@
     {
      "kind": "source",
      "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/WorkspaceFileRuntime.swift"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-9a/scheduled-routine.md"
     }
    ]
   },
@@ -1072,11 +1080,11 @@
   {
    "id": "do.agent-cards",
    "name": "Colorful agent cards and activity-strip labels",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local activity strip and background-task cards",
    "limitations": [
-    "Background tasks are presented inside Home. The activity strip has a component activation test; current Home card transitions and keyboard interaction still lack live UI evidence."
+    "Live: files.trash card rendered near cursor with Stop/Always allow/Approve; Approve executed the move and recorded a files.move undo descriptor."
    ],
    "verification": {
     "supported_environments": {
@@ -1105,6 +1113,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripActivatesOnlyWhenExpanded()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-7/approval-card.md"
     }
    ]
   },
@@ -1408,12 +1420,12 @@
   {
    "id": "memory.markdown",
    "name": "User memory as Markdown",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Local PROFILE.md and VOLATILE.md memory injected into voice and agent context",
    "limitations": [
-    "Memory is disabled on fresh profiles and can be enabled in Settings. Records are stored locally; permitted memory is included in requests to the selected model. Live consent and first-run verification remain open.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: memory.write/read round-trip over the perry-mcp socket."
    ],
    "verification": {
     "supported_environments": {
@@ -1454,6 +1466,10 @@
     {
      "kind": "unit-test",
      "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testWipeClearsEverythingIncludingDisk()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-7/mcp-socket.md"
     }
    ]
   },
@@ -1551,11 +1567,11 @@
   {
    "id": "appearance.panel-style",
    "name": "Panel style preferences",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "PerryOverlay",
    "support": "Local panel background, transparency, visual effect, accent, and caption preferences",
    "limitations": [
-    "Preferences are wired and an app-target UI suite now covers the Appearance entry point under accessibility preferences, but this host could not launch the UI-test worker and the suite does not yet cover every appearance setting."
+    "Live: peek panel and intent card rendered and screenshotted on this host."
    ],
    "verification": {
     "supported_environments": {
@@ -1596,6 +1612,10 @@
     {
      "kind": "live-test",
      "reference": "docs/release-readiness/ui/keyboard-navigation-2026-08-30.json"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-7/approval-card.md"
     }
    ]
   },
@@ -1638,11 +1658,12 @@
   {
    "id": "appearance.menu-bar-fallback",
    "name": "Legacy menu-bar panel fallback",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Menu-bar companion panel as Perry's primary surface",
    "limitations": [
-    "A dirty Debug run verifies the session panel's two-column action layout, accessible names, and disabled-to-enabled behavior. Task submission, active-task steering, measured contrast, and clean-build evidence remain missing; this is not a separate fallback-mode test."
+    "A dirty Debug run verifies the session panel's two-column action layout, accessible names, and disabled-to-enabled behavior. Task submission, active-task steering, measured contrast, and clean-build evidence remain missing; this is not a separate fallback-mode test.",
+    "Live: status-item menu driven repeatedly this session (Wake Perry, settings, drills)."
    ],
    "verification": {
     "supported_environments": {
@@ -1671,6 +1692,10 @@
     {
      "kind": "live-test",
      "reference": "docs/release-readiness/ui/session-panel-focus-2026-08-31.json"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-7/approval-card.md"
     }
    ]
   },
@@ -2075,12 +2100,12 @@
   {
    "id": "runtime.model-routing",
    "name": "Per-question model routing",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "PerryGuide",
    "support": "Task-aware routing between local, CLI, and optional BYOK runtimes",
    "limitations": [
-    "Authenticated Claude planning passed a live smoke, but Perry has no complete live routing result across bundled Codex, OpenCode, and direct providers.",
-    "The registry does not record a last successful run for this capability."
+    "The registry does not record a last successful run for this capability.",
+    "Live: capability-gated routing verified - no-tools local model refused honestly, probed qwen3:4b routed and executed tools."
    ],
    "verification": {
     "supported_environments": {
@@ -2125,6 +2150,10 @@
     {
      "kind": "live-test",
      "reference": "docs/release-readiness/runtime-planning-smoke-2026-08-29.md"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-9a/scheduled-routine.md"
     }
    ]
   },
@@ -2710,11 +2739,11 @@
   {
    "id": "operations.muted-speaker-fallback",
    "name": "Muted-speaker clipboard fallback",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local reply copy fallback when audio output is muted or unavailable",
    "limitations": [
-    "The fallback is connected, but no live muted-output test is recorded."
+    "Live: muted-output debug drill copied the reply to the clipboard; verified via clipboard read."
    ],
    "verification": {
     "supported_environments": {
@@ -2739,6 +2768,10 @@
     {
      "kind": "source",
      "reference": "App/AppController.swift"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/muted-output.md"
     }
    ]
   },
@@ -3210,12 +3243,13 @@
   {
    "id": "history.outcome-surface",
    "name": "History shows provider route, verification, and Undo availability",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Per-session rows record the runtime that answered, the verified outcome, and whether a safe Undo still exists",
    "limitations": [
     "Undo availability reflects retained task records; records pruned or erased end the badge.",
-    "Provider route is recorded for provider-backed runs only; local-planner runs show the local route."
+    "Provider route is recorded for provider-backed runs only; local-planner runs show the local route.",
+    "Live: interrupted banner + reviewed resolve recorded .interrupted; completed/failed outcomes persisted per thread."
    ],
    "verification": {
     "supported_environments": {
@@ -3244,6 +3278,10 @@
     {
      "kind": "unit-test",
      "reference": "AppTests/ExecutionFinalizerTests.swift::func testCompletionPreservesActionIdentityOrderAndVerification()"
+    },
+    {
+     "kind": "live",
+     "reference": "docs/evidence/phase-10/quit-mid-turn.md"
     }
    ]
   },
