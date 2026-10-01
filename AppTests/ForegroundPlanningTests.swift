@@ -1847,3 +1847,24 @@ private struct ForegroundAnswerProvider: ModelProvider {
         }
     }
 }
+
+/// Records provider dispatches so tests can prove the agent-loop route was
+/// taken; answers immediately with a fixed text stream.
+private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.agent-route"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
+    private let lock = NSLock()
+    private var recorded: [ModelRequest] = []
+    var requests: [ModelRequest] { lock.withLock { recorded } }
+    func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        lock.withLock { recorded.append(request) }
+        return AsyncThrowingStream { continuation in
+            continuation.yield(.textDelta("Done."))
+            continuation.yield(.done(.endTurn))
+            continuation.finish()
+        }
+    }
+}
