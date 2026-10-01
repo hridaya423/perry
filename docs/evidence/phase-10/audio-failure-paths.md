@@ -89,28 +89,28 @@ touch the clipboard on muted output; answer content still does.
   alongside accessibility/screenRecording/microphone, so exported
   reports show the PTT-blocking grant.
 
-## Iteration 15 — cursor-follow starvation fallback
+## Iteration 15 — cursor-follow starvation watchdog (belt + suspenders)
 
-Same invisible-failure class as PTT: `PerryBuddyView` tracks the pointer
-via `NSEvent` global `.mouseMoved`/drag monitors, which install fine but
-deliver zero events without Input Monitoring or Accessibility trust —
-the living cursor froze silently on untrusted identities (the running
-adhoc build shows both grants ungranted, and no windows/peek respond).
+`PerryBuddyView` tracks the pointer via `NSEvent` global `.mouseMoved`/
+drag monitors. A 0.5 s watchdog now compares `NSEvent.mouseLocation`
+(permission-free) against the monitor event count: movement without
+events → `cursor.follow.fallback` marker + `cursorTrackingDegraded`,
+and follow switches to a 30 Hz poll that self-parks after ~1.5 s of
+stillness. The first real monitor event retires the watchdog
+permanently — a healthy Perry keeps the zero-timer event design.
+Unit-tested via `OverlayPerfProbe.markCursorTrackingDegraded`
+(transition-only hook).
 
-Fix (`PerryOverlay`): a 0.5 s watchdog compares `NSEvent.mouseLocation`
-(permission-free) against the monitor event count. Movement without
-events → `cursor.follow.fallback` marker + `OverlayPerfProbe.
-cursorTrackingDegraded`, and follow switches to a 30 Hz poll that parks
-itself after ~1.5 s of no motion. First real monitor event permanently
-stands the watchdog down, so a granted Perry keeps the zero-timer
-event-driven design. Probe hook + degraded flag unit-tested
-(`PerryOverlaySmokeTests`).
+**Premise correction:** initially assumed mouseMoved monitors starve
+without IM like keyboard taps do (`ptt.capture.fallback`). Live evidence
+says otherwise — `home.hover_start` (emitted only from `pointerMoved`,
+which only the mouseMoved monitors call) fired three times on instance
+61273, whose Settings show both Accessibility and Input Monitoring
+ungranted. Global *mouse* monitors deliver on untrusted identities;
+only keyboard input is IM-gated. The watchdog therefore guards an
+unproven edge (future macOS policy tightening, partial trust states)
+at ~zero steady-state cost — honest detection + degrade, not a fix for
+an observed failure.
 
-Empirical check this machine: a probe binary under Terminal's identity
-(`axTrusted=true`) received 275 global monitor events in ~7 s of
-synthetic pointer moves — delivery works when trusted; Perry's own
-identity is untrusted (Settings rows show Enable…), so the fallback
-path is the operative one on this host until the grants land.
-
-Live confirmation deferred: `cursor.follow.fallback` will appear in the
-markers log on the next Perry launch (the 8-h soak pins pid 11222).
+Live `cursor.follow.fallback` marker expected only if the edge ever
+fires; on this machine it should stay silent.
