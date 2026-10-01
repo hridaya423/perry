@@ -49,7 +49,12 @@ touch the clipboard on muted output; answer content still does.
   the adhoc build), and MCP on this instance accepted-then-closed the
   socket (investigate next iteration — was functional on the earlier
   instance).
-- `talk.speak.start`/`end` — needs unmuted output (user action: unmute).
+- ~~`talk.speak.start`/`end`~~ **verified iter-15** — instance 11222
+  markers: `talk.speak.start` 17:31:16.387 → `talk.speak.end`
+  17:31:18.094 (1.7 s wake greeting, output unmuted).
+- `talk.bargein`/`bargein.silence` — fired live on instance-61273
+  termination at 17:15:30Z (SIGTERM cancelled the in-flight greeting);
+  a user-initiated barge still needs the physical PTT path.
 
 ## Input Monitoring chain (the PTT blocker, now precise)
 

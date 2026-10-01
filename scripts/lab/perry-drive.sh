@@ -40,7 +40,7 @@ case "$cmd" in
     hotkey)
         combo="${2:?usage: perry-drive.sh hotkey <combo e.g. cmd+option+p>}"
         keys="$(printf '%s' "$combo" | tr '+' '\n' | sed 's/^/"/; s/$/"/' | paste -sd, -)"
-        "$CUA" call hotkey "{\"keys\":[$keys]}"
+        "$CUA" call hotkey "{\"keys\":[$keys],\"scope\":\"desktop\"}"
         ;;
     windows)
         pid="$(perry_pid)"
