@@ -101,7 +101,11 @@ public struct ConversationContext {
         if !sources.isEmpty { messages.append(.user([.text(sources)])) }
         for turn in thread.turns.dropFirst(firstRecent) {
             messages.append(.user([.text(turn.question)]))
-            if !turn.answer.isEmpty { messages.append(.assistant(text: turn.answer, toolCalls: [])) }
+            // Failed turns (e.g. fabricated tool transcripts) are untrusted —
+            // replaying them teaches the model to repeat the failure.
+            if turn.outcome != .failed, !turn.answer.isEmpty {
+                messages.append(.assistant(text: turn.answer, toolCalls: []))
+            }
         }
         messages.append(base.messages.last ?? .user([.text(question)]))
         return messages

@@ -100,7 +100,7 @@ public struct PerryThread: Codable, Equatable, Sendable, Identifiable {
         var messages: [ModelMessage] = []
         for turn in recent.reversed() {
             messages.append(.user([.text(turn.question)]))
-            if !turn.answer.isEmpty {
+            if turn.outcome != .failed, !turn.answer.isEmpty {
                 messages.append(.assistant(text: turn.answer, toolCalls: []))
             }
         }

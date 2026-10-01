@@ -102,6 +102,10 @@ public actor AgentLoop {
         let tools = base.tools
         let system = base.system
         let allowedTools = Set(tools.map(\.name))
+        /// Fabrication detection runs against every tool on the surface, not
+        /// just the ones this provider may call — a no-tools model can still
+        /// write `files.list(…)` claims into its answer.
+        let surfaceToolNames = Set(host.specs(for: context.surface).map(\.name))
 
         func finish(_ reason: AgentFinish) {
             sink.yield(.finished(reason))
@@ -179,7 +183,14 @@ public actor AgentLoop {
                 finish(.failed("The model stopped before completing its response. Review any earlier changes before retrying."))
                 return
             }
-            if calls.isEmpty { finish(.completed); return }
+            if calls.isEmpty {
+                if toolCallCount == 0, Self.looksFabricatedToolTranscript(text, toolNames: surfaceToolNames) {
+                    finish(.failed("The answer describes tool results Perry did not run — nothing was executed. Retry, or choose a different model in Settings."))
+                    return
+                }
+                finish(.completed)
+                return
+            }
             messages.append(.assistant(text: text, toolCalls: calls))
 
             for call in calls {
@@ -195,6 +206,20 @@ public actor AgentLoop {
                 }
             }
         }
+    }
+
+    /// Some models write a fake transcript into the answer — `files.list("…")`
+    /// or `[Observation: …]` — instead of emitting a real tool call. When no
+    /// call ran in the whole turn, those claims are fabricated.
+    static func looksFabricatedToolTranscript(_ text: String, toolNames: Set<String>) -> Bool {
+        if text.range(of: #"(?m)^\s*\[(Observation|Action)\s*:"#, options: .regularExpression) != nil {
+            return true
+        }
+        for name in toolNames where name.contains(".") {
+            let pattern = "(?m)^\\s*" + NSRegularExpression.escapedPattern(for: name) + "\\s*\\("
+            if text.range(of: pattern, options: .regularExpression) != nil { return true }
+        }
+        return false
     }
 
     private struct ToolExecutionStopped: Error {

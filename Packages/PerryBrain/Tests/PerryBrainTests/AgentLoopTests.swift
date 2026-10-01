@@ -244,6 +244,48 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(finishReason(events), .interrupted)
     }
 
+    func testFabricatedToolTranscriptFailsInsteadOfCompleting() async {
+        let fabricated = """
+            files.list("/tmp")
+            [Observation: The folder contains 5 files.]
+            Result: 5 files found.
+            """
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.list", description: "list", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 0)
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A fake tool transcript must not record as completed")
+        }
+    }
+
+    func testFabricatedCallSyntaxFailsEvenWithoutToolCapability() async {
+        // A probed no-tools model still sees tool names in prior context and
+        // can write fake calls — detection can't rely on allowedTools.
+        let executor = RecordingExecutor(spec: ToolSpec(name: "files.list", description: "list", inputSchema: toolSchema([:])))
+        let provider = ScriptedProvider(
+            responses: [[.textDelta("files.list(\"/tmp\") — 5 files"), .done(.endTurn)]],
+            capabilities: [.streaming]
+        )
+        let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        guard case .failed = finishReason(events) else {
+            return XCTFail("A fabricated call must fail even when no tools were offered")
+        }
+    }
+
+    func testToolNameMentionAfterRealCallsStillCompletes() async {
+        let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
+        let (loop, _, _, executor) = makeLoop([
+            [.toolCall(call), .done(.toolUse)],
+            [.textDelta("ui.click ran fine."), .done(.endTurn)],
+        ])
+        let events = await collect(loop.run(system: "s", messages: [], context: context))
+        XCTAssertEqual(executor.callCount, 1)
+        XCTAssertEqual(finishReason(events), .completed)
+    }
+
     func testProviderErrorFinishesCleanly() async {
         final class Failing: ModelProvider, @unchecked Sendable {
             let id: ProviderID = "failing"; let displayName = "F"; let capabilities: ModelCapabilities = []
