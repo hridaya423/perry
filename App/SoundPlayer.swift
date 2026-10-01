@@ -21,6 +21,7 @@ enum SoundPlayer {
                 players[cue] = sound
             }
         }
+        PerfMark.mark("sound.warmup")
     }
 
     static func play(_ cue: Cue) {
