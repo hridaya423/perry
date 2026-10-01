@@ -7,7 +7,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-APP="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
+APP="${PERRY_APP:-$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app}"
 EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
 CUA="${CUA_DRIVER:-cua-driver}"
 
@@ -21,6 +21,12 @@ case "$cmd" in
             "$0" quit
         fi
         LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
+        # Adhoc+runtime Release builds cannot load adhoc frameworks (each "-"
+        # signature is its own team); strip the runtime flag for lab launches.
+        if codesign -dv "$APP" 2>&1 | grep -q "adhoc,runtime"; then
+            codesign --force --sign - "$APP/Contents/MacOS/Perry" >/dev/null 2>&1
+            echo "perry-drive: re-signed adhoc without hardened runtime for lab launch" >&2
+        fi
         open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG"
         for _ in $(seq 1 30); do
             pid="$(perry_pid)"
