@@ -2458,11 +2458,12 @@
   {
    "id": "input.spatial-context",
    "name": "Point, circle, or scribble spatial context",
-   "status": "unit-tested",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local drawn screen region passed into planner context",
    "limitations": [
-    "The selection model and planner context are tested, but no live multi-display gesture test is recorded.",
+    "Live: synthetic \u2300\u2318 lasso accepted on a running instance (spatial.down \u2192 spatial.select) and produced a spoken reply; single-display only.",
+    "AX-label enrichment degraded gracefully to the label-less reply because no capture worker was available.",
     "The registry does not record a last successful run for this capability."
    ],
    "verification": {
@@ -2488,6 +2489,14 @@
     {
      "kind": "unit-test",
      "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testScreenContextReachesThePlannerRequest()"
+    },
+    {
+     "kind": "marker-log",
+     "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl (spatial.down, spatial.select, talk.muted_clipboard)"
+    },
+    {
+     "kind": "note",
+     "reference": "docs/evidence/phase-10/audio-failure-paths.md#iteration-16"
     }
    ]
   },

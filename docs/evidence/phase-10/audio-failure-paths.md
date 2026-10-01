@@ -44,11 +44,8 @@ touch the clipboard on muted output; answer content still does.
 
 ## Not yet verified
 
-- `talk.muted_clipboard` on a real reply — needs a completed foreground
-  turn; the composer keeps refusing background focus (AX unresolved on
-  the adhoc build), and MCP on this instance accepted-then-closed the
-  socket (investigate next iteration — was functional on the earlier
-  instance).
+- ~~`talk.muted_clipboard` on a real reply~~ **verified iter-16** —
+  see "Iteration 16" below.
 - ~~`talk.speak.start`/`end`~~ **verified iter-15** — instance 11222
   markers: `talk.speak.start` 17:31:16.387 → `talk.speak.end`
   17:31:18.094 (1.7 s wake greeting, output unmuted).
@@ -114,3 +111,50 @@ an observed failure.
 
 Live `cursor.follow.fallback` marker expected only if the edge ever
 fires; on this machine it should stay silent.
+
+## Iteration 16 — synthetic-input drive path + full muted-reply chain
+
+Instance: pid 97513, log `perf-20261001T174941Z.jsonl.markers.jsonl`,
+system output muted for the drill, restored after.
+
+**Lab capability finding:** `CGEvent.post(tap: .cgSessionEventTap)`
+reaches another process's global `NSEvent` monitors (earlier
+`cghidEventTap` posting did not reach session taps). A signed probe
+binary received a complete cross-process ⌥⌘ gesture
+(`down:1 flagged:1 drag:27 up:1`), and a synthetic `mouseMoved` burst
+fired Perry's own `home.hover_start`. This gives the lab a real drive
+path for mouse-gesture flows without HID trust.
+
+**New markers:** `spatial.down` (⌥⌘ lasso gesture accepted),
+`spatial.select` (closed loop → selection), `spatial.cancel` (released
+or Esc without a valid selection). The spatial gesture had zero
+observability before — same silent-death class as PTT/cursor.
+
+**Verified live, single sequence:**
+
+```
+invoke.keydown        17:50:08.335  wake chord (perry-drive hotkey)
+panel.visible         17:50:08.366
+sound.cue.wake        17:50:08.591
+talk.speak.muted      17:50:08.591  greeting on muted output —
+                                    ephemeral, clipboard untouched
+spatial.down          17:50:10.937  synthetic ⌥⌘ lasso accepted
+spatial.select        17:50:11.794  closed 110×110 loop → selection
+talk.muted_clipboard  17:50:11.955  reply copied (161 ms after select)
+```
+
+Clipboard after: `I have the area you circled.` — reply content
+copied on muted output while the ephemeral greeting 3.4 s earlier
+left the seeded clipboard intact. Both halves of the
+`copiesReplyWhenMuted:` contract verified in one pass. The AX-capture
+leg of `describeSpatialSelection` failed fast (no runtime/worker),
+producing the label-less reply — the graceful-degradation path itself
+also verified.
+
+`sound.warmup` fired at launch 17:49:41.822 — prewarm ordering now
+observable.
+
+Note: two earlier lasso attempts on instance 11222 produced no markers
+because the panel had been dismissed (monitor only runs while invoked)
+— diagnosed via the window list; new markers make this a one-grep
+check next time.

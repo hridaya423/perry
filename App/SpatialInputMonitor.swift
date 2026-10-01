@@ -56,6 +56,7 @@ final class SpatialInputMonitor {
     private func handle(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 53, isDrawing {
             reset()
+            PerfMark.mark("spatial.cancel")
             onCancel()
             return
         }
@@ -66,6 +67,7 @@ final class SpatialInputMonitor {
             isDrawing = true
             points = [screenPoint(for: event)]
             activeWindow = frontmostWindowContext()
+            PerfMark.mark("spatial.down")
             onPointsChanged(points)
         case .leftMouseDragged:
             guard isDrawing else { return }
@@ -77,6 +79,7 @@ final class SpatialInputMonitor {
             points.append(screenPoint(for: event))
             let selection = makeSelection()
             reset()
+            PerfMark.mark(selection == nil ? "spatial.cancel" : "spatial.select")
             if let selection {
                 onSelection(selection)
             } else {

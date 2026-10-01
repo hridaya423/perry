@@ -1,0 +1,17 @@
+{"captured_at":"2026-10-01T17:19:10.681Z","name":"ptt.capture.fallback"}
+{"captured_at":"2026-10-01T17:31:16.215Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T17:31:16.228Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T17:31:16.235Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T17:31:16.254Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T17:31:16.307Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-01T17:31:16.387Z","name":"talk.speak.start"}
+{"captured_at":"2026-10-01T17:31:18.094Z","name":"talk.speak.end"}
+{"captured_at":"2026-10-01T17:39:28.726Z","name":"home.hover_start"}
+{"captured_at":"2026-10-01T17:42:47.362Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T17:42:47.364Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T17:42:47.370Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T17:42:47.377Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T17:42:47.408Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-01T17:42:47.408Z","name":"talk.speak.muted"}
+{"captured_at":"2026-10-01T17:49:39.765Z","name":"talk.bargein"}
+{"captured_at":"2026-10-01T17:49:39.766Z","name":"bargein.silence"}

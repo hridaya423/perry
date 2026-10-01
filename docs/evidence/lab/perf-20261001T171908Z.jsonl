@@ -1,0 +1,14 @@
+{"captured_at":"2026-10-01T17:31:16Z","collector":"overlay","metric_id":"overlay.cleanup_ms","scenario":"overlay","unit":"ms","value":0.02491474151611328}
+{"captured_at":"2026-10-01T17:31:16Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":209.70189571380615}
+{"captured_at":"2026-10-01T17:31:16Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":203.0850648880005}
+{"captured_at":"2026-10-01T17:31:18Z","collector":"overlay","metric_id":"overlay.frame_interval_ms","scenario":"overlay","unit":"ms","value":18.383336478266223}
+{"captured_at":"2026-10-01T17:31:18Z","collector":"overlay","metric_id":"overlay.frame_interval_max_ms","scenario":"overlay","unit":"ms","value":316.6440725326538}
+{"captured_at":"2026-10-01T17:31:18Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":244.80891227722168}
+{"captured_at":"2026-10-01T17:31:18Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.5049705505371094}
+{"captured_at":"2026-10-01T17:42:47Z","collector":"overlay","metric_id":"overlay.cleanup_ms","scenario":"overlay","unit":"ms","value":0.0040531158447265625}
+{"captured_at":"2026-10-01T17:42:47Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":56.5800666809082}
+{"captured_at":"2026-10-01T17:42:47Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":50.72200298309326}
+{"captured_at":"2026-10-01T17:42:52Z","collector":"overlay","metric_id":"overlay.frame_interval_ms","scenario":"overlay","unit":"ms","value":11.475728269208942}
+{"captured_at":"2026-10-01T17:42:52Z","collector":"overlay","metric_id":"overlay.frame_interval_max_ms","scenario":"overlay","unit":"ms","value":350.0291109085083}
+{"captured_at":"2026-10-01T17:42:52Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":254.42898273468018}
+{"captured_at":"2026-10-01T17:42:52Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.4780292510986328}
