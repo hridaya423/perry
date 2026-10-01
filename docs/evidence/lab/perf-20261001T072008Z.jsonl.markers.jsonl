@@ -1,0 +1,16 @@
+{"captured_at":"2026-10-01T07:23:12.978Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T07:23:12.979Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T07:23:12.992Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T07:23:13.023Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T07:26:58.985Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T07:26:58.987Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T07:26:58.994Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T07:26:59.001Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T07:29:53.436Z","name":"home.question.sent"}
+{"captured_at":"2026-10-01T07:29:59.199Z","name":"home.answer.first_text"}
+{"captured_at":"2026-10-01T07:32:56.104Z","name":"home.question.sent"}
+{"captured_at":"2026-10-01T07:32:57.584Z","name":"home.answer.first_text"}
+{"captured_at":"2026-10-01T15:04:19.438Z","name":"home.hover_start"}
+{"captured_at":"2026-10-01T15:04:19.789Z","name":"home.hover_start"}
+{"captured_at":"2026-10-01T15:11:07.208Z","name":"talk.bargein"}
+{"captured_at":"2026-10-01T15:11:07.215Z","name":"bargein.silence"}

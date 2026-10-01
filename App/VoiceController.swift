@@ -639,8 +639,27 @@ final class VoiceController: NSObject, ObservableObject {
         hooks.setStatus(error?.localizedDescription ?? "Voice input failed; you can type the request.")
     }
 
+    static func bluetoothPrerollDelay(isBluetooth: Bool) -> TimeInterval {
+        isBluetooth ? 0.6 : 0
+    }
+
     private func handleAudioRouteChange(_ deviceName: String) {
         realtimeVoiceSession?.refreshAudioRoute()
+        guard synthesizer.isSpeaking else { return }
+        let preroll = Self.bluetoothPrerollDelay(
+            isBluetooth: AudioRouteMonitor.defaultOutputIsBluetooth()
+        )
+        if preroll > 0 {
+            PerfMark.markDynamic("audio.preroll.bt")
+            DispatchQueue.main.asyncAfter(deadline: .now() + preroll) { [weak self] in
+                self?.announceRouteSwitch(deviceName)
+            }
+        } else {
+            announceRouteSwitch(deviceName)
+        }
+    }
+
+    private func announceRouteSwitch(_ deviceName: String) {
         guard synthesizer.isSpeaking else { return }
         let reply = currentSpeechText
         let routeMessage = "I switched the reply to \(deviceName)."

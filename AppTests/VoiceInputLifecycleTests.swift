@@ -146,6 +146,15 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.releases, 1)
     }
 
+    func testBluetoothRouteSwitchGetsPrerollAndBuiltInDoesNot() {
+        XCTAssertGreaterThan(VoiceController.bluetoothPrerollDelay(isBluetooth: true), 0)
+        XCTAssertEqual(VoiceController.bluetoothPrerollDelay(isBluetooth: false), 0)
+    }
+
+    func testDefaultOutputBluetoothProbeReturnsWithoutCrashing() {
+        _ = AudioRouteMonitor.defaultOutputIsBluetooth()
+    }
+
     func testPushToTalkCapsLockTapsOutsideWindowDoNotPress() {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(

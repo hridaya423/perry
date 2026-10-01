@@ -24,7 +24,8 @@ struct DiagnosticsReporter {
             permissions: PermissionInfo(
                 accessibility: permissions.accessibility,
                 screenRecording: permissions.screenRecording.rawValue,
-                microphone: permissions.microphone.rawValue
+                microphone: permissions.microphone.rawValue,
+                inputMonitoring: permissions.inputMonitoring
             ),
             runtimes: RuntimeInfo(
                 bundledCodex: codexBundled,
@@ -91,6 +92,7 @@ struct DiagnosticsReporter {
         let accessibility: Bool
         let screenRecording: String
         let microphone: String
+        let inputMonitoring: Bool
     }
 
     private struct RuntimeInfo: Codable {

@@ -62,3 +62,24 @@ touch the clipboard on muted output; answer content still does.
   until the user grants **Settings → Permissions → Input Monitoring**
   (new row this iteration) *and* the check is done on a physical
   keyboard.
+
+## Iteration 13 additions
+
+- **MCP socket was never broken** — the accept-then-close was wrong
+  client framing. `PerryMCPSocket.serve(client:)` consumes the *first
+  line* as a bare `{"token":"…"}` auth hello; token-in-`initialize.params`
+  fails auth and closes. Correctly framed against instance 61273:
+  `initialize` + `tools/list` succeeded; `perry.settings.open` drove the
+  Settings window live.
+- **Input Monitoring row verified live** — Settings → General →
+  Permissions renders the new row with `Enable…`, matching
+  `ptt.capture.fallback` on the running instance.
+- **Bluetooth pre-roll shipped** — `AudioRouteMonitor.defaultOutputIsBluetooth()`
+  reads `kAudioDevicePropertyTransportType`; a route switch onto a BT
+  output defers the "I switched the reply to …" announcement by 600 ms
+  (`audio.preroll.bt` marker) so the A2DP profile ramp doesn't clip it.
+  Non-BT routes announce immediately. Decision + probe unit-tested;
+  hardware AirPods drill remains user-owned.
+- **Diagnostics** — `PermissionInfo` now serializes `inputMonitoring`
+  alongside accessibility/screenRecording/microphone, so exported
+  reports show the PTT-blocking grant.

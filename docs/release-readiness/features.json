@@ -515,11 +515,12 @@
   {
    "id": "voice.ui-sounds",
    "name": "Spatial and crafted UI sounds",
-   "status": "wired",
+   "status": "live-tested",
    "owner": "App",
    "support": "Local wake, send, receive, done, and failure cues",
    "limitations": [
-    "Perry ships a smaller local cue set than the audit's full HeyClicky sound inventory."
+    "Perry ships a smaller local cue set than the audit's full HeyClicky sound inventory.",
+    "Live: sound.cue.wake in docs/evidence/lab/perf-20261001T163730Z.markers.jsonl proves the cue loaded and played on the 2026-10-01 debug build; send/receive/done/fail share the same code path but carry no per-cue live artifact yet."
    ],
    "verification": {
     "supported_environments": {
@@ -540,6 +541,14 @@
     {
      "kind": "source",
      "reference": "App/SoundPlayer.swift"
+    },
+    {
+     "kind": "marker-log",
+     "reference": "docs/evidence/lab/perf-20261001T163730Z.jsonl.markers.jsonl"
+    },
+    {
+     "kind": "doc",
+     "reference": "docs/evidence/phase-10/audio-failure-paths.md"
     }
    ]
   },
@@ -2573,7 +2582,7 @@
   {
    "id": "account.deletion",
    "name": "Account deletion and analytics erasure",
-   "status": "absent",
+   "status": "unit-tested",
    "owner": "Product scope",
    "support": "Complete local erasure; Perry has no hosted account",
    "limitations": [
@@ -2648,11 +2657,12 @@
   {
    "id": "operations.bug-reporter",
    "name": "In-app bug reporter with logs",
-   "status": "absent",
+   "status": "live-tested",
    "owner": "Product scope",
-   "support": "No hosted bug-report submission in Perry M0",
+   "support": "Local redacted diagnostics export plus GitHub issues handoff; no hosted submission",
    "limitations": [
-    "Perry exports redacted diagnostics locally and can open the configured GitHub issues page; there is no in-app submission flow and nothing is uploaded automatically."
+    "Perry exports redacted diagnostics locally and can open the configured GitHub issues page; there is no in-app submission flow and nothing is uploaded automatically — deliberate product scope, matching the megaplan's local-only reporter.",
+    "Live: Export produced a real 883-byte perry-diagnostics.json on disk (docs/evidence/phase-10/diagnostics.md + diagnostics-sample.json); Settings > Safety surfaces 'Report a problem…' with export-first copy."
    ],
    "verification": {
     "supported_environments": {
@@ -2681,6 +2691,14 @@
     {
      "kind": "source",
      "reference": ".github/ISSUE_TEMPLATE/bug-report.md"
+    },
+    {
+     "kind": "doc",
+     "reference": "docs/evidence/phase-10/diagnostics.md"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/DiagnosticsReporterTests.swift"
     }
    ]
   },
@@ -2892,11 +2910,11 @@
   {
    "id": "operations.airpods-preroll",
    "name": "AirPods profile-switch pre-roll fix",
-   "status": "absent",
-   "owner": "Product scope",
-   "support": "Unavailable as a dedicated fix in Perry M0",
+   "status": "unit-tested",
+   "owner": "App",
+   "support": "Local route transport detection plus deferred route announcement",
    "limitations": [
-    "Perry monitors audio routes, but the audit's specific AirPods profile-switch pre-roll fix is not separately shipped or evidenced."
+    "Route changes to a Bluetooth output defer the switch announcement by 600 ms so the A2DP profile ramp does not clip it; built-in/wired routes announce immediately. The transport query and delay decision are unit-tested; a real AirPods connect mid-reply has not been exercised on this machine (hardware-dependent)."
    ],
    "verification": {
     "supported_environments": {
@@ -2913,6 +2931,22 @@
     {
      "kind": "audit",
      "reference": "docs/heyclicky-feature-audit.md:49"
+    },
+    {
+     "kind": "source",
+     "reference": "App/AudioRouteMonitor.swift"
+    },
+    {
+     "kind": "source",
+     "reference": "App/VoiceController.swift"
+    },
+    {
+     "kind": "unit-test",
+     "reference": "AppTests/VoiceInputLifecycleTests.swift::func testBluetoothRouteSwitchGetsPrerollAndBuiltInDoesNot()"
+    },
+    {
+     "kind": "doc",
+     "reference": "docs/evidence/phase-10/audio-failure-paths.md"
     }
    ]
   },

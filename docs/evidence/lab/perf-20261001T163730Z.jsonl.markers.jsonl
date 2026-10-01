@@ -1,0 +1,15 @@
+{"captured_at":"2026-10-01T16:37:30.870Z","name":"ptt.capture.fallback"}
+{"captured_at":"2026-10-01T16:37:39.095Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T16:37:39.105Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T16:37:39.116Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T16:37:39.143Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T16:37:39.202Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-01T16:37:39.202Z","name":"talk.speak.muted"}
+{"captured_at":"2026-10-01T16:38:12.935Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-01T16:38:12.938Z","name":"wake.pinned"}
+{"captured_at":"2026-10-01T16:38:12.945Z","name":"wake.overlay"}
+{"captured_at":"2026-10-01T16:38:12.963Z","name":"panel.visible"}
+{"captured_at":"2026-10-01T16:38:13.012Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-01T16:38:13.012Z","name":"talk.speak.muted"}
+{"captured_at":"2026-10-01T16:48:25.504Z","name":"home.opened"}
+{"captured_at":"2026-10-01T16:57:32.139Z","name":"home.hover_start"}
