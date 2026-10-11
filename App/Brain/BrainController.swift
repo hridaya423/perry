@@ -161,6 +161,27 @@ final class BrainController: ObservableObject {
         selectedModel = defaults.string(forKey: Self.modelChoiceKey) ?? ModelChoice.chatGPT.rawValue
     }
 
+    /// True when an on-device provider can answer — Apple Foundation Models
+    /// on macOS 26+, or a discovered local model whose capability check
+    /// passed. The router picks among them for `.local` scope.
+    var onDeviceRouteAvailable: Bool {
+        if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable { return true }
+        return localChecks.values.contains {
+            if case .checked(_, let result) = $0 { return result.text == .passed }
+            return false
+        }
+    }
+
+    /// Onboarding's value-first beat: when the user never picked a model and
+    /// an on-device route exists, make it the choice so the first answer
+    /// needs no account. An explicit saved choice is never overridden.
+    func preferOnDeviceModelIfUnchosen() {
+        guard acceptsSetup,
+              defaults.string(forKey: Self.modelChoiceKey) == nil,
+              onDeviceRouteAvailable else { return }
+        modelChoice = ModelChoice.local.rawValue
+    }
+
     func reopenAdmission() {
         if codex == nil { codex = codexFactory() }
         acceptsSetup = true

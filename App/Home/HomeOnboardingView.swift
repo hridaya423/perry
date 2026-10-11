@@ -10,12 +10,19 @@ struct HomeOnboardingView: View {
             switch director.beat {
             case .greet:
                 Text("Welcome to Perry").font(.title2.weight(.semibold))
-                Text("Connect your account and try a conversation. Screen access and practice can come later.")
-                Button("Set up Perry") { director.skip() }
+                Text("Try a conversation first — models, screen access, and practice can come later.")
+                Button("Try Perry") { director.skip() }
                     .buttonStyle(.borderedProminent)
             case .brainChoice:
                 if let brain {
                     HomeConnectionView(brain: brain, onConnected: { director.noteBrainChoiceMade() }, openSettings: openSettings)
+                    if brain.onDeviceRouteAvailable {
+                        Button("Use this Mac") {
+                            brain.modelChoice = BrainController.ModelChoice.local.rawValue
+                            director.noteBrainChoiceMade()
+                        }
+                        .help("Answer with a model on this Mac — no account needed")
+                    }
                 }
                 Button("Set up a model later") { director.skip() }
             case .firstTalk:

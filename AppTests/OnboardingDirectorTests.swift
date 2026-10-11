@@ -7,18 +7,31 @@ final class OnboardingDirectorTests: XCTestCase {
     private let granted = PerryPermissionSnapshot(accessibility: true, screenRecording: .granted, microphone: .denied)
     private let denied = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
 
-    func testProviderReadinessPrecedesTheFirstConversation() {
+    /// The spec order is value before setup: the first conversation precedes
+    /// both screen permissions and the model choice.
+    func testFirstAnswerPrecedesModelChoice() {
         let director = OnboardingDirector()
         director.start()
         XCTAssertEqual(director.beat, .greet)
         director.skip()
-        XCTAssertEqual(director.beat, .brainChoice)
-        director.noteTalkTurnCompleted()
-        XCTAssertEqual(director.beat, .brainChoice)
-        director.noteBrainChoiceMade()
         XCTAssertEqual(director.beat, .firstTalk)
+        director.noteBrainChoiceMade()
+        XCTAssertEqual(director.beat, .firstTalk, "a brain signal can't skip the first-answer beat")
         director.noteTalkTurnCompleted()
         XCTAssertEqual(director.beat, .screenAccess)
+        director.stop()
+    }
+
+    func testFirstTalkPrefersAnOnDeviceBrain() {
+        var preferred = 0
+        var effects = OnboardingDirector.Effects()
+        effects.preferOnDeviceBrain = { preferred += 1 }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        XCTAssertEqual(preferred, 0)
+        director.skip()
+        XCTAssertEqual(director.beat, .firstTalk)
+        XCTAssertEqual(preferred, 1)
         director.stop()
     }
 
@@ -31,7 +44,6 @@ final class OnboardingDirectorTests: XCTestCase {
         effects.openScreenAccessSettings = { opened += 1 }
         let director = OnboardingDirector(effects: effects)
         director.start()
-        director.skip()
         director.skip()
         director.skip()
         await director.refreshPermissions()
@@ -51,8 +63,9 @@ final class OnboardingDirectorTests: XCTestCase {
         director.start()
         director.skip()
         director.skip()
-        director.skip()
         await director.refreshPermissions()
+        XCTAssertEqual(director.beat, .brainChoice)
+        director.skip()
         XCTAssertEqual(director.beat, .practice)
         XCTAssertFalse(director.practiceStarted)
         director.stop()
@@ -109,9 +122,7 @@ final class OnboardingDirectorTests: XCTestCase {
         let resumed = OnboardingDirector(defaults: defaults)
         resumed.start()
         XCTAssertEqual(resumed.beat, .firstTalk)
-        resumed.skip()
-        resumed.skip()
-        resumed.skip()
+        for _ in 0..<4 { resumed.skip() }
         XCTAssertEqual(resumed.beat, .finale)
         resumed.skip()
         XCTAssertNil(resumed.beat)
@@ -130,13 +141,12 @@ final class OnboardingDirectorTests: XCTestCase {
         director.start()
         director.skip()
         director.skip()
-        director.skip()
         let poll = Task { await director.refreshPermissions() }
         await fulfillment(of: [entered], timeout: 1)
         director.skip()
         release?.resume(returning: granted)
         await poll.value
-        XCTAssertEqual(director.beat, .practice)
+        XCTAssertEqual(director.beat, .brainChoice)
         director.stop()
     }
 }

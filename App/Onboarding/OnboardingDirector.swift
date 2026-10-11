@@ -5,7 +5,7 @@ import PerryCapture
 @MainActor
 final class OnboardingDirector: ObservableObject {
     enum Beat: String, CaseIterable, Sendable {
-        case greet, brainChoice, firstTalk, screenAccess, practice, finale
+        case greet, firstTalk, screenAccess, brainChoice, practice, finale
     }
 
     enum PracticeStep: String, CaseIterable, Sendable {
@@ -20,6 +20,10 @@ final class OnboardingDirector: ObservableObject {
         var openScreenRecordingSettings: () -> Void = {}
         var beginPractice: () -> Void = {}
         var endPractice: () -> Void = {}
+        /// The first-answer beat runs before model setup: when an on-device
+        /// route exists and the user never chose one, make it the default so
+        /// no account is needed. Never overrides a saved choice.
+        var preferOnDeviceBrain: () -> Void = {}
         var finish: () -> Void = {}
         var now: () -> Date = { Date() }
     }
@@ -149,7 +153,9 @@ final class OnboardingDirector: ObservableObject {
         switch next {
         case .greet: effects.speak(Self.scriptGreet)
         case .brainChoice: effects.speak(Self.scriptBrain)
-        case .firstTalk: effects.speak(micDenied ? Self.scriptNoMicTalk : Self.scriptTalk)
+        case .firstTalk:
+            effects.preferOnDeviceBrain()
+            effects.speak(micDenied ? Self.scriptNoMicTalk : Self.scriptTalk)
         case .screenAccess:
             effects.speak(Self.scriptPermissions)
             effects.requestScreenAccess()
@@ -161,19 +167,19 @@ final class OnboardingDirector: ObservableObject {
         }
     }
 
-    static let scriptGreet = "Hi, I’m Perry. Let’s connect your account, then try a conversation."
+    static let scriptGreet = "Hi, I’m Perry. Let’s try a conversation first — models and permissions can wait."
     static let scriptTalk = "Tell me something you’re working on, or ask a question. You can type below."
     static let scriptNoMicTalk = "You can type your first question below. A microphone isn’t required."
     static let scriptPermissions = "Screen permissions let me understand what you point at and help in other apps. You can enable them in System Settings or do this later."
-    static let scriptBrain = "Connect your ChatGPT account to get started. You can also configure your own model in Settings."
-    static let scriptFinale = "Home keeps your conversations together. Hold Control and Option to talk, or double-tap Control to type."
+    static let scriptBrain = "Pick how I answer: ChatGPT, a model on this Mac, or another provider in Settings."
+    static let scriptFinale = "Home keeps your conversations together. Hold ⌃⌥ to talk while you point, or double-tap ⌃ to type."
 
     static func practiceScript(for step: PracticeStep) -> String {
         switch step {
         case .pointAsk: "In the practice window, point at something and ask what it is."
         case .guide: "Ask Perry to show you how to rename a file."
         case .renameUndo: "Ask Perry to rename the three practice files, then undo the change."
-        case .dictate: "Focus the practice text box, hold the talk key, and dictate a sentence."
+        case .dictate: "Focus the practice text box, hold ⌥⌘Space, and dictate a sentence."
         }
     }
 }
