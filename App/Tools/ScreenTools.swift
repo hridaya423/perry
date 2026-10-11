@@ -172,23 +172,41 @@ private struct ScreenZoomExecutor: ToolExecutor {
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let args = call.arguments
         guard let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue,
-              let w = args["w"]?.doubleValue, let h = args["h"]?.doubleValue else {
-            return .text(call.id, "screen.zoom: needs x, y, w, h", isError: true)
+              let w = args["w"]?.doubleValue, let h = args["h"]?.doubleValue, w > 0, h > 0 else {
+            return .text(call.id, "screen.zoom: needs positive x, y, w, h", isError: true)
         }
+        let rect = CGRect(x: x, y: y, width: w, height: h)
         let bundleID = args["bundleID"]?.stringValue
+
+        // §3.5: a zoom crops the run's cached capture when it's for the same
+        // window — a second zoom verifies against the exact frame the model
+        // already reasoned about, and no second capture round-trips.
+        if let cached = observations.snapshot(runID: context.runID),
+           let shot = cached.screenshotData,
+           let window = cached.window,
+           bundleID == nil || bundleID!.caseInsensitiveCompare(window.bundleID) == .orderedSame,
+           let data = ScreenCrop.jpeg(shot, rectInWindowPoints: rect, windowSizePoints: cached.windowBoundsAX?.size ?? CGSize(width: window.width, height: window.height)) {
+            return ToolResult(
+                callID: call.id,
+                content: [
+                    .text("\(window.bundleID) — \(window.title) @ (\(x),\(y),\(w),\(h)) [cached capture]"),
+                    .image(data: data, mimeType: "image/jpeg"),
+                ]
+            )
+        }
+
         let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
             let captured = try await worker.capture(target: hint)
             observations.setTarget(captured.target.hint, runID: context.runID)
-            guard let image = NSImage(data: captured.screenshotData)?.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                  let cropped = image.cropping(to: CGRect(x: x, y: y, width: w, height: h)) else {
+            guard let data = ScreenCrop.jpeg(
+                captured.screenshotData,
+                rectInWindowPoints: rect,
+                windowSizePoints: CGSize(width: captured.target.width, height: captured.target.height)
+            ) else {
                 return .text(call.id, "screen.zoom: could not crop capture", isError: true)
-            }
-            let bitmap = NSBitmapImageRep(cgImage: cropped)
-            guard let data = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
-                return .text(call.id, "screen.zoom: JPEG encode failed", isError: true)
             }
             return ToolResult(
                 callID: call.id,
@@ -198,6 +216,23 @@ private struct ScreenZoomExecutor: ToolExecutor {
                 ]
             )
         }
+    }
+
+}
+
+/// Crop args are window points; the capture is pixels — scale the rect so
+/// Retina captures don't crop the wrong region.
+enum ScreenCrop {
+    static func jpeg(_ data: Data, rectInWindowPoints rect: CGRect, windowSizePoints: CGSize) -> Data? {
+        guard let image = NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let scale = windowSizePoints.width > 0 ? CGFloat(image.width) / windowSizePoints.width : 1
+        let pixel = CGRect(
+            x: rect.origin.x * scale, y: rect.origin.y * scale,
+            width: rect.width * scale, height: rect.height * scale
+        ).integral
+        guard pixel.width > 0, pixel.height > 0,
+              let cropped = image.cropping(to: pixel) else { return nil }
+        return NSBitmapImageRep(cgImage: cropped).representation(using: .jpeg, properties: [.compressionFactor: 0.8])
     }
 }
 
