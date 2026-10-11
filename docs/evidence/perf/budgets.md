@@ -7,18 +7,24 @@ measurement.
 Since 2026-10-11 the talk drill (`scripts/lab/talk-drill.sh`) exercises
 the real ⌃⌥ Talk path end to end: real `ModifierHoldMonitor` seam via a
 DEBUG-only distributed notification (the TCC session tap is unavailable
-to unsigned lab launches), real capture through the embedded Cua Driver,
-scripted/WAV speech input, bundled-Codex provider, Calculator target.
+to unsigned lab launches), real capture (now via `LocalTalkObserver` —
+local window list + AX hit-test + bounded index + ScreenCaptureKit — with
+the embedded Cua Driver as fallback), scripted/WAV speech input,
+bundled-Codex provider on persistent threads, DrillTarget keypad fixture
+(`scripts/lab/drill-target.swift` — deterministic AX buttons; Calculator
+cannot reliably reopen a window under Stage Manager).
 
 | Metric | Budget | Result | Evidence |
 |---|---|---|---|
 | Key-down → visible listening | ≤50 ms p95 | **PASS — p50 3.5–8 ms, p95 ≤36 ms** (n=13, ⌃⌥ drill) | `talk.keydown → talk.listening`, `perf-20261011T125141Z`, `perf-20261011T130215Z` markers |
 | Hold → commit threshold | ~120 ms design | p50 135–140 ms (n=13) | `talk.keydown → talk.hold_commit`, same runs |
-| Key-down → capture done | (no set budget) | p50 3.4 s, max 9.9 s (n=8); a later session measured p50 5.5–10.5 s — high variance, worker-side | `talk.keydown → capture.done` |
-| Release → first text | ≤700 ms p50 / ≤1.5 s p95 | **FAIL — p50 5.8 s, p95 14.4 s, max 14.9 s** (n=8, bundled Codex, fresh thread per turn + full-size PNG) | `talk.keyup → answer.first_text`, `perf-20261011T125141Z` |
-| Release → first audio | ≤1.0 s p50 realtime / ≤1.4 s system | **FAIL — p50 6.5 s, max 15.1 s** (n=8, system voice; audio lands ~180 ms after first text, so the gap is provider, not TTS) | `talk.keyup → talk.first_audio`, same run |
-| Release → first ink on target | ≤1.5 s p50 | **FAIL — p50 6.6 s** (n=3; model emits ink in ~⅓ of answers) | `talk.keyup → ink.first_draw`, same run |
-| Deixis: "this" → pointed element | ≥90% | **22/22 element-bound** across all answered drill runs | `deixis.element` markers, all drill runs |
+| Key-down → capture done | (no set budget) | **p50 270–308 ms, max 397 ms** (n=10, local path). Was p50 3.4–5.5 s through the driver tree walk | `talk.keydown → capture.done`, `talk.capture_local` marks, `perf-20261011T153845Z` |
+| Release → first text | ≤700 ms p50 / ≤1.5 s p95 | **FAIL — p50 1.8–3.7 s** across fixture drills (n=10, bundled Codex persistent thread, gpt-5.6-terra effort=none). Was p50 5.8 s / p95 14.4 s on fresh threads. Spike floor ~1.5 s warm | `talk.keyup → answer.first_text`, `perf-20261011T160851Z`, `perf-20261011T161438Z` |
+| Release → first audio | ≤1.0 s p50 realtime / ≤1.4 s system | **FAIL — p50 2.0–4.3 s** (system voice; audio lands ~180 ms after first text, so the gap is provider, not TTS) | `talk.keyup → talk.first_audio`, same runs |
+| Release → first ink on target | ≤1.5 s p50 | **FAIL — p50 6.6 s** (n=3; model emits ink in ~⅓ of answers) | `talk.keyup → ink.first_draw`, `perf-20261011T125141Z` |
+| Deixis: "this" → pointed element | ≥90% | **36/36 element-bound** on answered runs where the pointer rested on a real target element (fixture keypad: 6/6, 3/3 + 1 point; Calculator: 27/27 earlier) | `deixis.element` markers, all drill runs |
+| Cancelled turn must not poison provider | cancels never mark provider down | **PASS** — `HealthReportingStream` no longer reports failure on consumer cancel (cancelling a task for-awaiting an AsyncThrowingStream ends iteration with nil, previously counted as an unterminated stream; two drill cancels used to blacklist Codex for 60 s → instant router `notConfigured` on the next hold) | `ProviderRouterTests.testCancelledStreamDoesNotMarkProviderDown`, `perf-20261011T155201Z` (incident) |
+| Screenshot reaches the model | every answered turn carries its image | **PASS post-fix** — the app-server decodes every attachment as PNG regardless of declared type; JPEG screenshots were silently dropped all day (`failed to decode image … decoding Png` in `logs_2.sqlite`). Provider now transcodes to PNG at the wire | `CodexAppServerProviderTests.testPNGWireData*`, CodexRuntime `logs_2.sqlite` WARN rows |
 | Capture failure isolation | one failure must not kill later turns | **PASS** — pre-fix, one hung operation wedged claims (`resourceBusy`) or the scope slot (`capacityReached`) for every later turn; post-fix, runs after a `capture_failed` answer again | `perf-20261011T131239Z` (wedge), `perf-20261011T132351Z` (recovery) |
 | Cursor follow lag | ≤1 frame | 16 ms timer poller, same-frame; 120 Hz recording leg not rerun | `docs/evidence/phase-3/README.md` |
 | Barge-in → silence | ≤150 ms | **PASS — p50 2 ms, max 3 ms** (n=3, real press during playback; previously measured only shutdown cancels) | `talk.bargein → bargein.silence`, `perf-20261011T130215Z` |
@@ -32,11 +38,16 @@ scripted/WAV speech input, bundled-Codex provider, Calculator target.
 
 ## What the drill exposed
 
-- **Provider path dominates every missing row.** First text lands ~5–15 s
-  after release on bundled Codex: each turn opens a fresh Codex thread,
-  resends history as one JSON blob, and ships a full-size screenshot PNG.
-  Audio/ink arrive ~0.2–0.6 s after first text, so TTS and drawing are
-  not the problem. This is the Phase 1 fast-brain work.
+- **Provider path is now the only missing row's blocker.** Capture went
+  from p50 3.4–5.5 s (driver tree walk, 6–11 s per `get_window_state`
+  call under load) to p50 ~300 ms via the local observer: CGWindowList
+  window pick, AXUIElement hit-test at the pointer, a bounded index of
+  the pointed element + parent + ≤30 siblings, ScreenCaptureKit JPEG —
+  all inside a 4 s timeout with the driver as fallback. Remaining gap is
+  Codex first-token latency itself: `capture.done → answer.first_text`
+  p50 3.4–5.4 s on persistent `gpt-5.6-terra` threads, matching the
+  spike's cold-turn range (warm floor ~1.5 s measured in the matrix).
+  The ≤700 ms release→text budget cannot be met on this provider.
 - **Launch attribution decides whether capture works.** Launched through
   `open`/LaunchServices, the embedded Cua Driver cannot confirm Perry's
   Screen Recording/Accessibility grants and capture fails; launched
@@ -47,14 +58,19 @@ scripted/WAV speech input, bundled-Codex provider, Calculator target.
   that ignored cancellation left its claims (`resourceBusy`) or its
   scope slot (`capacityReached`) held forever — one Codex error turned
   Talk permanently dead until relaunch. `CuaWorkerService` now drops
-  the entry whenever retirement has run; remaining `capture_failed`s
-  are per-request driver timeouts, which is the Phase 1 capture-path
-  work (cached tree, local hit-test, downscaled screenshot).
+  the entry whenever retirement has run. The local capture path claims
+  no worker at all, so this failure class cannot reach Talk.
 - **Deixis is correct on a still pointer.** Parked on Calculator's "5"
   button, "what's this?" binds the element 11/11 and answers "That's the
   5 key."
 - **Barge-in is real now.** The turn stays active until playback drains;
-  a mid-speech press cuts audio in ~2 ms.
+  a mid-speech press cuts audio in ~2 ms. It also exposed two adjacent
+  bugs now fixed: cancelled turns used to feed the router's health
+  circuit (two cancels → 60 s provider blackout), and Codex silently
+  dropped every JPEG attachment, so answers were generated blind.
+- **Stray input is correctly hostile.** A real keyDown during a hold
+  cancels it as a chorded shortcut (`talk.cancel.chord.key*`) — drills
+  need a quiet machine; human typing mid-drill produced those cancels.
 
 ## How to unblock each blocked row
 
