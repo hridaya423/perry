@@ -201,7 +201,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         NSHostingView(rootView: CompactConversationView(controller: self))
 #endif
     }
-    private var intentCardWindow: IntentCardWindow?
+    private let intentCards = IntentCardPresenter()
     private lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
@@ -446,10 +446,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             isErasureInProgress: { [weak self] in self?.erasureInProgress ?? false },
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             hidePanel: { [weak self] in self?.hidePanel() },
-            dismissIntentCard: { [weak self] in
-                self?.intentCardWindow?.cancel()
-                self?.intentCardWindow = nil
-            },
+            dismissIntentCard: { [weak self] in self?.intentCards.dismiss() },
             stopSpatialMonitoring: { [weak self] in self?.spatialMonitor.stop() },
             stopGuideObservation: { [weak self] in self?.guideCoordinator.stopClickObservation() },
             makeConfirmer: { [weak self] in self?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) }
@@ -1236,8 +1233,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if sessionController.requestDismissal() == .stopExecution {
             sessionStatus = "Stopping safely…"
             voice.cancelInput()
-            intentCardWindow?.cancel()
-            intentCardWindow = nil
+            intentCards.dismiss()
             Task { await self.foreground.cancelActiveSupervisor() }
             hidePanel()
             return
@@ -1257,8 +1253,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             spatialWaiter.resume(returning: nil)
         }
         voice.cancelInput()
-        intentCardWindow?.cancel()
-        intentCardWindow = nil
+        intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
         overlayState.voiceState = .idle
         overlayState.taskBubbleText = nil
@@ -1717,8 +1712,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             spatialWaiter.resume(returning: nil)
         }
         guideCoordinator.cancelPendingDemoInputs()
-        intentCardWindow?.cancel()
-        intentCardWindow = nil
+        intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
     }
 
@@ -1808,27 +1802,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func presentIntentCard(id: UUID, card: IntentCard, allowsStepThrough: Bool) async -> PlanDecision {
         guard !Task.isCancelled, sessionController.approvalIsCurrent(id) else { return .cancel }
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume(returning: .cancel)
-                    return
-                }
-                let window = IntentCardWindow(approvalID: id, card: card, allowsStepThrough: allowsStepThrough) { [weak self] decision in
-                    if self?.intentCardWindow?.approvalID == id {
-                        self?.intentCardWindow = nil
-                    }
-                    continuation.resume(returning: decision)
-                }
-                intentCardWindow = window
-                window.show()
-            }
-        } onCancel: {
-            Task { @MainActor [weak self] in
-                guard self?.intentCardWindow?.approvalID == id else { return }
-                self?.intentCardWindow?.cancel()
-            }
-        }
+        return await intentCards.present(id: id, card: card, allowsStepThrough: allowsStepThrough)
     }
 
     private func dispatch(commandText: String?) {
@@ -1979,8 +1953,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             onboarding.runDenied()
         case .approvalOrange, .approvalRed:
             guard let card = fixture.intentCard else { return }
-            intentCardWindow = IntentCardWindow(card: card) { _ in }
-            intentCardWindow?.show()
+            intentCards.showFixture(card)
         default:
             if let state = fixture.sessionState {
                 sessionController.debugSet(state)
@@ -2041,7 +2014,7 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideInteractiveFrames() -> [CGRect] {
-        [sessionPanel.frame, intentCardWindow?.frame].compactMap { $0 }
+        [sessionPanel.frame, intentCards.frame].compactMap { $0 }
     }
 
     func guidePresent(_ presentation: GuidePresentation) {
