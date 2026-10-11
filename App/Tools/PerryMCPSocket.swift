@@ -60,6 +60,9 @@ final class PerryMCPSocket: @unchecked Sendable {
                 close(fd)
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
+            // The socket inherits the umask — pin it to owner-only so the
+            // token handshake can't be raced by another user on this machine.
+            chmod(path, 0o600)
             guard fcntl(fd, F_SETFL, O_NONBLOCK) == 0 else {
                 close(fd)
                 throw POSIXError(.EIO)

@@ -11,7 +11,8 @@ struct DiagnosticsReporter {
         memoryRecords: [MemoryRecord],
         permissions: PerryPermissionSnapshot,
         codexBundled: Bool,
-        claudeInstalled: Bool
+        claudeInstalled: Bool,
+        codexLogURL: URL? = nil
     ) throws -> Data {
         let report = Report(
             generatedAt: Date(),
@@ -49,7 +50,8 @@ struct DiagnosticsReporter {
                 enabled: memoryConfiguration.enabled,
                 enabledCategories: MemoryRecord.Category.allCases.filter { memoryConfiguration.categoryToggles[$0] == true }.map(\.rawValue),
                 recordCounts: Dictionary(grouping: memoryRecords, by: { $0.category.rawValue }).mapValues(\.count)
-            )
+            ),
+            codexLogTail: codexLogURL.flatMap { redactedLogTail(at: $0) }
         )
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -59,6 +61,29 @@ struct DiagnosticsReporter {
 
     private static func counts(_ values: [String]) -> [String: Int] {
         Dictionary(grouping: values, by: { $0 }).mapValues(\.count)
+    }
+
+    /// Last ~32 KiB of the app-server stderr log with credentials and the
+    /// user's home path masked. Whole lines only; binary/non-UTF8 tails are
+    /// dropped rather than mangled into the export.
+    private static func redactedLogTail(at url: URL, byteLimit: Int = 32 * 1024) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        let start = size > byteLimit ? size - UInt64(byteLimit) : 0
+        try? handle.seek(toOffset: start)
+        guard var text = String(data: handle.readDataToEndOfFile(), encoding: .utf8),
+              !text.isEmpty else { return nil }
+        if start > 0, let firstNewline = text.firstIndex(of: "\n") {
+            text = String(text[text.index(after: firstNewline)...])
+        }
+        let home = NSHomeDirectory()
+        if !home.isEmpty { text = text.replacingOccurrences(of: home, with: "~") }
+        return text.replacingOccurrences(
+            of: #"(?i)(bearer\s+|sk-|api[_-]?key[=:]\s*|token[=:]\s*)\S+"#,
+            with: "$1⟨redacted⟩",
+            options: .regularExpression
+        )
     }
 
     private static var architecture: String {
@@ -79,6 +104,7 @@ struct DiagnosticsReporter {
         let activity: ActivityInfo
         let transcripts: TranscriptInfo
         let memory: MemoryInfo
+        let codexLogTail: String?
     }
 
     private struct AppInfo: Codable {

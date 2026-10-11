@@ -2234,7 +2234,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                     memoryRecords: memoryRecords,
                     permissions: await PerryPermissionSnapshot.probe(),
                     codexBundled: (try? CodexRuntime.bundledLocator()) != nil,
-                    claudeInstalled: (try? CLIRuntime.locateExecutable()) != nil
+                    claudeInstalled: (try? CLIRuntime.locateExecutable()) != nil,
+                    codexLogURL: RuntimeCatalog.codexRuntimeHome?.appendingPathComponent("app-server-stderr.log")
                 )
                 let panel = NSSavePanel()
                 panel.nameFieldStringValue = "perry-diagnostics.json"

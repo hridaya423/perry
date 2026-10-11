@@ -60,4 +60,36 @@ final class DiagnosticsReporterTests: XCTestCase {
         XCTAssertTrue(export.contains(#""completed" : 1"#))
         XCTAssertTrue(export.contains(#""pastSession" : 1"#))
     }
+
+    func testCodexLogTailIsIncludedRedactedAndBounded() throws {
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("diag-log-\(UUID().uuidString).log")
+        let home = NSHomeDirectory()
+        let lines = (0..<200).map { "2026-10-11T12:00:\($0) INFO turn \(home)/secret/thing done\n" }.joined()
+            + "WARN auth Bearer sk-deadbeef123 token=abc123def\n"
+        try lines.write(to: logURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: logURL) }
+
+        let data = try DiagnosticsReporter.makeData(
+            activity: [],
+            transcripts: [],
+            memoryConfiguration: MemoryConfiguration(),
+            memoryRecords: [],
+            permissions: PerryPermissionSnapshot(
+                accessibility: false,
+                screenRecording: .denied,
+                microphone: .denied
+            ),
+            codexBundled: true,
+            claudeInstalled: false,
+            codexLogURL: logURL
+        )
+        let export = String(decoding: data, as: UTF8.self)
+
+        XCTAssertTrue(export.contains("codexLogTail"))
+        XCTAssertTrue(export.contains("WARN auth"))
+        XCTAssertFalse(export.contains("sk-deadbeef123"))
+        XCTAssertFalse(export.contains("abc123def"))
+        XCTAssertFalse(export.contains(home))
+    }
 }

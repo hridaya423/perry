@@ -583,7 +583,7 @@ struct SettingsView: View {
                 }
                 Text(visionCredentialStatus)
                     .settingNote()
-                Text("Direct providers can plan screenshot-grounded tasks but cannot execute actions themselves. Perry sends a screenshot only after you start a grounded task. Choose Custom only for an OpenAI-compatible HTTPS endpoint.")
+                Text("Perry sends a screenshot only after you start a grounded task. Choose Custom only for an OpenAI-compatible HTTPS endpoint.")
                     .settingNote()
             }
             Section("Local skills") {
