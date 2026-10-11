@@ -222,7 +222,7 @@ final class CuaWorkerServiceTests: XCTestCase {
         XCTAssertTrue(result)
     }
 
-    func testUncooperativeOperationKeepsClaimsAfterStopFailure() async throws {
+    func testUncooperativeOperationSurfacesStopFailureButFreesClaims() async throws {
         let service = CuaWorkerService()
         let resource: Set<BackgroundTaskResource> = [.application("com.example.Uncooperative")]
         let started = expectation(description: "uncooperative operation started")
@@ -240,14 +240,12 @@ final class CuaWorkerServiceTests: XCTestCase {
 
         assertFailure(await finish(task), equals: .operationDidNotStop)
 
-        do {
-            _ = try await service.withWorker(scope: .background, resources: resource) { _ in
-                XCTFail("resource claim should remain held after stop failure")
-            }
-            XCTFail("resource claim should remain held after stop failure")
-        } catch let error as CuaWorkerError {
-            XCTAssertEqual(error, .resourceBusy)
+        // The retired worker's driver is dead, so its claims are pure wedge;
+        // a new worker must be admitted on the same resource.
+        let reclaimed = try await service.withWorker(scope: .background, resources: resource) { _ in
+            return true
         }
+        XCTAssertTrue(reclaimed)
         await gate.release()
         _ = await finish(task)
     }

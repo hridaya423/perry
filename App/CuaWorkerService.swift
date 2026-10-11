@@ -283,8 +283,13 @@ actor CuaWorkerService {
         let retirement = beginRetirement(allocation)
         let completion = Task {
             try await retirement.value
+            // The driver is confirmed dead here, so a still-running operation
+            // can no longer act on anything its claims were protecting; the
+            // entry must go or those claims wedge the pool until relaunch.
+            // A retirement that throws keeps the entry — the driver may be
+            // alive and the claims stay honest.
+            defer { self.workers[allocation] = nil }
             try await self.waitForStoppedOperation(allocation)
-            self.workers[allocation] = nil
         }
         workers[allocation]?.completion = completion
         return completion
