@@ -136,6 +136,9 @@ struct RuntimeCLIDefinition {
     let signInArguments: [String]
     let signOutArguments: [String]
     let environment: [String: String]
+    /// When true, account sign-in happens inside the app and the setup record
+    /// carries no shell commands for Settings to copy into Terminal.
+    var authenticatesInApp = false
 
     struct Entry {
         let provider: RuntimeProvider
@@ -207,16 +210,22 @@ struct RuntimeCLIDefinition {
             health: .healthy, confinement: confinement, priority: priority
         )
         let readiness = readiness(for: inspection, planningOnly: true)
-        let commands = readiness.commands(
-            executable: executable, signIn: signInArguments, signOut: signOutArguments, environment: environment
-        )
+        let commands: (signIn: RuntimeAuthenticationCommand?, signOut: RuntimeAuthenticationCommand?)
+        if authenticatesInApp {
+            commands = (nil, nil)
+        } else {
+            commands = readiness.commands(
+                executable: executable, signIn: signInArguments, signOut: signOutArguments, environment: environment
+            )
+        }
         try Task.checkCancellation()
         return Entry(
             provider: RuntimeProvider(planner: planner, descriptor: descriptor),
             setup: RuntimeSetupRecord(
                 id: descriptor.id.rawValue, name: name, status: readiness.message,
                 isReady: readiness.isReady, authentication: readiness.authentication,
-                signInCommand: commands.signIn, signOutCommand: commands.signOut
+                signInCommand: commands.signIn, signOutCommand: commands.signOut,
+                authenticatesInApp: authenticatesInApp
             )
         )
     }
@@ -275,7 +284,10 @@ struct RuntimeCLIDefinition {
                     CodexRuntime(executableLocator: { executable }, workingDirectory: directory, runtimeHome: codexRuntimeHome)
                 },
                 signInArguments: ["login", "--device-auth"], signOutArguments: ["logout"],
-                environment: codexRuntimeHome.map { ["CODEX_HOME": $0.path] } ?? [:]
+                environment: codexRuntimeHome.map { ["CODEX_HOME": $0.path] } ?? [:],
+                // ChatGPT sign-in goes through account/login/start in
+                // Conversation model — never a Terminal command (§5.4).
+                authenticatesInApp: true
             ),
             RuntimeCLIDefinition(
                 name: "Claude Code", priority: 20, confinement: .readOnly,

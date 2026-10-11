@@ -162,11 +162,29 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(definitions.map(\.priority), [10, 20, 30])
         XCTAssertEqual(definitions.map(\.confinement), [.workspace, .readOnly, .readOnly])
         XCTAssertEqual(definitions.map(\.preferredByDefault), [true, false, false])
+        XCTAssertEqual(definitions.map(\.authenticatesInApp), [true, false, false])
         let executable = URL(fileURLWithPath: "/fixture/never-launch")
         let planners = definitions.map { $0.makePlanner(executable, nil) }
         XCTAssertEqual(planners.map(\.id), ["cli.codex", "cli.claude-code", "cli.opencode"])
         XCTAssertEqual(definitions[0].environment, ["CODEX_HOME": home.path])
         XCTAssertEqual(definitions[0].signInArguments, ["login", "--device-auth"])
+    }
+
+    /// In-app sign-in replaces the copy-a-Terminal-command flow: even when
+    /// the runtime reports it needs authentication, the setup record carries
+    /// no shell commands and marks itself as app-authenticating.
+    func testInAppAuthenticatingRuntimeCarriesNoCopyCommands() async throws {
+        let fixture = Fixture()
+        fixture.authenticatesInApp = true
+        fixture.authentication = .missing
+        let inventory = try await fixture.inspector.inspect()
+        let record = try XCTUnwrap(inventory.setup.records.first)
+
+        XCTAssertTrue(record.authenticatesInApp)
+        XCTAssertEqual(record.authentication, .missing)
+        XCTAssertNil(record.signInCommand)
+        XCTAssertNil(record.signOutCommand)
+        XCTAssertFalse(record.canPlan)
     }
 
     func testMissingPrivateCodexHomeRejectsCodexAndExplainsRecovery() async throws {
@@ -209,6 +227,7 @@ final class RuntimeInventoryTests: XCTestCase {
         var workspace: URL?
         var cancelAt: String?
         var failAt: String?
+        var authenticatesInApp = false
 
         var inspector: RuntimeInventoryInspector {
             RuntimeInventoryInspector(readDirectProvider: { nil }, commandLineProviders: [definition])
@@ -244,7 +263,8 @@ final class RuntimeInventoryTests: XCTestCase {
                     return InventoryPlanner()
                 },
                 signInArguments: ["login"], signOutArguments: ["logout"],
-                environment: ["CODEX_HOME": "/fixture/private-home"]
+                environment: ["CODEX_HOME": "/fixture/private-home"],
+                authenticatesInApp: authenticatesInApp
             )
         }
     }

@@ -39,6 +39,9 @@ struct RuntimeSetupRecord: Identifiable, Equatable {
     let authentication: RuntimeAuthenticationStatus?
     let signInCommand: RuntimeAuthenticationCommand?
     let signOutCommand: RuntimeAuthenticationCommand?
+    /// The account for this runtime lives inside the app (Conversation
+    /// model → ChatGPT sign-in) — there is no copy-a-Terminal-command flow.
+    var authenticatesInApp = false
 
     var canPlan: Bool { authentication?.isUsable == true }
 }

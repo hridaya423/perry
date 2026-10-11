@@ -500,6 +500,10 @@ struct SettingsView: View {
                         }
                         Text(runtime.status)
                             .settingNote()
+                        if runtime.authenticatesInApp, runtime.authentication != .authenticated {
+                            Text("Sign in with ChatGPT from Conversation model above.")
+                                .settingNote()
+                        }
                     }
                     .accessibilityElement(children: .contain)
                 }
@@ -507,12 +511,16 @@ struct SettingsView: View {
                     Button("Refresh runtime status") {
                         refreshRuntimeStatus()
                     }
-                    Button("Open Terminal") {
-                        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
+                    if hasCopyableRuntimeCommands {
+                        Button("Open Terminal") {
+                            NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
+                        }
                     }
                 }
-                Text("Perry copies the verified runtime’s exact executable path and official authentication command. Run it in Terminal, then refresh the status here.")
-                    .settingNote()
+                if hasCopyableRuntimeCommands {
+                    Text("Perry copies the verified runtime’s exact executable path and official authentication command. Run it in Terminal, then refresh the status here.")
+                        .settingNote()
+                }
             }
             Section("Computer use") {
                 Text(runtimeSettings.status.cuaStatus)
@@ -688,6 +696,14 @@ struct SettingsView: View {
 
     private func refreshRuntimeStatus() {
         runtimeSettings.refresh()
+    }
+
+    /// Terminal instructions only make sense while some runtime still offers
+    /// a shell sign-in/out command to copy.
+    private var hasCopyableRuntimeCommands: Bool {
+        runtimeSettings.status.setup.records.contains {
+            $0.signInCommand != nil || $0.signOutCommand != nil
+        }
     }
 
     private func copyRuntimeCommand(_ command: RuntimeAuthenticationCommand) {
