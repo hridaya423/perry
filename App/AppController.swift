@@ -1203,48 +1203,17 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func exportActivityLog() {
-        Task { @MainActor in
-            do {
-                let data = try await activityLog.exportData()
-                let panel = NSSavePanel()
-                panel.nameFieldStringValue = "perry-activity.json"
-                panel.allowedContentTypes = [.json]
-                guard panel.runModal() == .OK, let url = panel.url else { return }
-                try data.write(to: url, options: .atomic)
-                sessionStatus = "Activity log exported."
-            } catch {
-                sessionStatus = "Activity export failed: \(error.localizedDescription)"
-            }
-        }
+        DiagnosticsExporter(
+            activityLog: activityLog, transcripts: transcriptStore,
+            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+        ).exportActivityLog()
     }
 
     func exportDiagnostics() {
-        Task { @MainActor in
-            do {
-                let activity = await activityLog.snapshot()
-                let transcripts = await transcriptStore.snapshot()
-                let memoryConfiguration = await memoryStore.currentConfiguration()
-                let memoryRecords = await memoryStore.snapshot()
-                let data = try DiagnosticsReporter.makeData(
-                    activity: activity,
-                    transcripts: transcripts,
-                    memoryConfiguration: memoryConfiguration,
-                    memoryRecords: memoryRecords,
-                    permissions: await PerryPermissionSnapshot.probe(),
-                    codexBundled: (try? CodexRuntime.bundledLocator()) != nil,
-                    claudeInstalled: (try? CLIRuntime.locateExecutable()) != nil,
-                    codexLogURL: RuntimeCatalog.codexRuntimeHome?.appendingPathComponent("app-server-stderr.log")
-                )
-                let panel = NSSavePanel()
-                panel.nameFieldStringValue = "perry-diagnostics.json"
-                panel.allowedContentTypes = [.json]
-                guard panel.runModal() == .OK, let url = panel.url else { return }
-                try data.write(to: url, options: .atomic)
-                sessionStatus = "Redacted diagnostics exported."
-            } catch {
-                sessionStatus = "Diagnostics export failed: \(error.localizedDescription)"
-            }
-        }
+        DiagnosticsExporter(
+            activityLog: activityLog, transcripts: transcriptStore,
+            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+        ).exportDiagnostics()
     }
 
     // MARK: Intent card confirmation
