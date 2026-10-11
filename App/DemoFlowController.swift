@@ -15,7 +15,7 @@ protocol DemoFlowHost: AnyObject {
     var sessionState: SessionState { get }
     func wakeForDemo()
     func dismissIntentCard()
-    func reportDemoStatus(_ status: String)
+    var sessionStatus: String { get set }
     func runOnboardingForDemo()
     func showDemoReport()
 }
@@ -81,7 +81,7 @@ final class DemoFlowController {
         do {
             let inventory = try await host.runtimes.inspect()
             if !inventory.hasReadyCLIPlanner {
-                host.reportDemoStatus("Using Perry's private local planner for the supported demo task.")
+                host.sessionStatus = "Using Perry's private local planner for the supported demo task."
             }
             return .ready
         } catch is CancellationError {

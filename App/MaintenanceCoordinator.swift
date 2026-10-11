@@ -27,7 +27,7 @@ protocol MaintenanceHost: AnyObject {
     var runtimes: RuntimeCatalog { get }
     var completeErasure: CompleteErasureCoordinator { get }
     var hasUnsavedHomeRequests: Bool { get }
-    func reportMaintenanceStatus(_ status: String)
+    var sessionStatus: String { get set }
     func hidePanel()
 }
 
@@ -70,7 +70,7 @@ final class MaintenanceCoordinator {
     func requestTermination(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPrepared else { return .terminateNow }
         guard acquire(.termination) else {
-            host?.reportMaintenanceStatus(conflictMessage())
+            host?.sessionStatus = conflictMessage()
             sender.reply(toApplicationShouldTerminate: false)
             return .terminateLater
         }
@@ -94,7 +94,7 @@ final class MaintenanceCoordinator {
                 await self.joinAfterWorkerShutdown()
                 guard self.confirmQuitDiscardingUnsavedRequests() else {
                     host.backgroundTasks.reopenControls()
-                    host.reportMaintenanceStatus("Perry stayed open. Recover your requests before quitting.")
+                    host.sessionStatus = "Perry stayed open. Recover your requests before quitting."
                     showRecovery = true
                     sender.reply(toApplicationShouldTerminate: false)
                     return
@@ -103,7 +103,7 @@ final class MaintenanceCoordinator {
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 host.backgroundTasks.reopenControls()
-                host.reportMaintenanceStatus("Perry could not stop its computer-use workers safely.")
+                host.sessionStatus = "Perry could not stop its computer-use workers safely."
                 sender.reply(toApplicationShouldTerminate: false)
             }
         }
@@ -117,7 +117,7 @@ final class MaintenanceCoordinator {
         guard CompleteErasurePrompt.confirm() else { return }
 #endif
         guard acquire(.erasure) else {
-            host?.reportMaintenanceStatus(conflictMessage())
+            host?.sessionStatus = conflictMessage()
             return
         }
         host?.backgroundTasks.closeControls()
@@ -208,7 +208,7 @@ final class MaintenanceCoordinator {
             }
             host.voice.speak(report.summary)
         } catch {
-            host.reportMaintenanceStatus("Perry could not stop its computer-use workers before erasing data.")
+            host.sessionStatus = "Perry could not stop its computer-use workers before erasing data."
         }
     }
 

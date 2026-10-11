@@ -210,6 +210,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             )
         })
     )
+    private lazy var commandRouter = CommandRouter(host: self)
     private lazy var talkCapture = TalkObservationCapture(
         workers: workers,
         targetHint: { [unowned self] in self.guideBridge.guideTargetHint() },
@@ -279,7 +280,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         hooks: VoiceController.Hooks(
             setStatus: { [weak self] status in self?.sessionStatus = status },
             setTranscriptPreview: { [weak self] text in self?.transcriptPreview = text },
-            dispatch: { [weak self] text in self?.dispatch(commandText: text) },
+            dispatch: { [weak self] text in self?.commandRouter.route(commandText: text) },
             wake: { [weak self] in self?.wake() },
             sessionIsIdle: { [weak self] in self?.isIdle ?? false },
             refreshStatusItem: { [weak self] in self?.statusMenu.refreshIndicator() },
@@ -425,9 +426,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             let prompt = input.request.text
             switch GuideIntentParser.parse(prompt) {
             case .guide:
-                return await self.runHomeGuide(input: input, target: target, full: false, onPartial: onPartial)
+                return await self.commandRouter.runHomeGuide(input: input, target: target, full: false, onPartial: onPartial)
             case .showEverything:
-                return await self.runHomeGuide(input: input, target: target, full: true, onPartial: onPartial)
+                return await self.commandRouter.runHomeGuide(input: input, target: target, full: true, onPartial: onPartial)
             default: break
             }
             var text = ""
@@ -577,9 +578,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         set { maintenance.debugUnsavedQuitDecision = newValue }
     }
 #endif
-    @Published private(set) var sessionStatus = "Press ⌥⌘P when you want Perry."
+    @Published var sessionStatus = "Press ⌥⌘P when you want Perry."
     @Published private(set) var transcriptPreview = ""
-    private let sessionController: SessionController
+    let sessionController: SessionController
     private var sessionStateObservation: AnyCancellable?
     private var runtimeChoicesObservation: AnyCancellable?
     private var agentRunningObservation: AnyCancellable?
@@ -1096,7 +1097,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         showPanel()
     }
 
-    private func showPanel() {
+    func showPanel() {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
         sessionPanel.show()
@@ -1263,85 +1264,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return await intentCards.present(id: id, card: card, allowsStepThrough: allowsStepThrough)
     }
 
-    private func dispatch(commandText: String?) {
-        guard let text = commandText, !text.isEmpty else {
-            showPanel()
-            return
-        }
-        if case .asking = sessionController.state {
-            switch GuideIntentParser.parse(text) {
-            case .dismiss:
-                dismiss()
-            case .guide:
-                continueAskInGuide(request: text, full: false)
-            case .showEverything:
-                continueAskInGuide(request: text, full: true)
-            case .doTask, .notAGuideRequest:
-                ask(question: text)
-            }
-            return
-        }
-        switch GuideIntentParser.parse(text) {
-        case .guide(let goal):
-            startGuiding(goal: goal)
-        case .showEverything(let goal):
-            Task { await showEverything(goal: goal) }
-        case .doTask(let goal):
-            foreground.start(goal: goal)
-        case .dismiss:
-            dismiss()
-        case .notAGuideRequest:
-            ask(question: text)
-        }
-    }
-
-    private func runHomeGuide(
-        input: HomeController.AcceptedInput, target: CuaTargetHint?, full: Bool,
-        onPartial: @MainActor @Sendable (String) -> Void
-    ) async -> AgentFinish {
-        guard let task = guideCoordinator.startGuiding(goal: input.request.text, threadID: input.threadID, targetHint: target, full: full, waitingInput: input.request) else {
-            return .failed("Finish or stop the current session before starting Guide. Your request is still here.")
-        }
-        onPartial("Preparing a guide…")
-        return await withTaskCancellationHandler {
-            await task.value
-        } onCancel: {
-            task.cancel()
-        }
-    }
-
-    private func continueAskInGuide(request: String, full: Bool) {
-        guard case .asking(let ask) = sessionController.state, !maintenance.isUnderMaintenance else { return }
-        let accepted = homeController.acceptInput(request, threadID: ask.threadID ?? UUID())
-        let input = accepted.request
-        let threadID = accepted.threadID
-        sessionController.updateAsk {
-            $0.threadID = threadID
-            $0.pendingGuideRequest = input
-        }
-        sessionStatus = "Saving your request while this answer finishes…"
-        askController.afterCurrentAnswer(prepare: { [weak self] in
-            guard let self else { return false }
-            do {
-                try await accepted.saved.value
-                return !self.maintenance.isUnderMaintenance
-            } catch {
-                self.homeController.homeModel.storageError = error.localizedDescription
-                self.sessionStatus = "Couldn’t save your Guide request. Your text is still here."
-                return false
-            }
-        }) { [weak self] current in
-            guard let self, !self.maintenance.isUnderMaintenance,
-                  current.pendingGuideRequest?.id == input.id else { return }
-            let target = self.homeController.homeModel.conversationTargets[threadID]
-            self.dismiss()
-            self.homeController.homeModel.sidebarSelection = .thread(threadID)
-            self.guideCoordinator.startGuiding(
-                goal: input.text, threadID: threadID, targetHint: target, full: full, waitingInput: input
-            )
-        }
-    }
-
     // MARK: Onboarding
 
     func runOnboarding(force: Bool) {
@@ -1352,7 +1274,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Test seam for the dictated-command path — identical to what
     /// VoiceController's dispatch hook delivers after wake word/dictation.
     func debugDispatch(_ text: String) {
-        dispatch(commandText: text)
+        commandRouter.route(commandText: text)
     }
 
     /// Seeds the History fixture and opens History for the capture lane.
@@ -1546,17 +1468,17 @@ extension AppController: GuideBridgeHost {
     var sessionPanelFrame: CGRect? { sessionPanel.frame }
     var intentCardFrame: CGRect? { intentCards.frame }
 
-    func reportGuideStatus(_ status: String) {
-        sessionStatus = status
-    }
 }
 
 extension AppController: DemoFlowHost {
     func wakeForDemo() { wake() }
     func dismissIntentCard() { intentCards.dismiss() }
-    func reportDemoStatus(_ status: String) { sessionStatus = status }
     func runOnboardingForDemo() { runOnboarding(force: true) }
     func showDemoReport() { showHistory() }
+}
+
+extension AppController: CommandRouteHost {
+    var isUnderMaintenance: Bool { maintenance.isUnderMaintenance }
 }
 
 extension AppController: MaintenanceHost {
@@ -1564,7 +1486,4 @@ extension AppController: MaintenanceHost {
         !homeController.homeModel.unsavedInputs.isEmpty
     }
 
-    func reportMaintenanceStatus(_ status: String) {
-        sessionStatus = status
-    }
 }

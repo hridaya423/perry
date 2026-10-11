@@ -16,7 +16,7 @@ protocol GuideBridgeHost: AnyObject {
     var foreground: ForegroundTaskController { get }
     var sessionPanelFrame: CGRect? { get }
     var intentCardFrame: CGRect? { get }
-    func reportGuideStatus(_ status: String)
+    var sessionStatus: String { get set }
     func clearSessionSurfaces()
 }
 
@@ -47,7 +47,7 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideSetStatus(_ status: String) {
-        host?.reportGuideStatus(status)
+        host?.sessionStatus = status
     }
 
     func guideSpeak(_ text: String, identity: GuideSpeechIdentity) {
