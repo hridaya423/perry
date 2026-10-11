@@ -197,6 +197,7 @@ final class AgentCoordinator: ObservableObject {
         var answer = ""
         var labels: [String] = []
         var finish: AgentFinish = .interrupted
+        var deferredMaintenance: (@Sendable () async throws -> Void)?
         do {
             try Task.checkCancellation()
             if let operation {
@@ -264,10 +265,12 @@ final class AgentCoordinator: ObservableObject {
                 if let observation = spatialContext?.observation, let screenshot = observation.screenshotData {
                     parts.append(.image(data: screenshot, mimeType: observation.screenshotMIMEType))
                 }
-                var messages = try await loop.prepareConversation(
+                let prepared = try await loop.prepareConversation(
                     thread: thread, question: goal, runID: runID, store: threads,
                     system: system, context: context, tier: tier, currentParts: parts
                 )
+                var messages = prepared.messages
+                deferredMaintenance = prepared.maintenance
                 // The spatial payload rides as its own user message: the stored
                 // question stays bare, and a provider with a server-side
                 // conversation gets fresh context per turn without the stored
@@ -296,6 +299,11 @@ final class AgentCoordinator: ObservableObject {
                 failureReason: finish.failureReason
             )
             sink(.finished(finish))
+            // Off the hot path (H5): fold the newly-covered history prefix into
+            // the saved summary now that the turn has a durable record.
+            if let deferredMaintenance {
+                Task { try? await deferredMaintenance() }
+            }
         } catch {
             sink(.finished(.failed("The task ended, but its result couldn’t be saved. Review any changes before retrying. \(error.localizedDescription)")))
         }

@@ -29,6 +29,35 @@ final class ConversationContextTests: XCTestCase {
         })
     }
 
+    func testDeferredSummaryAnswersImmediatelyAndCondensesAfterward() async throws {
+        let (root, store) = try fixture()
+        let original = longThread()
+        _ = try await store.upsert(original)
+        let thread = try await store.beginTurn(to: original.id, question: "Continue")
+        let runID = try XCTUnwrap(thread.pendingTurn?.id)
+        let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("Condensed."), .done(.endTurn)], count: 20))
+        let prepared = try await ConversationContext().prepareDeferringSummary(
+            thread: thread, question: "Continue", runID: runID, store: store, provider: provider, historyByteLimit: 2_048
+        )
+        // Hot path untouched: no condensation round-trips happened inline.
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertEqual(prepared.messages.last, .user([.text("Continue")]))
+        let maintenance = try XCTUnwrap(prepared.maintenance)
+        try await maintenance()
+        let reloaded = await store.thread(id: thread.id)
+        let after = try XCTUnwrap(reloaded)
+        XCTAssertNotNil(after.contextSummary?.text)
+        XCTAssertGreaterThan(after.contextSummary?.sourceTurnCount ?? 0, 0)
+        // And the next prepare hits the saved summary with no provider work.
+        let unused = ScriptedProvider(responses: [])
+        let repeated = try await ConversationContext().prepareDeferringSummary(
+            thread: after, question: "Again", runID: runID, store: store, provider: unused, historyByteLimit: 2_048
+        )
+        XCTAssertNil(repeated.maintenance)
+        XCTAssertTrue(unused.requests.isEmpty)
+        _ = root
+    }
+
     func testSummarySurvivesRestartAndRetainsSourceTurns() async throws {
         let (root, store) = try fixture()
         let original = longThread()

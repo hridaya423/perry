@@ -81,9 +81,9 @@ public actor AgentLoop {
     public func prepareConversation(
         thread: PerryThread, question: String, runID: UUID, store: ThreadStore,
         system: String, context: ToolContext, tier: ModelTier, currentParts: [ModelContentPart]
-    ) async throws -> [ModelMessage] {
+    ) async throws -> PreparedConversation {
         let base = request(system: system, messages: [.user(currentParts)], context: context, tier: tier)
-        return try await ConversationContext().prepare(
+        return try await ConversationContext().prepareDeferringSummary(
             thread: thread, question: question, runID: runID, store: store, provider: provider, baseRequest: base
         )
     }

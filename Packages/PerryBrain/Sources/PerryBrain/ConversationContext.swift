@@ -12,6 +12,15 @@ public enum ConversationContextError: Error, LocalizedError {
     }
 }
 
+/// A prepared turn plus optional post-turn maintenance: when condensation was
+/// deferred, `maintenance` folds the newly-covered turns into the thread's
+/// saved contextSummary. Run it after the turn finishes — it needs the
+/// provider, so it must not race the turn's own stream.
+public struct PreparedConversation: Sendable {
+    public let messages: [ModelMessage]
+    public let maintenance: (@Sendable () async throws -> Void)?
+}
+
 public struct ConversationContext {
     public init() {}
 
@@ -24,6 +33,42 @@ public struct ConversationContext {
         historyByteLimit: Int = 48_000,
         baseRequest: ModelRequest? = nil
     ) async throws -> [ModelMessage] {
+        try await prepareImpl(
+            thread: thread, question: question, runID: runID, store: store,
+            provider: provider, historyByteLimit: historyByteLimit,
+            baseRequest: baseRequest, deferSummarization: false
+        ).messages
+    }
+
+    /// Same context, but when the saved summary needs new turns condensed the
+    /// turn answers with last-N verbatim plus the stale summary, and the
+    /// condensation work comes back as `maintenance` for after the turn (H5).
+    public func prepareDeferringSummary(
+        thread: PerryThread,
+        question: String,
+        runID: UUID,
+        store: ThreadStore,
+        provider: any ModelProvider,
+        historyByteLimit: Int = 48_000,
+        baseRequest: ModelRequest? = nil
+    ) async throws -> PreparedConversation {
+        try await prepareImpl(
+            thread: thread, question: question, runID: runID, store: store,
+            provider: provider, historyByteLimit: historyByteLimit,
+            baseRequest: baseRequest, deferSummarization: true
+        )
+    }
+
+    private func prepareImpl(
+        thread: PerryThread,
+        question: String,
+        runID: UUID,
+        store: ThreadStore,
+        provider: any ModelProvider,
+        historyByteLimit: Int = 48_000,
+        baseRequest: ModelRequest? = nil,
+        deferSummarization: Bool
+    ) async throws -> PreparedConversation {
         try Task.checkCancellation()
         let base = baseRequest ?? ModelRequest(messages: [.user([.text(question)])], tier: .deep)
         let capacity = try await provider.contextWindow(for: base.tier)
@@ -36,7 +81,7 @@ public struct ConversationContext {
         if total <= historyByteLimit {
             var messages = thread.messages(for: question, historyCharacterLimit: Int.max)
             messages[messages.count - 1] = base.messages.last ?? .user([.text(question)])
-            return messages
+            return PreparedConversation(messages: messages, maintenance: nil)
         }
         let summaryLimit = min(6_000, historyByteLimit / 4)
         guard summaryLimit >= 256 else { throw ConversationContextError.invalidBudget }
@@ -65,35 +110,36 @@ public struct ConversationContext {
             covered = 0
             summary = ""
         }
+        var maintenance: (@Sendable () async throws -> Void)?
         if covered < firstRecent {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            var batch = ""
-            var batchEnd = covered
-            let summaryCapacity = try await provider.contextWindow(for: .deep)
-            let summaryBase = summaryRequest("", previous: String(repeating: "x", count: summaryLimit), limit: summaryLimit)
-            let batchLimit = min(max(1_024, historyByteLimit / 2), try summaryBase.remainingInputBudget(in: summaryCapacity) ?? Int.max)
-            guard batchLimit >= 5 else { throw ConversationContextError.invalidBudget }
-            for index in covered..<firstRecent {
-                try Task.checkCancellation()
-                let encoded = String(decoding: try encoder.encode(thread.turns[index]), as: UTF8.self)
-                if !batch.isEmpty, batch.utf8.count + encoded.utf8.count + 1 > batchLimit {
-                    summary = try await condense(batch, previous: summary, limit: summaryLimit, provider: provider)
-                    try await store.saveContextSummary(summary, sourceTurns: Array(thread.turns.prefix(batchEnd)), to: thread.id, runID: runID)
-                    batch = ""
+            if deferSummarization {
+                // Answer now with the stale summary; fold the uncovered prefix
+                // in after the turn so first-token latency never waits on a
+                // condensation pass.
+                let threadID = thread.id
+                maintenance = { [provider, store] in
+                    guard let fresh = await store.thread(id: threadID), fresh.turns.count >= firstRecent else { return }
+                    // A faster maintenance pass (or an inline prepare) may have
+                    // already covered part of this range — resume from the
+                    // freshest saved state rather than the captured one, so a
+                    // duplicate run can't overwrite a richer summary.
+                    let freshCovered = max(covered, fresh.contextSummary?.sourceTurnCount ?? 0)
+                    guard freshCovered < firstRecent else { return }
+                    let base = freshCovered > covered ? (fresh.contextSummary?.text ?? summary) : summary
+                    _ = try await self.condensePrefix(
+                        turns: fresh.turns, from: freshCovered, through: firstRecent,
+                        existing: base, limit: summaryLimit,
+                        historyByteLimit: historyByteLimit,
+                        provider: provider, store: store, threadID: threadID, runID: runID
+                    )
                 }
-                var fragment = encoded[...]
-                while fragment.utf8.count + 1 > batchLimit {
-                    let part = Self.prefix(fragment, byteLimit: batchLimit - 1)
-                    summary = try await condense(part, previous: summary, limit: summaryLimit, provider: provider)
-                    fragment = fragment[fragment.unicodeScalars.index(fragment.startIndex, offsetBy: part.unicodeScalars.count)...]
-                }
-                batch += String(fragment) + "\n"
-                batchEnd = index + 1
-            }
-            if !batch.isEmpty {
-                summary = try await condense(batch, previous: summary, limit: summaryLimit, provider: provider)
-                try await store.saveContextSummary(summary, sourceTurns: Array(thread.turns.prefix(batchEnd)), to: thread.id, runID: runID)
+            } else {
+                summary = try await condensePrefix(
+                    turns: thread.turns, from: covered, through: firstRecent,
+                    existing: summary, limit: summaryLimit,
+                    historyByteLimit: historyByteLimit,
+                    provider: provider, store: store, threadID: thread.id, runID: runID
+                )
             }
         }
         try Task.checkCancellation()
@@ -108,7 +154,48 @@ public struct ConversationContext {
             }
         }
         messages.append(base.messages.last ?? .user([.text(question)]))
-        return messages
+        return PreparedConversation(messages: messages, maintenance: maintenance)
+    }
+
+    /// Condenses `turns[from..<through]` into the saved summary, persisting
+    /// each batch's coverage so a crash mid-pass loses at most one batch.
+    /// Returns the updated summary text.
+    private func condensePrefix(
+        turns: [PerryThread.Turn], from covered: Int, through firstRecent: Int,
+        existing summary: String, limit summaryLimit: Int, historyByteLimit: Int,
+        provider: any ModelProvider, store: ThreadStore, threadID: UUID, runID: UUID
+    ) async throws -> String {
+        var summary = summary
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        var batch = ""
+        var batchEnd = covered
+        let summaryCapacity = try await provider.contextWindow(for: .deep)
+        let summaryBase = summaryRequest("", previous: String(repeating: "x", count: summaryLimit), limit: summaryLimit)
+        let batchLimit = min(max(1_024, historyByteLimit / 2), try summaryBase.remainingInputBudget(in: summaryCapacity) ?? Int.max)
+        guard batchLimit >= 5 else { throw ConversationContextError.invalidBudget }
+        for index in covered..<firstRecent {
+            try Task.checkCancellation()
+            let encoded = String(decoding: try encoder.encode(turns[index]), as: UTF8.self)
+            if !batch.isEmpty, batch.utf8.count + encoded.utf8.count + 1 > batchLimit {
+                summary = try await condense(batch, previous: summary, limit: summaryLimit, provider: provider)
+                try await store.saveContextSummary(summary, sourceTurns: Array(turns.prefix(batchEnd)), to: threadID, runID: runID)
+                batch = ""
+            }
+            var fragment = encoded[...]
+            while fragment.utf8.count + 1 > batchLimit {
+                let part = Self.prefix(fragment, byteLimit: batchLimit - 1)
+                summary = try await condense(part, previous: summary, limit: summaryLimit, provider: provider)
+                fragment = fragment[fragment.unicodeScalars.index(fragment.startIndex, offsetBy: part.unicodeScalars.count)...]
+            }
+            batch += String(fragment) + "\n"
+            batchEnd = index + 1
+        }
+        if !batch.isEmpty {
+            summary = try await condense(batch, previous: summary, limit: summaryLimit, provider: provider)
+            try await store.saveContextSummary(summary, sourceTurns: Array(turns.prefix(batchEnd)), to: threadID, runID: runID)
+        }
+        return summary
     }
 
     private func originalTurns(_ turns: ArraySlice<PerryThread.Turn>, matching question: String, byteLimit: Int) throws -> String {
