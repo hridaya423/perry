@@ -13,6 +13,12 @@ swift test --package-path Packages/PerryCore        # also PerryGuide, PerryOver
 scripts/performance/self-test.sh                    # perf tooling unit tests
 ```
 
+As of 2026-10-11 the machine has Xcode 27.0 and `build/` (including
+`build/tools/xcodegen`) was gone; `/opt/homebrew/bin/xcodegen` works, or re-fetch
+with `scripts/fetch-xcodegen.sh --fetch`. A clean Debug build fails unless the
+Metal Toolchain is installed (`App/Onboarding/HelloInk.metal`):
+`xcodebuild -downloadComponent MetalToolchain`.
+
 ## Rules
 
 - `Perry.xcodeproj` is generated, so never hand-edit it. Add files under `App/`
