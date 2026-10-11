@@ -159,8 +159,21 @@ final class VoiceController: NSObject, ObservableObject {
 
     // MARK: Speech out
 
+    /// Resolution enumerates every installed voice — cache per
+    /// (identifier, language) pair so a per-utterance lookup stays cheap;
+    /// a preference change produces a new key and re-resolves (H6).
+    private static var voiceCache: [String: AVSpeechSynthesisVoice?] = [:]
+
     static func speakingVoice(for languageIdentifier: String? = nil) -> AVSpeechSynthesisVoice? {
         let preferences = currentSpeechPreferences()
+        let key = "\(preferences.voiceIdentifier ?? "")\u{1F}\(languageIdentifier ?? "")"
+        if let cached = voiceCache[key] { return cached }
+        let resolved = resolveSpeakingVoice(for: languageIdentifier, preferences: preferences)
+        voiceCache[key] = resolved
+        return resolved
+    }
+
+    private static func resolveSpeakingVoice(for languageIdentifier: String?, preferences: SpeechPreferences) -> AVSpeechSynthesisVoice? {
         if let identifier = preferences.voiceIdentifier,
            let selected = AVSpeechSynthesisVoice(identifier: identifier) {
             return selected
