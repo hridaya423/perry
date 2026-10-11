@@ -71,7 +71,7 @@ final class ModifierHoldMonitor {
                     guard let monitor else { return }
                     switch type {
                     case .keyDown:
-                        monitor.handleKeyDown()
+                        monitor.handleKeyDown(keyCode: event.getIntegerValueField(.keyboardEventKeycode))
                     case .flagsChanged:
                         let flags = event.flags
                         monitor.handle(
@@ -136,14 +136,14 @@ final class ModifierHoldMonitor {
         if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsChanged) {
             fallbackGlobalMonitors.append(monitor)
         }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] _ in
-            self?.handleKeyDown()
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
+            self?.handleKeyDown(keyCode: Int64(event.keyCode))
         }) {
             fallbackGlobalMonitors.append(monitor)
         }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
             if event.type == .keyDown {
-                self?.handleKeyDown()
+                self?.handleKeyDown(keyCode: Int64(event.keyCode))
             } else {
                 flagsChanged(event)
             }
@@ -193,7 +193,7 @@ final class ModifierHoldMonitor {
             } else {
                 // Released before commit (or a chord already killed it): the
                 // hold never became a real utterance — discard, don't submit.
-                PerfMark.mark("talk.cancel")
+                PerfMark.mark("talk.cancel.release_early")
                 onHoldCancel()
             }
         }
@@ -217,7 +217,7 @@ final class ModifierHoldMonitor {
     /// A real key pressed while a modifier gesture is in flight. During a hold
     /// it means a chorded shortcut: cancel without submitting. Otherwise it
     /// just dirties the current ⌃ press and any pending double-tap.
-    func handleKeyDown() {
+    func handleKeyDown(keyCode: Int64 = -1) {
         lastCleanControlRelease = nil
         if controlDown { controlPressClean = false }
         guard holding else { return }
@@ -225,7 +225,7 @@ final class ModifierHoldMonitor {
         committed = false
         commitTask?.cancel()
         commitTask = nil
-        PerfMark.mark("talk.cancel")
+        PerfMark.markDynamic("talk.cancel.chord.key\(keyCode)")
         onHoldCancel()
     }
 
@@ -239,7 +239,7 @@ final class ModifierHoldMonitor {
         controlPressClean = true
         lastCleanControlRelease = nil
         if wasHolding {
-            PerfMark.mark("talk.cancel")
+            PerfMark.mark("talk.cancel.reset")
             onHoldCancel()
         }
     }

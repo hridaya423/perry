@@ -162,7 +162,7 @@ final class TalkSession {
     /// session go back to sleep; there is no utterance to answer.
     func holdCancelled() {
         guard phase == .listening else { return }
-        PerfMark.mark("talk.cancel")
+        PerfMark.mark("talk.cancel.hold")
         abortActiveWork()
         _ = tracer.stop()
         overlayState.buddyState = .idle
@@ -171,7 +171,7 @@ final class TalkSession {
 
     /// Session teardown: stop everything; SessionController owns the transition.
     func cancel() {
-        PerfMark.mark("talk.cancel")
+        PerfMark.mark("talk.cancel.session")
         abortActiveWork()
         _ = tracer.stop()
         overlayState.visualGuidanceOverlays = []
@@ -249,6 +249,7 @@ final class TalkSession {
             try GuideTargetValidator.requireUnprotected(observation)
 
             let elements = observation.observedElements
+            PerfMark.markDynamic("deixis.index.\(elements.count)")
             index = ElementIndex(elements: elements)
             let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: elements)
             if bindings.isEmpty {
