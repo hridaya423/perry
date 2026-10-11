@@ -526,9 +526,7 @@ final class AppSubsystems {
             contextStore: self.backgroundTaskContextStore,
             transcriptStore: self.transcriptStore,
             notifier: app.notifier,
-            runtimes: self.runtimes,
-            probe: self.probe,
-            remoteIntegrationExecutor: self.remoteIntegrationExecutor,
+            agentCoordinator: self.agentCoordinator,
             storageDirectory: { [weak app = app] in app?.debugSeams.storageDirectory },
             hooks: hooks
         )
@@ -540,9 +538,7 @@ final class AppSubsystems {
             contextStore: self.backgroundTaskContextStore,
             transcriptStore: self.transcriptStore,
             notifier: app.notifier,
-            runtimes: self.runtimes,
-            probe: self.probe,
-            remoteIntegrationExecutor: self.remoteIntegrationExecutor,
+            agentCoordinator: self.agentCoordinator,
             storageDirectory: { nil },
             hooks: hooks
         )

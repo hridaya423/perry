@@ -109,9 +109,15 @@ private struct BackgroundTaskRow: View {
                 Text(record.goal)
                     .font(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(record.state.rawValue.capitalized) · step \(min(record.checkpoint.nextStepIndex + 1, max(record.plan.actionCount, 1))) of \(record.plan.actionCount)")
-                    .font(PerryTheme.Typography.monoSmall)
-                    .foregroundStyle(.secondary)
+                if case .agent = record.plan {
+                    Text(record.state.rawValue.capitalized)
+                        .font(PerryTheme.Typography.monoSmall)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("\(record.state.rawValue.capitalized) · step \(min(record.checkpoint.nextStepIndex + 1, max(record.plan.actionCount, 1))) of \(record.plan.actionCount)")
+                        .font(PerryTheme.Typography.monoSmall)
+                        .foregroundStyle(.secondary)
+                }
                 if case .legacy(let plan) = record.plan {
                     Text("Runtime: \(runtimes.name(for: plan.runtimeID))")
                         .font(PerryTheme.Typography.monoSmall)

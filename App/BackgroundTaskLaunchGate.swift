@@ -14,7 +14,7 @@ final class BackgroundTaskLaunchGate {
         if let notice = BackgroundTaskRecoveryNotice(record: record, isRunning: false) {
             return notice.message
         }
-        if record.canResumeWorkspaceTask {
+        if record.canResumeWorkspaceTask || record.canResumeAgentTask {
             return nil
         }
         return "This task cannot resume because it is cancelled or has no remaining safe action."

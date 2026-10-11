@@ -1,15 +1,19 @@
 import AppKit
 import Foundation
+import PerryBrain
 import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Owns durable background work end to end: task creation (plan → validate →
-/// persist → launch), the launch gate and control scope, per-task task
-/// handles, approval/cancel/pause/resume/discard/replan controls, workspace
+/// Owns durable background work end to end: task creation (enqueue → persist
+/// → launch), the launch gate and control scope, per-task task handles,
+/// approval/cancel/pause/resume/discard/replan controls, workspace
 /// directories, recovery after relaunch, and the records/messages the
-/// Background tasks window renders. Durable records stay in `TaskCoordinator`;
-/// this controller owns the live control plane around it.
+/// Background tasks window renders. Open-ended goals run as unattended agent
+/// turns (`.agent` records); typed workspace plans (`.executable` records)
+/// remain for routine replay and already-persisted work. Durable records stay
+/// in `TaskCoordinator`; this controller owns the live control plane around
+/// it.
 @MainActor
 final class BackgroundTaskController: ObservableObject {
     struct Hooks {
@@ -27,9 +31,7 @@ final class BackgroundTaskController: ObservableObject {
     private let contextStore: BackgroundTaskContextStore
     private let transcriptStore: TranscriptStore
     private let notifier: any AppNotificationClient
-    private let runtimes: RuntimeCatalog
-    private let probe: EnvironmentProbe
-    private let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
+    private let agentCoordinator: AgentCoordinator
     private let storageDirectory: () -> URL?
     private let hooks: Hooks
 
@@ -64,9 +66,7 @@ final class BackgroundTaskController: ObservableObject {
         contextStore: BackgroundTaskContextStore,
         transcriptStore: TranscriptStore,
         notifier: any AppNotificationClient,
-        runtimes: RuntimeCatalog,
-        probe: EnvironmentProbe,
-        remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
+        agentCoordinator: AgentCoordinator,
         storageDirectory: @escaping () -> URL?,
         hooks: Hooks
     ) {
@@ -76,9 +76,7 @@ final class BackgroundTaskController: ObservableObject {
         self.contextStore = contextStore
         self.transcriptStore = transcriptStore
         self.notifier = notifier
-        self.runtimes = runtimes
-        self.probe = probe
-        self.remoteIntegrationExecutor = remoteIntegrationExecutor
+        self.agentCoordinator = agentCoordinator
         self.storageDirectory = storageDirectory
         self.hooks = hooks
     }
@@ -238,7 +236,7 @@ final class BackgroundTaskController: ObservableObject {
 
     // MARK: Creation
 
-    func queue(goal: String, preferredRuntimeID: String? = nil) {
+    func queue(goal: String) {
         guard !hooks.isErasureInProgress() else {
             hooks.setStatus("Perry is finishing a data erase.")
             return
@@ -255,79 +253,25 @@ final class BackgroundTaskController: ObservableObject {
             defer { self.setupTasks[id] = nil }
             _ = await self.notifier.requestAuthorization()
             do {
-                let queued = try await self.workers.withWorker(
-                    scope: .background,
-                    resources: []
-                ) { @MainActor worker in
-                    let workspace = try self.makeWorkspace(for: id)
-                    try await worker.claimResources([.workspace(workspace.standardizedFileURL.path)])
-                    guard let runtimeSelection = await self.runtimes.select(
-                        workingDirectory: workspace,
-                        preferredProviderID: RuntimeCatalog.providerID(from: preferredRuntimeID)
-                    ) else {
-                        throw CuaDriverError.unavailable
-                    }
-                    let request = try PlanningRequest(
-                        goal: trimmed,
-                        taskID: id,
-                        workspace: workspace,
-                        context: .none
-                    )
-                    var capturedTarget: CuaWindowTarget?
-                    var plan: ExecutionPlan
-                    do {
-                        plan = try await runtimeSelection.provider.plan(request)
-                    } catch PlanningError.contextRequired {
-                        let permissions = await self.probe.permissionSnapshot()
-                        guard permissions.requiredPermissionsGranted else {
-                            self.hooks.setStatus("Accessibility and Screen Recording are required for a grounded background task.")
-                            self.hooks.requestOnboarding()
-                            throw CancellationError()
-                        }
-                        let captured = await self.probe.captureScreenContext(worker: worker)
-                        guard EnvironmentProbe.captureIsUsable(captured.context), let target = captured.target else {
-                            throw CuaDriverError.noTargetWindow
-                        }
-                        capturedTarget = target
-                        try Task.checkCancellation()
-                        plan = try await runtimeSelection.provider.plan(request.withScreenContext(captured.context))
-                    }
-                    try Task.checkCancellation()
-                    // Publication is bound to the actual background executor:
-                    // WorkspaceFileRuntime runs typed file transforms only, so
-                    // computer/integration/shell plans are refused before a
-                    // record is ever enqueued.
-                    try ExecutionPlanValidator.validate(
-                        plan,
-                        capabilities: ExecutionPlanValidator.Capabilities(
-                            supportedOperations: [.transform],
-                            workspace: workspace
-                        )
-                    )
-                    let record = try await self.coordinator.enqueue(executablePlan: plan)
-                    try await self.contextStore.save(
-                        BackgroundTaskMetadata(
-                            targetAppBundleID: capturedTarget?.bundleID,
-                            targetWindowTitle: capturedTarget?.title,
-                            targetProcessID: capturedTarget?.processID,
-                            targetWindowID: capturedTarget?.windowID,
-                            workspacePath: workspace.path,
-                            preferredRuntimeID: RuntimeCatalog.providerID(from: preferredRuntimeID),
-                            runtimeRoutingSummary: runtimeSelection.routingSummary
-                        ),
-                        for: id
-                    )
-                    try Task.checkCancellation()
-                    return (record, runtimeSelection.routingSummary)
-                }
+                // Open-ended goals run as unattended agent turns — the same
+                // pipeline as a foreground Do. No worker or workspace is
+                // claimed at queue time; the run gets a background worker
+                // through the shared lease when it starts.
+                let record = try await self.coordinator.enqueue(
+                    agentPlan: AgentTaskPlan(goal: trimmed, threadID: UUID()),
+                    taskID: id
+                )
+                try await self.contextStore.save(
+                    BackgroundTaskMetadata(runtimeRoutingSummary: "Perry agent"),
+                    for: id
+                )
                 guard !Task.isCancelled,
                       !self.hooks.isErasureInProgress(),
                       self.controlScope.acceptsControls else {
                     try await self.rollbackCreation(for: id)
                     return
                 }
-                messages[id] = queued.1
-                start(record: queued.0)
+                start(record: record)
                 hooks.setStatus("Queued \(trimmed) as a background task.")
                 refreshRecords()
             } catch is CancellationError {
@@ -362,9 +306,14 @@ final class BackgroundTaskController: ObservableObject {
     // MARK: Controls
 
     func pause(_ id: TaskID) {
-        guard records.contains(where: { $0.id == id }) else { return }
+        guard let record = records.first(where: { $0.id == id }) else { return }
         guard controlScope.acceptsControls else { return }
         launchGate.cancel(id)
+        // Agent turns have no mid-run safe point: pause interrupts the turn,
+        // and resume reruns the goal on the same thread.
+        if case .agent(let agentPlan) = record.plan {
+            agentCoordinator.stop(threadID: agentPlan.threadID)
+        }
         messages[id] = "Pausing at the next safe boundary"
         _ = controlScope.start { @MainActor [weak self] in
             guard let self else { return }
@@ -480,7 +429,10 @@ final class BackgroundTaskController: ObservableObject {
 
     func resumeAll() {
         let ids = records
-            .filter { $0.canResumeWorkspaceTask && !$0.checkpoint.isAwaitingApproval && !isRunning($0.id) }
+            .filter {
+                ($0.canResumeWorkspaceTask || $0.canResumeAgentTask)
+                    && !$0.checkpoint.isAwaitingApproval && !isRunning($0.id)
+            }
             .map(\.id)
         ids.forEach(resume)
     }
@@ -608,9 +560,8 @@ final class BackgroundTaskController: ObservableObject {
         _ = controlScope.start { @MainActor [weak self] in
             guard let self else { return }
             guard let record = await self.runner.records().first(where: { $0.id == id }),
-                  case .legacy(let plan) = record.plan else { return }
+                  case .legacy = record.plan else { return }
             let goal = record.goal
-            let preferredRuntimeID = plan.runtimeID
             do {
                 try await self.runner.discard(id: id)
                 try Self.removeWorkspace(for: id, root: self.workspaceRoot())
@@ -620,7 +571,7 @@ final class BackgroundTaskController: ObservableObject {
                 return
             }
             self.refreshRecords()
-            self.queue(goal: goal, preferredRuntimeID: preferredRuntimeID)
+            self.queue(goal: goal)
         }
     }
 
@@ -632,13 +583,17 @@ final class BackgroundTaskController: ObservableObject {
         guard controlScope.acceptsControls,
               !hooks.isErasureInProgress(),
               runTasks[record.id] == nil else { return false }
-        if case .executable = record.plan {
+        switch record.plan {
+        case .executable:
             return startWorkspaceTask(record: record, launchLease: launchLease)
+        case .agent:
+            return startAgentTask(record: record, launchLease: launchLease)
+        case .legacy:
+            // Legacy-format records survive for inspection only. They can be
+            // replanned as a new task or discarded — never executed.
+            messages[record.id] = "This saved task uses a retired plan format. Replan or discard it."
+            return false
         }
-        // Legacy-format records survive for inspection only. They can be
-        // replanned as a new typed task or discarded — never executed.
-        messages[record.id] = "This saved task uses a retired plan format. Replan or discard it."
-        return false
     }
 
     private func launchIsCurrent(_ lease: BackgroundTaskLaunchLease?) -> Bool {
@@ -728,11 +683,121 @@ final class BackgroundTaskController: ObservableObject {
         return true
     }
 
+    /// Runs an open-ended goal as an unattended agent turn on the task's
+    /// thread. Approval-bound tool calls fail closed — nobody is present to
+    /// grant them — so a background task can never silently take a risky
+    /// action. Relaunching reuses the same thread, so an interrupted run
+    /// resumes with the model aware of its earlier attempt.
+    private func startAgentTask(record: TaskRecord, launchLease: BackgroundTaskLaunchLease?) -> Bool {
+        guard case .agent(let agentPlan) = record.plan, record.canResumeAgentTask else {
+            messages[record.id] = "This task cannot resume."
+            return false
+        }
+        guard runTasks.count < Self.maximumConcurrentTasks else {
+            messages[record.id] = "Queued until another background task finishes"
+            return false
+        }
+        messages[record.id] = "Running in the background"
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let metadata = await self.contextStore.metadata(for: record.id)
+            var outcome: DoOutcome?
+            var completedRun = false
+            do {
+                try Task.checkCancellation()
+                guard self.launchIsCurrent(launchLease), self.controlScope.acceptsControls,
+                      !self.hooks.isErasureInProgress() else { throw CancellationError() }
+                _ = try await self.coordinator.beginAgentRun(id: record.id, expectedRevision: record.revision)
+                self.refreshRecords()
+                var finish: AgentFinish = .interrupted
+                for await event in self.agentCoordinator.run(
+                    threadID: agentPlan.threadID,
+                    goal: record.goal,
+                    unattended: true
+                ) {
+                    switch event {
+                    case .toolCallStarted(let call):
+                        self.messages[record.id] = "Running \(call.name)"
+                    case .toolCallFinished(let result) where result.isError:
+                        self.messages[record.id] = "A tool call failed"
+                    case .note(let note):
+                        self.messages[record.id] = note
+                    case .finished(let reason):
+                        finish = reason
+                    case .textDelta, .toolCallFinished, .draw:
+                        break
+                    }
+                }
+                // Paused or already-finished records are the control path's
+                // business, not this run's: leave them alone.
+                if await self.coordinator.record(id: record.id)?.state == .paused || Task.isCancelled {
+                    throw CancellationError()
+                }
+                let resolved: DoOutcome
+                switch finish {
+                case .completed:
+                    resolved = .completed(stepsRun: 0)
+                    completedRun = true
+                case .interrupted, .paused:
+                    resolved = .blocked(reason: "stopped before finishing")
+                case .budgetToolCalls:
+                    resolved = .failed(stepSummary: "the agent run", reason: "the task used its tool-call budget")
+                case .budgetTime:
+                    resolved = .failed(stepSummary: "the agent run", reason: "the task ran out of time")
+                case .providerError(let reason), .failed(let reason):
+                    resolved = .failed(stepSummary: "the agent run", reason: reason)
+                }
+                _ = try await self.coordinator.finish(id: record.id, outcome: resolved)
+                outcome = resolved
+            } catch is CancellationError {
+                // fall through: handleOutcome finishes the cancellation the
+                // control path already persisted.
+            } catch {
+                let resolved = DoOutcome.failed(stepSummary: "the agent run", reason: error.localizedDescription)
+                outcome = resolved
+                if let current = await self.coordinator.record(id: record.id), !current.isTerminal {
+                    _ = try? await self.coordinator.finish(id: record.id, outcome: resolved)
+                }
+            }
+            // A paused record stays queued: the user asked to stop the run,
+            // and resume continues the goal on the same thread.
+            if await self.coordinator.record(id: record.id)?.state == .paused {
+                self.messages[record.id] = "Paused — resume continues the task on the same thread."
+                self.runTasks[record.id] = nil
+                self.runningCount = self.runTasks.count
+                if let launchLease { self.launchGate.release(launchLease) }
+                await self.reloadRecords()
+                self.startQueuedTasks()
+                return
+            }
+            await self.handleOutcome(record: record, metadata: metadata, outcome: outcome)
+            if outcome != nil {
+                await self.notifier.deliver(TaskNotification(
+                    kind: completedRun ? .completed : .stopped,
+                    title: completedRun ? "Background task finished" : "Background task stopped",
+                    body: record.goal,
+                    taskID: record.id
+                ))
+            }
+            self.runTasks[record.id] = nil
+            self.runningCount = self.runTasks.count
+            if let launchLease { self.launchGate.release(launchLease) }
+            await self.reloadRecords()
+            self.startQueuedTasks()
+        }
+        runTasks[record.id] = task
+        runningCount = runTasks.count
+        return true
+    }
+
     private func startQueuedTasks() {
         guard controlScope.acceptsControls else { return }
         guard runTasks.count < Self.maximumConcurrentTasks else { return }
         records
-            .filter { $0.canStartAutomatically && runTasks[$0.id] == nil }
+            .filter {
+                ($0.canStartAutomatically || $0.canResumeAgentTask)
+                    && runTasks[$0.id] == nil
+            }
             .forEach { resume($0.id) }
     }
 
@@ -959,6 +1024,8 @@ final class BackgroundTaskController: ObservableObject {
             throw ExecutionError(message: "legacy task records are read-only")
         case .executable(let plan):
             _ = try await coordinator.enqueue(executablePlan: plan)
+        case .agent(let plan):
+            _ = try await coordinator.enqueue(agentPlan: plan, taskID: record.id)
         }
         try await contextStore.save(metadata, for: record.id)
         await reloadRecords()

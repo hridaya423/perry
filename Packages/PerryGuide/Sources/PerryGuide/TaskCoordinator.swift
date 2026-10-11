@@ -142,12 +142,26 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable {
         return cancellationRequested && !workspaceJournal.completed.isEmpty
     }
 
+    /// Agent tasks resume by rerunning the goal on the task's thread — the
+    /// model sees its earlier turn and continues — so any non-terminal,
+    /// uncancelled record is safe to relaunch.
+    public var canResumeAgentTask: Bool {
+        guard !isTerminal, !requiresReconciliation, !cancellationRequested,
+              case .agent = plan else { return false }
+        return true
+    }
+
     public var canStartAutomatically: Bool {
         state == .ready && canResumeWorkspaceTask
     }
 
     public init(executablePlan: PerryRuntimes.ExecutionPlan) {
         self.init(id: executablePlan.taskID, plan: .executable(executablePlan), state: .queued,
+                  checkpoint: TaskCheckpoint(), intent: .none)
+    }
+
+    public init(agentPlan: AgentTaskPlan, id: TaskID = TaskID()) {
+        self.init(id: id, plan: .agent(agentPlan), state: .queued,
                   checkpoint: TaskCheckpoint(), intent: .none)
     }
 
@@ -183,6 +197,7 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable {
         case workspaceJournal
         case goal
         case runtimeID
+        case agentThreadID
         case steps
         case state
         case nextStepIndex
@@ -220,6 +235,13 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable {
                 throw DecodingError.dataCorruptedError(forKey: .id, in: container, debugDescription: "task and executable plan identities differ")
             }
             plan = .executable(executable)
+        case "agent":
+            guard !container.contains(.executionPlan), !container.contains(.runtimeID), !container.contains(.steps) else {
+                throw DecodingError.dataCorruptedError(forKey: .planKind, in: container, debugDescription: "agent task cannot contain execution-plan fields")
+            }
+            let goal = try container.decode(String.self, forKey: .goal)
+            let threadID = try container.decode(UUID.self, forKey: .agentThreadID)
+            plan = .agent(AgentTaskPlan(goal: goal, threadID: threadID))
         default:
             throw DecodingError.dataCorruptedError(forKey: .planKind, in: container, debugDescription: "unknown task plan representation")
         }
@@ -347,6 +369,10 @@ public struct TaskRecord: Codable, Equatable, Sendable, Identifiable {
         case .executable(let executable):
             try container.encode("executable", forKey: .planKind)
             try container.encode(executable, forKey: .executionPlan)
+        case .agent(let agent):
+            try container.encode("agent", forKey: .planKind)
+            try container.encode(agent.goal, forKey: .goal)
+            try container.encode(agent.threadID, forKey: .agentThreadID)
         }
         try container.encode(state, forKey: .state)
         try container.encode(checkpoint.nextStepIndex, forKey: .nextStepIndex)
@@ -473,8 +499,39 @@ public actor TaskCoordinator {
     @discardableResult
     public func enqueue(executablePlan: PerryRuntimes.ExecutionPlan) throws -> TaskRecord {
         let record = TaskRecord(executablePlan: executablePlan)
-        guard storedRecords[record.id] == nil else { throw TaskCoordinatorError.duplicateID(record.id) }
         try validateExecutablePlanForEnqueue(executablePlan)
+        return try insert(record)
+    }
+
+    /// Open-ended goals carry no typed steps: the unattended agent turn
+    /// decides tool calls at run time and the task's thread holds the
+    /// transcript. Nothing about the goal is validated here — the agent
+    /// surface decides what it can do, and unattended runs fail closed on
+    /// any action that would need a person to approve it.
+    public func enqueue(agentPlan: AgentTaskPlan, taskID: TaskID = TaskID()) throws -> TaskRecord {
+        try insert(TaskRecord(agentPlan: agentPlan, id: taskID))
+    }
+
+    /// Marks an agent task running. Agent runs checkpoint at the turn rather
+    /// than the step — the only lifecycle they need is queued → running →
+    /// finish — so this is the single transition issued before the turn
+    /// starts consuming the record.
+    @discardableResult
+    public func beginAgentRun(id: TaskID, expectedRevision: UUID) throws -> TaskRecord {
+        let record = try requireRecord(id)
+        if record.revision != expectedRevision {
+            throw TaskCoordinatorError.invalidTransition(id: id, state: record.state)
+        }
+        guard case .agent = record.plan,
+              !record.state.isTerminal, !record.cancellationRequested else {
+            throw TaskCoordinatorError.invalidTransition(id: id, state: record.state)
+        }
+        if record.state == .running { return record }
+        return try replace(record.updating(state: .running))
+    }
+
+    private func insert(_ record: TaskRecord) throws -> TaskRecord {
+        guard storedRecords[record.id] == nil else { throw TaskCoordinatorError.duplicateID(record.id) }
         var nextRecords = storedRecords
         // Retained terminal records are receipts, not queued work — evict them
         // before telling the user the queue is full.

@@ -62,6 +62,38 @@ final class TaskPlanPersistenceTests: XCTestCase {
         XCTAssertEqual(try migrated.canonicalData(), try plan.canonicalData())
     }
 
+    func testAgentPlanSurvivesRelaunchAsResumableQueuedWork() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-agent-task-store-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        let threadID = UUID()
+        let coordinator = TaskCoordinator(storageDirectory: directory)
+        let queued = try await coordinator.enqueue(agentPlan: AgentTaskPlan(goal: "Reconcile the ledger", threadID: threadID))
+        let restored = TaskCoordinator(storageDirectory: directory)
+        let loaded = await restored.record(id: queued.id)
+        let record = try XCTUnwrap(loaded)
+        guard case .agent(let persistedPlan) = record.plan else { return XCTFail("Agent plan changed representation") }
+        XCTAssertEqual(persistedPlan.goal, "Reconcile the ledger")
+        XCTAssertEqual(persistedPlan.threadID, threadID)
+        XCTAssertEqual(record.revision, queued.revision)
+        // A queued agent record is safe to relaunch; nothing about it is a
+        // workspace step, so workspace predicates stay false.
+        XCTAssertTrue(record.canResumeAgentTask)
+        XCTAssertFalse(record.canResumeWorkspaceTask)
+        XCTAssertNil(record.workspaceActionToApprove)
+        XCTAssertEqual(record.plan.actionCount, 0)
+    }
+
+    func testAgentRecordRejectsExecutionPlanFields() throws {
+        let record = TaskRecord(agentPlan: AgentTaskPlan(goal: "Summarize mail", threadID: UUID()))
+        let original = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        for key in ["executionPlan", "runtimeID", "steps"] {
+            var fields = original
+            fields[key] = "unrecognized"
+            XCTAssertThrowsError(try JSONDecoder().decode(TaskRecord.self, from: JSONSerialization.data(withJSONObject: fields)))
+        }
+    }
+
     private func makePlan(workspace: URL) throws -> PerryRuntimes.ExecutionPlan {
         let contents = "  e\u{301}\r\n\t🍐\n  "
         let action = try ExecutableAction(
