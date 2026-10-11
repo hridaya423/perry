@@ -231,33 +231,65 @@ public actor GuideEngine {
         }
     }
 
+    /// How long the first wait listens for the action's UI effect. When
+    /// nothing ever signals, verification costs no more than the legacy poll.
+    private static let firstSignalWindow: Duration = .milliseconds(500)
+    /// Total window a postcondition may take to become true. Signals that
+    /// keep arriving reopen the read inside this bound — never beyond it.
+    private static let verificationWindow: Duration = .milliseconds(1500)
+    /// Each signaled wake re-reads the AX tree; the cap keeps a chatty app
+    /// from turning verification into a capture storm.
+    private static let maxVerificationReads = 4
+
+    /// Event-driven verification: the observer waits on AX change signals
+    /// rather than a fixed timer, and each wake re-reads only the element
+    /// index — postcondition checks never need another screen capture.
     private func verifyAndAdvance(step: GuideStep, baseline: GuideObservation, stepIndex: Int, userConfirmed: Bool = false) async -> AdvanceResult {
-        let after: GuideObservation
-        do {
-            try await Task.sleep(nanoseconds: 250_000_000)
-            after = try await observer.observe()
-            try GuideTargetValidator.requireUnprotected(after)
-            try requireSameTarget(after, as: baseline, allowsNewWindow: step.opensWindow)
-        } catch is CancellationError {
-            return .notPresenting
-        } catch {
-            phase = .waitingForUser(stepIndex: stepIndex)
-            return .blocked(reason: "Cua could not verify that step: \(error.localizedDescription)")
-        }
-        if let postcondition = step.postcondition {
-            guard postcondition.isSatisfied(in: after.snapshot) else {
+        let deadline = ContinuousClock.now.advanced(by: Self.verificationWindow)
+        var reads = 0
+        while true {
+            let observation: GuideObservation
+            do {
+                try Task.checkCancellation()
+                let remaining = deadline - ContinuousClock.now
+                if reads > 0, remaining <= .zero { break }
+                let window = reads == 0 ? min(remaining, Self.firstSignalWindow) : remaining
+                let signaled = await observer.awaitUIChange(within: max(window, .zero))
+                // A deadline without a signal means the UI went quiet — the
+                // last read's verdict stands rather than paying another.
+                if reads > 0, !signaled { break }
+                observation = try await observer.observeElements()
+                try GuideTargetValidator.requireUnprotected(observation)
+                try requireSameTarget(observation, as: baseline, allowsNewWindow: step.opensWindow)
+            } catch is CancellationError {
+                return .notPresenting
+            } catch {
+                phase = .waitingForUser(stepIndex: stepIndex)
+                return .blocked(reason: "Cua could not verify that step: \(error.localizedDescription)")
+            }
+            // stop()/skip() can interleave across the suspensions — a stale
+            // verification must never advance past a step that's gone.
+            guard currentStep?.id == step.id else { return .notPresenting }
+            reads += 1
+            guard let postcondition = step.postcondition else {
+                guard userConfirmed else {
+                    phase = .waitingForUser(stepIndex: stepIndex)
+                    return .stillWaiting(stepIndex: stepIndex)
+                }
+                progress.recordUserConfirmed(step)
+                return await presentNext(observation: observation, allowsNewWindow: step.opensWindow)
+            }
+            if postcondition.isSatisfied(in: observation.snapshot) {
+                progress.recordCompleted(step)
+                return await presentNext(observation: observation, allowsNewWindow: step.opensWindow)
+            }
+            if reads >= Self.maxVerificationReads {
                 phase = .waitingForUser(stepIndex: stepIndex)
                 return .stillWaiting(stepIndex: stepIndex)
             }
-            progress.recordCompleted(step)
-        } else {
-            guard userConfirmed else {
-                phase = .waitingForUser(stepIndex: stepIndex)
-                return .stillWaiting(stepIndex: stepIndex)
-            }
-            progress.recordUserConfirmed(step)
         }
-        return await presentNext(observation: after, allowsNewWindow: step.opensWindow)
+        phase = .waitingForUser(stepIndex: stepIndex)
+        return .stillWaiting(stepIndex: stepIndex)
     }
 
     /// Asks the planner for the next step from this observation, validates it,

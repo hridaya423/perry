@@ -5,19 +5,30 @@ import PerryCore
 private actor StubObserver: GuideObserving {
     private let observations: [GuideObservation]
     private let failureAtRead: Int?
+    private let holdSignals: Bool
     private var index = 0
+    private var elementReads = 0
+    private var scriptedSignals: [Bool]
+    private var heldValues: [Bool] = []
+    private var heldSignalWaiter: CheckedContinuation<Bool, Never>?
+    private var waitingForSignal = false
+    private var waitingObserver: CheckedContinuation<Void, Never>?
 
-    init(observations: [GuideObservation], failureAtRead: Int? = nil) {
+    init(observations: [GuideObservation], failureAtRead: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
         self.observations = observations
         self.failureAtRead = failureAtRead
+        self.scriptedSignals = signals
+        self.holdSignals = holdSignals
     }
 
-    init(snapshots: [AXSnapshot], failureAtRead: Int? = nil) {
+    init(snapshots: [AXSnapshot], failureAtRead: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
         self.init(
             observations: snapshots.map {
                 GuideObservation(snapshot: $0, processID: 42, windowID: 7, connectionGeneration: 1)
             },
-            failureAtRead: failureAtRead
+            failureAtRead: failureAtRead,
+            signals: signals,
+            holdSignals: holdSignals
         )
     }
 
@@ -31,8 +42,47 @@ private actor StubObserver: GuideObserving {
         return observation
     }
 
+    func observeElements() async throws -> GuideObservation {
+        elementReads += 1
+        return try await observe()
+    }
+
+    /// Scripted signals return in order; `holdSignals` suspends until `emit`
+    /// so tests can act while the engine is mid-wait. With neither, the wait
+    /// reports no signal immediately — no wall-clock cost.
+    func awaitUIChange(within: Duration) async -> Bool {
+        if !scriptedSignals.isEmpty { return scriptedSignals.removeFirst() }
+        if !heldValues.isEmpty { return heldValues.removeFirst() }
+        guard holdSignals else { return false }
+        waitingForSignal = true
+        waitingObserver?.resume()
+        waitingObserver = nil
+        return await withCheckedContinuation { heldSignalWaiter = $0 }
+    }
+
+    func emit(_ signaled: Bool) {
+        if let waiter = heldSignalWaiter {
+            heldSignalWaiter = nil
+            waitingForSignal = false
+            waiter.resume(returning: signaled)
+        } else {
+            heldValues.append(signaled)
+        }
+    }
+
+    /// Suspends until the engine is inside `awaitUIChange` — lets a test land
+    /// a concurrent `stop()` at the exact suspension the reentrancy guard covers.
+    func untilWaiting() async {
+        if waitingForSignal { return }
+        await withCheckedContinuation { waitingObserver = $0 }
+    }
+
     func readCount() -> Int {
         index
+    }
+
+    func elementReadCount() -> Int {
+        elementReads
     }
 }
 
@@ -386,6 +436,118 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(result, .explanationEnded)
         let progress = await engine.progress
         XCTAssertEqual(progress.completedInstructions, [step.instruction])
+    }
+
+    /// A signal between reads triggers the next verification read — the
+    /// engine advances as soon as the UI proves the step, not on a timer.
+    func testSignalBetweenReadsDrivesReverification() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let mid = snapshot([button("target", label: "Open")])
+        let done = snapshot([button("target", label: "Open"), button("done", label: "Done")])
+        let observer = StubObserver(snapshots: [initial, mid, done], signals: [false, true])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let engine = GuideEngine(planner: QueueGuidePlanner(steps: [step]), observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        // start read + two verification reads (unsatisfied, then satisfied).
+        let reads = await observer.readCount()
+        let elementReads = await observer.elementReadCount()
+        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(elementReads, 2)
+    }
+
+    /// Without a signal there is no re-read: one verification read, then
+    /// stillWaiting — the quiet-UI case costs exactly one element read.
+    func testNoSignalVerifiesOnceThenWaits() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(snapshots: [initial, initial])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let engine = GuideEngine(planner: QueueGuidePlanner(steps: [step]), observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let elementReads = await observer.elementReadCount()
+        XCTAssertEqual(elementReads, 1)
+    }
+
+    /// A signal storm cannot spin reads forever — the cap bounds verification.
+    func testSignalStormIsBounded() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(
+            snapshots: [initial],
+            signals: [false, true, true, true, true, true]
+        )
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let engine = GuideEngine(planner: QueueGuidePlanner(steps: [step]), observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        let elementReads = await observer.elementReadCount()
+        XCTAssertEqual(elementReads, 4)
+    }
+
+    /// stop() landing mid-verification must not be overwritten by the stale
+    /// read — the engine stays idle and the call reports notPresenting.
+    func testStaleVerificationCannotAdvancePastStop() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let done = snapshot([button("target", label: "Open"), button("done", label: "Done")])
+        let observer = StubObserver(snapshots: [initial, done], holdSignals: true)
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let engine = GuideEngine(planner: QueueGuidePlanner(steps: [step]), observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        async let pending = engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await observer.untilWaiting()
+        await engine.stop()
+        await observer.emit(true)
+
+        let result = await pending
+        let phase = await engine.phase
+        XCTAssertEqual(result, .notPresenting)
+        XCTAssertEqual(phase, .idle)
+    }
+
+    /// Observers without the event hooks still verify on the fallback —
+    /// the default wait plus a full observe reproduces the legacy poll.
+    func testDefaultObserverFallbackStillVerifies() async throws {
+        struct FallbackObserver: GuideObserving {
+            let first: GuideObservation
+            func observe() async throws -> GuideObservation { first }
+        }
+        let initial = observation([button("target", label: "Open"), button("done", label: "Done")])
+        let step = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [step]),
+            observer: FallbackObserver(first: initial)
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
     }
 
     private func postconditionEngine(before: GuideObservation, after: GuideObservation, opensWindow: Bool = false) -> GuideEngine {

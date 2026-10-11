@@ -513,7 +513,7 @@ actor CuaDriverClient {
         return target
     }
 
-    func capture(resolvedTarget: CuaWindowTarget, sessionID: String) async throws -> CuaCapturedWindow {
+    func capture(resolvedTarget: CuaWindowTarget, sessionID: String, includeScreenshot: Bool = true) async throws -> CuaCapturedWindow {
         try Task.checkCancellation()
         let generation = try validateResolvedTarget(resolvedTarget, sessionID: sessionID)
         let state = try await callTool(
@@ -521,14 +521,15 @@ actor CuaDriverClient {
             arguments: [
                 "pid": Int(resolvedTarget.processID),
                 "window_id": resolvedTarget.windowID,
-                "include_screenshot": true,
+                "include_screenshot": includeScreenshot,
                 "max_elements": 300,
                 "max_depth": 12,
                 "session": sessionID,
             ],
             generation: generation
         )
-        guard let screenshotData = state.images.first else {
+        let screenshotData = state.images.first ?? Data()
+        if includeScreenshot, screenshotData.isEmpty {
             throw CuaDriverError.noScreenshot
         }
         guard connection?.generation == generation,

@@ -15,6 +15,7 @@ struct LocalTalkObserver: GuideObserving {
     let hint: CuaTargetHint
     let pointerAXPoint: CGPoint
     let targetStore: CuaGuideTargetStore
+    let changes = AXAppChangeMonitor()
 
     enum Failure: Error, Sendable {
         case accessibilityNotTrusted
@@ -30,6 +31,24 @@ struct LocalTalkObserver: GuideObserving {
     private static let jpegQuality: CGFloat = 0.75
 
     func observe() async throws -> GuideObservation {
+        try await observation(includeScreenshot: true)
+    }
+
+    /// Verification reads skip the ScreenCaptureKit frame — postcondition
+    /// checks need the element index, never pixels.
+    func observeElements() async throws -> GuideObservation {
+        try await observation(includeScreenshot: false)
+    }
+
+    /// Waits on the target app's AX change notifications. The pid comes from
+    /// the last resolved window (or the launch hint before the first read);
+    /// without one there is nothing to watch and the caller still reads once.
+    func awaitUIChange(within: Duration) async -> Bool {
+        guard let pid = await targetStore.current()?.processID ?? hint.processID else { return false }
+        return await changes.waitForChange(pid: pid, within: within)
+    }
+
+    private func observation(includeScreenshot: Bool) async throws -> GuideObservation {
         guard AXIsProcessTrusted() else { throw Failure.accessibilityNotTrusted }
         let hint = self.hint
         let anchor = pointerAXPoint
@@ -38,7 +57,7 @@ struct LocalTalkObserver: GuideObserving {
             guard let window = Self.resolveWindow(hint: hint, anchor: anchor) else {
                 throw Failure.noTargetWindow
             }
-            async let shot = Self.captureJPEG(windowID: window.windowID, bounds: window.bounds)
+            async let shot = includeScreenshot ? Self.captureJPEG(windowID: window.windowID, bounds: window.bounds) : nil
             let elements = Self.elementIndex(pid: window.pid, bounds: window.bounds, anchor: anchor)
             await store.set(window.hint)
             return GuideObservation(

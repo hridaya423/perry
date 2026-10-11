@@ -21,8 +21,8 @@ struct CuaWorkerHandle: Sendable {
     fileprivate let service: CuaWorkerService
     fileprivate let allocation: UUID
 
-    func capture(target: CuaTargetHint?) async throws -> CuaCapturedWindow {
-        try await service.capture(target: target, allocation: allocation)
+    func capture(target: CuaTargetHint?, includeScreenshot: Bool = true) async throws -> CuaCapturedWindow {
+        try await service.capture(target: target, includeScreenshot: includeScreenshot, allocation: allocation)
     }
 
     func execute(_ action: ComputerAction) async throws -> StepResult {
@@ -183,13 +183,13 @@ actor CuaWorkerService {
         workers[allocation]?.resources.formUnion(resources)
     }
 
-    fileprivate func capture(target hint: CuaTargetHint?, allocation: UUID) async throws -> CuaCapturedWindow {
+    fileprivate func capture(target hint: CuaTargetHint?, includeScreenshot: Bool = true, allocation: UUID) async throws -> CuaCapturedWindow {
         do {
             let client = try client(for: allocation)
             let sessionID = allocation.uuidString
             let target = try await client.resolveTarget(hint, sessionID: sessionID)
             try claim([.application(target.bundleID)], allocation: allocation)
-            return try await client.capture(resolvedTarget: target, sessionID: sessionID)
+            return try await client.capture(resolvedTarget: target, sessionID: sessionID, includeScreenshot: includeScreenshot)
         } catch let error as CuaDriverError where error == .noTargetWindow {
             throw error
         } catch {

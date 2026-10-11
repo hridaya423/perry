@@ -111,6 +111,29 @@ public struct GuideObservation: Sendable {
 /// logic is testable without a live UI reader.
 public protocol GuideObserving: Sendable {
     func observe() async throws -> GuideObservation
+
+    /// Suspends until the observed UI signals a change or `within` elapses.
+    /// True means a signal ended the wait; false means the deadline did.
+    /// Signals that arrived since the previous wait still count, so a change
+    /// that lands before the caller suspends is never missed.
+    func awaitUIChange(within: Duration) async -> Bool
+
+    /// Reads the accessibility tree without capturing the screen.
+    /// Postcondition verification needs the element index, never pixels.
+    func observeElements() async throws -> GuideObservation
+}
+
+public extension GuideObserving {
+    /// Observers without an event source fall back to the legacy fixed poll —
+    /// bounded so verification still terminates.
+    func awaitUIChange(within: Duration) async -> Bool {
+        try? await Task.sleep(for: min(within, .milliseconds(250)))
+        return false
+    }
+
+    func observeElements() async throws -> GuideObservation {
+        try await observe()
+    }
 }
 
 /// Bounded record of what the guide has already presented. History is capped
