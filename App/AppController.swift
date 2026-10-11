@@ -23,70 +23,17 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var hotkey: HotkeyController?
     let overlayState = PerryCursorState()
     let brain = BrainController()
-    /// Model→world dispatch. Executors bind the app's real services (Cua
-    /// workers, overlay ink, memory, Perrys); package-level executor cores
-    /// (file/memory/integration/perry) plug in alongside these.
-    /// The active foreground Do run lends its worker to tool executors so
-    /// agent calls share the session's app lock instead of colliding with it.
     let foregroundWorkerLease = ForegroundWorkerLease()
 
-    lazy var toolHost: PerryToolHost = {
-        PerryToolHost(executors:
-            DrawTools(overlayState: overlayState, observations: AgentObservationStore.shared).executors
-            + ScreenTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
-            + UITools(
-                workers: workers,
-                lease: foregroundWorkerLease,
-                observations: AgentObservationStore.shared,
-                onActuation: { [weak self] point, label in
-                    Task { @MainActor in self?.agentDidAct(at: point, label: label) }
-                }
-            ).executors
-            + BrowserTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
-            + DocumentTools(workers: workers, lease: foregroundWorkerLease, observations: AgentObservationStore.shared).executors
-            + AppTools().executors
-            + packageExecutors()
-        )
-    }()
-
-    /// Package-level executor cores (Phase 7c): workspace files, memory files,
-    /// integrations, and Perrys. `files:`/support-dir pieces are skipped when
-    /// the support directory is unavailable rather than silently rooted
-    /// somewhere else.
-    private func packageExecutors() -> [any ToolExecutor] {
-        guard let support = storageDirectory else { return [] }
-        var executors: [any ToolExecutor] = []
-        // LocalWorkspaceFiles requires an existing root — the workspace is
-        // created on first launch, empty until an agent writes to it.
-        let workspace = support.appendingPathComponent("workspace", isDirectory: true)
-        if let files = try? LocalWorkspaceFiles(root: workspace) {
-            executors += FileToolExecutors.make(backend: files)
-        }
-        executors += MemoryToolExecutors.make(
-            files: MemoryFiles(directory: support.appendingPathComponent("memory", isDirectory: true))
-        )
-        executors += IntegrationToolExecutors.make(backend: integrationBackend)
-        if let perryStore {
-            executors += PerryToolExecutors.make(
-                store: perryStore,
-                openSettings: { [weak self] page in
-                    Task { @MainActor in
-                        // perry.settings.open pages → nearest SettingsTab.
-                        let tab: SettingsTab = switch page {
-                        case "voice": .voice
-                        case "apps": .integrations
-                        case "memory": .memory
-                        case "brain", "perrys": .runtimes
-                        case "shortcuts", "about": .general
-                        default: .general
-                        }
-                        self?.openSettings(tab: tab)
-                    }
-                }
-            )
-        }
-        return executors
-    }
+    lazy var toolHost = AppToolHost.make(
+        overlayState: overlayState,
+        workers: workers,
+        lease: foregroundWorkerLease,
+        supportDirectory: storageDirectory,
+        integrationBackend: integrationBackend,
+        perryStore: perryStore,
+        openSettings: { [weak self] in self?.openSettings(tab: $0) }
+    )
 
     /// The shared Perry registry — agent tools, the scheduler, and Home's
     /// sidebar all read the same directory.
@@ -129,20 +76,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return scheduler
     }()
 
-    /// Ghost cursor for agent work: a Perry cursor tracks each ui.* actuation
-    /// point so the user can watch without their real pointer ever moving.
-    private static let agentGhostCursorID = UUID(uuidString: "A6E11C7E-0000-4A00-9E00-000000000007")!
-
-    private func agentDidAct(at axPoint: CGPoint, label: String?) {
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let screenPoint = CGPoint(x: axPoint.x, y: primaryMaxY - axPoint.y)
-        var cursor = overlayState.externalSecondaryCursors.first { $0.id == Self.agentGhostCursorID }
-            ?? PerryExternalCursor(id: Self.agentGhostCursorID, screenLocation: screenPoint, caption: nil, accentHex: "#34D399")
-        cursor.screenLocation = screenPoint
-        cursor.caption = label
-        overlayState.externalSecondaryCursors.removeAll { $0.id == Self.agentGhostCursorID }
-        overlayState.externalSecondaryCursors.append(cursor)
-    }
     private var mcpSocket: PerryMCPSocket?
     private var mcpStartupTask: Task<Void, Never>?
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
