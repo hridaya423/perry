@@ -192,7 +192,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return manager
     }()
     private lazy var statusMenu = StatusMenuController(host: self)
-    private var panel: NSPanel?
+    private lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
+#if DEBUG
+        NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
+            to: CompactConversationView(controller: self)
+        ))
+#else
+        NSHostingView(rootView: CompactConversationView(controller: self))
+#endif
+    }
     private var intentCardWindow: IntentCardWindow?
     private lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
@@ -1495,80 +1503,21 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         showPanel()
     }
 
-    private func ensurePanel() -> NSPanel {
-        if let panel { return panel }
-#if DEBUG
-        let rootView = PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
-            to: CompactConversationView(controller: self)
-        )
-#else
-        let rootView = CompactConversationView(controller: self)
-#endif
-        let host = NSHostingView(rootView: rootView)
-        let p = NSPanel(
-            contentRect: NSRect(
-                x: 0,
-                y: 0,
-                width: PerryTheme.Sizing.panelWidth,
-                height: PerryTheme.Sizing.panelHeight
-            ),
-            styleMask: [.titled, .utilityWindow, .fullSizeContentView, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        p.contentView = host
-        p.identifier = SessionPanelView.windowIdentifier
-        p.contentMinSize = NSSize(width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight)
-        p.isFloatingPanel = true
-        p.hidesOnDeactivate = false
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.titlebarAppearsTransparent = true
-        p.level = .floating
-        if !p.setFrameUsingName("perry.session.frame"), let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))
-        }
-        p.setFrameAutosaveName("perry.session.frame")
-        panel = p
-        return p
-    }
-
-    /// The app the user was in before Perry activated — restored on dismiss
-    /// so an invocation never leaves focus kidnapped. Same convention as
-    /// IntentCardWindow and AgentActivityStrip.
-    private var previousFrontmostApplication: NSRunningApplication?
-
     private func showPanel() {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        if let frontmost = NSWorkspace.shared.frontmostApplication,
-           frontmost.processIdentifier != ownPID {
-            previousFrontmostApplication = frontmost
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        ensurePanel().makeKeyAndOrderFront(nil)
-        PerfMark.mark("panel.visible")
+        sessionPanel.show()
     }
 
     /// Pays the one-time render cost for the session surfaces at launch so a
     /// first invocation only orders already-rendered windows on screen.
     private func warmSessionSurfaces() {
-        ensurePanel().displayIfNeeded()
+        sessionPanel.warm()
         overlayManager.warmRenderPipeline(state: overlayState)
     }
 
     private func hidePanel() {
-        panel?.orderOut(nil)
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        if NSApp.isActive,
-           NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
-           let previous = previousFrontmostApplication,
-           previous.processIdentifier != ownPID {
-            previous.activate(options: [.activateAllWindows])
-        }
-        previousFrontmostApplication = nil
+        sessionPanel.hide()
     }
 
     func showBackgroundTasks() {
@@ -2152,7 +2101,7 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideInteractiveFrames() -> [CGRect] {
-        [panel?.frame, intentCardWindow?.frame].compactMap { $0 }
+        [sessionPanel.frame, intentCardWindow?.frame].compactMap { $0 }
     }
 
     func guidePresent(_ presentation: GuidePresentation) {
