@@ -300,9 +300,12 @@ final class AgentCoordinator: ObservableObject {
             )
             sink(.finished(finish))
             // Off the hot path (H5): fold the newly-covered history prefix into
-            // the saved summary now that the turn has a durable record.
+            // the saved summary now that the turn has a durable record. The
+            // answer has already streamed, but the run isn't over until the
+            // write lands — awaiting it keeps a fast follow-up turn and
+            // joinAll() teardown from racing the maintenance pass.
             if let deferredMaintenance {
-                Task { try? await deferredMaintenance() }
+                try? await deferredMaintenance()
             }
         } catch {
             sink(.finished(.failed("The task ended, but its result couldn’t be saved. Review any changes before retrying. \(error.localizedDescription)")))

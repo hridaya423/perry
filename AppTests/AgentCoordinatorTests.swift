@@ -438,7 +438,11 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
     }
 
-    func testLongConversationSummarizesBeforeAnswerAndRetainsSources() async throws {
+    /// H5: the answer never waits on condensation. A long history answers
+    /// with the stale summary plus verbatim source turns; the condensation
+    /// runs as post-turn maintenance and still lands in the saved summary
+    /// before the run completes.
+    func testLongConversationAnswersBeforeCondensingAndRetainsSources() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
         let original = PerryThread(turns: (0..<100).map { index in
@@ -454,36 +458,48 @@ final class AgentCoordinatorTests: XCTestCase {
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "When does the Orchid project ship?"))
         XCTAssertEqual(events.last, .finished(.completed))
-        XCTAssertTrue(provider.requests.last?.messages.contains { message in
+        XCTAssertGreaterThan(provider.requests.count, 1)
+        // The first request is the answer — a condensation call ahead of it
+        // would put a model round-trip back on the first-token path.
+        XCTAssertFalse(provider.requests.first?.system.contains("Condense earlier conversation") ?? true)
+        XCTAssertTrue(provider.requests.first?.messages.contains { message in
             guard case .user(let parts) = message, case .text(let text) = parts.first else { return false }
             return text.hasPrefix("Selected original conversation turns") && text.contains("The Orchid project ships Thursday.")
         } == true)
-        XCTAssertGreaterThan(provider.requests.count, 1)
-        XCTAssertTrue(provider.requests.first?.system.contains("Condense earlier conversation") == true)
-        XCTAssertTrue(provider.requests.first?.tools.isEmpty == true)
+        let condensations = provider.requests.dropFirst().filter {
+            $0.system.contains("Condense earlier conversation")
+        }
+        XCTAssertFalse(condensations.isEmpty)
+        XCTAssertTrue(condensations.allSatisfy { $0.tools.isEmpty })
         let saved = await ThreadStore(directory: root).thread(id: original.id)
         XCTAssertNotNil(saved?.contextSummary)
         XCTAssertEqual(saved?.turns.count, 101)
         XCTAssertEqual(saved?.turns.first?.question, original.turns.first?.question)
     }
 
-    func testIncompleteSummaryStopsBeforeAnswerAndRetainsRequest() async throws {
+    /// A condensation failure can no longer block the answer: the turn
+    /// completes and simply retains no summary, so the next turn retries the
+    /// fold instead of surfacing an error the user can't act on.
+    func testFailedSummaryMaintenanceStillAnswersAndRetainsTurn() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
         let original = PerryThread(turns: [.init(question: "Earlier question", answer: String(repeating: "a", count: 50_000))])
         _ = try await store.upsert(original)
-        let provider = ConversationTestProvider(stopReason: .maxTokens)
+        let provider = ConversationTestProvider(condenseStopReason: .maxTokens)
         let coordinator = AgentCoordinator(
             provider: { _ in provider }, host: PerryToolHost(executors: []),
             threads: store, consent: ToolConsentStore(directory: nil)
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "Continue safely"))
-        guard case .finished(.providerError) = events.last else { return XCTFail("Expected summary failure") }
-        XCTAssertEqual(provider.requests.count, 1)
+        XCTAssertEqual(events.last, .finished(.completed))
+        XCTAssertGreaterThan(provider.requests.count, 1)
+        XCTAssertFalse(provider.requests.first?.system.contains("Condense earlier conversation") ?? true)
+        XCTAssertTrue(provider.requests.dropFirst().contains { $0.system.contains("Condense earlier conversation") })
         let saved = await store.thread(id: original.id)
         XCTAssertNil(saved?.contextSummary)
-        XCTAssertEqual(saved?.turns.last?.outcome, .failed)
-        XCTAssertEqual(saved?.draft, "Continue safely")
+        XCTAssertEqual(saved?.turns.count, 2)
+        XCTAssertEqual(saved?.turns.last?.question, "Continue safely")
+        XCTAssertEqual(saved?.turns.last?.outcome, .completed)
         XCTAssertNil(saved?.pendingTurn)
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
     }
@@ -606,10 +622,12 @@ private final class ConversationTestProvider: ModelProvider, @unchecked Sendable
     let displayName = "Test"
     let capabilities: ModelCapabilities
     private let stopReason: ModelStopReason?
+    private let condenseStopReason: ModelStopReason?
     private let capacity: Int?
-    init(capabilities: ModelCapabilities = [.vision, .tools, .streaming], stopReason: ModelStopReason? = .endTurn, capacity: Int? = nil) {
+    init(capabilities: ModelCapabilities = [.vision, .tools, .streaming], stopReason: ModelStopReason? = .endTurn, condenseStopReason: ModelStopReason? = nil, capacity: Int? = nil) {
         self.capabilities = capabilities
         self.stopReason = stopReason
+        self.condenseStopReason = condenseStopReason
         self.capacity = capacity
     }
     private let lock = NSLock()
@@ -621,9 +639,12 @@ private final class ConversationTestProvider: ModelProvider, @unchecked Sendable
 
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         lock.withLock { recorded.append(request) }
+        let reason = request.system.contains("Condense earlier conversation")
+            ? (condenseStopReason ?? stopReason)
+            : stopReason
         return AsyncThrowingStream { continuation in
             continuation.yield(.textDelta("Understood"))
-            if let stopReason { continuation.yield(.done(stopReason)) }
+            if let reason { continuation.yield(.done(reason)) }
             continuation.finish()
         }
     }
