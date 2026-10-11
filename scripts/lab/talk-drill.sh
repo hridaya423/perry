@@ -10,6 +10,14 @@
 # when TALK_WAV=<path> is set (real SFSpeechURLRecognitionTask).
 #
 #   RUNS=10 HOLD=1.6 scripts/lab/talk-drill.sh
+#   scripts/lab/talk-drill.sh --assert          # enforce the Phase-1 gates
+#
+# Assert budgets (override per environment):
+#   ASSERT_FIRST_TEXT_P50 / _P95  ms, talk.keyup → answer.first_text
+#   ASSERT_CAPTURE_P50            ms, talk.keyup → capture.done
+#   ASSERT_BARGE_P50              ms, talk.bargein → bargein.silence
+#   ASSERT_DEIXIS_PCT             % of deixis outcomes bound to an element
+#   ASSERT_ANSWERED_PCT           % of holds that produced an answer
 #
 # Requires: Debug build at build/debug-p1, Screen Recording + Accessibility
 # for the app, and a working brain.
@@ -24,6 +32,8 @@ HOLD=${HOLD:-1.6}
 TIMEOUT=${TALK_TIMEOUT:-45}
 BARGE=${BARGE:-1}
 CUA="${CUA_DRIVER:-cua-driver}"
+ASSERT=0
+[ "${1:-}" = "--assert" ] && ASSERT=1
 
 swiftc -O -o "$HOLD_BIN" "$REPO_ROOT/scripts/lab/talk-hold.swift"
 
@@ -160,3 +170,14 @@ for name in deixis.element deixis.point deixis.window deixis.none talk.input_fai
     n=$(grep -c "\"$name\"" "$MARKERS" 2>/dev/null || true)
     echo "  $name: $n"
 done
+
+if [ "$ASSERT" = "1" ]; then
+    echo
+    echo "== assert =="
+    if python3 "$REPO_ROOT/scripts/lab/drill-assert.py" "$MARKERS" "$RUNS"; then
+        echo "assert: all gates green"
+    else
+        echo "assert: gates failed" >&2
+        exit 1
+    fi
+fi
