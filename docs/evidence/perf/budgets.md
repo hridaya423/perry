@@ -18,7 +18,8 @@ scripted/WAV speech input, bundled-Codex provider, Calculator target.
 | Release → first text | ≤700 ms p50 / ≤1.5 s p95 | **FAIL — p50 5.8 s, p95 14.4 s, max 14.9 s** (n=8, bundled Codex, fresh thread per turn + full-size PNG) | `talk.keyup → answer.first_text`, `perf-20261011T125141Z` |
 | Release → first audio | ≤1.0 s p50 realtime / ≤1.4 s system | **FAIL — p50 6.5 s, max 15.1 s** (n=8, system voice; audio lands ~180 ms after first text, so the gap is provider, not TTS) | `talk.keyup → talk.first_audio`, same run |
 | Release → first ink on target | ≤1.5 s p50 | **FAIL — p50 6.6 s** (n=3; model emits ink in ~⅓ of answers) | `talk.keyup → ink.first_draw`, same run |
-| Deixis: "this" → pointed element | ≥90% | **11/11 element-bound** (n=11 answered runs) | `deixis.element` markers, both runs |
+| Deixis: "this" → pointed element | ≥90% | **22/22 element-bound** across all answered drill runs | `deixis.element` markers, all drill runs |
+| Capture failure isolation | one failure must not kill later turns | **PASS** — pre-fix, one hung operation wedged claims (`resourceBusy`) or the scope slot (`capacityReached`) for every later turn; post-fix, runs after a `capture_failed` answer again | `perf-20261011T131239Z` (wedge), `perf-20261011T132351Z` (recovery) |
 | Cursor follow lag | ≤1 frame | 16 ms timer poller, same-frame; 120 Hz recording leg not rerun | `docs/evidence/phase-3/README.md` |
 | Barge-in → silence | ≤150 ms | **PASS — p50 2 ms, max 3 ms** (n=3, real press during playback; previously measured only shutdown cancels) | `talk.bargein → bargein.silence`, `perf-20261011T130215Z` |
 | Idle CPU avg / max RSS | ≤0.5% / ≤180 MB | **0.0% / ~114–131 MB** across partial soaks; 8-h run in progress | `docs/evidence/perf/idle-*.csv` |
@@ -42,6 +43,13 @@ scripted/WAV speech input, bundled-Codex provider, Calculator target.
   directly from a trusted terminal chain it succeeds. Onboarding must
   verify Perry's own grants under the app's real launch path — an
   external driver's green TCC status proves nothing.
+- **The worker pool used to wedge on one bad operation.** An operation
+  that ignored cancellation left its claims (`resourceBusy`) or its
+  scope slot (`capacityReached`) held forever — one Codex error turned
+  Talk permanently dead until relaunch. `CuaWorkerService` now drops
+  the entry whenever retirement has run; remaining `capture_failed`s
+  are per-request driver timeouts, which is the Phase 1 capture-path
+  work (cached tree, local hit-test, downscaled screenshot).
 - **Deixis is correct on a still pointer.** Parked on Calculator's "5"
   button, "what's this?" binds the element 11/11 and answers "That's the
   5 key."

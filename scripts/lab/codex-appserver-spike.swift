@@ -12,6 +12,11 @@ var models: [String] = []
 var withImage = true
 var verbose = false
 var effort: String?
+var turnsPerThread = 1
+var freshThreadPerTurn = false
+var imagePathArg: String?
+var dataURLImage = false
+var promptArg = "what does this do"
 var args = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = args.next() {
     switch arg {
@@ -21,6 +26,11 @@ while let arg = args.next() {
     case "--no-image": withImage = false
     case "--verbose": verbose = true
     case "--effort": effort = args.next()
+    case "--turns": turnsPerThread = Int(args.next() ?? "") ?? 1
+    case "--fresh-thread-per-turn": freshThreadPerTurn = true
+    case "--image-path": imagePathArg = args.next()
+    case "--data-url-image": dataURLImage = true
+    case "--prompt": promptArg = args.next() ?? promptArg
     default: fputs("unknown arg: \(arg)\n", stderr)
     }
 }
@@ -141,67 +151,88 @@ report["models"] = listedModels
 
 if models.isEmpty, let first = listedModels.first { models = [first] }
 
-var imagePath = ""
-if withImage {
+var imagePath = imagePathArg ?? ""
+if withImage && imagePath.isEmpty {
     imagePath = "/tmp/perry-spike-px.png"
     let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAATSURBVBhXY/iPA4aGhoaGhgYGBgYAI3wCAd2vyyEAAAAASUVORK5CYII=") ?? Data()
     try? png.write(to: URL(fileURLWithPath: imagePath))
 }
 
-var turns: [[String: Any]] = []
-for model in models {
+func startThread(_ model: String) -> (id: String?, startMs: Double) {
+    let t = now()
     let threadID = rpc.request("thread/start", [
         "ephemeral": true,
         "model": model,
         "approvalPolicy": "never",
         "sandbox": "read-only",
     ])
-    guard let resp = rpc.wait(until: now() + 30_000, match: { ($0["id"] as? Int) == threadID }),
+    guard let resp = rpc.wait(until: t + 30_000, match: { ($0["id"] as? Int) == threadID }),
           let result = resp["result"] as? [String: Any],
           let thread = result["thread"] as? [String: Any],
           let tid = thread["id"] as? String else {
-        turns.append(["model": model, "error": "thread/start failed"])
-        continue
+        return (nil, now() - t)
     }
-    var input: [[String: Any]] = [["type": "text", "text": "Say the word ok and nothing else."]]
-    if withImage {
-        input.append(["type": "localImage", "path": imagePath])
-    }
-    while rpc.wait(until: now() + 100, match: { _ in true }) != nil {}
-    let tTurn = now()
-    var turnParams: [String: Any] = ["threadId": tid, "input": input]
-    if let effort { turnParams["effort"] = effort }
-    let turnReq = rpc.request("turn/start", turnParams)
-    _ = rpc.wait(until: now() + 15_000, match: { ($0["id"] as? Int) == turnReq })
-    var firstDelta: Double?
-    var firstItem: Double?
-    var completed = false
-    var turnError = ""
-    while now() < tTurn + 90_000, !completed {
-        guard let msg = rpc.wait(until: now() + 500, match: { _ in true }) else { continue }
-        let method = msg["method"] as? String ?? ""
-        if verbose { fputs(String("\(method) \(msg["params"] ?? "")".prefix(400)) + "\n", stderr) }
-        if method == "item/started", firstItem == nil { firstItem = now() }
-        if method == "item/agentMessage/delta", firstDelta == nil {
-            firstDelta = now()
-        } else if method == "item/completed", firstDelta == nil,
-                  let params = msg["params"] as? [String: Any],
-                  let item = params["item"] as? [String: Any],
-                  item["type"] as? String == "agentMessage" {
-            firstDelta = now()
-        } else if method == "turn/completed" {
-            completed = true
-        } else if method == "error" {
-            turnError = String(describing: msg["params"] ?? "")
-            completed = true
+    return (tid, now() - t)
+}
+
+var turns: [[String: Any]] = []
+for model in models {
+    var tid: String?
+    for turnIndex in 0..<turnsPerThread {
+        var threadStartMs: Double = 0
+        if tid == nil || freshThreadPerTurn {
+            let started = startThread(model)
+            threadStartMs = started.startMs
+            guard let newTid = started.id else {
+                turns.append(["model": model, "turn": turnIndex, "error": "thread/start failed"])
+                continue
+            }
+            tid = newTid
         }
+        var input: [[String: Any]] = [["type": "text", "text": promptArg]]
+        if withImage {
+            if dataURLImage, let data = try? Data(contentsOf: URL(fileURLWithPath: imagePath)) {
+                input.append(["type": "inputImage", "imageUrl": "data:image/png;base64,\(data.base64EncodedString())"])
+            } else {
+                input.append(["type": "localImage", "path": imagePath])
+            }
+        }
+        while rpc.wait(until: now() + 100, match: { _ in true }) != nil {}
+        let tTurn = now()
+        var turnParams: [String: Any] = ["threadId": tid!, "input": input]
+        if let effort { turnParams["effort"] = effort }
+        let turnReq = rpc.request("turn/start", turnParams)
+        _ = rpc.wait(until: now() + 15_000, match: { ($0["id"] as? Int) == turnReq })
+        var firstDelta: Double?
+        var firstItem: Double?
+        var completed = false
+        var turnError = ""
+        while now() < tTurn + 90_000, !completed {
+            guard let msg = rpc.wait(until: now() + 500, match: { _ in true }) else { continue }
+            let method = msg["method"] as? String ?? ""
+            if verbose { fputs(String("\(method) \(msg["params"] ?? "")".prefix(400)) + "\n", stderr) }
+            if method == "item/started", firstItem == nil { firstItem = now() }
+            if method == "item/agentMessage/delta", firstDelta == nil {
+                firstDelta = now()
+            } else if method == "item/completed", firstDelta == nil,
+                      let params = msg["params"] as? [String: Any],
+                      let item = params["item"] as? [String: Any],
+                      item["type"] as? String == "agentMessage" {
+                firstDelta = now()
+            } else if method == "turn/completed" {
+                completed = true
+            } else if method == "error" {
+                turnError = String(describing: msg["params"] ?? "")
+                completed = true
+            }
+        }
+        var entry: [String: Any] = ["model": model, "turn": turnIndex, "thread_start_ms": threadStartMs]
+        entry["first_item_ms"] = firstItem.map { $0 - tTurn }
+        entry["first_delta_ms"] = firstDelta.map { $0 - tTurn }
+        entry["completed"] = completed
+        if !turnError.isEmpty { entry["error"] = turnError }
+        turns.append(entry)
     }
-    var entry: [String: Any] = ["model": model]
-    entry["first_item_ms"] = firstItem.map { $0 - tTurn }
-    entry["first_delta_ms"] = firstDelta.map { $0 - tTurn }
-    entry["completed"] = completed
-    if !turnError.isEmpty { entry["error"] = turnError }
-    turns.append(entry)
 }
 report["turns"] = turns
 
