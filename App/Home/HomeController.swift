@@ -22,6 +22,7 @@ final class HomeController {
     private var resumeMonitoring = false
     private var work: [UUID: (task: Task<Void, Never>, cancelOnMaintenance: Bool)] = [:]
     private var inputSaveTask: Task<Void, Error>?
+    private let talkContextStore = TalkContextStore()
 
     func joinInputSaves() async {
         _ = await inputSaveTask?.result
@@ -652,18 +653,32 @@ final class HomeController {
         }
     }
 
-    func acceptInput(_ text: String, threadID requestedThreadID: UUID? = nil) -> AcceptedInput {
+    func acceptInput(_ text: String, threadID requestedThreadID: UUID? = nil, contextKey: TalkContextKey? = nil) -> AcceptedInput {
         guard acceptsInput else {
             return AcceptedInput(threadID: requestedThreadID ?? UUID(), request: .init(text: text), saved: Task { throw CancellationError() })
         }
         let threadID: UUID
-        if let requestedThreadID, !TalkContextStore.isResetPhrase(text) {
+        if TalkContextStore.isResetPhrase(text) {
+            if let contextKey { talkContextStore.reset(contextKey) }
+            threadID = UUID()
+        } else if let requestedThreadID {
             threadID = requestedThreadID
-        } else if case .thread(let selected) = homeModel.sidebarSelection, !TalkContextStore.isResetPhrase(text) {
+        } else if let contextKey {
+            // Talk holds keep one thread per app window (Phase 2.5): a window
+            // that already has a live thread continues it, a fresh window
+            // starts fresh — never spilling into an unrelated selected thread.
+            if let mapped = talkContextStore.thread(for: contextKey),
+               homeModel.threads.contains(where: { $0.id == mapped }) {
+                threadID = mapped
+            } else {
+                threadID = UUID()
+            }
+        } else if case .thread(let selected) = homeModel.sidebarSelection {
             threadID = selected
         } else {
             threadID = UUID()
         }
+        if let contextKey { talkContextStore.record(contextKey, threadID: threadID) }
         let request = PerryThread.WaitingInput(text: text)
         PerfMark.mark("home.question.sent")
         let saved = saveInput(request, to: threadID)

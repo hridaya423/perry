@@ -21,7 +21,8 @@ final class TalkSession {
         var makeInput: () -> any TalkSpeechInput
         var output: any TalkSpeechOutput
         var capture: () async throws -> GuideObservation
-        var acceptInput: (String, UUID?) -> HomeController.AcceptedInput
+        var acceptInput: (String, UUID?, TalkContextKey?) -> HomeController.AcceptedInput
+        var targetHint: () -> CuaTargetHint = { CuaTargetHint() }
         var run: (HomeController.AcceptedInput, AgentCoordinator.SpatialContext) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
         var waitForConversation: (UUID) async -> Void = { _ in }
         var guide: ((HomeController.AcceptedInput, AgentCoordinator.SpatialContext, Bool) -> Void)? = nil
@@ -233,7 +234,16 @@ final class TalkSession {
             }
             try Task.checkCancellation()
             guard case .talking(let original) = sessionController.state else { throw CancellationError() }
-            let accepted = services.acceptInput(transcript, original.threadID)
+            // The keypress-time hint keys the per-window conversation map —
+            // the same hint the in-flight capture resolved from.
+            let hint = services.targetHint()
+            let contextKey: TalkContextKey?
+            if let processID = hint.processID, let windowID = hint.windowID {
+                contextKey = TalkContextKey(processID: processID, windowID: windowID)
+            } else {
+                contextKey = nil
+            }
+            let accepted = services.acceptInput(transcript, original.threadID, contextKey)
             sessionController.updateTalk { $0.threadID = accepted.threadID }
             try await accepted.saved.value
             PerfMark.mark("talk.saved")

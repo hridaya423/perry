@@ -249,55 +249,82 @@ final class PointerTraceRecorderTests: XCTestCase {
 final class TalkContextStoreTests: XCTestCase {
     private let key = TalkContextKey(processID: 7, windowID: 9)
 
-    func testConversationPersistsWithinTTL() throws {
+    func testThreadPersistsWithinTTL() throws {
         var now: TimeInterval = 1000
         let store = TalkContextStore(now: { now })
-        var conversation = store.conversation(for: key)
-        try conversation.append(
-            question: "what is this",
-            answer: SpatialAnswer(text: "a button", references: [], followUp: nil, observationID: "o1")
-        )
-        store.update(key, conversation: conversation)
+        let thread = UUID()
+        store.record(key, threadID: thread)
         now += 120
-        XCTAssertEqual(store.conversation(for: key).turns.count, 1)
+        XCTAssertEqual(store.thread(for: key), thread)
     }
 
-    func testConversationExpiresAfterTTL() throws {
+    func testThreadExpiresAfterTTL() throws {
         var now: TimeInterval = 1000
         let store = TalkContextStore(now: { now }, ttl: 600)
-        var conversation = store.conversation(for: key)
-        try conversation.append(
-            question: "what is this",
-            answer: SpatialAnswer(text: "a button", references: [], followUp: nil, observationID: "o1")
-        )
-        store.update(key, conversation: conversation)
+        store.record(key, threadID: UUID())
         now += 601
-        XCTAssertTrue(store.conversation(for: key).turns.isEmpty)
+        XCTAssertNil(store.thread(for: key))
+    }
+
+    func testReadRefreshesTTL() throws {
+        var now: TimeInterval = 1000
+        let store = TalkContextStore(now: { now }, ttl: 600)
+        let thread = UUID()
+        store.record(key, threadID: thread)
+        now += 550
+        XCTAssertEqual(store.thread(for: key), thread)
+        now += 550
+        XCTAssertEqual(store.thread(for: key), thread)
     }
 
     func testResetPhraseClearsContext() throws {
         let store = TalkContextStore()
-        var conversation = store.conversation(for: key)
-        try conversation.append(
-            question: "what is this",
-            answer: SpatialAnswer(text: "a button", references: [], followUp: nil, observationID: "o1")
-        )
-        store.update(key, conversation: conversation)
+        store.record(key, threadID: UUID())
         XCTAssertTrue(TalkContextStore.isResetPhrase("new topic: tell me about that"))
         store.reset(key)
-        XCTAssertTrue(store.conversation(for: key).turns.isEmpty)
+        XCTAssertNil(store.thread(for: key))
     }
 
     func testKeysAreIndependent() throws {
         let store = TalkContextStore()
         let other = TalkContextKey(processID: 8, windowID: 9)
-        var conversation = store.conversation(for: key)
-        try conversation.append(
-            question: "hi",
-            answer: SpatialAnswer(text: "hello", references: [], followUp: nil, observationID: "o1")
-        )
-        store.update(key, conversation: conversation)
-        XCTAssertTrue(store.conversation(for: other).turns.isEmpty)
+        let thread = UUID()
+        store.record(key, threadID: thread)
+        XCTAssertNil(store.thread(for: other))
+        XCTAssertEqual(store.thread(for: key), thread)
+    }
+
+    func testAcceptInputReusesWindowThread() throws {
+        let home = HomeController()
+        let first = home.acceptInput("what is this", contextKey: key)
+        home.homeModel.threads = [PerryThread(id: first.threadID)]
+        let followUp = home.acceptInput("and that one", contextKey: key)
+        XCTAssertEqual(first.threadID, followUp.threadID)
+    }
+
+    func testAcceptInputSeparatesWindows() throws {
+        let home = HomeController()
+        let editorKey = TalkContextKey(processID: 7, windowID: 9)
+        let browserKey = TalkContextKey(processID: 8, windowID: 4)
+        let editor = home.acceptInput("what is this", contextKey: editorKey)
+        let browser = home.acceptInput("what is this", contextKey: browserKey)
+        XCTAssertNotEqual(editor.threadID, browser.threadID)
+    }
+
+    func testAcceptInputResetPhraseStartsFreshForWindow() throws {
+        let home = HomeController()
+        let first = home.acceptInput("what is this", contextKey: key)
+        let fresh = home.acceptInput("new topic — what's that", contextKey: key)
+        XCTAssertNotEqual(first.threadID, fresh.threadID)
+    }
+
+    func testAcceptInputDropsMappedThreadThatNoLongerExists() throws {
+        let home = HomeController()
+        let first = home.acceptInput("what is this", contextKey: key)
+        // The thread exists in the map but was never registered in the model —
+        // a follow-up must not resurrect it.
+        let next = home.acceptInput("and this", contextKey: key)
+        XCTAssertNotEqual(first.threadID, next.threadID)
     }
 }
 
@@ -526,7 +553,7 @@ final class TalkCompletionTests: XCTestCase {
             services: .init(makeInput: { Input("Keep my spoken request") }, output: output, capture: {
                 for await _ in capture.stream { break }
                 return GuideObservation(snapshot: AXSnapshot(appBundleID: "fixture.app", windowTitle: "Fixture", elements: []))
-            }, acceptInput: { home.acceptInput($0, threadID: $1) }, run: {
+            }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: {
                 dispatched = true
                 return home.runSpokenTurn($0, spatial: $1, coordinator: coordinator)
             }), tracer: PointerTraceRecorder(point: { .zero })
@@ -564,7 +591,7 @@ final class TalkCompletionTests: XCTestCase {
             sessionController: controller, overlayState: overlay, output: output,
             services: .init(makeInput: { Input() }, output: output, capture: {
                 GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []))
-            }, acceptInput: { home.acceptInput($0, threadID: $1) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
+            }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
             tracer: PointerTraceRecorder(point: { .zero })
         )
         var completed = 0
@@ -597,7 +624,7 @@ final class TalkCompletionTests: XCTestCase {
             sessionController: controller, overlayState: overlay, output: output,
             services: .init(makeInput: { Input() }, output: output, capture: {
                 GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []))
-            }, acceptInput: { text, id in
+            }, acceptInput: { text, id, _ in
                 .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
             }, run: { input, _ in
                 (input.threadID, AsyncStream { continuation in
@@ -661,7 +688,7 @@ final class TalkCompletionTests: XCTestCase {
                 GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: [
                     AXElement(stableID: "save", role: .button, label: "Save", frame: AXElementFrame(x: 10, y: 20, width: 80, height: 30), isActionable: true)
                 ]))
-            }, acceptInput: { text, id in
+            }, acceptInput: { text, id, _ in
                 .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
             }, run: { input, _ in
                 (input.threadID, AsyncStream { continuation in
@@ -713,7 +740,7 @@ final class TalkCompletionTests: XCTestCase {
                     turn += 1
                     return Input(turn == 1 ? "Explain this" : "show me everything for saving")
                 }, output: output, capture: { observation },
-                acceptInput: { home.acceptInput($0, threadID: $1) },
+                acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) },
                 run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) },
                 waitForConversation: { id in
                     await coordinator.waitForCompletion(threadID: id)
@@ -775,7 +802,7 @@ final class TalkCompletionTests: XCTestCase {
             sessionController: session, overlayState: PerryCursorState(), output: output,
             services: .init(makeInput: { Input() }, output: output, capture: {
                 GuideObservation(snapshot: AXSnapshot(appBundleID: "fixture.app", windowTitle: "Fixture", elements: []))
-            }, acceptInput: { home.acceptInput($0, threadID: $1) }, run: { input, spatial in
+            }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: { input, spatial in
                 requests += 1
                 XCTAssertEqual(input.threadID, thread.id)
                 let run = home.runSpokenTurn(input, spatial: spatial, coordinator: coordinator)
@@ -828,7 +855,7 @@ final class TalkCompletionTests: XCTestCase {
             sessionController: controller, overlayState: PerryCursorState(), output: output,
             services: .init(makeInput: { Input() }, output: output, capture: {
                 GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []))
-            }, acceptInput: { home.acceptInput($0, threadID: $1) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
+            }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
             tracer: PointerTraceRecorder(point: { .zero })
         )
         var originalID: UUID?
@@ -863,7 +890,7 @@ final class TalkCompletionTests: XCTestCase {
                 sessionController: controller, overlayState: overlay, output: output,
                 services: .init(makeInput: { Input() }, output: output, capture: {
                     GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []), processID: 42, windowID: 7)
-                }, acceptInput: { home.acceptInput($0, threadID: $1) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
+                }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
                 tracer: PointerTraceRecorder(point: { .zero })
             )
             var completed = 0

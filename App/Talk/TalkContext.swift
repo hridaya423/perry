@@ -1,12 +1,11 @@
 import Foundation
-import PerryGuide
 
 struct TalkContextKey: Hashable {
     var processID: Int32
     var windowID: Int64
 }
 
-/// Follow-up context for Talk: one SpatialConversation per app window, kept for
+/// Follow-up context for Talk: one conversation thread per app window, kept for
 /// ten minutes after its last use (plan §7 Phase 2.5). "New topic" resets it.
 /// Memory only — nothing is persisted.
 @MainActor
@@ -14,7 +13,7 @@ final class TalkContextStore {
     nonisolated static let defaultTTL: TimeInterval = 600
 
     private struct Entry {
-        var conversation: SpatialConversation
+        var threadID: UUID
         var lastUsedAt: TimeInterval
     }
 
@@ -28,18 +27,20 @@ final class TalkContextStore {
         self.ttl = ttl
     }
 
-    func conversation(for key: TalkContextKey) -> SpatialConversation {
-        guard var entry = entries[key], now() - entry.lastUsedAt <= ttl else {
-            entries[key] = Entry(conversation: SpatialConversation(), lastUsedAt: now())
-            return SpatialConversation()
+    /// The window's live thread, or nil when none exists or the last turn is
+    /// older than the TTL. A hit refreshes `lastUsedAt`.
+    func thread(for key: TalkContextKey) -> UUID? {
+        guard let entry = entries[key], now() - entry.lastUsedAt <= ttl else {
+            entries.removeValue(forKey: key)
+            return nil
         }
-        entry.lastUsedAt = now()
         entries[key] = entry
-        return entry.conversation
+        entries[key]?.lastUsedAt = now()
+        return entry.threadID
     }
 
-    func update(_ key: TalkContextKey, conversation: SpatialConversation) {
-        entries[key] = Entry(conversation: conversation, lastUsedAt: now())
+    func record(_ key: TalkContextKey, threadID: UUID) {
+        entries[key] = Entry(threadID: threadID, lastUsedAt: now())
     }
 
     func reset(_ key: TalkContextKey) {

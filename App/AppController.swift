@@ -329,7 +329,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 guard let self else { throw CancellationError() }
                 return try await self.captureTalkObservation()
             },
-            acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1) },
+            acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1, contextKey: $2) },
+            targetHint: { [unowned self] in self.guideTargetHint() },
             run: { [unowned self] input, spatial in
                 homeController.runSpokenTurn(input, spatial: spatial, coordinator: agentCoordinator)
             },
