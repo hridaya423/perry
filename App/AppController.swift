@@ -208,18 +208,20 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     let workers = CuaWorkerService()
     private var manifestRefresher: CuaCapabilityManifest.Refresher?
-    private lazy var spatialMonitor = SpatialInputMonitor(
-        onPointsChanged: { [weak self] points in self?.handleSpatialPoints(points) },
-        onSelection: { [weak self] selection in self?.handleSpatialSelection(selection) },
-        onCancel: { [weak self] in self?.cancelSpatialSelection() }
+    private lazy var spatial = SpatialSelectionController(
+        overlayState: overlayState,
+        workers: workers,
+        targetHint: { [unowned self] in await probe.currentTargetHint() },
+        speak: { [unowned self] in voice.deliverVoiceReply($0) },
+        setStatus: { [unowned self] in sessionStatus = $0 }
     )
     private lazy var demoDirector = DemoDirector(hooks: DemoDirector.Hooks(
         preflight: { [weak self] in await self?.demoPreflight() ?? DemoPreflightResult(ready: false, failureMessage: "Perry could not run the live demo.") },
         wake: { [weak self] in self?.wake() },
         speak: { [weak self] text in self?.voice.speak(text) },
-        waitForSpatialSelection: { [weak self] in await self?.waitForSpatialSelection() },
+        waitForSpatialSelection: { [weak self] in await self?.spatial.waitForSelection() },
         cancelPendingInputs: { [weak self] in self?.cancelPendingDemoInputs() },
-        describeSpatialSelection: { [weak self] selection in await self?.describeSpatialSelection(selection) ?? false },
+        describeSpatialSelection: { [weak self] selection in await self?.spatial.describe(selection) ?? false },
         runGuide: { [weak self] goal in await self?.runGuideForDemo(goal: goal) ?? false },
         runDo: { [weak self] goal in await self?.foreground.runForDemo(goal: goal) },
         report: { [weak self] outcome in self?.handleDemoReport(outcome) }
@@ -422,7 +424,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             memoryStore: memoryStore,
             oauthCoordinator: oauthCoordinator,
             remoteIntegrationPermissions: remoteIntegrationPermissions,
-            spatialSelection: { [weak self] in self?.activeSpatialSelection },
+            spatialSelection: { [weak self] in self?.spatial.selection },
             storageDirectory: { [weak self] in self?.storageDirectory },
             permissionSnapshotLoader: debugPermissionSnapshotLoader,
             cuaHealthLoader: debugCuaHealthLoader,
@@ -434,7 +436,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             memoryStore: memoryStore,
             oauthCoordinator: oauthCoordinator,
             remoteIntegrationPermissions: remoteIntegrationPermissions,
-            spatialSelection: { [weak self] in self?.activeSpatialSelection },
+            spatialSelection: { [weak self] in self?.spatial.selection },
             storageDirectory: { [weak self] in self?.storageDirectory }
         )
 #endif
@@ -447,7 +449,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             hidePanel: { [weak self] in self?.hidePanel() },
             dismissIntentCard: { [weak self] in self?.intentCards.dismiss() },
-            stopSpatialMonitoring: { [weak self] in self?.spatialMonitor.stop() },
+            stopSpatialMonitoring: { [weak self] in self?.spatial.stopMonitoring() },
             stopGuideObservation: { [weak self] in self?.guideCoordinator.stopClickObservation() },
             makeConfirmer: { [weak self] in self?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) }
         )
@@ -673,11 +675,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         talkSession: { [unowned self] in talkSession },
         preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() }
     )
-    private var activeSpatialSelection: SpatialSelection?
     private var terminationPrepared = false
     private var maintenanceOwner: MaintenanceOperation?
-    private var spatialWaiter: CheckedContinuation<SpatialSelection?, Never>?
-    private var spatialWorkerTask: Task<Void, Never>?
     private var persistenceTasks: [UUID: Task<Void, Never>] = [:]
     private var erasureInProgress = false
 #if DEBUG
@@ -1214,7 +1213,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.refreshWakeWordListener()
         sessionStatus = "Listening for a request."
         transcriptPreview = ""
-        activeSpatialSelection = nil
+        spatial.clearSelection()
         probe.pinInvocationTarget()
         PerfMark.mark("wake.pinned")
         overlayState.voiceState = .idle
@@ -1223,7 +1222,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         overlayState.circleSelectSnapLabel = nil
         overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
         PerfMark.mark("wake.overlay")
-        spatialMonitor.start()
+        spatial.startMonitoring()
         showPanel()
         SoundPlayer.play(.wake)
     }
@@ -1247,11 +1246,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         askController.cancel()
         guideCoordinator.stopClickObservation()
         guideCoordinator.cancelPendingDemoInputs()
-        spatialMonitor.stop()
-        if let spatialWaiter {
-            self.spatialWaiter = nil
-            spatialWaiter.resume(returning: nil)
-        }
+        spatial.stopMonitoring()
+        spatial.releaseWaiter()
         voice.cancelInput()
         intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
@@ -1434,7 +1430,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.cancelInput()
         foreground.cancelStartTask()
         guideCoordinator.prepareForTermination()
-        spatialWorkerTask?.cancel()
+        spatial.cancelDescription()
     }
 
     private func joinAfterWorkerShutdown() async {
@@ -1444,9 +1440,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         await suggestionController.joinAll()
         await homeController.joinAll()
         await voice.joinInputWork()
-        if let spatialWorkerTask {
-            await spatialWorkerTask.value
-        }
+        await spatial.joinDescription()
         await foreground.joinStartTask()
         await backgroundTasks.joinAll()
     }
@@ -1471,13 +1465,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         await perryScheduler?.joinAll()
         await suggestionController.joinAll()
         await homeController.joinAll()
-        spatialMonitor.stop()
+        spatial.stopMonitoring()
         foreground.cancelStartTask()
         await foreground.cancelActiveSupervisor()
         backgroundTasks.cancelAllOwned()
         await voice.joinInputWork()
-        spatialWorkerTask?.cancel()
-        await spatialWorkerTask?.value
+        spatial.cancelDescription()
+        await spatial.joinDescription()
         await foreground.joinStartTask()
         await backgroundTasks.joinAll()
         backgroundTasks.resetTasks()
@@ -1563,83 +1557,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             targetHint: homeController.homeModel.conversationTargets[threadID]
         )
     }
-    private func handleSpatialPoints(_ points: [CGPoint]) {
-        overlayState.circleSelectLivePoints = points
-        if points.isEmpty {
-            overlayState.circleSelectSnappedRect = nil
-            overlayState.circleSelectSnapLabel = nil
-        }
-    }
-
-    private func cancelSpatialSelection() {
-        spatialWorkerTask?.cancel()
-        overlayState.circleSelectLivePoints = []
-        overlayState.circleSelectSnappedRect = nil
-        overlayState.circleSelectSnapLabel = nil
-        activeSpatialSelection = nil
-        if let spatialWaiter {
-            self.spatialWaiter = nil
-            spatialWaiter.resume(returning: nil)
-        }
-        sessionStatus = "Circle a window with ⌥⌘ and drag."
-    }
-
-    private func handleSpatialSelection(_ selection: SpatialSelection) {
-        activeSpatialSelection = selection
-        overlayState.circleSelectLivePoints = selection.points
-        overlayState.circleSelectSnappedRect = selection.rect
-        sessionStatus = "Area selected. Tell Perry what to do there."
-        let demoIsWaiting = spatialWaiter != nil
-        if let spatialWaiter {
-            self.spatialWaiter = nil
-            spatialWaiter.resume(returning: selection)
-        }
-        if !demoIsWaiting {
-            let task = Task { @MainActor [weak self] in
-                guard let self else { return }
-                defer { self.spatialWorkerTask = nil }
-                _ = await self.describeSpatialSelection(selection)
-            }
-            spatialWorkerTask = task
-        }
-    }
-
-    private func describeSpatialSelection(_ selection: SpatialSelection) async -> Bool {
-        let snapshot: AXSnapshot?
-        do {
-            snapshot = try await workers.withWorker(scope: .dictation, resources: []) { worker in
-                let capture = try await worker.capture(target: await self.probe.currentTargetHint())
-                return capture.accessibilitySnapshotModel
-            }
-        } catch {
-            snapshot = nil
-        }
-        let label = Self.spatialLabel(for: selection.rect, snapshot: snapshot)
-        overlayState.circleSelectSnapLabel = label
-            voice.deliverVoiceReply(label == nil ? "I have the area you circled." : "I have \(label!).")
-        return snapshot != nil
-    }
-
-    private static func spatialLabel(for rect: CGRect, snapshot: AXSnapshot?) -> String? {
-        guard let snapshot else { return nil }
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let axRect = CGRect(
-            x: rect.minX,
-            y: primaryMaxY - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
-        let names = snapshot.actionableElements()
-            .filter { element in
-                let frame = CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height)
-                return frame.intersects(axRect)
-            }
-            .prefix(3)
-            .compactMap(\.label)
-        guard !names.isEmpty else { return snapshot.windowTitle.isEmpty ? nil : snapshot.windowTitle }
-        return names.joined(separator: ", ")
-    }
-
     func reloadCuaDriverConfiguration() {
         guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
             sessionStatus = "Finish active computer-use tasks before changing the Cua driver."
@@ -1696,21 +1613,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
 
-    private func waitForSpatialSelection() async -> SpatialSelection? {
-        await withCheckedContinuation { continuation in
-            spatialWaiter = continuation
-        }
-    }
-
     private func cancelPendingDemoInputs() {
         askController.cancel()
         if case .invoking(let invocation) = sessionState {
             foreground.cancelInvocationIfCurrent(invocation.id)
         }
-        if let spatialWaiter {
-            self.spatialWaiter = nil
-            spatialWaiter.resume(returning: nil)
-        }
+        spatial.releaseWaiter()
         guideCoordinator.cancelPendingDemoInputs()
         intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
@@ -1994,7 +1902,7 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideStopSpatialInput() {
-        spatialMonitor.stop()
+        spatial.stopMonitoring()
     }
 
     func guideSetStatus(_ status: String) {
@@ -2099,12 +2007,12 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
 
     func guideAppBundleID(for targetHint: CuaTargetHint) -> String? {
         targetHint.processID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
-            ?? activeSpatialSelection?.window?.appBundleID
+            ?? spatial.selection?.window?.appBundleID
             ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
 
     func guideSpatialRegionDescription() -> String? {
-        activeSpatialSelection?.description
+        spatial.selection?.description
     }
 
     /// Talk's screen capture. The local observer (window list + AX hit-test +
