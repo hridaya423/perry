@@ -58,3 +58,23 @@ struct DiagnosticsExporter {
         }
     }
 }
+
+extension AppController {
+    func showHistory() {
+        homeController.openHome(selection: .history)
+    }
+
+    func exportActivityLog() {
+        DiagnosticsExporter(
+            activityLog: activityLog, transcripts: transcriptStore,
+            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+        ).exportActivityLog()
+    }
+
+    func exportDiagnostics() {
+        DiagnosticsExporter(
+            activityLog: activityLog, transcripts: transcriptStore,
+            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+        ).exportDiagnostics()
+    }
+}

@@ -385,3 +385,34 @@ extension AppController: StatusMenuHost {
     }
 #endif
 }
+
+extension AppController {
+    /// onboarding has finished — never a required step.
+    func startDemonstrationRecording() {
+        guard !routineLibrary.isRecording else { return }
+        routineLibrary.toggleRecording()
+    }
+
+    /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
+    /// *that* something is running; the peek says *what* — a live step line
+    /// per active agent.
+    func updateHomePeek(isRecording: Bool) {
+        var lines: [String] = []
+        for record in backgroundTasks.records where !record.isTerminal {
+            if case .executable(let plan) = record.plan, !plan.actions.isEmpty {
+                let step = min(record.checkpoint.nextStepIndex + 1, plan.actions.count)
+                lines.append("\(record.goal) — step \(step) of \(plan.actions.count)")
+            } else {
+                lines.append(record.goal)
+            }
+        }
+        if lines.isEmpty && lastBackgroundCount > 0 {
+            lines.append(lastBackgroundCount == 1 ? "1 background task" : "\(lastBackgroundCount) background tasks")
+        }
+        homeController.updateStatus(
+            isRecording: isRecording,
+            agentLines: lines,
+            unreadCount: lastAwaitingApprovalCount
+        )
+    }
+}

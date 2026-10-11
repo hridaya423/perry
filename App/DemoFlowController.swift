@@ -109,3 +109,13 @@ extension AppController: DemoFlowHost {
     func runOnboardingForDemo() { runOnboarding(force: true) }
     func showDemoReport() { showHistory() }
 }
+
+extension AppController {
+    /// Verified result text from the last completed live demo — onboarding
+    /// ends on this evidence rather than a generic "you're set".
+    var demoVerifiedSummary: String? { demoFlow.verifiedSummary }
+
+    func runFlagshipDemo(completion: ((Bool) -> Void)? = nil) {
+        demoFlow.run(completion: completion)
+    }
+}

@@ -131,3 +131,23 @@ extension AppController {
         )
     }
 }
+
+extension AppController {
+    func ask(question: String) {
+        guard !maintenance.isUnderMaintenance else { return }
+        askController.submit(question: question)
+    }
+
+    func advanceGuide() {
+        guideCoordinator.advanceGuide()
+    }
+
+    func showEverything(goal: String, targetHint: CuaTargetHint? = nil) async {
+        let threadID = guideConversationID()
+        if let targetHint { homeController.homeModel.conversationTargets[threadID] = targetHint }
+        await guideCoordinator.showEverything(
+            goal: goal, threadID: threadID,
+            targetHint: homeController.homeModel.conversationTargets[threadID]
+        )
+    }
+}

@@ -288,3 +288,25 @@ extension AppController: MaintenanceHost {
     }
 
 }
+
+extension AppController {
+    func requestCompleteErasure() {
+        maintenance.requestCompleteErasure()
+    }
+}
+
+extension AppController {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        maintenance.requestTermination(sender)
+    }
+
+    func unsavedRequestQuitAlert() -> NSAlert {
+        MaintenanceCoordinator.unsavedRequestQuitAlert()
+    }
+}
+
+extension AppController {
+    @objc func handleWipeDataRequested() {
+        maintenance.requestCompleteErasure()
+    }
+}

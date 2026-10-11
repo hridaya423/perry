@@ -15,7 +15,6 @@ import PerryRuntimes
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
-
     private var hotkey: HotkeyController?
     // Subsystem forwards — the composition graph lives in `subsystems`;
     // these keep existing call sites and host-protocol conformances working.
@@ -201,7 +200,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 #endif
 
-
     var isTaskActive: Bool {
         if case .executing = sessionState { return true }
         return false
@@ -345,18 +343,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        maintenance.requestTermination(sender)
-    }
-
-    func unsavedRequestQuitAlert() -> NSAlert {
-        MaintenanceCoordinator.unsavedRequestQuitAlert()
-    }
-
-    @objc private func handleWipeDataRequested() {
-        requestCompleteErasure()
-    }
-
     private func ensureSupportDirectory() {
         guard let directory = Self.supportDirectory else { return }
         do {
@@ -457,66 +443,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     /// Onboarding's post-demo offer: starts a Watch & Learn recording once
-    /// onboarding has finished — never a required step.
-    func startDemonstrationRecording() {
-        guard !routineLibrary.isRecording else { return }
-        routineLibrary.toggleRecording()
-    }
-
-    /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
-    /// *that* something is running; the peek says *what* — a live step line
-    /// per active agent.
-    func updateHomePeek(isRecording: Bool) {
-        var lines: [String] = []
-        for record in backgroundTasks.records where !record.isTerminal {
-            if case .executable(let plan) = record.plan, !plan.actions.isEmpty {
-                let step = min(record.checkpoint.nextStepIndex + 1, plan.actions.count)
-                lines.append("\(record.goal) — step \(step) of \(plan.actions.count)")
-            } else {
-                lines.append(record.goal)
-            }
-        }
-        if lines.isEmpty && lastBackgroundCount > 0 {
-            lines.append(lastBackgroundCount == 1 ? "1 background task" : "\(lastBackgroundCount) background tasks")
-        }
-        homeController.updateStatus(
-            isRecording: isRecording,
-            agentLines: lines,
-            unreadCount: lastAwaitingApprovalCount
-        )
-    }
-
-
-    func openSettings(tab: SettingsTab) {
-        PerryPreferences.settingsTab = tab.rawValue
-        showSettings()
-    }
-
-    func currentMemoryConfiguration() async -> MemoryConfiguration {
-        await memoryStore.currentConfiguration()
-    }
-
-    func setMemoryEnabled(_ enabled: Bool) async {
-        guard !maintenance.isErasureInProgress else { return }
-        let current = await memoryStore.currentConfiguration()
-        await memoryStore.setConfiguration(
-            MemoryConfiguration(enabled: enabled, categoryToggles: current.categoryToggles)
-        )
-    }
-
-    func setMemoryCategoryEnabled(_ category: MemoryRecord.Category, enabled: Bool) async {
-        guard !maintenance.isErasureInProgress else { return }
-        let current = await memoryStore.currentConfiguration()
-        var toggles = current.categoryToggles
-        toggles[category] = enabled
-        await memoryStore.setConfiguration(
-            MemoryConfiguration(enabled: current.enabled, categoryToggles: toggles)
-        )
-    }
-
-    func requestCompleteErasure() {
-        maintenance.requestCompleteErasure()
-    }
 
     // MARK: Panel (the type/talk surface)
 
@@ -529,35 +455,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// The background-task menu entry arms the composer's background toggle
     /// so the task is one send away — there is no separate background UI.
     var pendingPromptRunInBackground = false
-
-
-
-
-    func ask(question: String) {
-        guard !maintenance.isUnderMaintenance else { return }
-        askController.submit(question: question)
-    }
-
-    func advanceGuide() {
-        guideCoordinator.advanceGuide()
-    }
-
-    func showEverything(goal: String, targetHint: CuaTargetHint? = nil) async {
-        let threadID = guideConversationID()
-        if let targetHint { homeController.homeModel.conversationTargets[threadID] = targetHint }
-        await guideCoordinator.showEverything(
-            goal: goal, threadID: threadID,
-            targetHint: homeController.homeModel.conversationTargets[threadID]
-        )
-    }
-
-    /// Verified result text from the last completed live demo — onboarding
-    /// ends on this evidence rather than a generic "you're set".
-    var demoVerifiedSummary: String? { demoFlow.verifiedSummary }
-
-    func runFlagshipDemo(completion: ((Bool) -> Void)? = nil) {
-        demoFlow.run(completion: completion)
-    }
 
     func showWhatsNew() {
         homeController.openHome(selection: .whatsNew)
@@ -574,33 +471,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    func showHistory() {
-        homeController.openHome(selection: .history)
-    }
-
-    func exportActivityLog() {
-        DiagnosticsExporter(
-            activityLog: activityLog, transcripts: transcriptStore,
-            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
-        ).exportActivityLog()
-    }
-
-    func exportDiagnostics() {
-        DiagnosticsExporter(
-            activityLog: activityLog, transcripts: transcriptStore,
-            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
-        ).exportDiagnostics()
-    }
-
-    // MARK: Intent card confirmation
-
-
     // MARK: Onboarding
 
     func runOnboarding(force: Bool) {
         onboarding.run(force: force)
     }
-
 
     func updateWakeShortcut(_ shortcut: WakeShortcut) throws {
         if let hotkey {
@@ -614,13 +489,5 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionStatus = "Wake shortcut changed to \(shortcut.title)."
     }
 
-    // MARK: Interactive confirmer bridging supervisor → card
-
-
 }
-
-
-
-
-
 

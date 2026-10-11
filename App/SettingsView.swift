@@ -926,3 +926,32 @@ private extension View {
 extension Notification.Name {
     static let perryWipeDataRequested = Notification.Name("perry.wipeDataRequested")
 }
+
+extension AppController {
+    func openSettings(tab: SettingsTab) {
+        PerryPreferences.settingsTab = tab.rawValue
+        showSettings()
+    }
+
+    func currentMemoryConfiguration() async -> MemoryConfiguration {
+        await memoryStore.currentConfiguration()
+    }
+
+    func setMemoryEnabled(_ enabled: Bool) async {
+        guard !maintenance.isErasureInProgress else { return }
+        let current = await memoryStore.currentConfiguration()
+        await memoryStore.setConfiguration(
+            MemoryConfiguration(enabled: enabled, categoryToggles: current.categoryToggles)
+        )
+    }
+
+    func setMemoryCategoryEnabled(_ category: MemoryRecord.Category, enabled: Bool) async {
+        guard !maintenance.isErasureInProgress else { return }
+        let current = await memoryStore.currentConfiguration()
+        var toggles = current.categoryToggles
+        toggles[category] = enabled
+        await memoryStore.setConfiguration(
+            MemoryConfiguration(enabled: current.enabled, categoryToggles: toggles)
+        )
+    }
+}
