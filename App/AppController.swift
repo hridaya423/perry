@@ -486,8 +486,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-#if DEBUG
-#endif
 
     func openSettings(tab: SettingsTab) {
         PerryPreferences.settingsTab = tab.rawValue
@@ -532,52 +530,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// so the task is one send away — there is no separate background UI.
     var pendingPromptRunInBackground = false
 
-    func presentPrompt(prefill: String, asTask: Bool = false) {
-        pendingPromptDoMode = asTask
-        pendingPromptText = prefill
-        showPanel()
-    }
 
-    func showPanel() {
-        probe.pinInvocationTargetIfNeeded()
-        homeController.prepareConversation(target: probe.presentationTarget())
-        sessionPanel.show()
-    }
 
-    /// Pays the one-time render cost for the session surfaces at launch so a
-    /// first invocation only orders already-rendered windows on screen.
-    private func warmSessionSurfaces() {
-        sessionPanel.warm()
-        overlayManager.warmRenderPipeline(state: overlayState)
-    }
-
-    func hidePanel() {
-        sessionPanel.hide()
-    }
-
-    func showBackgroundTasks() {
-        runtimes.refreshChoices()
-        homeController.openHome(selection: .tasks)
-    }
-
-#if DEBUG
-#endif
-
-    private func guideConversationID() -> UUID {
-        if case .thread(let id) = homeController.homeModel.sidebarSelection,
-           !agentCoordinator.runningThreads.contains(id) { return id }
-        let id = UUID()
-        homeController.homeModel.sidebarSelection = .thread(id)
-        return id
-    }
-
-    func startGuiding(goal: String) {
-        let threadID = guideConversationID()
-        guideCoordinator.startGuiding(
-            goal: goal, threadID: threadID,
-            targetHint: homeController.homeModel.conversationTargets[threadID]
-        )
-    }
 
     func ask(question: String) {
         guard !maintenance.isUnderMaintenance else { return }
@@ -595,21 +549,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             goal: goal, threadID: threadID,
             targetHint: homeController.homeModel.conversationTargets[threadID]
         )
-    }
-    func reloadCuaDriverConfiguration() {
-        guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
-            sessionStatus = "Finish active computer-use tasks before changing the Cua driver."
-            return
-        }
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await workers.reloadConfiguration()
-                sessionStatus = "Cua computer-use configuration applied."
-            } catch {
-                sessionStatus = "Cua computer-use configuration could not be applied: \(error.localizedDescription)"
-            }
-        }
     }
 
     /// Verified result text from the last completed live demo — onboarding
@@ -655,20 +594,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: Intent card confirmation
 
-    func requestIntentApproval(id: UUID, card: IntentCard) async -> Bool {
-        await presentIntentCard(id: id, card: card, allowsStepThrough: false) == .run
-    }
-
-    /// Plan-level card: the same intent card plus a "Step through" choice that
-    /// walks the plan one confirmed action at a time.
-    func requestPlanDecision(id: UUID, card: IntentCard) async -> PlanDecision {
-        await presentIntentCard(id: id, card: card, allowsStepThrough: true)
-    }
-
-    private func presentIntentCard(id: UUID, card: IntentCard, allowsStepThrough: Bool) async -> PlanDecision {
-        guard !Task.isCancelled, sessionController.approvalIsCurrent(id) else { return .cancel }
-        return await intentCards.present(id: id, card: card, allowsStepThrough: allowsStepThrough)
-    }
 
     // MARK: Onboarding
 
@@ -691,9 +616,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: Interactive confirmer bridging supervisor → card
 
-    func makeConfirmer() -> Confirmer {
-        InteractiveConfirmer(controller: self)
-    }
 
 }
 

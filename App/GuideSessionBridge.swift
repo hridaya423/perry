@@ -113,3 +113,21 @@ extension AppController: GuideBridgeHost {
     var intentCardFrame: CGRect? { intentCards.frame }
 
 }
+
+extension AppController {
+    func guideConversationID() -> UUID {
+        if case .thread(let id) = homeController.homeModel.sidebarSelection,
+           !agentCoordinator.runningThreads.contains(id) { return id }
+        let id = UUID()
+        homeController.homeModel.sidebarSelection = .thread(id)
+        return id
+    }
+
+    func startGuiding(goal: String) {
+        let threadID = guideConversationID()
+        guideCoordinator.startGuiding(
+            goal: goal, threadID: threadID,
+            targetHint: homeController.homeModel.conversationTargets[threadID]
+        )
+    }
+}

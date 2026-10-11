@@ -78,3 +78,33 @@ final class SessionPanelPresenter {
         return p
     }
 }
+
+extension AppController {
+    func presentPrompt(prefill: String, asTask: Bool = false) {
+        pendingPromptDoMode = asTask
+        pendingPromptText = prefill
+        showPanel()
+    }
+
+    func showPanel() {
+        probe.pinInvocationTargetIfNeeded()
+        homeController.prepareConversation(target: probe.presentationTarget())
+        sessionPanel.show()
+    }
+
+    /// Pays the one-time render cost for the session surfaces at launch so a
+    /// first invocation only orders already-rendered windows on screen.
+    func warmSessionSurfaces() {
+        sessionPanel.warm()
+        overlayManager.warmRenderPipeline(state: overlayState)
+    }
+
+    func hidePanel() {
+        sessionPanel.hide()
+    }
+
+    func showBackgroundTasks() {
+        runtimes.refreshChoices()
+        homeController.openHome(selection: .tasks)
+    }
+}

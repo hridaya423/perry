@@ -89,3 +89,26 @@ struct InteractiveConfirmer: Confirmer {
         return decision
     }
 }
+
+extension AppController {
+    func requestIntentApproval(id: UUID, card: IntentCard) async -> Bool {
+        await presentIntentCard(id: id, card: card, allowsStepThrough: false) == .run
+    }
+
+    /// Plan-level card: the same intent card plus a "Step through" choice that
+    /// walks the plan one confirmed action at a time.
+    func requestPlanDecision(id: UUID, card: IntentCard) async -> PlanDecision {
+        await presentIntentCard(id: id, card: card, allowsStepThrough: true)
+    }
+
+    func presentIntentCard(id: UUID, card: IntentCard, allowsStepThrough: Bool) async -> PlanDecision {
+        guard !Task.isCancelled, sessionController.approvalIsCurrent(id) else { return .cancel }
+        return await intentCards.present(id: id, card: card, allowsStepThrough: allowsStepThrough)
+    }
+}
+
+extension AppController {
+    func makeConfirmer() -> Confirmer {
+        InteractiveConfirmer(controller: self)
+    }
+}

@@ -1499,3 +1499,21 @@ private func double(_ value: Any?) -> Double? {
     if let string = value as? String, let number = Double(string), number.isFinite { return number }
     return nil
 }
+
+extension AppController {
+    func reloadCuaDriverConfiguration() {
+        guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
+            sessionStatus = "Finish active computer-use tasks before changing the Cua driver."
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await workers.reloadConfiguration()
+                sessionStatus = "Cua computer-use configuration applied."
+            } catch {
+                sessionStatus = "Cua computer-use configuration could not be applied: \(error.localizedDescription)"
+            }
+        }
+    }
+}
