@@ -39,19 +39,35 @@ public struct GuideStep: Codable, Equatable, Sendable, Identifiable {
     public let target: Target
     public let waitForUserAction: Bool
     public let postcondition: Postcondition?
+    /// True when performing this step is expected to open a sheet, popover, or
+    /// new window in the same app — the engine then accepts a different
+    /// windowID on the post-click observation instead of ending the session.
+    public let opensWindow: Bool
 
     public init(
         id: UUID = UUID(),
         instruction: String,
         target: Target,
         waitForUserAction: Bool = true,
-        postcondition: Postcondition? = nil
+        postcondition: Postcondition? = nil,
+        opensWindow: Bool = false
     ) {
         self.id = id
         self.instruction = instruction
         self.target = target
         self.waitForUserAction = waitForUserAction
         self.postcondition = postcondition
+        self.opensWindow = opensWindow
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        instruction = try c.decode(String.self, forKey: .instruction)
+        target = try c.decode(Target.self, forKey: .target)
+        waitForUserAction = try c.decode(Bool.self, forKey: .waitForUserAction)
+        postcondition = try c.decodeIfPresent(Postcondition.self, forKey: .postcondition)
+        opensWindow = try c.decodeIfPresent(Bool.self, forKey: .opensWindow) ?? false
     }
 }
 

@@ -103,7 +103,7 @@ public actor GuideEngine {
         hasRepointed = true
         let observation = try await observer.observe()
         try GuideTargetValidator.requireUnprotected(observation)
-        try requireSameTarget(observation, as: baseline)
+        try requireSameTarget(observation, as: baseline, allowsNewWindow: step.opensWindow)
         try GuideTargetValidator.validated(step, in: observation)
         presentationObservation = observation
         actionBaseline = observation
@@ -223,7 +223,7 @@ public actor GuideEngine {
             try await Task.sleep(nanoseconds: 250_000_000)
             after = try await observer.observe()
             try GuideTargetValidator.requireUnprotected(after)
-            try requireSameTarget(after, as: baseline)
+            try requireSameTarget(after, as: baseline, allowsNewWindow: step.opensWindow)
         } catch is CancellationError {
             return .notPresenting
         } catch {
@@ -243,16 +243,16 @@ public actor GuideEngine {
             }
             progress.recordUserConfirmed(step)
         }
-        return await presentNext(observation: after)
+        return await presentNext(observation: after, allowsNewWindow: step.opensWindow)
     }
 
     /// Asks the planner for the next step from this observation, validates it,
     /// and presents it — or finishes when the planner has nothing honest left.
     /// Planner and validation failures surface as blocked, never as a silent
     /// success.
-    private func presentNext(observation: GuideObservation) async -> AdvanceResult {
+    private func presentNext(observation: GuideObservation, allowsNewWindow: Bool = false) async -> AdvanceResult {
         do {
-            guard let step = try await nextValidStep(observation: observation) else {
+            guard let step = try await nextValidStep(observation: observation, allowsNewWindow: allowsNewWindow) else {
                 phase = .finished
                 return .finished
             }
@@ -274,9 +274,11 @@ public actor GuideEngine {
 
     /// Planner call wrapped in the trust boundary: protected observations and
     /// targets that don't validate against the live window both throw.
-    private func nextValidStep(observation: GuideObservation) async throws -> GuideStep? {
+    private func nextValidStep(observation: GuideObservation, allowsNewWindow: Bool = false) async throws -> GuideStep? {
         try GuideTargetValidator.requireUnprotected(observation)
-        if let baseline = presentationObservation { try requireSameTarget(observation, as: baseline) }
+        if let baseline = presentationObservation {
+            try requireSameTarget(observation, as: baseline, allowsNewWindow: allowsNewWindow)
+        }
         if let maximumSteps, progress.presentedCount >= maximumSteps {
             throw GuidePlannerError.blocked("The guide reached its step limit. Goal completion has not been verified.")
         }
@@ -319,14 +321,18 @@ public actor GuideEngine {
         phase = .presenting(stepIndex: progress.presentedCount - 1)
     }
 
-    private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation) throws {
+    /// Same app, same live window — unless the presented step predicted a new
+    /// window (`opensWindow`), in which case a different windowID under the
+    /// same pid/bundle/generation is the expected outcome, not a violation.
+    private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation, allowsNewWindow: Bool = false) throws {
         guard let processID = baseline.processID,
               let windowID = baseline.windowID,
               let generation = baseline.connectionGeneration,
               observation.snapshot.appBundleID == baseline.snapshot.appBundleID,
               observation.processID == processID,
-              observation.windowID == windowID,
-              observation.connectionGeneration == generation else {
+              observation.connectionGeneration == generation,
+              observation.windowID != nil,
+              allowsNewWindow || observation.windowID == windowID else {
             throw GuidePlannerError.blocked("The target window changed or its identity is unavailable. Start a new guide.")
         }
     }

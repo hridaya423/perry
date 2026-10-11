@@ -349,6 +349,35 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         XCTAssertEqual(p2.y, 20.25)
     }
 
+    func testOpensWindowFlagIsAcceptedAndDecoded() throws {
+        guard case .step(let step) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"open preferences","target":"b1","opens_window":true}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertTrue(step.opensWindow)
+
+        guard case .step(let plain) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click Tags","target":"b1"}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertFalse(plain.opensWindow)
+    }
+
+    func testOpensWindowRejectsNonBoolean() {
+        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"open preferences","target":"b1","opens_window":"yes"}}"#,
+            observation: observation()
+        )) { error in
+            guard case GuidePlannerError.malformedResponse = error else {
+                return XCTFail("expected malformedResponse, got \(error)")
+            }
+        }
+    }
+
     func testBlockedOutcomeReturnsBlockedDecision() throws {
         let decision = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"blocked":"no matching control is visible"}"#,

@@ -361,11 +361,12 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(progress.completedInstructions, [step.instruction])
     }
 
-    private func postconditionEngine(before: GuideObservation, after: GuideObservation) -> GuideEngine {
+    private func postconditionEngine(before: GuideObservation, after: GuideObservation, opensWindow: Bool = false) -> GuideEngine {
         let step = GuideStep(
             instruction: "open it",
             target: .axElement(stableID: "target"),
-            postcondition: .elementExists(stableID: "done")
+            postcondition: .elementExists(stableID: "done"),
+            opensWindow: opensWindow
         )
         return GuideEngine(
             planner: QueueGuidePlanner(steps: [step]),
@@ -412,6 +413,85 @@ final class GuideEngineTests: XCTestCase {
 
         let result = await engine.userActed()
         await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    /// A click that is expected to open a sheet or new window keeps the
+    /// session alive when the post-click windowID differs under the same pid.
+    func testPredictedWindowChangeAdvances() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("done", label: "Done")],
+                title: "Preferences",
+                windowID: 8
+            ),
+            opensWindow: true
+        )
+        _ = try await engine.start(goal: "open preferences")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.completedInstructions, ["open it"])
+    }
+
+    /// The flag only excuses a new window in the same app — a different pid is
+    /// still a different task context and blocks.
+    func testOpensWindowDoesNotExcuseProcessChange() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                processID: 43,
+                windowID: 8
+            ),
+            opensWindow: true
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    /// An opensWindow step whose post-click read lost its window identity
+    /// cannot be trusted to be a same-app sheet — blocked, not advanced.
+    func testOpensWindowStillRequiresWindowIdentity() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("done", label: "Done")],
+                windowID: nil
+            ),
+            opensWindow: true
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        await assertBlockedWithoutProgress(result, engine: engine)
+    }
+
+    /// A window change must not ride along on a skip: the step that predicted
+    /// it was never performed, so a new windowID still blocks.
+    func testSkipStillBlocksAcrossChangedWindowForOpensWindowStep() async throws {
+        let otherWindow = observation([button("a", label: "A")], windowID: 8)
+        let observer = StubObserver(observations: [
+            observation([button("target", label: "Open")]),
+            otherWindow,
+        ])
+        let planner = QueueGuidePlanner(steps: [
+            GuideStep(
+                instruction: "open it",
+                target: .axElement(stableID: "target"),
+                opensWindow: true
+            ),
+        ])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.skip()
+        guard case .blocked = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
     }
 
     func testVerificationBlocksWhenGenerationChanges() async throws {

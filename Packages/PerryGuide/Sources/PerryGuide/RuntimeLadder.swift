@@ -107,7 +107,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
     }
 
     private static func parseStep(_ raw: [String: Any], observation: GuideObservation) throws -> GuideStep {
-        guard Set(raw.keys).isSubset(of: ["instruction", "target", "wait"]),
+        guard Set(raw.keys).isSubset(of: ["instruction", "target", "wait", "opens_window"]),
               let instruction = raw["instruction"] as? String,
               !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let rawTarget = raw["target"] else {
@@ -120,6 +120,13 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             }
             wait = number.boolValue
         } else { wait = true }
+        let opensWindow: Bool
+        if let value = raw["opens_window"] {
+            guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else {
+                throw GuidePlannerError.malformedResponse("opens_window must be a boolean")
+            }
+            opensWindow = number.boolValue
+        } else { opensWindow = false }
         let target: GuideStep.Target
         switch rawTarget {
         case is NSNull: target = .verbalOnly
@@ -131,7 +138,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             target = .screenPoint(CGPointShim(x: try coordinate(pair[0]), y: try coordinate(pair[1])))
         default: throw GuidePlannerError.malformedResponse("invalid target")
         }
-        return GuideStep(instruction: instruction, target: target, waitForUserAction: wait)
+        return GuideStep(instruction: instruction, target: target, waitForUserAction: wait, opensWindow: opensWindow)
     }
 
     private static func coordinate(_ value: Any?) throws -> Double {
@@ -233,6 +240,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         Choose the single next control the user should click to make progress on the goal.
         Reply: {"step":{"instruction":"<short spoken instruction>","target":"<control id>"}}
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}
+        When the click opens a sheet, popover, or new window in the same app, add "opens_window":true to that step.
         Only when the goal is complete: {"done":true}
         When you cannot advance or verify completion: {"blocked":"<brief reason>"}
         When the user must clarify: {"needs_input":{"prompt":"<question>","choices":["<optional choice>"]}}
