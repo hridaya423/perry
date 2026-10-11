@@ -75,7 +75,7 @@ public actor AgentLoop {
             system += "\nThis model cannot interpret screenshots or perform screen-grounded actions. Use only the supplied text-based tools. Ask the user to choose an image-capable model for screen tasks."
         }
 
-        return ModelRequest(system: system, messages: messages, tools: tools, tier: tier)
+        return ModelRequest(system: system, messages: messages, tools: tools, tier: tier, conversationKey: context.threadID)
     }
 
     public func prepareConversation(
@@ -143,7 +143,7 @@ public actor AgentLoop {
             do {
                 let capacity = try await provider.contextWindow(for: tier)
                 try Task.checkCancellation()
-                let request = try ModelRequest(system: system, messages: messages, tools: tools, tier: tier).reservingOutput(in: capacity)
+                let request = try ModelRequest(system: system, messages: messages, tools: tools, tier: tier, conversationKey: context.threadID).reservingOutput(in: capacity)
                 let stream: AsyncThrowingStream<ModelEvent, Error>
                 if let native = provider as? any ToolExecutingModelProvider {
                     stream = native.stream(request) { call in

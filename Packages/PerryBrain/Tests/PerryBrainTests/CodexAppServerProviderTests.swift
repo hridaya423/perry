@@ -210,7 +210,7 @@ final class CodexAppServerProviderTests: XCTestCase {
         await process.terminate()
     }
 
-    func testHistoryIsSeparateFromTheCurrentRequestOnTheWire() async throws {
+    func testHistoryArrivesAsTranscriptOnAFreshThread() async throws {
         let log = tempDir().appendingPathComponent("history.jsonl")
         let process = try makeProcess(scenario: "b", log: log)
         let provider = CodexAppServerProvider(process: process)
@@ -224,19 +224,16 @@ final class CodexAppServerProviderTests: XCTestCase {
         let line = try XCTUnwrap(lines.first { $0.contains(#""turn/start""#) })
         let wire = try JSONValue(parsing: Data(line.utf8))
         let input = try XCTUnwrap(wire["params"]?["input"]?.arrayValue)
-        XCTAssertEqual(input.count, 1)
-        let text = try XCTUnwrap(input.first?["text"]?.stringValue)
-        let envelope = try JSONValue(parsing: Data(text.utf8))
-        let history = try XCTUnwrap(envelope["history"]?.arrayValue)
-        XCTAssertEqual(history.count, 2)
-        XCTAssertEqual(history.first?["role"]?.stringValue, "user")
-        XCTAssertEqual(history.last?["role"]?.stringValue, "assistant")
-        XCTAssertEqual(envelope["currentMessage"]?["role"]?.stringValue, "user")
-        XCTAssertEqual(envelope["currentMessage"]?["content"]?.arrayValue?.first?["text"]?.stringValue, "Write a travel diary about that destination.")
+        XCTAssertEqual(input.count, 2)
+        let transcript = try XCTUnwrap(input.first?["text"]?.stringValue)
+        XCTAssertTrue(transcript.contains("My destination is Cedar"))
+        XCTAssertTrue(transcript.contains("Cedar"))
+        XCTAssertEqual(input.last?["type"]?.stringValue, "text")
+        XCTAssertEqual(input.last?["text"]?.stringValue, "Write a travel diary about that destination.")
         await process.terminate()
     }
 
-    func testToolContextAndTransientImagesSurviveInputSerialization() async throws {
+    func testTrailingToolResultBecomesTranscriptPlusAttachments() async throws {
         let log = tempDir().appendingPathComponent("image-history.jsonl")
         let process = try makeProcess(scenario: "b", log: log)
         let provider = CodexAppServerProvider(process: process)
@@ -252,13 +249,130 @@ final class CodexAppServerProviderTests: XCTestCase {
         let wire = try JSONValue(parsing: Data(line.utf8))
         let input = try XCTUnwrap(wire["params"]?["input"]?.arrayValue)
         XCTAssertEqual(input.count, 2)
-        let envelope = try JSONValue(parsing: Data(try XCTUnwrap(input.first?["text"]?.stringValue).utf8))
-        XCTAssertEqual(envelope["history"]?.arrayValue?.last?["toolCalls"]?.arrayValue?.first?["id"]?.stringValue, call.id)
-        XCTAssertEqual(envelope["currentMessage"]?["role"]?.stringValue, "tool")
-        XCTAssertEqual(envelope["currentMessage"]?["callID"]?.stringValue, call.id)
-        XCTAssertEqual(envelope["currentMessage"]?["content"]?.arrayValue?.last?["attachment"]?.doubleValue, 1)
+        let transcript = try XCTUnwrap(input.first?["text"]?.stringValue)
+        XCTAssertTrue(transcript.contains("Describe the current target"))
+        XCTAssertTrue(transcript.contains("Target image"))
+        XCTAssertEqual(input.last?["type"]?.stringValue, "localImage")
         let imagePath = try XCTUnwrap(input.last?["path"]?.stringValue)
         XCTAssertFalse(FileManager.default.fileExists(atPath: imagePath))
+        await process.terminate()
+    }
+
+    func testConversationKeyReusesThreadAndSendsOnlyNewMessages() async throws {
+        let log = tempDir().appendingPathComponent("persist.jsonl")
+        let process = try makeProcess(scenario: "b", log: log)
+        let provider = CodexAppServerProvider(process: process)
+        let first = { () -> ModelRequest in
+            var request = sampleRequest()
+            request.conversationKey = "conv-1"
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(first)) }
+        let followUp = { () -> ModelRequest in
+            var request = first
+            request.messages = [
+                .user([.text("hi")]),
+                .assistant(text: "Hello from fake-codex", toolCalls: []),
+                .user([.text("and the next thing")]),
+            ]
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(followUp)) }
+        let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.filter { $0.contains(#""thread/start""#) }.count, 1)
+        let turns = lines.filter { $0.contains(#""turn/start""#) }
+        XCTAssertEqual(turns.count, 2)
+        let second = try JSONValue(parsing: Data(turns[1].utf8))
+        let input = try XCTUnwrap(second["params"]?["input"]?.arrayValue)
+        XCTAssertEqual(input.count, 1)
+        XCTAssertEqual(input.first?["type"]?.stringValue, "text")
+        XCTAssertEqual(input.first?["text"]?.stringValue, "and the next thing")
+        await process.terminate()
+    }
+
+    func testChangedSystemPromptStartsANewThread() async throws {
+        let log = tempDir().appendingPathComponent("system-change.jsonl")
+        let process = try makeProcess(scenario: "b", log: log)
+        let provider = CodexAppServerProvider(process: process)
+        let first = { () -> ModelRequest in
+            var request = sampleRequest()
+            request.conversationKey = "conv-1"
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(first)) }
+        let followUp = { () -> ModelRequest in
+            var request = first
+            request.system = "a different system prompt"
+            request.messages = [.user([.text("next")])]
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(followUp)) }
+        let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.filter { $0.contains(#""thread/start""#) }.count, 2)
+        await process.terminate()
+    }
+
+    func testStaleConversationThreadRetriesOnAFreshThreadWithTranscript() async throws {
+        let log = tempDir().appendingPathComponent("stale.jsonl")
+        let process = try makeProcess(scenario: "stale-turn", log: log)
+        let provider = CodexAppServerProvider(process: process)
+        let first = { () -> ModelRequest in
+            var request = sampleRequest()
+            request.conversationKey = "conv-1"
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(first)) }
+        let followUp = { () -> ModelRequest in
+            var request = first
+            request.messages = [
+                .user([.text("hi")]),
+                .assistant(text: "Hello from fake-codex", toolCalls: []),
+                .user([.text("still there?")]),
+            ]
+            return request
+        }()
+        let events = try await withTimeout { try await drain(provider.stream(followUp)) }
+        XCTAssertEqual(stopReason(events), .endTurn)
+        let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(lines.filter { $0.contains(#""thread/start""#) }.count, 2)
+        let turns = lines.filter { $0.contains(#""turn/start""#) }
+        XCTAssertEqual(turns.count, 3)
+        let retry = try JSONValue(parsing: Data(turns[2].utf8))
+        XCTAssertEqual(retry["params"]?["threadId"]?.stringValue, "thr_2")
+        let input = try XCTUnwrap(retry["params"]?["input"]?.arrayValue)
+        let transcript = try XCTUnwrap(input.first?["text"]?.stringValue)
+        XCTAssertTrue(transcript.contains("hi"))
+        XCTAssertTrue(transcript.contains("Hello from fake-codex"))
+        XCTAssertEqual(input.last?["text"]?.stringValue, "still there?")
+        await process.terminate()
+    }
+
+    func testFastTierTurnCarriesConfiguredModelAndNoReasoning() async throws {
+        let log = tempDir().appendingPathComponent("tier.jsonl")
+        let process = try makeProcess(scenario: "b", log: log)
+        let provider = CodexAppServerProvider(
+            process: process,
+            models: BrainModelDefaults(fast: "gpt-5.6-terra", deep: "gpt-6-luna")
+        )
+        let fast = { () -> ModelRequest in
+            var request = sampleRequest()
+            request.tier = .fast
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(fast)) }
+        let deep = { () -> ModelRequest in
+            var request = sampleRequest()
+            request.tier = .deep
+            return request
+        }()
+        _ = try await withTimeout { try await drain(provider.stream(deep)) }
+        let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
+        let turns = try lines.filter { $0.contains(#""turn/start""#) }.map { try JSONValue(parsing: Data($0.utf8)) }
+        XCTAssertEqual(turns.count, 2)
+        XCTAssertEqual(turns[0]["params"]?["model"]?.stringValue, "gpt-5.6-terra")
+        XCTAssertEqual(turns[0]["params"]?["effort"]?.stringValue, "none")
+        XCTAssertEqual(turns[1]["params"]?["model"]?.stringValue, "gpt-6-luna")
+        XCTAssertNil(turns[1]["params"]?["effort"])
         await process.terminate()
     }
 

@@ -460,8 +460,9 @@ final class BrainController: ObservableObject {
         let workingDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-brain-cwd", isDirectory: true)
         return CodexAppServerProvider(process: CodexAppServerProcess(configuration: CodexAppServerConfiguration(
-            binaryURL: binary, codexHome: home, workingDirectory: workingDirectory
-        )))
+            binaryURL: binary, codexHome: home, workingDirectory: workingDirectory,
+            stderrLogURL: home.appendingPathComponent("app-server-stderr.log")
+        )), models: BrainModelCatalog.codex)
     }
 
 #if DEBUG

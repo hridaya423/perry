@@ -90,19 +90,24 @@ public struct ModelRequest: Sendable {
     public var tools: [ToolSpec]
     public var tier: ModelTier
     public var maxOutputTokens: Int
+    /// Providers that keep server-side conversation state reuse it across
+    /// requests sharing a key. Nil means every request stands alone.
+    public var conversationKey: String?
 
     public init(
         system: String = "",
         messages: [ModelMessage],
         tools: [ToolSpec] = [],
         tier: ModelTier = .fast,
-        maxOutputTokens: Int = 4096
+        maxOutputTokens: Int = 4096,
+        conversationKey: String? = nil
     ) {
         self.system = system
         self.messages = messages
         self.tools = tools
         self.tier = tier
         self.maxOutputTokens = maxOutputTokens
+        self.conversationKey = conversationKey
     }
 }
 

@@ -8,6 +8,10 @@ public struct CodexAppServerConfiguration: Sendable {
     public var processArguments: [String]?
     public var extraEnvironment: [String: String]
     public var clientName: String
+    /// When set, the server's stderr appends here instead of /dev/null;
+    /// the file is trimmed to a bounded tail on each spawn so it stays
+    /// diagnostic-sized.
+    public var stderrLogURL: URL?
 
     public init(
         binaryURL: URL,
@@ -16,7 +20,8 @@ public struct CodexAppServerConfiguration: Sendable {
         extraArguments: [String] = CodexAppServerConfiguration.defaultConfinementArguments,
         processArguments: [String]? = nil,
         extraEnvironment: [String: String] = [:],
-        clientName: String = "perry"
+        clientName: String = "perry",
+        stderrLogURL: URL? = nil
     ) {
         self.binaryURL = binaryURL
         self.codexHome = codexHome
@@ -25,6 +30,7 @@ public struct CodexAppServerConfiguration: Sendable {
         self.processArguments = processArguments
         self.extraEnvironment = extraEnvironment
         self.clientName = clientName
+        self.stderrLogURL = stderrLogURL
     }
 
     public static let defaultConfinementArguments: [String] = [
@@ -149,6 +155,8 @@ public actor CodexAppServerProcess {
         if let stderrPath = configuration.extraEnvironment["PERRY_FAKE_STDERR"] {
             FileManager.default.createFile(atPath: stderrPath, contents: nil)
             process.standardError = try? FileHandle(forWritingTo: URL(fileURLWithPath: stderrPath))
+        } else if let stderrLogURL = configuration.stderrLogURL {
+            process.standardError = Self.cappedLogHandle(for: stderrLogURL)
         }
         process.standardError = process.standardError ?? FileHandle.nullDevice
         try process.run()
@@ -213,6 +221,28 @@ public actor CodexAppServerProcess {
                     try? await Task.sleep(for: .milliseconds(10))
                 }
             }.value
+        }
+    }
+
+    /// Bounded appending: once the log passes half a megabyte, only the last
+    /// quarter is kept, so a noisy server cannot grow it without limit.
+    private static func cappedLogHandle(for url: URL) -> FileHandle? {
+        let limit = 512 * 1024, keep = 256 * 1024
+        do {
+            if let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
+               size > limit,
+               let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
+                try data.suffix(keep).write(to: url)
+            }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                FileManager.default.createFile(atPath: url.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            return handle
+        } catch {
+            return nil
         }
     }
 
