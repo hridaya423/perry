@@ -13,6 +13,10 @@ final class GuideControlsState: ObservableObject {
     @Published var markerCaptions: [String] = []
     @Published var pendingPrompt: String?
     @Published var pendingChoices: [String] = []
+    /// Steps that carry a postcondition verify themselves on the user's
+    /// click — the manual Done is hidden so it can't confirm what the
+    /// observation can already prove (§3.4).
+    @Published var hasPostcondition = false
 
     var mapIsPresented: Bool { !markerCaptions.isEmpty }
     var inputIsPending: Bool { pendingPrompt != nil }
@@ -23,6 +27,7 @@ final class GuideControlsState: ObservableObject {
         markerCaptions = []
         pendingPrompt = nil
         pendingChoices = []
+        hasPostcondition = false
     }
 }
 
@@ -73,9 +78,11 @@ struct GuideControlsView: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: PerryTheme.Spacing.control) {
-                Button("Done") { onDone() }
-                    .keyboardShortcut(.defaultAction)
-                    .accessibilityHint("Tell Perry you finished this step")
+                if !state.hasPostcondition {
+                    Button("Done") { onDone() }
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityHint("Tell Perry you finished this step")
+                }
                 Button("Skip") { onSkip() }
                     .accessibilityHint("Skip this step")
                 Button("Re-point") { onRepoint() }

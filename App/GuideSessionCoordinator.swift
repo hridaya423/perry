@@ -1178,6 +1178,7 @@ final class GuideSessionCoordinator {
         guideControlsState.pendingChoices = []
         guideControlsState.stepPosition = guideStepPosition
         guideControlsState.targetLabel = nil
+        guideControlsState.hasPostcondition = step.postcondition != nil
         showGuideControls()
         _ = transitionSession { try sessionController.recordGuideStep(id: step.id, instruction: step.instruction, actionable: !step.target.isVerbal) }
         let guideID = scope.id
