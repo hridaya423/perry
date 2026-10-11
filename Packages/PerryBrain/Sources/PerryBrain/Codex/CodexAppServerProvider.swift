@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 
 public struct ToolCallResult: Sendable {
     public var content: [ModelContentPart]
@@ -530,10 +531,10 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
             switch part {
             case .text(let text):
                 return .object(["type": .string("inputText"), "text": .string(text)])
-            case .image(let data, let mimeType):
+            case .image(let data, _):
                 return .object([
                     "type": .string("inputImage"),
-                    "imageUrl": .string("data:\(mimeType);base64,\(data.base64EncodedString())"),
+                    "imageUrl": .string("data:image/png;base64,\(Self.pngWireData(data).base64EncodedString())"),
                 ])
             }
         }
@@ -574,9 +575,23 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
         }
     }
 
+    /// The app-server decodes every attached image as PNG regardless of the
+    /// declared type — the wire log proved it ("Unknown filter method 255" is
+    /// JPEG's 0xFF read as a PNG filter byte). Transcode once at the boundary
+    /// so JPEG captures survive both turn inputs and tool results.
+    static func pngWireData(_ data: Data) -> Data {
+        guard !data.starts(with: [0x89, 0x50, 0x4E, 0x47]),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return data }
+        let out = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil) else { return data }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination) ? out as Data : data
+    }
+
     private func writeImage(_ data: Data) throws -> URL {
-        let file = imageDirectory.appendingPathComponent(UUID().uuidString + ".img")
-        guard FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+        let file = imageDirectory.appendingPathComponent(UUID().uuidString + ".png")
+        guard FileManager.default.createFile(atPath: file.path, contents: Self.pngWireData(data), attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)
         }
         return file

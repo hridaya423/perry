@@ -579,6 +579,40 @@ final class CodexAppServerProviderTests: XCTestCase {
         XCTAssertTrue(allowedNotifications.contains("initialized"))
     }
 
+    func testPNGWireDataTranscodesJPEG() throws {
+        let jpeg = try makeImageData(type: "public.jpeg")
+        XCTAssertTrue(jpeg.starts(with: [0xFF, 0xD8]))
+        let converted = CodexAppServerProvider.pngWireData(jpeg)
+        XCTAssertTrue(converted.starts(with: [0x89, 0x50, 0x4E, 0x47]), "the app-server decodes every attachment as PNG")
+        XCTAssertTrue(CGImageSourceCreateImageAtIndex(
+            try XCTUnwrap(CGImageSourceCreateWithData(converted as CFData, nil)), 0, nil
+        ) != nil)
+    }
+
+    func testPNGWireDataPassesPNGThrough() throws {
+        let png = try makeImageData(type: "public.png")
+        XCTAssertEqual(CodexAppServerProvider.pngWireData(png), png)
+    }
+
+    private func makeImageData(type: String) throws -> Data {
+        var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            pixels[i] = 200; pixels[i + 1] = 120; pixels[i + 2] = 40; pixels[i + 3] = 255
+        }
+        let data = Data(pixels)
+        let image = try XCTUnwrap(CGImage(
+            width: 16, height: 16, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 64,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: try XCTUnwrap(CGDataProvider(data: data as CFData)),
+            decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        ))
+        let out = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(out, type as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return out as Data
+    }
+
     func testProviderSendsExperimentalCapabilities() async throws {
         let log = tempDir().appendingPathComponent("fake.jsonl")
         let process = try makeProcess(scenario: "b", log: log)

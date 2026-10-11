@@ -164,9 +164,12 @@ private enum HealthReportingStream {
                         if case .done = event { finished = true }
                         continuation.yield(event)
                     }
+                    // Cancelling the consumer ends the base iteration with
+                    // nil rather than an error — a user-cancelled turn is not
+                    // a provider health signal.
                     if finished {
                         await router.reportSuccess(providerID)
-                    } else {
+                    } else if !Task.isCancelled {
                         await router.reportFailure(providerID)
                     }
                     continuation.finish()

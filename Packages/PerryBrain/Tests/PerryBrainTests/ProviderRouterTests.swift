@@ -38,6 +38,17 @@ private final class ScriptableProvider: ModelProvider, @unchecked Sendable {
     func warm() async {}
 }
 
+private struct HangingProvider: ModelProvider {
+    let id: ProviderID
+    let displayName = "Hanging"
+    let capabilities: ModelCapabilities
+
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        AsyncThrowingStream { _ in }
+    }
+    func warm() async {}
+}
+
 private struct ScriptableToolProvider: ToolExecutingModelProvider {
     let id: ProviderID
     let displayName = "Scriptable tools"
@@ -169,6 +180,24 @@ final class ProviderRouterTests: XCTestCase {
         } catch {}
         decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
         XCTAssertEqual(decision.provider.id, .openAI, "a post-recovery single failure must not re-mark the provider down")
+    }
+
+    func testCancelledStreamDoesNotMarkProviderDown() async throws {
+        let router = router([
+            HangingProvider(id: .codex, capabilities: [.vision, .streaming]),
+        ])
+        let request = ModelRequest(messages: [.user([.text("hi")])], tier: .fast)
+
+        for _ in 0..<2 {
+            let decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+            let consumer = Task { for try await _ in decision.provider.stream(request) {} }
+            try await Task.sleep(for: .milliseconds(20))
+            consumer.cancel()
+            _ = await consumer.result
+        }
+
+        let decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
+        XCTAssertEqual(decision.provider.id, .codex, "cancelling a turn must not count against provider health")
     }
 
     func testHealthWrapKeepsToolExecutingConformance() async throws {
