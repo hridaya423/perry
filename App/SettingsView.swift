@@ -644,7 +644,7 @@ struct SettingsView: View {
                 Text("Connect services with device-owned OAuth. Register dev.perry.perry:/oauth/callback with each provider; Perry keeps access tokens and client secrets in Keychain, refreshes expiring grants, and keeps remote writes disabled until you enable them per service and approve each action.")
                     .settingNote()
                 ForEach(RemoteIntegrationDefinition.catalog) { definition in
-                    IntegrationRow(definition: definition, controller: controller)
+                    IntegrationRow(definition: definition, connections: controller.integrationConnections)
                     if definition.id != RemoteIntegrationDefinition.catalog.last?.id {
                         Divider()
                     }

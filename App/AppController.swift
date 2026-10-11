@@ -392,6 +392,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private let oauthCoordinator = OAuthCoordinator()
     private let remoteIntegrationPermissions = RemoteIntegrationPermissionStore()
     private lazy var integrationClient = RemoteIntegrationClient(permissionStore: remoteIntegrationPermissions)
+    lazy var integrationConnections = IntegrationConnections(
+        oauth: oauthCoordinator, client: integrationClient, permissions: remoteIntegrationPermissions
+    )
     private lazy var remoteIntegrationExecutor = RemoteIntegrationActionRuntime(
         client: integrationClient,
         permissionStore: remoteIntegrationPermissions
@@ -1739,69 +1742,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             defer { self.persistenceTasks[id] = nil }
             guard !Task.isCancelled, !self.erasureInProgress else { return }
             await operation()
-        }
-    }
-
-    func integrationIsConnected(_ definition: RemoteIntegrationDefinition) async throws -> Bool {
-        try await oauthCoordinator.hasCredential(for: definition)
-    }
-
-    func connectIntegration(
-        _ definition: RemoteIntegrationDefinition,
-        clientID: String,
-        clientSecret: String? = nil,
-        completion: @escaping (Result<Void, Error>) -> Void
-    ) {
-        oauthCoordinator.authorize(
-            definition: definition,
-            configuration: OAuthConfiguration(
-                clientID: clientID,
-                clientSecret: clientSecret,
-                scopes: definition.scopes
-            )
-        ) { result in
-            completion(result.map { _ in () })
-        }
-    }
-
-    func disconnectIntegration(_ definition: RemoteIntegrationDefinition) async throws {
-        try await oauthCoordinator.disconnect(definition)
-        remoteIntegrationPermissions.setWritesEnabled(false, for: definition)
-    }
-
-    func readIntegration(
-        _ definition: RemoteIntegrationDefinition,
-        path: String
-    ) async throws -> Data {
-        try await integrationClient.request(definition: definition, path: path)
-    }
-
-    func testIntegration(
-        _ definition: RemoteIntegrationDefinition,
-        completion: @escaping (Result<String, Error>) -> Void
-    ) {
-        Task { @MainActor in
-            do {
-                let summary = try await integrationClient.testConnection(definition: definition)
-                completion(.success(summary))
-            } catch {
-                completion(.failure(error))
-            }
-        }
-    }
-
-    func previewIntegration(
-        _ definition: RemoteIntegrationDefinition,
-        action: RemoteIntegrationQuickAction,
-        completion: @escaping (Result<String, Error>) -> Void
-    ) {
-        Task { @MainActor in
-            do {
-                let summary = try await integrationClient.preview(definition: definition, action: action)
-                completion(.success(summary))
-            } catch {
-                completion(.failure(error))
-            }
         }
     }
 
