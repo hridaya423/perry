@@ -692,9 +692,12 @@ final class TalkCompletionTests: XCTestCase {
                 .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
             }, run: { input, _ in
                 (input.threadID, AsyncStream { continuation in
-                    continuation.yield(.textDelta("Before ⟦ring e1 \"Save\"⟧. "))
+                    // The coordinator decodes inline markup once: clean text
+                    // deltas plus .draw commands (Phase 2 item 6).
+                    continuation.yield(.textDelta("Before Save. "))
+                    continuation.yield(.draw(DrawCommand(verb: .ring, elementID: "e1", label: "Save")))
                     continuation.yield(.toolCallStarted(ToolCall(id: "refresh", name: "screen.observe", arguments: .object([:]))))
-                    continuation.yield(.textDelta("After ⟦ring e1 \"Moved\"⟧. "))
+                    continuation.yield(.textDelta("After Moved. "))
                     continuation.yield(.finished(.completed))
                     continuation.finish()
                 }, nil)

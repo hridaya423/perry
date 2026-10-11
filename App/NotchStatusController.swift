@@ -10,7 +10,6 @@ import AppKit
 /// constraint pass until AppKit throws. A fixed NSStackView can't.
 @MainActor
 final class NotchStatusController {
-    static let enabledKey = "perry.notchStatus.enabled"
 
     private var window: NSPanel?
     private var stack: NSStackView?
@@ -28,8 +27,8 @@ final class NotchStatusController {
     private let reviewLabel = NSTextField(labelWithString: "")
 
     var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Self.enabledKey) }
+        get { PerryPreferences.notchStatusEnabled }
+        set { PerryPreferences.notchStatusEnabled = newValue }
     }
 
     func setEnabled(_ enabled: Bool) {

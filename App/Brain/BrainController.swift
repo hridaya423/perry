@@ -20,14 +20,13 @@ final class BrainController: ObservableObject {
         }
     }
 
-    static let modelChoiceKey = "perry.brain.modelChoice"
     @Published private var selectedModel: String
     var modelChoice: String {
         get { selectedModel }
         set {
             guard acceptsSetup else { return }
             selectedModel = newValue
-            defaults.set(newValue, forKey: Self.modelChoiceKey)
+            defaults.set(newValue, forKey: PerryPreferences.$modelChoice.key)
         }
     }
     @Published private(set) var isSigningIn = false
@@ -86,7 +85,7 @@ final class BrainController: ObservableObject {
         self.transport = transport
         self.defaults = defaults
         self.discoverLocalModels = discoverLocalModels
-        self.selectedModel = defaults.string(forKey: Self.modelChoiceKey) ?? ModelChoice.chatGPT.rawValue
+        self.selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
     }
 
     static func keychainAccount(for provider: DirectAIProvider) -> String {
@@ -158,7 +157,7 @@ final class BrainController: ObservableObject {
     }
 
     func reloadPreferences() {
-        selectedModel = defaults.string(forKey: Self.modelChoiceKey) ?? ModelChoice.chatGPT.rawValue
+        selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
     }
 
     /// True when an on-device provider can answer — Apple Foundation Models
@@ -177,7 +176,7 @@ final class BrainController: ObservableObject {
     /// needs no account. An explicit saved choice is never overridden.
     func preferOnDeviceModelIfUnchosen() {
         guard acceptsSetup,
-              defaults.string(forKey: Self.modelChoiceKey) == nil,
+              defaults.string(forKey: PerryPreferences.$modelChoice.key) == nil,
               onDeviceRouteAvailable else { return }
         modelChoice = ModelChoice.local.rawValue
     }
@@ -257,6 +256,28 @@ final class BrainController: ObservableObject {
         let decision = try await router(scope: choice).route(requirement)
         activeExplanation = decision.explanation
         return decision
+    }
+
+    /// Single fast text completion through whatever brain the user chose —
+    /// used for polish passes like routine naming.
+    func completeText(_ prompt: String) async throws -> String {
+        let decision = try await route(RouteRequirement(tier: .fast))
+        var text = ""
+        for try await event in decision.provider.stream(ModelRequest(
+            messages: [.user([.text(prompt)])],
+            tier: .fast
+        )) {
+            try Task.checkCancellation()
+            if case .textDelta(let delta) = event {
+                text += delta
+            }
+        }
+        try Task.checkCancellation()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw ModelProviderError(kind: .malformed, provider: decision.provider.id, message: "The model returned an empty response. Try again.")
+        }
+        return trimmed
     }
 
     func makeGuidePlanner(

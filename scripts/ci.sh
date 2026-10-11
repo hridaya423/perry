@@ -17,6 +17,12 @@ DERIVED="build/debug-p1"
 echo "== xcodegen =="
 "$XCODEGEN" generate --spec project.yml
 
+echo "== preferences guard =="
+if grep -rnE 'UserDefaults\.standard|AppStorage\("perry\.|forKey: *"perry\.' App --include='*.swift' | grep -v 'App/PerryPreferences.swift'; then
+    echo "ci: raw UserDefaults key outside App/PerryPreferences.swift" >&2
+    exit 1
+fi
+
 echo "== build (Debug arm64) =="
 xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
     -derivedDataPath "$DERIVED" -destination "$DESTINATION" 2>&1 | tail -3

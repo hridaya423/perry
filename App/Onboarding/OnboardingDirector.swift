@@ -37,8 +37,6 @@ final class OnboardingDirector: ObservableObject {
 
     private let effects: Effects
     private let defaults: UserDefaults?
-    private let checkpointKey = "perry.onboarding.beat"
-    private let practiceKey = "perry.onboarding.practice"
     private var permissionTimer: Timer?
     private var isRefreshingPermissions = false
 
@@ -49,12 +47,12 @@ final class OnboardingDirector: ObservableObject {
 
     func start(resume: Bool = true) {
         startedAt = effects.now()
-        let saved = resume ? defaults?.string(forKey: checkpointKey).flatMap(Beat.init(rawValue:)) : nil
-        let savedPractice = resume ? defaults?.string(forKey: practiceKey).flatMap(PracticeStep.init(rawValue:)) : nil
+        let saved = resume ? defaults?.string(forKey: PerryPreferences.$onboardingBeat.key).flatMap(Beat.init(rawValue:)) : nil
+        let savedPractice = resume ? defaults?.string(forKey: PerryPreferences.$onboardingPractice.key).flatMap(PracticeStep.init(rawValue:)) : nil
         enter(saved ?? .greet)
         if beat == .practice, let savedPractice {
             practiceStep = savedPractice
-            defaults?.set(savedPractice.rawValue, forKey: practiceKey)
+            defaults?.set(savedPractice.rawValue, forKey: PerryPreferences.$onboardingPractice.key)
         }
     }
 
@@ -96,7 +94,7 @@ final class OnboardingDirector: ObservableObject {
         guard beat == .practice, practiceStarted, let step = practiceStep else { return }
         if let next = PracticeStep.allCases.drop(while: { $0 != step }).dropFirst().first {
             practiceStep = next
-            defaults?.set(next.rawValue, forKey: practiceKey)
+            defaults?.set(next.rawValue, forKey: PerryPreferences.$onboardingPractice.key)
             effects.speak(Self.practiceScript(for: next))
         } else {
             advance()
@@ -135,8 +133,8 @@ final class OnboardingDirector: ObservableObject {
         let order = Beat.allCases
         guard let index = order.firstIndex(of: current), index + 1 < order.count else {
             stop()
-            defaults?.removeObject(forKey: checkpointKey)
-            defaults?.removeObject(forKey: practiceKey)
+            defaults?.removeObject(forKey: PerryPreferences.$onboardingBeat.key)
+            defaults?.removeObject(forKey: PerryPreferences.$onboardingPractice.key)
             effects.finish()
             return
         }
@@ -149,7 +147,7 @@ final class OnboardingDirector: ObservableObject {
         beat = next
         practiceStep = next == .practice ? .pointAsk : nil
         practiceStarted = false
-        defaults?.set(next.rawValue, forKey: checkpointKey)
+        defaults?.set(next.rawValue, forKey: PerryPreferences.$onboardingBeat.key)
         switch next {
         case .greet: effects.speak(Self.scriptGreet)
         case .brainChoice: effects.speak(Self.scriptBrain)
@@ -162,7 +160,7 @@ final class OnboardingDirector: ObservableObject {
             permissionTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 Task { @MainActor in await self?.refreshPermissions() }
             }
-        case .practice: defaults?.set(PracticeStep.pointAsk.rawValue, forKey: practiceKey)
+        case .practice: defaults?.set(PracticeStep.pointAsk.rawValue, forKey: PerryPreferences.$onboardingPractice.key)
         case .finale: effects.speak(Self.scriptFinale)
         }
     }

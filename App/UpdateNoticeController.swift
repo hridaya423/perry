@@ -59,8 +59,8 @@ final class UpdateNoticeController {
         hasStarted = true
 
         let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let previousVersion = defaults.string(forKey: "perry.lastSeenVersion")
-        defaults.set(currentVersion, forKey: "perry.lastSeenVersion")
+        let previousVersion = defaults.string(forKey: PerryPreferences.$lastSeenVersion.key)
+        defaults.set(currentVersion, forKey: PerryPreferences.$lastSeenVersion.key)
         guard let previousVersion, previousVersion != currentVersion else { return }
         DispatchQueue.main.async { [weak self] in
             self?.present()

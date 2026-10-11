@@ -560,6 +560,8 @@ final class ForegroundTaskController: ObservableObject {
                 }
             case .note(let note):
                 hooks.setStatus(note)
+            case .draw:
+                break
             case .finished(let finish):
                 terminal = finish
             }
@@ -1366,17 +1368,15 @@ final class ForegroundTaskController: ObservableObject {
 /// always per-task subdirectories inside this root, so existing containment
 /// checks and Undo bindings never see a path the user didn't authorize.
 enum WorkspaceScope {
-    static let defaultsKey = "perry.workspace.root"
-
     static var root: URL {
-        if let path = UserDefaults.standard.string(forKey: defaultsKey), !path.isEmpty {
+        if let path = PerryPreferences.workspaceRoot, !path.isEmpty {
             return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
         }
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("PerryDemo", isDirectory: true)
     }
 
     static func setRoot(_ url: URL) {
-        UserDefaults.standard.set(url.standardizedFileURL.path, forKey: defaultsKey)
+        PerryPreferences.workspaceRoot = url.standardizedFileURL.path
     }
 }
 

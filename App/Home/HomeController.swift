@@ -28,10 +28,8 @@ final class HomeController {
         _ = await inputSaveTask?.result
     }
 
-    static let homeFrameKey = "perry.home.frame"
-
     var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: NotchStatusController.enabledKey) as? Bool ?? true }
+        get { PerryPreferences.notchStatusEnabled }
     }
 
     private var intent = HomeHoverIntent()
@@ -438,7 +436,7 @@ final class HomeController {
         window.title = "Perry Home"
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: HomeView(model: homeModel))
-        if let saved = UserDefaults.standard.string(forKey: Self.homeFrameKey) {
+        if let saved = PerryPreferences.homeFrame {
             window.setFrame(from: saved)
         } else {
             window.center()
@@ -448,7 +446,7 @@ final class HomeController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.acceptsInput, let window = self.homeWindow else { return }
-                UserDefaults.standard.set(window.frameDescriptor, forKey: Self.homeFrameKey)
+                PerryPreferences.homeFrame = window.frameDescriptor
                 _ = self.intent.setHomeOpen(false)
             }
         }
@@ -748,12 +746,11 @@ final class HomeController {
             }
             let finish = await self.presentRun(threadID: threadID, text: text) { onPartial in
                 var answer = ""
-                var markup = InlineMarkupParser(validElementIDs: [])
                 var finish: AgentFinish = .interrupted
                 for await event in coordinator.run(threadID: threadID, goal: text, surface: .talk, runID: input.request.id, target: target, spatialContext: spatial, waitingInputID: input.request.id) {
                     switch event {
                     case .textDelta(let delta):
-                        answer += markup.feed(delta).text
+                        answer += delta
                         onPartial(answer)
                     case .finished(let outcome):
                         finish = outcome

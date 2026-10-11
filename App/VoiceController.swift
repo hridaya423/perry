@@ -23,17 +23,6 @@ final class VoiceController: NSObject, ObservableObject {
         var guideSpeechFinished: (GuideSpeechIdentity) -> Void = { _ in }
     }
 
-    static let speechOutputEnabledKey = "perry.speech.outputEnabled"
-    static let speechRateKey = "perry.speech.rate"
-    static let speechVoiceKey = "perry.speech.voiceIdentifier"
-    static let dictationLanguageKey = "perry.dictation.language"
-    static let dictationInputDeviceKey = "perry.dictation.inputDeviceID"
-    static let realtimeVoiceEndpointKey = "perry.realtimeVoice.endpoint"
-    static let realtimeVoiceModelKey = "perry.realtimeVoice.model"
-    static let realtimeVoiceVoiceKey = "perry.realtimeVoice.voice"
-    static let realtimeVoiceSpeedKey = "perry.realtimeVoice.speed"
-    static let realtimeVoiceInstructionsKey = "perry.realtimeVoice.instructions"
-    static let realtimeVoiceProtocolKey = "perry.realtimeVoice.protocol"
     static let realtimeVoiceKeychainAccount = "realtime.voice"
 
     private let overlayState: PerryCursorState
@@ -106,7 +95,7 @@ final class VoiceController: NSObject, ObservableObject {
     )
 
     private lazy var pushToTalk = PushToTalkController(
-        shortcut: PushToTalkShortcut(rawValue: UserDefaults.standard.string(forKey: "perry.ptt.shortcut") ?? "") ?? .optionCommandSpace,
+        shortcut: PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .optionCommandSpace,
         onPress: { [weak self] in self?.beginDictation() },
         onRelease: { [weak self] in self?.finishDictation() }
     )
@@ -123,8 +112,8 @@ final class VoiceController: NSObject, ObservableObject {
         },
         onFailure: { [weak self] reason in
             Task { @MainActor [weak self] in
-                guard let self, UserDefaults.standard.bool(forKey: "perry.wakeWord.enabled") else { return }
-                UserDefaults.standard.set(false, forKey: "perry.wakeWord.enabled")
+                guard let self, PerryPreferences.wakeWordEnabled else { return }
+                PerryPreferences.wakeWordEnabled = false
                 self.hooks.refreshStatusItem()
                 self.hooks.setStatus("Wake word is unavailable: \(reason). Use the hotkey instead.")
             }
@@ -132,7 +121,7 @@ final class VoiceController: NSObject, ObservableObject {
     )
 
     private var wakeWordGate: WakeWordGate {
-        WakeWordGate(enabled: UserDefaults.standard.bool(forKey: "perry.wakeWord.enabled"))
+        WakeWordGate(enabled: PerryPreferences.wakeWordEnabled)
     }
 
     init(
@@ -204,27 +193,25 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     static func currentSpeechPreferences(defaults: UserDefaults = .standard) -> SpeechPreferences {
-        let enabled = defaults.object(forKey: speechOutputEnabledKey) as? Bool ?? true
-        let rate = defaults.object(forKey: speechRateKey) as? Double ?? 1
+        let enabled = defaults.object(forKey: PerryPreferences.$speechOutputEnabled.key) as? Bool ?? true
+        let rate = defaults.object(forKey: PerryPreferences.$speechRate.key) as? Double ?? 1
         return SpeechPreferences(
             outputEnabled: enabled,
             rateMultiplier: rate,
-            voiceIdentifier: defaults.string(forKey: speechVoiceKey)
+            voiceIdentifier: defaults.string(forKey: PerryPreferences.$speechVoiceIdentifier.key)
         )
     }
 
     func currentDictationPreferences() throws -> DictationPreferences {
         let language: DictationLanguageMode
-        if let raw = UserDefaults.standard.string(forKey: Self.dictationLanguageKey), !raw.isEmpty, raw != "automatic" {
-            language = .fixed(identifier: raw)
+        let dictationLanguageRaw = PerryPreferences.dictationLanguage
+        if !dictationLanguageRaw.isEmpty, dictationLanguageRaw != "automatic" {
+            language = .fixed(identifier: dictationLanguageRaw)
         } else {
             language = .automatic
         }
         let dictionary = try VoiceDictionaryStore(supportDirectory: supportDirectory()).entries()
-        let inputDeviceID = UserDefaults.standard.object(forKey: Self.dictationInputDeviceKey).flatMap { value in
-            if let number = value as? NSNumber { return number.uint32Value }
-            return nil
-        }
+        let inputDeviceID = PerryPreferences.dictationInputDeviceID.map { UInt32(truncatingIfNeeded: $0) }
         return DictationPreferences(
             language: language,
             customWords: Array(dictionary.keys) + Array(dictionary.values),
@@ -236,12 +223,12 @@ final class VoiceController: NSObject, ObservableObject {
         _ preferences: SpeechPreferences,
         defaults: UserDefaults = .standard
     ) {
-        defaults.set(preferences.outputEnabled, forKey: speechOutputEnabledKey)
-        defaults.set(preferences.rateMultiplier, forKey: speechRateKey)
+        defaults.set(preferences.outputEnabled, forKey: PerryPreferences.$speechOutputEnabled.key)
+        defaults.set(preferences.rateMultiplier, forKey: PerryPreferences.$speechRate.key)
         if let voiceIdentifier = preferences.voiceIdentifier {
-            defaults.set(voiceIdentifier, forKey: speechVoiceKey)
+            defaults.set(voiceIdentifier, forKey: PerryPreferences.$speechVoiceIdentifier.key)
         } else {
-            defaults.removeObject(forKey: speechVoiceKey)
+            defaults.removeObject(forKey: PerryPreferences.$speechVoiceIdentifier.key)
         }
     }
 
@@ -252,15 +239,11 @@ final class VoiceController: NSObject, ObservableObject {
     func updateDictationPreferences(_ preferences: DictationPreferences) {
         switch preferences.language {
         case .automatic:
-            UserDefaults.standard.set("automatic", forKey: Self.dictationLanguageKey)
+            PerryPreferences.dictationLanguage = "automatic"
         case .fixed(let identifier):
-            UserDefaults.standard.set(identifier, forKey: Self.dictationLanguageKey)
+            PerryPreferences.dictationLanguage = identifier
         }
-        if let inputDeviceID = preferences.inputDeviceID {
-            UserDefaults.standard.set(Int(inputDeviceID), forKey: Self.dictationInputDeviceKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: Self.dictationInputDeviceKey)
-        }
+        PerryPreferences.dictationInputDeviceID = preferences.inputDeviceID.map { Int($0) }
         dictation.configure(preferences)
     }
 
@@ -286,20 +269,18 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     static func currentRealtimeVoiceConfiguration() -> RealtimeVoiceConfiguration? {
-        guard let rawURL = UserDefaults.standard.string(forKey: realtimeVoiceEndpointKey),
+        guard let rawURL = PerryPreferences.realtimeVoiceEndpoint,
               let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               ["wss", "ws"].contains(scheme),
               url.host != nil else { return nil }
-        let configuredModel = UserDefaults.standard.string(forKey: realtimeVoiceModelKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let configuredModel = PerryPreferences.realtimeVoiceModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let model = configuredModel.isEmpty && url.host?.contains("api.openai.com") == true ? "gpt-realtime" : configuredModel
         guard !model.isEmpty else { return nil }
-        let protocolMode = UserDefaults.standard.string(forKey: realtimeVoiceProtocolKey)
-            .flatMap(RealtimeVoiceProtocolMode.init(rawValue:)) ?? .automatic
-        let responseSpeed = UserDefaults.standard.object(forKey: realtimeVoiceSpeedKey) as? Double ?? 1
-        let voice = UserDefaults.standard.string(forKey: realtimeVoiceVoiceKey) ?? "marin"
-        let instructions = UserDefaults.standard.string(forKey: realtimeVoiceInstructionsKey)
-            ?? "You are Perry, a concise and helpful desktop voice assistant. Speak naturally and keep replies short unless the user asks for detail."
+        let protocolMode = RealtimeVoiceProtocolMode(rawValue: PerryPreferences.realtimeVoiceProtocol) ?? .automatic
+        let responseSpeed = PerryPreferences.realtimeVoiceSpeed
+        let voice = PerryPreferences.realtimeVoiceVoice
+        let instructions = PerryPreferences.realtimeVoiceInstructions
         return RealtimeVoiceConfiguration(
             endpoint: url,
             model: model,
@@ -925,12 +906,12 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     func updateWakeWordEnabled(_ enabled: Bool) {
-        UserDefaults.standard.set(enabled, forKey: "perry.wakeWord.enabled")
+        PerryPreferences.wakeWordEnabled = enabled
         hooks.refreshStatusItem()
         if enabled {
             Task { @MainActor in
                 guard await DictationController.requestPermission() else {
-                    UserDefaults.standard.set(false, forKey: "perry.wakeWord.enabled")
+                    PerryPreferences.wakeWordEnabled = false
                     self.hooks.refreshStatusItem()
                     self.hooks.setStatus("Wake word needs microphone and speech permission; the hotkey still works.")
                     return
@@ -943,7 +924,7 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     func refreshWakeWordListener() {
-        guard UserDefaults.standard.bool(forKey: "perry.wakeWord.enabled"), hooks.sessionIsIdle() else {
+        guard PerryPreferences.wakeWordEnabled, hooks.sessionIsIdle() else {
             wakeWordListener.stop()
             return
         }
@@ -953,7 +934,7 @@ final class VoiceController: NSObject, ObservableObject {
         }
         guard PerryPermissionProbe.checkMicrophone() == .granted,
               SFSpeechRecognizer.authorizationStatus() == .authorized else {
-            UserDefaults.standard.set(false, forKey: "perry.wakeWord.enabled")
+            PerryPreferences.wakeWordEnabled = false
             hooks.refreshStatusItem()
             hooks.setStatus("Wake word is off because microphone or speech permission is unavailable.")
             return

@@ -199,6 +199,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
     let workers = CuaWorkerService()
+    private var manifestRefresher: CuaCapabilityManifest.Refresher?
     private lazy var spatialMonitor = SpatialInputMonitor(
         onPointsChanged: { [weak self] points in self?.handleSpatialPoints(points) },
         onSelection: { [weak self] selection in self?.handleSpatialSelection(selection) },
@@ -591,8 +592,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             self?.updateHomePeek(isRecording: recording)
         },
         providerCompleter: { [weak self] in
-            guard let client = self?.runtimes.makeProviderClient() else { return nil }
-            return { prompt in try await client.complete(prompt: prompt) }
+            guard let brain = self?.brain else { return nil }
+            return { prompt in try await brain.completeText(prompt) }
         }
     )
     private lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: storageDirectory)
@@ -900,8 +901,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
 
 
-    private static let onboardingCompletedKey = "perry.onboarding.completed"
-
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         homeController.openHome()
         return false
@@ -947,6 +946,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installHotkey()
         voice.startInputListeners()
         modifierHoldMonitor.start()
+        if let supportDirectory = AppController.supportDirectory {
+            let refresher = CuaCapabilityManifest.Refresher(
+                directory: supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true),
+                hostBundleID: Bundle.main.bundleIdentifier ?? "dev.perry.Perry"
+            )
+            refresher.start()
+            manifestRefresher = refresher
+        }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
             installTalkDrillTrigger()
@@ -1184,7 +1191,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: Wake / dismiss
 
     private func installHotkey() {
-        let shortcut = WakeShortcut(rawValue: UserDefaults.standard.string(forKey: "perry.wakeShortcut") ?? "") ?? .optionCommandP
+        let shortcut = WakeShortcut(rawValue: PerryPreferences.wakeShortcut) ?? .optionCommandP
         do {
             hotkey = try HotkeyController(modifiers: shortcut.modifiers, keyCode: shortcut.keyCode) { [weak self] in
                 Task { @MainActor in self?.toggleSession() }
@@ -1279,7 +1286,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func refreshStatusItemIndicator() {
-        let ambientWakeEnabled = UserDefaults.standard.bool(forKey: "perry.wakeWord.enabled")
+        let ambientWakeEnabled = PerryPreferences.wakeWordEnabled
         let symbolName = ambientWakeEnabled ? "waveform.circle.fill" : "scope"
         let description = ambientWakeEnabled ? "Perry is listening for hey Perry" : "Perry"
         let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)
@@ -1627,7 +1634,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func openSettings(tab: SettingsTab) {
-        UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.userDefaultsKey)
+        PerryPreferences.settingsTab = tab.rawValue
         settingsAction()
     }
 
@@ -2335,7 +2342,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: Onboarding
 
     private func runOnboardingIfNeeded() {
-        if !UserDefaults.standard.bool(forKey: Self.onboardingCompletedKey) {
+        if !PerryPreferences.onboardingCompleted {
             runOnboarding(force: false)
         }
     }
@@ -2402,7 +2409,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         practiceWindow.close()
         overlayState.taskBubbleText = nil
         talkSession.onTurnCompleted = nil
-        UserDefaults.standard.set(true, forKey: Self.onboardingCompletedKey)
+        PerryPreferences.onboardingCompleted = true
         onboardingDirector = nil
         homeController.homeModel.onboarding = nil
     }
@@ -2504,7 +2511,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 Task { @MainActor in self?.toggleSession() }
             }
         }
-        UserDefaults.standard.set(shortcut.rawValue, forKey: "perry.wakeShortcut")
+        PerryPreferences.wakeShortcut = shortcut.rawValue
         sessionStatus = "Wake shortcut changed to \(shortcut.title)."
     }
 

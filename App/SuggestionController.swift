@@ -10,7 +10,6 @@ import PerryBrain
 /// tomorrow's bar. Quiet when Focus is on or the screen is being shared.
 @MainActor
 final class SuggestionController {
-    static let enabledKey = "perry.suggestions.enabled"
     private let coordinator: AgentCoordinator
     private let backend: any IntegrationBackend
     /// A foreground Do run owns the user's attention — generation waits.
@@ -25,9 +24,6 @@ final class SuggestionController {
     private(set) var cards: [SuggestionCard] = []
 
     private let defaults: UserDefaults
-    private var lastRunDayKey: String { "perry.suggestions.lastRunDay" }
-    private var ignoredDaysKey: String { "perry.suggestions.ignoredDays" }
-    private var pendingCardsKey: String { "perry.suggestions.pending" }
 
     init(
         coordinator: AgentCoordinator,
@@ -48,7 +44,7 @@ final class SuggestionController {
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.defaults.bool(forKey: Self.enabledKey) else { return }
+                guard let self, !self.defaults.bool(forKey: PerryPreferences.$suggestionsEnabled.key) else { return }
                 self.coordinator.stop(threadID: self.threadID)
             }
         }
@@ -86,7 +82,7 @@ final class SuggestionController {
     func act(on card: SuggestionCard, perform: (SuggestionCard) -> Void) {
         cards.removeAll { $0.id == card.id }
         persistPending()
-        defaults.set(0, forKey: ignoredDaysKey)
+        defaults.set(0, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         publish()
         perform(card)
     }
@@ -107,30 +103,31 @@ final class SuggestionController {
     // MARK: - Generation
 
     private func maybeGenerate(at now: Date) async {
-        guard !Task.isCancelled, defaults.bool(forKey: Self.enabledKey) else { return }
+        guard !Task.isCancelled, defaults.bool(forKey: PerryPreferences.$suggestionsEnabled.key) else { return }
         let cal = Calendar.current
         guard cal.component(.hour, from: now) >= 6 else { return }
         let day = cal.startOfDay(for: now).timeIntervalSince1970
-        guard defaults.double(forKey: lastRunDayKey) != day else { return }
+        guard defaults.double(forKey: PerryPreferences.$suggestionsLastRunDay.key) != day else { return }
         guard !quietNow(), !isBusy() else { return }
-        defaults.set(day, forKey: lastRunDayKey)
+        defaults.set(day, forKey: PerryPreferences.$suggestionsLastRunDay.key)
 
         let connected = (try? await backend.services().filter { $0.connected }) ?? []
         guard !Task.isCancelled, !connected.isEmpty else { return }
 
         // Un-acted cards from the last run count as ignored → higher bar.
         if !cards.isEmpty {
-            defaults.set(defaults.integer(forKey: ignoredDaysKey) + 1, forKey: ignoredDaysKey)
+            let ignoredDays = defaults.integer(forKey: PerryPreferences.$suggestionsIgnoredDays.key)
+            defaults.set(ignoredDays + 1, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         }
 
         var fresh: [SuggestionCard] = []
         for service in connected {
-            guard !Task.isCancelled, defaults.bool(forKey: Self.enabledKey) else { return }
+            guard !Task.isCancelled, defaults.bool(forKey: PerryPreferences.$suggestionsEnabled.key) else { return }
             fresh += await research(service)
         }
         guard !Task.isCancelled else { return }
         let minScore = SuggestionRules.effectiveMinScore(
-            base: 0.3, ignoredDays: defaults.integer(forKey: ignoredDaysKey)
+            base: 0.3, ignoredDays: defaults.integer(forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         )
         cards = SuggestionRules.rank(fresh, minScore: minScore)
         persistPending()
@@ -199,11 +196,11 @@ final class SuggestionController {
 
     private func persistPending() {
         let data = try? JSONEncoder().encode(cards)
-        defaults.set(data, forKey: pendingCardsKey)
+        defaults.set(data, forKey: PerryPreferences.$suggestionsPending.key)
     }
 
     func reloadCards() {
-        cards = defaults.data(forKey: pendingCardsKey).flatMap { try? JSONDecoder().decode([SuggestionCard].self, from: $0) } ?? []
+        cards = defaults.data(forKey: PerryPreferences.$suggestionsPending.key).flatMap { try? JSONDecoder().decode([SuggestionCard].self, from: $0) } ?? []
         publish()
     }
 

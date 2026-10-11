@@ -137,7 +137,7 @@ final class SuggestionControllerTests: XCTestCase {
         [{"title": "Replied late to Nadia", "body": "Her email sat 3 days — draft a reply.", "score": 0.8}]
         """)
         let controller = makeController(provider: provider)
-        defaults.set(true, forKey: SuggestionController.enabledKey)
+        defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
         var published: [[SuggestionCard]] = []
         controller.onSuggestionsChanged = { published.append($0) }
 
@@ -165,7 +165,7 @@ final class SuggestionControllerTests: XCTestCase {
     func testSameDaySecondRunDoesNotRegenerate() async throws {
         let provider = PhaseNineProvider()
         let controller = makeController(provider: provider)
-        defaults.set(true, forKey: SuggestionController.enabledKey)
+        defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
         controller.start(at: nineAM)
         defer { controller.stop() }
         await controller.joinAll()
@@ -188,7 +188,7 @@ final class SuggestionControllerTests: XCTestCase {
         // Before 6am.
         provider = PhaseNineProvider()
         controller = makeController(provider: provider)
-        defaults.set(true, forKey: SuggestionController.enabledKey)
+        defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
         let threeAM = Calendar.current.date(bySettingHour: 3, minute: 0, second: 0, of: Date()) ?? Date()
         controller.start(at: threeAM)
         await controller.joinAll()
@@ -206,8 +206,8 @@ final class SuggestionControllerTests: XCTestCase {
 
     func testIgnoreStreakRaisesTheScoreBar() async throws {
         // Two ignored days → minScore = 0.3 + 0.15*2 = 0.6; a 0.5 card drops.
-        defaults.set(true, forKey: SuggestionController.enabledKey)
-        defaults.set(2, forKey: "perry.suggestions.ignoredDays")
+        defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
+        defaults.set(2, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         let provider = PhaseNineProvider(text: """
         [{"title": "Weak", "body": "below the bar", "score": 0.5},
          {"title": "Strong", "body": "above the bar", "score": 0.9}]
@@ -222,13 +222,13 @@ final class SuggestionControllerTests: XCTestCase {
 
     func testActClearsPendingAndResetsIgnoreStreak() {
         let controller = makeController(provider: PhaseNineProvider(), services: [])
-        defaults.set(3, forKey: "perry.suggestions.ignoredDays")
+        defaults.set(3, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         let card = SuggestionCard(title: "t", body: "b", score: 0.9)
         controller.dismiss(card) // sanity: dismissing unknown id is a no-op
         var acted: SuggestionCard?
         controller.act(on: card) { acted = $0 }
         XCTAssertEqual(acted, card)
-        XCTAssertEqual(defaults.integer(forKey: "perry.suggestions.ignoredDays"), 0)
+        XCTAssertEqual(defaults.integer(forKey: PerryPreferences.$suggestionsIgnoredDays.key), 0)
     }
 
     func testParseCardsFiltersMalformedRows() {

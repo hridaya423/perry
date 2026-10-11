@@ -331,7 +331,6 @@ final class TalkSession {
     }
 
     private func stream(events: AsyncStream<AgentLoopEvent>, observation: GuideObservation) async throws {
-        var parser = InlineMarkupParser(validElementIDs: index.validIDs)
         var chunker = SentenceChunker()
         var completed = false
         answerText = ""
@@ -342,21 +341,17 @@ final class TalkSession {
             try Task.checkCancellation()
             switch event {
             case .textDelta(let delta):
-                let result = parser.feed(delta)
-                if !result.text.isEmpty {
-                    answerText += result.text
-                    sessionController.updateTalk { $0.answerText = self.answerText }
-                    if !firstTextMarked {
-                        firstTextMarked = true
-                        PerfMark.mark("answer.first_text")
-                    }
-                    for sentence in chunker.feed(result.text) {
-                        speak(sentence)
-                    }
+                answerText += delta
+                sessionController.updateTalk { $0.answerText = self.answerText }
+                if !firstTextMarked {
+                    firstTextMarked = true
+                    PerfMark.mark("answer.first_text")
                 }
-                for command in result.commands {
-                    draw(command, observation: observation)
+                for sentence in chunker.feed(delta) {
+                    speak(sentence)
                 }
+            case .draw(let command):
+                draw(command, observation: observation)
             case .finished(.completed):
                 completed = true
             case .finished(.interrupted), .finished(.paused):
@@ -366,7 +361,6 @@ final class TalkSession {
             case .toolCallStarted(let call):
                 if ToolGate.observeTools.contains(call.name) {
                     index = ElementIndex(elements: [])
-                    parser = InlineMarkupParser(validElementIDs: [])
                     overlayState.visualGuidanceOverlays.removeAll { markOverlayIDs.contains($0.id) }
                     markOverlayIDs.removeAll()
                     stopReanchor()
@@ -378,17 +372,6 @@ final class TalkSession {
         try Task.checkCancellation()
         guard completed else {
             throw ResponseError(message: "The spoken answer ended unexpectedly. Your question and partial answer are still shown.")
-        }
-        let tail = parser.finish()
-        if !tail.text.isEmpty {
-            answerText += tail.text
-            sessionController.updateTalk { $0.answerText = self.answerText }
-            for sentence in chunker.feed(tail.text) {
-                speak(sentence)
-            }
-        }
-        for command in tail.commands {
-            draw(command, observation: observation)
         }
         if let remainder = chunker.finish() {
             speak(remainder)

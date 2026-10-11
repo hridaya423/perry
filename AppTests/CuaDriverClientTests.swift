@@ -611,7 +611,7 @@ final class CuaDriverClientTests: XCTestCase {
         let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: "perry.cua.driver.path")
+        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
 
         let configuration = CuaDriverConfiguration.discover(
             environment: ["PATH": testDirectory.path],
@@ -717,7 +717,7 @@ final class CuaDriverClientTests: XCTestCase {
 
         for registered in [false, true] {
             if registered {
-                defaults.set(driverURL.path, forKey: "perry.cua.driver.path")
+                defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
             }
             let configuration = CuaDriverConfiguration.discover(
                 bundle: bundle,
@@ -734,7 +734,7 @@ final class CuaDriverClientTests: XCTestCase {
         let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: "perry.cua.driver.path")
+        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
         let expectedURL = driverURL.resolvingSymlinksInPath().standardizedFileURL
 
         let configuration = CuaDriverConfiguration.discover(
@@ -755,7 +755,7 @@ final class CuaDriverClientTests: XCTestCase {
         let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: "perry.cua.driver.path")
+        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
         var codeIdentityReaderCalled = false
 
         let configuration = CuaDriverConfiguration.discover(

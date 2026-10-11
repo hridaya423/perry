@@ -389,8 +389,8 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
 
         let suiteName = "PerryCompleteErasureTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defaults.set(true, forKey: "perry.remote.writes.slack")
-        defaults.set("state", forKey: "perry.oauth.slack.state")
+        defaults.set(true, forKey: PerryPreferences.remoteWritesKey(for: "slack"))
+        defaults.set("state", forKey: PerryPreferences.oauthStateKeyPrefix + "slack.state")
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let keychainService = "dev.perry.tests.complete-erasure.\(UUID().uuidString)"
@@ -426,7 +426,7 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
         XCTAssertTrue(report.failures.isEmpty)
         XCTAssertTrue(report.postEraseInventory.items.isEmpty)
         XCTAssertNil(try keychain.readChecked(account: keychainTarget.account))
-        XCTAssertFalse(defaults.dictionaryRepresentation().keys.contains { $0.hasPrefix("perry.") })
+        XCTAssertFalse(defaults.dictionaryRepresentation().keys.contains { $0.hasPrefix(PerryPreferences.allKeysPrefix) })
         XCTAssertFalse(FileManager.default.fileExists(atPath: paths.taskWorkspaceDirectory.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: telemetryDirectory.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: supportDirectory.appendingPathComponent("CodexRuntime").path))

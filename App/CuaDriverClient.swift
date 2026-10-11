@@ -16,7 +16,6 @@ struct CuaDriverConfiguration: Sendable {
     var capabilityManifestURL: URL
     let hostBundleID: String
 
-    static let driverPathKey = "perry.cua.driver.path"
     private static let driverRequirement = "identifier \"cua-driver\" and anchor apple generic and certificate leaf[subject.OU] = \"YCK386LBJ7\""
     private static let developerIDRequirement = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
 
@@ -28,7 +27,7 @@ struct CuaDriverConfiguration: Sendable {
         identityVerifier: (URL) -> Bool = { verifyIdentity(at: $0) },
         codeIdentityReader: (URL) -> CuaCodeIdentity? = { readDeveloperIDIdentity(at: $0) }
     ) -> CuaDriverConfiguration? {
-        let registeredURL = userDefaults.string(forKey: Self.driverPathKey).flatMap { value -> URL? in
+        let registeredURL = userDefaults.string(forKey: PerryPreferences.$cuaDriverPath.key).flatMap { value -> URL? in
             let path = value.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !path.isEmpty, path.hasPrefix("/") else { return nil }
             return URL(fileURLWithPath: path)

@@ -1,3 +1,6 @@
+# Fallback manifest only — CuaCapabilityManifest generates the live ceiling
+# per spawn (and refreshes on new-app launch); this file exists so discovery
+# still succeeds if generation fails. Keep it minimal.
 version: 3
 expires_after: 8h
 idle_timeout: 30m

@@ -25,7 +25,7 @@ final class AgentCoordinatorTests: XCTestCase {
         let suite = "perry-suggestion-maintenance-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set(true, forKey: SuggestionController.enabledKey)
+        defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
         let entered = expectation(description: "Integration discovery entered")
         let backend = SuspendedSuggestionBackend(entered: entered)
         let coordinator = AgentCoordinator(provider: { _ in
@@ -45,7 +45,7 @@ final class AgentCoordinatorTests: XCTestCase {
         await join.value
         XCTAssertTrue(joined)
         XCTAssertTrue(suggestions.cards.isEmpty)
-        XCTAssertNil(defaults.data(forKey: "perry.suggestions.pending"))
+        XCTAssertNil(defaults.data(forKey: PerryPreferences.$suggestionsPending.key))
         defaults.removePersistentDomain(forName: suite)
         suggestions.reloadCards()
         XCTAssertTrue(suggestions.cards.isEmpty)

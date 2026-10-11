@@ -9,9 +9,6 @@ import PerryRuntimes
 /// Session-state checks and status text stay outside — callers pass them in.
 @MainActor
 final class RuntimeCatalog: ObservableObject {
-    static let byokVisionProviderKey = "perry.byok.vision.provider"
-    static let byokVisionEndpointKey = "perry.byok.vision.endpoint"
-    static let byokVisionModelKey = "perry.byok.vision.model"
     static let byokVisionKeychainAccount = "byok.vision"
 
     @Published private(set) var choices = [RuntimeChoice(id: RuntimeChoice.automaticID, name: "Automatic")]
@@ -235,24 +232,13 @@ final class RuntimeCatalog: ObservableObject {
     }
 
     static func currentBYOKVisionEndpoint() -> BYOKAgentEndpoint? {
-        guard let rawURL = UserDefaults.standard.string(forKey: byokVisionEndpointKey),
+        guard let rawURL = PerryPreferences.byokVisionEndpoint,
               let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               ["https", "http"].contains(scheme),
               url.host != nil,
-              let model = UserDefaults.standard.string(forKey: byokVisionModelKey),
+              let model = PerryPreferences.byokVisionModel,
               !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return BYOKAgentEndpoint(baseURL: url, model: model.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    func makeProviderClient() -> DirectProviderClient? {
-        guard let endpoint = Self.currentBYOKVisionEndpoint(),
-              let key = try? KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
-              !key.isEmpty else { return nil }
-        let provider = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) ?? .openAI
-        return DirectProviderClient(
-            configuration: DirectProviderConfiguration(provider: provider, model: endpoint.model, baseURL: endpoint.baseURL),
-            apiKeyProvider: { key }
-        )
     }
 }

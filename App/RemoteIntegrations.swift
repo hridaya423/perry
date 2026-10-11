@@ -884,7 +884,7 @@ struct RemoteIntegrationPermissionStore: Sendable {
     }
 
     private func key(for definition: RemoteIntegrationDefinition) -> String {
-        "perry.remote.writes.\(definition.id)"
+        PerryPreferences.remoteWritesKey(for: definition.id)
     }
 }
 

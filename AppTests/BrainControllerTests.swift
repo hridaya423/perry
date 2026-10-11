@@ -20,13 +20,13 @@ final class BrainControllerTests: XCTestCase {
         brain.modelChoice = BrainController.ModelChoice.local.rawValue
         brain.closeAdmission()
         brain.modelChoice = BrainController.ModelChoice.direct.rawValue
-        XCTAssertEqual(defaults.string(forKey: BrainController.modelChoiceKey), BrainController.ModelChoice.local.rawValue)
+        XCTAssertEqual(defaults.string(forKey: PerryPreferences.$modelChoice.key), BrainController.ModelChoice.local.rawValue)
         await brain.stopSetup()
-        defaults.removeObject(forKey: BrainController.modelChoiceKey)
+        defaults.removeObject(forKey: PerryPreferences.$modelChoice.key)
         brain.reloadPreferences()
         brain.reopenAdmission()
         XCTAssertEqual(brain.modelChoice, BrainController.ModelChoice.chatGPT.rawValue)
-        XCTAssertNil(defaults.object(forKey: BrainController.modelChoiceKey))
+        XCTAssertNil(defaults.object(forKey: PerryPreferences.$modelChoice.key))
     }
 
     func testMaintenanceRejectsRoutesAndDropsDiscoveryFromBeforeReset() async throws {
@@ -311,7 +311,7 @@ final class BrainControllerTests: XCTestCase {
         }
         let restored = BrainController(defaults: defaults)
         XCTAssertEqual(restored.modelChoice, BrainController.ModelChoice.local.rawValue)
-        defaults.set("unknown-choice", forKey: BrainController.modelChoiceKey)
+        defaults.set("unknown-choice", forKey: PerryPreferences.$modelChoice.key)
         let unreadableChoice = BrainController(defaults: defaults)
         do {
             _ = try await unreadableChoice.route(RouteRequirement())

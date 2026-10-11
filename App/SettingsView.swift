@@ -15,33 +15,31 @@ enum SettingsTab: String, CaseIterable {
     case memory
     case appearance
     case safety
-
-    static let userDefaultsKey = "perry.settings.tab"
 }
 
 struct SettingsView: View {
     let controller: AppController
-    @AppStorage(SettingsTab.userDefaultsKey) private var selectedTab = SettingsTab.general.rawValue
+    @AppStorage(PerryPreferences.$settingsTab.key) private var selectedTab = SettingsTab.general.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("perry.wakeWord.enabled") private var wakeWordEnabled = false
-    @AppStorage("perry.wakeShortcut") private var wakeShortcutRaw = WakeShortcut.optionCommandP.rawValue
-    @AppStorage("perry.ptt.shortcut") private var pttShortcutRaw = PushToTalkShortcut.optionCommandSpace.rawValue
-    @AppStorage(VoiceController.speechOutputEnabledKey) private var speechOutputEnabled = true
-    @AppStorage(VoiceController.speechRateKey) private var speechRate = 1.0
-    @AppStorage(VoiceController.speechVoiceKey) private var speechVoiceIdentifier = ""
-    @AppStorage(VoiceController.dictationLanguageKey) private var dictationLanguageRaw = "automatic"
-    @AppStorage(VoiceController.dictationInputDeviceKey) private var dictationInputDeviceRaw = 0
-    @AppStorage(RuntimeCatalog.byokVisionProviderKey) private var byokVisionProviderRaw = RuntimeProviderSetupChoice.openAI.rawValue
-    @AppStorage(RuntimeCatalog.byokVisionEndpointKey) private var byokVisionEndpoint = ""
-    @AppStorage(RuntimeCatalog.byokVisionModelKey) private var byokVisionModel = ""
-    @AppStorage(CuaDriverConfiguration.driverPathKey) private var cuaDriverPath = ""
-    @AppStorage(VoiceController.realtimeVoiceEndpointKey) private var realtimeVoiceEndpoint = ""
-    @AppStorage(VoiceController.realtimeVoiceModelKey) private var realtimeVoiceModel = ""
-    @AppStorage(VoiceController.realtimeVoiceVoiceKey) private var realtimeVoiceVoice = "marin"
-    @AppStorage(VoiceController.realtimeVoiceSpeedKey) private var realtimeVoiceSpeed = 1.0
-    @AppStorage(VoiceController.realtimeVoiceInstructionsKey) private var realtimeVoiceInstructions = "You are Perry, a concise and helpful desktop voice assistant. Speak naturally and keep replies short unless the user asks for detail."
-    @AppStorage(VoiceController.realtimeVoiceProtocolKey) private var realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
-    @AppStorage(PerryBundleConfig.userVoiceResponseCaptionOpacityDefaultsKey) private var captionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
+    @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
+    @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcutRaw = WakeShortcut.optionCommandP.rawValue
+    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcutRaw = PushToTalkShortcut.optionCommandSpace.rawValue
+    @AppStorage(PerryPreferences.$speechOutputEnabled.key) private var speechOutputEnabled = true
+    @AppStorage(PerryPreferences.$speechRate.key) private var speechRate = 1.0
+    @AppStorage(PerryPreferences.$speechVoiceIdentifier.key) private var speechVoiceIdentifier = ""
+    @AppStorage(PerryPreferences.$dictationLanguage.key) private var dictationLanguageRaw = "automatic"
+    @AppStorage(PerryPreferences.$dictationInputDeviceID.key) private var dictationInputDeviceRaw = 0
+    @AppStorage(PerryPreferences.$byokVisionProvider.key) private var byokVisionProviderRaw = RuntimeProviderSetupChoice.openAI.rawValue
+    @AppStorage(PerryPreferences.$byokVisionEndpoint.key) private var byokVisionEndpoint = ""
+    @AppStorage(PerryPreferences.$byokVisionModel.key) private var byokVisionModel = ""
+    @AppStorage(PerryPreferences.$cuaDriverPath.key) private var cuaDriverPath = ""
+    @AppStorage(PerryPreferences.$realtimeVoiceEndpoint.key) private var realtimeVoiceEndpoint = ""
+    @AppStorage(PerryPreferences.$realtimeVoiceModel.key) private var realtimeVoiceModel = ""
+    @AppStorage(PerryPreferences.$realtimeVoiceVoice.key) private var realtimeVoiceVoice = "marin"
+    @AppStorage(PerryPreferences.$realtimeVoiceSpeed.key) private var realtimeVoiceSpeed = 1.0
+    @AppStorage(PerryPreferences.$realtimeVoiceInstructions.key) private var realtimeVoiceInstructions = PerryPreferences.$realtimeVoiceInstructions.fallback
+    @AppStorage(PerryPreferences.$realtimeVoiceProtocol.key) private var realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
+    @AppStorage(PerryPreferences.$voiceResponseCaptionOpacity.key) private var captionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
     @State private var memoryEnabled = false
     @State private var memoryCategoryToggles: [MemoryRecord.Category: Bool] = MemoryRecord.Category.allCases.reduce(into: [:]) { result, category in
         result[category] = true
@@ -139,8 +137,7 @@ struct SettingsView: View {
                     do {
                         try controller.updateWakeShortcut(shortcut)
                     } catch {
-                        wakeShortcutRaw = UserDefaults.standard.string(forKey: "perry.wakeShortcut")
-                            ?? WakeShortcut.optionCommandP.rawValue
+                        wakeShortcutRaw = PerryPreferences.wakeShortcut
                         settingsError = error.localizedDescription
                     }
                 }

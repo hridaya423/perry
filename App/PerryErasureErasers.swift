@@ -477,7 +477,7 @@ enum PerryLiveErasureErasers {
         let defaultsEraser = PerryDefaultsEraser(
             category: .approvals,
             defaults: defaults,
-            prefixes: ["perry.remote.writes."]
+            prefixes: [PerryPreferences.remoteWritesKeyPrefix]
         )
         let files = PerryFileEraser(
             category: .approvals,
@@ -495,8 +495,8 @@ enum PerryLiveErasureErasers {
         let defaultsEraser = PerryDefaultsEraser(
             category: .preferences,
             defaults: defaults,
-            prefixes: ["perry."],
-            excludingPrefixes: ["perry.remote.writes.", "perry.oauth."]
+            prefixes: [PerryPreferences.allKeysPrefix],
+            excludingPrefixes: [PerryPreferences.remoteWritesKeyPrefix, PerryPreferences.oauthStateKeyPrefix]
         )
         let files = PerryFileEraser(
             category: .preferences,
@@ -559,7 +559,7 @@ enum PerryLiveErasureErasers {
         let defaultsEraser = PerryDefaultsEraser(
             category: .oauthState,
             defaults: defaults,
-            prefixes: ["perry.oauth."]
+            prefixes: [PerryPreferences.oauthStateKeyPrefix]
         )
         let files = PerryFileEraser(
             category: .oauthState,

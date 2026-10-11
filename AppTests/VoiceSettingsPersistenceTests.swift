@@ -34,7 +34,7 @@ final class VoiceSettingsPersistenceTests: XCTestCase {
             VoiceController.currentSpeechPreferences(defaults: defaults),
             SpeechPreferences(outputEnabled: true, rateMultiplier: 0.75)
         )
-        XCTAssertNil(defaults.object(forKey: VoiceController.speechVoiceKey))
+        XCTAssertNil(defaults.object(forKey: PerryPreferences.$speechVoiceIdentifier.key))
     }
 
     func testSpeechSettingsUseProductDefaultsWhenUnset() throws {

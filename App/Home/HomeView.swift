@@ -163,7 +163,7 @@ struct HomeView: View {
 /// apps, ranked; "Do it" runs the card's action as a goal on a new thread.
 private struct SuggestionsView: View {
     @ObservedObject var model: HomeModel
-    @AppStorage(SuggestionController.enabledKey) private var enabled = false
+    @AppStorage(PerryPreferences.$suggestionsEnabled.key) private var enabled = false
     @State private var editing: SuggestionCard?
 
     var body: some View {

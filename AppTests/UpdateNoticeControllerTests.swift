@@ -48,7 +48,7 @@ final class UpdateNoticeControllerTests: XCTestCase {
         let suiteName = "dev.perry.tests.update-notice.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set("0.9.0", forKey: "perry.lastSeenVersion")
+        defaults.set("0.9.0", forKey: PerryPreferences.$lastSeenVersion.key)
         let presented = expectation(description: "version notice presented")
         var presentCount = 0
         let controller = UpdateNoticeController(

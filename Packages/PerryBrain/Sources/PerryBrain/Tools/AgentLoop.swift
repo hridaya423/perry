@@ -7,6 +7,7 @@ public enum AgentFinish: Sendable, Equatable {
 
 public enum AgentLoopEvent: Sendable, Equatable {
     case textDelta(String)
+    case draw(DrawCommand)
     case toolCallStarted(ToolCall)
     case toolCallFinished(ToolResult)
     case note(String)

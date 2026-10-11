@@ -50,7 +50,7 @@ final class PushToTalkController {
     private var lastCapsTap: TimeInterval?
 
     init(
-        shortcut: PushToTalkShortcut = PushToTalkShortcut(rawValue: UserDefaults.standard.string(forKey: "perry.ptt.shortcut") ?? "") ?? .optionCommandSpace,
+        shortcut: PushToTalkShortcut = PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .optionCommandSpace,
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void
     ) {

@@ -246,6 +246,9 @@ final class AgentCoordinator: ObservableObject {
                     contextParts.append(block)
                 }
                 try Task.checkCancellation()
+                let markupValidIDs = spatialContext.map {
+                    ElementIndex(elements: $0.observation.observedElements).validIDs
+                } ?? (surface == .talk ? [] : nil)
                 let scope = thread.perryID ?? threadID.uuidString
                 let context = ToolContext(
                     surface: surface,
@@ -284,10 +287,10 @@ final class AgentCoordinator: ObservableObject {
                 }
                 if selected.capabilities.contains(.tools) {
                     try await workerLease.withRun(runID, workers: workers) { @MainActor in
-                        (answer, labels, finish) = await self.consume(loop, system: system, messages: messages, context: context, tier: tier, sink: sink)
+                        (answer, labels, finish) = await self.consume(loop, system: system, messages: messages, context: context, tier: tier, markupValidIDs: markupValidIDs, sink: sink)
                     }
                 } else {
-                    (answer, labels, finish) = await consume(loop, system: system, messages: messages, context: context, tier: tier, sink: sink)
+                    (answer, labels, finish) = await consume(loop, system: system, messages: messages, context: context, tier: tier, markupValidIDs: markupValidIDs, sink: sink)
                 }
             }
         } catch is CancellationError {
@@ -322,27 +325,47 @@ final class AgentCoordinator: ObservableObject {
         messages: [ModelMessage],
         context: ToolContext,
         tier: ModelTier,
+        markupValidIDs: Set<String>? = nil,
         sink: @escaping @MainActor (AgentLoopEvent) -> Void
     ) async -> (String, [String], AgentFinish) {
         var answer = ""
         var labels: [String] = []
         var finish: AgentFinish = .interrupted
-        var markup = InlineMarkupParser(validElementIDs: [])
+        // The single inline-markup decode (plan Phase 2 item 6): runs that got
+        // the Talk prompt emit clean text deltas and .draw commands here, so
+        // downstream consumers never parse tags again. A re-observe wipes the
+        // element table — later element refs are dropped like before.
+        var markup = markupValidIDs.map { InlineMarkupParser(validElementIDs: $0) }
         for await event in loop.run(system: system, messages: messages, context: context, tier: tier) {
             switch event {
             case .textDelta(let delta):
-                answer += context.surface == .talk ? markup.feed(delta).text : delta
+                guard let parsed = markup?.feed(delta) else {
+                    answer += delta
+                    sink(event)
+                    continue
+                }
+                answer += parsed.text
+                if !parsed.text.isEmpty { sink(.textDelta(parsed.text)) }
+                for command in parsed.commands { sink(.draw(command)) }
+            case .toolCallStarted(let call):
+                if markup != nil, ToolGate.observeTools.contains(call.name) {
+                    markup = InlineMarkupParser(validElementIDs: [])
+                }
                 sink(event)
             case .toolCallFinished(let result):
                 if !result.isError, let label = Self.actuationLabel(result.content) { labels.append(label) }
                 sink(event)
             case .finished(let reason):
                 finish = reason
-            case .toolCallStarted, .note:
+            case .note, .draw:
                 sink(event)
             }
         }
-        if context.surface == .talk { answer += markup.finish().text }
+        if let tail = markup?.finish() {
+            answer += tail.text
+            if !tail.text.isEmpty { sink(.textDelta(tail.text)) }
+            for command in tail.commands { sink(.draw(command)) }
+        }
         return (answer, labels, finish)
     }
 
