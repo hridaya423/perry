@@ -316,7 +316,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         overlayState: overlayState,
         output: self,
         services: TalkSession.Services(
-            makeInput: { SFSpeechInput() },
+            makeInput: {
+#if DEBUG
+                if let lab = TalkLabInput.makeInput(arguments: ProcessInfo.processInfo.arguments) {
+                    return lab
+                }
+#endif
+                return SFSpeechInput()
+            },
             output: SystemVoiceOutput(),
             capture: { [weak self] in
                 guard let self else { throw CancellationError() }
@@ -940,6 +947,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installHotkey()
         voice.startInputListeners()
         modifierHoldMonitor.start()
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
+            installTalkDrillTrigger()
+        }
+#endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         homeController.start()
         perryScheduler?.start()
@@ -2659,16 +2671,53 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
     /// own store so Talk and Ask hint caches never cross. The observation's
     /// screenshot stays in memory for the turn only.
     func captureTalkObservation() async throws -> GuideObservation {
+        PerfMark.mark("talk.capture_begin")
         let hint = guideTargetHint()
         await talkTargetStore.set(hint)
         var resources = Set<BackgroundTaskResource>()
         if let bundleID = guideAppBundleID(for: hint) {
             resources.insert(.application(bundleID))
         }
-        return try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
-            try await CuaGuideTreeReader(worker: worker, targetStore: self.talkTargetStore).observe()
+        do {
+            let observation = try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
+                try await CuaGuideTreeReader(worker: worker, targetStore: self.talkTargetStore).observe()
+            }
+            PerfMark.mark("capture.done")
+            return observation
+        } catch {
+            PerfMark.markDynamic("talk.capture_failed.\(String(describing: error))")
+            throw error
         }
     }
+
+#if DEBUG
+    /// Lab drill trigger (`--perry-talk-drill`): the scripts/lab driver posts
+    /// `app.perry.talk-drill` distributed notifications with `phase` `down`/`up`.
+    /// Each phase feeds ModifierHoldMonitor's `handle` seam — the same entry
+    /// point the event tap and fallback monitors call — so the full gesture
+    /// state machine, commit threshold, and PerfMarks run for real. Only the
+    /// TCC-protected session tap is bypassed.
+    private func installTalkDrillTrigger() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.talk-drill"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            switch note.userInfo?["phase"] as? String {
+            case "down":
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+            case "up":
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+            default:
+                break
+            }
+        }
+    }
+#endif
 }
 
 extension AppController: NSMenuDelegate {

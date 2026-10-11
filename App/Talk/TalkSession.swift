@@ -196,6 +196,7 @@ final class TalkSession {
     }
 
     private func inputFailed(_ error: Error) {
+        PerfMark.mark("talk.input_failed")
         // Settle the input even when the turn is already underway — otherwise
         // a start() failure after key-up would hang `finalize()` forever.
         input?.cancel()
@@ -235,6 +236,7 @@ final class TalkSession {
             let accepted = services.acceptInput(transcript, original.threadID)
             sessionController.updateTalk { $0.threadID = accepted.threadID }
             try await accepted.saved.value
+            PerfMark.mark("talk.saved")
             try Task.checkCancellation()
             let observation: GuideObservation
             if let captureTask {
@@ -249,6 +251,15 @@ final class TalkSession {
             let elements = observation.observedElements
             index = ElementIndex(elements: elements)
             let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: elements)
+            if bindings.isEmpty {
+                PerfMark.markDynamic("deixis.none")
+            } else if bindings.contains(where: { $0.element != nil }) {
+                PerfMark.markDynamic("deixis.element")
+            } else if bindings.contains(where: { !$0.isWindowLevel }) {
+                PerfMark.markDynamic("deixis.point")
+            } else {
+                PerfMark.markDynamic("deixis.window")
+            }
             let spatial = AgentCoordinator.SpatialContext(
                 observation: observation, bindings: bindings, skill: services.skill(observation)
             )
@@ -278,6 +289,7 @@ final class TalkSession {
             try await stream(events: run.events, observation: observation)
         } catch is CancellationError {
             guard !Task.isCancelled else { return }
+            PerfMark.markDynamic("talk.turn_cancelled")
             services.output.shutUp()
             sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle
@@ -285,6 +297,7 @@ final class TalkSession {
             phase = .idle
         } catch {
             guard !Task.isCancelled else { return }
+            PerfMark.markDynamic("talk.turn_failed.\(String(describing: type(of: error)))")
             services.output.shutUp()
             sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle

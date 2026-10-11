@@ -16,6 +16,7 @@ perry_pid() { pgrep -x Perry | head -1 || true; }
 cmd="${1:-}"
 case "$cmd" in
     launch)
+        shift
         mkdir -p "$EVIDENCE_DIR"
         if pid="$(perry_pid)"; [ -n "$pid" ]; then
             "$0" quit
@@ -27,7 +28,11 @@ case "$cmd" in
             codesign --force --sign - "$APP/Contents/MacOS/Perry" >/dev/null 2>&1
             echo "perry-drive: re-signed adhoc without hardened runtime for lab launch" >&2
         fi
-        open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG"
+        if [ "$#" -gt 0 ]; then
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --args "$@"
+        else
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG"
+        fi
         for _ in $(seq 1 30); do
             pid="$(perry_pid)"
             [ -n "$pid" ] && break
