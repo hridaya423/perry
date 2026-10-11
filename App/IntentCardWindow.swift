@@ -132,7 +132,12 @@ struct IntentCardView: View {
                 Text("This one needs real attention. Type \"\(card.redPhrase)\" exactly; I won’t take a voice yes for this.")
                     .font(PerryTheme.Typography.note)
                     .foregroundStyle(.secondary)
-                TextField(card.redPhrase, text: $typedConfirmation)
+                Text(card.redPhrase)
+                    .font(PerryTheme.Typography.mono)
+                    .foregroundStyle(PerryTheme.Colors.danger)
+                // Neutral placeholder: showing the phrase inside the field
+                // looked like it was already typed while Approve stayed off.
+                TextField("Type it here to confirm", text: $typedConfirmation)
                     .textFieldStyle(.roundedBorder)
                     .font(PerryTheme.Typography.settingsStatus)
                     .focused($confirmationFocused)
