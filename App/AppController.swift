@@ -14,10 +14,6 @@ import PerryRuntimes
 /// implies, bound to real UI.
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
-    private enum MaintenanceOperation: Equatable {
-        case termination
-        case erasure
-    }
 
 
     private var hotkey: HotkeyController?
@@ -49,7 +45,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
 
     /// Phase 9: morning suggestion researcher over connected apps.
-    private lazy var suggestionController: SuggestionController = {
+    lazy var suggestionController: SuggestionController = {
         let controller = SuggestionController(
             coordinator: agentCoordinator,
             backend: integrationBackend,
@@ -63,7 +59,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Phase 9: fires scheduled Perrys into the agent loop and publishes the
     /// Perry list for Home's sidebar.
-    private lazy var perryScheduler: PerrySchedulerController? = {
+    lazy var perryScheduler: PerrySchedulerController? = {
         guard let perryStore else { return nil }
         let scheduler = PerrySchedulerController(
             store: perryStore,
@@ -76,13 +72,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return scheduler
     }()
 
-    private lazy var mcp = MCPSocketLifecycle(
+    lazy var mcp = MCPSocketLifecycle(
         makeSocket: { [unowned self] directory in
             PerryMCPSocket(host: toolHost, directory: directory, workers: workers, workerLease: foregroundWorkerLease)
         },
-        mayStart: { [unowned self] in maintenanceOwner == nil && !terminationPrepared },
+        mayStart: { [unowned self] in maintenance.isIdle },
         reportFailure: { [unowned self] in sessionStatus = $0 }
     )
+    private lazy var maintenance = MaintenanceCoordinator(host: self)
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
@@ -125,14 +122,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     let workers = CuaWorkerService()
     private var manifestRefresher: CuaCapabilityManifest.Refresher?
-    private lazy var spatial = SpatialSelectionController(
+    lazy var spatial = SpatialSelectionController(
         overlayState: overlayState,
         workers: workers,
         targetHint: { [unowned self] in await probe.currentTargetHint() },
         speak: { [unowned self] in voice.deliverVoiceReply($0) },
         setStatus: { [unowned self] in sessionStatus = $0 }
     )
-    private lazy var demoDirector = DemoDirector(hooks: DemoDirector.Hooks(
+    lazy var demoDirector = DemoDirector(hooks: DemoDirector.Hooks(
         preflight: { [weak self] in await self?.demoPreflight() ?? DemoPreflightResult(ready: false, failureMessage: "Perry could not run the live demo.") },
         wake: { [weak self] in self?.wake() },
         speak: { [weak self] text in self?.voice.speak(text) },
@@ -287,7 +284,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak self] in
-            guard self?.maintenanceOwner == nil else { return }
+            guard self?.maintenance.isUnderMaintenance != true else { return }
             self?.probe.pinInvocationTarget()
             self?.talkSessionStarted = true
             self?.talkSession.keyDown()
@@ -312,7 +309,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             guideSpeechFinished: { [weak self] identity in self?.guideCoordinator.handleSpeechFinished(identity: identity) }
         )
     )
-    private let oauthCoordinator = OAuthCoordinator()
+    let oauthCoordinator = OAuthCoordinator()
     private let remoteIntegrationPermissions = RemoteIntegrationPermissionStore()
     private lazy var integrationClient = RemoteIntegrationClient(permissionStore: remoteIntegrationPermissions)
     lazy var integrationConnections = IntegrationConnections(
@@ -366,7 +363,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         let hooks = ForegroundTaskController.Hooks(
             setStatus: { [weak self] status in self?.sessionStatus = status },
             setTranscriptPreview: { [weak self] text in self?.transcriptPreview = text },
-            isErasureInProgress: { [weak self] in self?.erasureInProgress ?? false },
+            isErasureInProgress: { [weak self] in self?.maintenance.isErasureInProgress ?? false },
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             hidePanel: { [weak self] in self?.hidePanel() },
             dismissIntentCard: { [weak self] in self?.intentCards.dismiss() },
@@ -423,7 +420,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         notifier: notifier,
         activityLog: activityLog
     )
-    private lazy var notchStatus = NotchStatusController()
+    lazy var notchStatus = NotchStatusController()
     private lazy var homeThreadStore = ThreadStore(
         directory: (storageDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory()))
             .appendingPathComponent("Threads", isDirectory: true)
@@ -507,7 +504,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }()
     private var lastBackgroundCount = 0
     private var lastAwaitingApprovalCount = 0
-    private lazy var routineLibrary = RoutineLibraryController(
+    lazy var routineLibrary = RoutineLibraryController(
         store: RoutineStore(storageDirectory: storageDirectory),
         workers: workers,
         context: self,
@@ -531,7 +528,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var backgroundTasks: BackgroundTaskController = {
         let hooks = BackgroundTaskController.Hooks(
             setStatus: { [weak self] status in self?.sessionStatus = status },
-            isErasureInProgress: { [weak self] in self?.erasureInProgress ?? false },
+            isErasureInProgress: { [weak self] in self?.maintenance.isErasureInProgress ?? false },
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             statusCountsChanged: { [weak self] total, active, awaiting in
                 self?.statusMenu.setBackgroundTaskCount(total)
@@ -576,7 +573,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
     }()
     private lazy var erasurePaths = PerryErasurePaths(supportDirectory: storageDirectory)
-    private lazy var completeErasureCoordinator = CompleteErasureCoordinator(
+    lazy var completeErasure = CompleteErasureCoordinator(
         erasers: PerryLiveErasureErasers.make(
             paths: erasurePaths,
             taskCoordinator: backgroundTaskCoordinator,
@@ -596,14 +593,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         talkSession: { [unowned self] in talkSession },
         preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() }
     )
-    private var terminationPrepared = false
-    private var maintenanceOwner: MaintenanceOperation?
     private var persistenceTasks: [UUID: Task<Void, Never>] = [:]
-    private var erasureInProgress = false
 #if DEBUG
-    private var debugMaintenanceBarrier: (@MainActor () async throws -> Void)?
-    private var debugSkipEraseConfirmation = false
-    var debugUnsavedQuitDecision: (() -> Bool)?
+    var debugUnsavedQuitDecision: (() -> Bool)? {
+        get { maintenance.debugUnsavedQuitDecision }
+        set { maintenance.debugUnsavedQuitDecision = newValue }
+    }
     private let debugConfirmer: (any Confirmer)?
     private let debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
 #endif
@@ -715,8 +710,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         skipEraseConfirmation: Bool,
         barrier: (@MainActor () async throws -> Void)?
     ) {
-        debugSkipEraseConfirmation = skipEraseConfirmation
-        debugMaintenanceBarrier = barrier
+        maintenance.debugSetFixture(skipEraseConfirmation: skipEraseConfirmation, barrier: barrier)
     }
 
     func debugInvokeWipeDataAction() {
@@ -724,7 +718,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     var debugMaintenanceOwnerHeld: Bool {
-        maintenanceOwner != nil
+        maintenance.isUnderMaintenance
     }
 #endif
 
@@ -966,93 +960,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !terminationPrepared else { return .terminateNow }
-        guard acquireMaintenance(.termination) else {
-            sessionStatus = maintenanceConflictMessage()
-            sender.reply(toApplicationShouldTerminate: false)
-            return .terminateLater
-        }
-        runtimes.cancelPendingRefreshes()
-        backgroundTasks.closeControls()
-        guideCoordinator.prepareForTermination()
-        Task { @MainActor [self] in
-            var showRecovery = false
-            defer {
-                self.releaseMaintenance(.termination)
-                if showRecovery { self.homeController.openHome() }
-            }
-            do {
-                try await self.prepareForTermination()
-                try await self.workers.shutdown()
-                await self.mcp.stop()
-                await self.joinAfterWorkerShutdown()
-                guard self.confirmQuitDiscardingUnsavedRequests() else {
-                    self.backgroundTasks.reopenControls()
-                    self.sessionStatus = "Perry stayed open. Recover your requests before quitting."
-                    showRecovery = true
-                    sender.reply(toApplicationShouldTerminate: false)
-                    return
-                }
-                self.terminationPrepared = true
-                sender.reply(toApplicationShouldTerminate: true)
-            } catch {
-                self.backgroundTasks.reopenControls()
-                self.sessionStatus = "Perry could not stop its computer-use workers safely."
-                sender.reply(toApplicationShouldTerminate: false)
-            }
-        }
-        return .terminateLater
+        maintenance.requestTermination(sender)
     }
 
     func unsavedRequestQuitAlert() -> NSAlert {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Quit with unsaved requests?"
-        alert.informativeText = "Some requests haven’t been saved. Keep Perry open to copy them or try saving again. Quitting will discard this text."
-        alert.addButton(withTitle: "Keep Perry open")
-        alert.addButton(withTitle: "Quit without saving").hasDestructiveAction = true
-        return alert
-    }
-
-    private func confirmQuitDiscardingUnsavedRequests() -> Bool {
-        guard !homeController.homeModel.unsavedInputs.isEmpty else { return true }
-#if DEBUG
-        if let debugUnsavedQuitDecision { return debugUnsavedQuitDecision() }
-#endif
-        return unsavedRequestQuitAlert().runModal() == .alertSecondButtonReturn
-    }
-
-    private func acquireMaintenance(_ operation: MaintenanceOperation) -> Bool {
-        guard maintenanceOwner == nil else { return false }
-        maintenanceOwner = operation
-        mcp.suspend()
-        agentCoordinator.closeAdmission()
-        brain.closeAdmission()
-        homeController.closeAdmission()
-        hidePanel()
-        return true
-    }
-
-    private func releaseMaintenance(_ operation: MaintenanceOperation) {
-        guard maintenanceOwner == operation else { return }
-        maintenanceOwner = nil
-        if !terminationPrepared {
-            agentCoordinator.reopenAdmission()
-            brain.reopenAdmission()
-            homeController.reopenAdmission()
-            mcp.resume()
-        }
-    }
-
-    private func maintenanceConflictMessage() -> String {
-        switch maintenanceOwner {
-        case .termination:
-            return "Perry is already preparing to quit."
-        case .erasure:
-            return "Perry is finishing a data erase."
-        case nil:
-            return "Perry is already stopping its workers."
-        }
+        MaintenanceCoordinator.unsavedRequestQuitAlert()
     }
 
     @objc private func handleWipeDataRequested() {
@@ -1224,7 +1136,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func setMemoryEnabled(_ enabled: Bool) async {
-        guard !erasureInProgress else { return }
+        guard !maintenance.isErasureInProgress else { return }
         let current = await memoryStore.currentConfiguration()
         await memoryStore.setConfiguration(
             MemoryConfiguration(enabled: enabled, categoryToggles: current.categoryToggles)
@@ -1232,7 +1144,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func setMemoryCategoryEnabled(_ category: MemoryRecord.Category, enabled: Bool) async {
-        guard !erasureInProgress else { return }
+        guard !maintenance.isErasureInProgress else { return }
         let current = await memoryStore.currentConfiguration()
         var toggles = current.categoryToggles
         toggles[category] = enabled
@@ -1242,119 +1154,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func requestCompleteErasure() {
-#if DEBUG
-        guard debugSkipEraseConfirmation || CompleteErasurePrompt.confirm() else { return }
-#else
-        guard CompleteErasurePrompt.confirm() else { return }
-#endif
-        guard acquireMaintenance(.erasure) else {
-            sessionStatus = maintenanceConflictMessage()
-            return
-        }
-        backgroundTasks.closeControls()
-        guideCoordinator.stopClickObservation()
-        Task { @MainActor [self] in
-            await self.performCompleteErasure(owner: .erasure)
-        }
-    }
-
-    private func performCompleteErasure(owner: MaintenanceOperation) async {
-        guard owner == .erasure,
-              maintenanceOwner == owner,
-              !erasureInProgress else { return }
-        erasureInProgress = true
-        backgroundTasks.closeControls()
-        guideCoordinator.stopClickObservation()
-        defer {
-            erasureInProgress = false
-            backgroundTasks.reopenControls()
-            releaseMaintenance(owner)
-        }
-        oauthCoordinator.cancelAuthorization()
-        do {
-#if DEBUG
-            if let barrier = debugMaintenanceBarrier {
-                try await barrier()
-            }
-#endif
-            try await pauseOwnedBackgroundTasksForWorkerStop()
-            let report = try await workers.withWorkersStopped { @MainActor [self] in
-                await self.stopWorkForErasure()
-                let report = await self.completeErasureCoordinator.erase()
-                self.brain.reloadPreferences()
-                await self.homeController.reloadAfterErasure()
-                self.suggestionController.reloadCards()
-                return report
-            }
-            voice.speak(report.summary)
-        } catch {
-            sessionStatus = "Perry could not stop its computer-use workers before erasing data."
-        }
-    }
-
-    private func pauseOwnedBackgroundTasksForWorkerStop() async throws {
-        try await backgroundTasks.pauseAllOwnedForWorkerStop()
-        await foreground.cancelActiveSupervisor()
-    }
-
-    private func prepareForTermination() async throws {
-        backgroundTasks.closeControls()
-        await brain.stopSetup()
-        askController.cancel()
-        talkSession.cancel()
-        await askController.joinInputSaves()
-        notchStatus.hide()
-        homeController.stop()
-        perryScheduler?.stop()
-        suggestionController.stop()
-        routineLibrary.stop()
-        guideCoordinator.stopClickObservation()
-        try await pauseOwnedBackgroundTasksForWorkerStop()
-        voice.cancelInput()
-        foreground.cancelStartTask()
-        guideCoordinator.prepareForTermination()
-        spatial.cancelDescription()
-    }
-
-    private func joinAfterWorkerShutdown() async {
-        await guideCoordinator.joinAfterWorkerShutdown()
-        await agentCoordinator.joinAll()
-        await perryScheduler?.joinAll()
-        await suggestionController.joinAll()
-        await homeController.joinAll()
-        await voice.joinInputWork()
-        await spatial.joinDescription()
-        await foreground.joinStartTask()
-        await backgroundTasks.joinAll()
-    }
-
-    private func stopWorkForErasure() async {
-        await mcp.discard()
-        await brain.stopSetup()
-        demoDirector.cancel()
-        askController.cancel()
-        talkSession.cancel()
-        await askController.joinInputSaves()
-        notchStatus.hide()
-        homeController.stop()
-        perryScheduler?.stop()
-        suggestionController.stop()
-        routineLibrary.stop()
-        await guideCoordinator.stopForErasure()
-        await agentCoordinator.joinAll()
-        await perryScheduler?.joinAll()
-        await suggestionController.joinAll()
-        await homeController.joinAll()
-        spatial.stopMonitoring()
-        foreground.cancelStartTask()
-        await foreground.cancelActiveSupervisor()
-        backgroundTasks.cancelAllOwned()
-        await voice.joinInputWork()
-        spatial.cancelDescription()
-        await spatial.joinDescription()
-        await foreground.joinStartTask()
-        await backgroundTasks.joinAll()
-        backgroundTasks.resetTasks()
+        maintenance.requestCompleteErasure()
     }
 
     // MARK: Panel (the type/talk surface)
@@ -1388,7 +1188,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         overlayManager.warmRenderPipeline(state: overlayState)
     }
 
-    private func hidePanel() {
+    func hidePanel() {
         sessionPanel.hide()
     }
 
@@ -1421,7 +1221,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func ask(question: String) {
-        guard maintenanceOwner == nil else { return }
+        guard !maintenance.isUnderMaintenance else { return }
         askController.submit(question: question)
     }
 
@@ -1517,12 +1317,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {
-        guard !erasureInProgress else { return }
+        guard !maintenance.isErasureInProgress else { return }
         let id = UUID()
         persistenceTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.persistenceTasks[id] = nil }
-            guard !Task.isCancelled, !self.erasureInProgress else { return }
+            guard !Task.isCancelled, !self.maintenance.isErasureInProgress else { return }
             await operation()
         }
     }
@@ -1641,7 +1441,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func continueAskInGuide(request: String, full: Bool) {
-        guard case .asking(let ask) = sessionController.state, maintenanceOwner == nil else { return }
+        guard case .asking(let ask) = sessionController.state, !maintenance.isUnderMaintenance else { return }
         let accepted = homeController.acceptInput(request, threadID: ask.threadID ?? UUID())
         let input = accepted.request
         let threadID = accepted.threadID
@@ -1654,14 +1454,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             guard let self else { return false }
             do {
                 try await accepted.saved.value
-                return self.maintenanceOwner == nil
+                return !self.maintenance.isUnderMaintenance
             } catch {
                 self.homeController.homeModel.storageError = error.localizedDescription
                 self.sessionStatus = "Couldn’t save your Guide request. Your text is still here."
                 return false
             }
         }) { [weak self] current in
-            guard let self, self.maintenanceOwner == nil,
+            guard let self, !self.maintenance.isUnderMaintenance,
                   current.pendingGuideRequest?.id == input.id else { return }
             let target = self.homeController.homeModel.conversationTargets[threadID]
             self.dismiss()
@@ -1943,5 +1743,15 @@ struct InteractiveConfirmer: Confirmer {
             await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
         }
         return decision
+    }
+}
+
+extension AppController: MaintenanceHost {
+    var hasUnsavedHomeRequests: Bool {
+        !homeController.homeModel.unsavedInputs.isEmpty
+    }
+
+    func reportMaintenanceStatus(_ status: String) {
+        sessionStatus = status
     }
 }
