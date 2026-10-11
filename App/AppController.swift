@@ -534,7 +534,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 }
                 if case .finished(let outcome) = event { finish = outcome }
             }
-            if finish == .completed { self.onboardingDirector?.noteTalkTurnCompleted() }
+            if finish == .completed { self.onboarding.noteTalkTurnCompleted() }
             return finish
         }
         controller.onStop = { [weak self] id in self?.agentCoordinator.stop(threadID: id) }
@@ -658,9 +658,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             roots: erasurePaths.completeErasureRoots
         )
     )
-    private var onboardingDirector: OnboardingDirector?
-    private lazy var onboardingSpeech: any TalkSpeechOutput = SharedTalkOutput(voice: voice)
-    private lazy var practiceWindow = PracticeWindow()
+    private lazy var onboarding = OnboardingCoordinator(
+        overlayState: overlayState,
+        makeSpeech: { [unowned self] in SharedTalkOutput(voice: voice) },
+        home: { [unowned self] in homeController },
+        talkSession: { [unowned self] in talkSession },
+        preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() }
+    )
     private var activeSpatialSelection: SpatialSelection?
     private var terminationPrepared = false
     private var maintenanceOwner: MaintenanceOperation?
@@ -832,15 +836,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             if self.talkSessionStarted, !state.isTalkingSession {
                 self.talkSession.cancel()
             }
-            // Onboarding practice beat: a finished Guide run completes the
-            // guide sub-step when one was active.
-            if let director = self.onboardingDirector,
-               director.beat == .practice,
-               director.practiceStep == .guide,
-               case .guiding = self.sessionController.state,
-               case .reporting(let report) = state, report.outcome == .completed {
-                director.notePracticeStepCompleted()
-            }
+            self.onboarding.noteSessionTransition(from: self.sessionController.state, to: state)
             // Last answer feeds the Home peek's preview line.
             if case .asking(let ask) = state, let text = ask.answerText {
                 self.homeController.noteAnswer(text)
@@ -974,7 +970,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
 #if DEBUG
         if debugSurface == nil {
-            runOnboardingIfNeeded()
+            onboarding.runIfNeeded()
         }
         if debugSurface == .settings {
             DispatchQueue.main.async { [weak self] in
@@ -983,7 +979,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         } else if debugSurface == .onboarding {
             DispatchQueue.main.async { [weak self] in
-                self?.runDebugOnboarding()
+                self?.onboarding.runDenied()
             }
         } else if debugSurface == .session {
             DispatchQueue.main.async { [weak self] in
@@ -1038,7 +1034,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
 #else
-        runOnboardingIfNeeded()
+        onboarding.runIfNeeded()
 #endif
         updateNoticeController.start()
         SoundPlayer.warmUp()
@@ -2027,77 +2023,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: Onboarding
 
-    private func runOnboardingIfNeeded() {
-        if !PerryPreferences.onboardingCompleted {
-            runOnboarding(force: false)
-        }
-    }
-
     func runOnboarding(force: Bool) {
-        if onboardingDirector != nil && !force { return }
-        startOnboarding(effects: OnboardingDirector.Effects(), resume: !force)
-    }
-
-    private func startOnboarding(effects overrides: OnboardingDirector.Effects, resume: Bool = true) {
-        onboardingDirector?.stop()
-        var effects = overrides
-        effects.speak = { [weak self] line in
-            self?.overlayState.taskBubbleText = line
-            self?.onboardingSpeech.speak(line)
-        }
-        effects.requestScreenAccess = {
-            _ = PerryPermissionProbe.requestAccessibility()
-            _ = PerryPermissionProbe.requestScreenRecording()
-        }
-        effects.openScreenAccessSettings = {
-            _ = PerryPermissionProbe.requestAccessibility()
-            if let url = URL(
-                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-            ) {
-                NSWorkspace.shared.open(url)
-            }
-        }
-        effects.openScreenRecordingSettings = {
-            _ = PerryPermissionProbe.requestScreenRecording()
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                NSWorkspace.shared.open(url)
-            }
-        }
-        effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
-        effects.endPractice = { [weak self] in self?.practiceWindow.close() }
-        effects.preferOnDeviceBrain = { [weak self] in self?.brain.preferOnDeviceModelIfUnchosen() }
-        effects.finish = { [weak self] in self?.finishOnboarding() }
-        let director = OnboardingDirector(effects: effects, defaults: .standard)
-        onboardingDirector = director
-        homeController.homeModel.onboarding = director
-        homeController.homeModel.sidebarSelection = nil
-        homeController.openHome()
-        talkSession.onTurnCompleted = { [weak director] in
-            director?.noteTalkTurnCompleted()
-        }
-        practiceWindow.onEvent = { [weak director] event in
-            switch (event, director?.practiceStep) {
-            case (.renamedAndUndone, .renameUndo), (.dictated, .dictate):
-                director?.notePracticeStepCompleted()
-            default: break
-            }
-        }
-        practiceWindow.onClose = { [weak director] in
-            director?.notePracticeWindowClosed()
-        }
-        if PerryPermissionProbe.checkMicrophone() == .denied {
-            director.noteMicrophoneDenied()
-        }
-        director.start(resume: resume)
-    }
-
-    private func finishOnboarding() {
-        practiceWindow.close()
-        overlayState.taskBubbleText = nil
-        talkSession.onTurnCompleted = nil
-        PerryPreferences.onboardingCompleted = true
-        onboardingDirector = nil
-        homeController.homeModel.onboarding = nil
+        onboarding.run(force: force)
     }
 
 #if DEBUG
@@ -2105,18 +2032,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// VoiceController's dispatch hook delivers after wake word/dictation.
     func debugDispatch(_ text: String) {
         dispatch(commandText: text)
-    }
-
-    private func runDebugOnboarding() {
-        var effects = OnboardingDirector.Effects()
-        effects.permissionProbe = {
-            PerryPermissionSnapshot(
-                accessibility: false,
-                screenRecording: .denied,
-                microphone: .denied
-            )
-        }
-        startOnboarding(effects: effects)
     }
 
     /// Seeds three deterministic transcript entries (two days, mixed
@@ -2172,7 +2087,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     func applyDebugStateFixture(_ fixture: DebugStateFixture) {
         switch fixture {
         case .permissionDenied:
-            runDebugOnboarding()
+            onboarding.runDenied()
         case .approvalOrange, .approvalRed:
             guard let card = fixture.intentCard else { return }
             intentCardWindow = IntentCardWindow(card: card) { _ in }
