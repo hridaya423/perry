@@ -83,7 +83,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
-    private lazy var overlayManager: OverlayWindowManager = {
+    lazy var overlayManager: OverlayWindowManager = {
         let manager = OverlayWindowManager()
         manager.onSample = { [weak self] metricID, unit, value in
             guard let log = self?.overlaySampleLog else { return }
@@ -175,6 +175,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private let debugTypedVerifier: (any TypedActionVerifier)?
 #endif
     private let debugFinalizationPersistenceBarrier: (@Sendable () async -> Void)?
+    private lazy var guideBridge = GuideSessionBridge(host: self)
 #if DEBUG
     lazy var guideCoordinator = GuideSessionCoordinator(
         sessionController: sessionController,
@@ -182,8 +183,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         transcriptStore: transcriptStore,
         memoryStore: memoryStore,
         storageDirectory: storageDirectory,
-        output: self,
-        context: self,
+        output: guideBridge,
+        context: guideBridge,
         fullGuideCaptureLoader: debugFullGuideCaptureLoader,
         fullGuideContinuationBarrier: debugFullGuideContinuationBarrier,
         fullGuidePlanner: debugFullGuidePlanner,
@@ -205,8 +206,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         transcriptStore: transcriptStore,
         memoryStore: memoryStore,
         storageDirectory: storageDirectory,
-        output: self,
-        context: self,
+        output: guideBridge,
+        context: guideBridge,
         guidePlannerProvider: { [weak self] guide in
             guard let self else { return nil }
             return self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
@@ -223,8 +224,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionController: sessionController,
         workers: workers,
         overlayState: overlayState,
-        output: self,
-        context: self,
+        output: guideBridge,
+        context: guideBridge,
         runner: .init(accept: { [unowned self] in homeController.acceptInput($0, threadID: $1) }, run: { [unowned self] input, observation in
             homeController.runSpokenTurn(
                 input,
@@ -235,15 +236,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     )
     private lazy var talkCapture = TalkObservationCapture(
         workers: workers,
-        targetHint: { [unowned self] in guideTargetHint() },
-        appBundleID: { [unowned self] in guideAppBundleID(for: $0) }
+        targetHint: { [unowned self] in self.guideBridge.guideTargetHint() },
+        appBundleID: { [unowned self] in self.guideBridge.guideAppBundleID(for: $0) }
     )
     private lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: storageDirectory)
     private var talkSessionStarted = false
     lazy var talkSession = TalkSession(
         sessionController: sessionController,
         overlayState: overlayState,
-        output: self,
+        output: guideBridge,
         services: TalkSession.Services(
             makeInput: {
 #if DEBUG
@@ -259,7 +260,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 return try await self.talkCapture.capture()
             },
             acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1, contextKey: $2) },
-            targetHint: { [unowned self] in self.guideTargetHint() },
+            targetHint: { [unowned self] in self.guideBridge.guideTargetHint() },
             run: { [unowned self] input, spatial in
                 homeController.runSpokenTurn(input, spatial: spatial, coordinator: agentCoordinator)
             },
@@ -507,7 +508,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var routineLibrary = RoutineLibraryController(
         store: RoutineStore(storageDirectory: storageDirectory),
         workers: workers,
-        context: self,
+        context: guideBridge,
         setStatus: { [weak self] status in self?.sessionStatus = status },
         speak: { [weak self] text in self?.voice.speak(text) },
         runRoutine: { [weak self] routine, parameters in self?.foreground.startRoutine(routine, parameters: parameters) },
@@ -1054,7 +1055,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Takes every session mark off the overlay, hides the overlay and panel,
     /// and lets the wake word listen again.
-    private func clearSessionSurfaces() {
+    func clearSessionSurfaces() {
         guideOverlay.clearAll()
         overlayManager.fadeOutAndHideOverlay()
         hidePanel()
@@ -1534,80 +1535,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         InteractiveConfirmer(controller: self)
     }
 
-}
-
-extension AppController: GuideSessionOutput, GuideSessionContext {
-    func guideShowOverlay() {
-        if !overlayManager.isShowingOverlay() {
-            overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
-        }
-    }
-
-    func guideStopSpatialInput() {
-        spatial.stopMonitoring()
-    }
-
-    func guideSetStatus(_ status: String) {
-        sessionStatus = status
-    }
-
-    func guideSpeak(_ text: String, identity: GuideSpeechIdentity) {
-        voice.deliverVoiceReply(text, guideSpeechIdentity: identity)
-    }
-
-    func guidePlay(_ cue: SoundPlayer.Cue) {
-        SoundPlayer.play(cue)
-    }
-
-    func guideSetBuddyState(_ state: PerryBuddyState) {
-        overlayState.buddyState = state
-    }
-
-    func guideInteractiveFrames() -> [CGRect] {
-        [sessionPanel.frame, intentCards.frame].compactMap { $0 }
-    }
-
-    func guidePresent(_ presentation: GuidePresentation) {
-        guideOverlay.present(presentation)
-    }
-
-    func guideShowFullPath(_ viewPlan: EverythingViewPlan) {
-        guideOverlay.showFullPath(viewPlan)
-    }
-
-    func guideClearPresentation() {
-        clearSessionSurfaces()
-    }
-
-    func guideClearHighlight() {
-        guideOverlay.clearHighlight()
-    }
-
-    func guideClearFullPath() {
-        guideOverlay.clearFullPath()
-    }
-
-    func guideRequestTakeOver(_ handoff: GuideHandoff) {
-        foreground.start(
-            goal: "Continue the guided task: \(handoff.goal). Check the current window and finish the remaining work without repeating completed changes.",
-            threadID: handoff.threadID, targetHint: handoff.target
-        )
-    }
-
-    func guideTargetHint() -> CuaTargetHint {
-        probe.currentTargetHint()
-    }
-
-    func guideAppBundleID(for targetHint: CuaTargetHint) -> String? {
-        targetHint.processID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
-            ?? spatial.selection?.window?.appBundleID
-            ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-    }
-
-    func guideSpatialRegionDescription() -> String? {
-        spatial.selection?.description
-    }
-
 #if DEBUG
     /// Lab drill trigger (`--perry-talk-drill`): the scripts/lab driver posts
     /// `app.perry.talk-drill` distributed notifications with `phase` `down`/`up`.
@@ -1743,6 +1670,15 @@ struct InteractiveConfirmer: Confirmer {
             await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
         }
         return decision
+    }
+}
+
+extension AppController: GuideBridgeHost {
+    var sessionPanelFrame: CGRect? { sessionPanel.frame }
+    var intentCardFrame: CGRect? { intentCards.frame }
+
+    func reportGuideStatus(_ status: String) {
+        sessionStatus = status
     }
 }
 
