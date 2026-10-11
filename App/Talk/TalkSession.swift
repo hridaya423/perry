@@ -30,18 +30,21 @@ final class TalkSession {
         var skill: (GuideObservation) -> String? = { _ in nil }
     }
 
-    private let sessionController: SessionController
-    private let overlayState: PerryCursorState
-    private weak var output: (any GuideSessionOutput)?
-    private let services: Services
+    let sessionController: SessionController
+    let overlayState: PerryCursorState
+    weak var output: (any GuideSessionOutput)?
+    let services: Services
     private let tracer: PointerTraceRecorder
 
     private(set) var phase: Phase = .idle
     private var input: (any TalkSpeechInput)?
     private var warmTask: Task<Void, Never>?
     private var captureTask: Task<GuideObservation, Error>?
-    private var turnTask: Task<Void, Never>?
-    private var presentationTask: Task<Void, Never>?
+    var turnTask: Task<Void, Never>?
+    var presentationTask: Task<Void, Never>?
+    var askTransitionTask: Task<Void, Never>?
+    var askInputSaveTask: Task<Bool, Never>?
+    var activeAskID: UUID?
     private var index = ElementIndex(elements: [])
     private var answerText = ""
     private var firstTextMarked = false
@@ -176,6 +179,7 @@ final class TalkSession {
     /// Session teardown: stop everything; SessionController owns the transition.
     func cancel() {
         PerfMark.mark("talk.cancel.session")
+        cancelAsk()
         abortActiveWork()
         _ = tracer.stop()
         overlayState.visualGuidanceOverlays = []

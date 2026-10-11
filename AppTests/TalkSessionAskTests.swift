@@ -5,7 +5,7 @@ import PerryOverlay
 @testable import Perry
 
 @MainActor
-final class AskSessionControllerTests: XCTestCase {
+final class TalkSessionAskTests: XCTestCase {
     private final class OutputStub: GuideSessionOutput {
         var statuses: [String] = []
         var spoken: [String] = []
@@ -26,10 +26,16 @@ final class AskSessionControllerTests: XCTestCase {
         func guideClearFullPath() {}
     }
 
-    private final class ContextStub: GuideSessionContext {
-        func guideTargetHint() -> CuaTargetHint { CuaTargetHint() }
-        func guideAppBundleID(for targetHint: CuaTargetHint) -> String? { "com.example.Editor" }
-        func guideSpatialRegionDescription() -> String? { nil }
+    private final class StubTalkInput: TalkSpeechInput {
+        func start() async throws {}
+        func finalize() async -> (transcript: String, words: [SpokenWord]) { ("", []) }
+        func cancel() {}
+    }
+
+    private final class StubTalkOutput: TalkSpeechOutput {
+        var isSpeaking = false
+        func speak(_ sentence: String) {}
+        func shutUp() {}
     }
 
     private func observation(
@@ -61,17 +67,16 @@ final class AskSessionControllerTests: XCTestCase {
         sessionController: SessionController,
         overlayState: PerryCursorState,
         output: OutputStub,
-        observationProvider: AskSessionController.ObservationProvider? = nil,
-        runner: AskSessionController.Runner
-    ) -> AskSessionController {
-        AskSessionController(
+        capture: (@MainActor () async throws -> GuideObservation)? = nil,
+        services scriptedServices: TalkSession.Services
+    ) -> TalkSession {
+        var services = scriptedServices
+        services.capture = capture ?? { self.observation() }
+        return TalkSession(
             sessionController: sessionController,
-            workers: CuaWorkerService(),
             overlayState: overlayState,
             output: output,
-            context: ContextStub(),
-            observationProvider: observationProvider,
-            runner: runner
+            services: services
         )
     }
 
@@ -79,21 +84,43 @@ final class AskSessionControllerTests: XCTestCase {
     private func scriptedRunner(
         onRun: @escaping @MainActor () -> Void = {},
         _ script: @escaping @MainActor (Int) async -> [AgentLoopEvent]
-    ) -> AskSessionController.Runner {
+    ) -> TalkSession.Services {
         var calls = 0
-        return .init(accept: { text, id in
-            .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
-        }, run: { input, _ in
-            calls += 1
-            onRun()
-            let call = calls
-            return (input.threadID, AsyncStream { continuation in
-                Task { @MainActor in
-                    for event in await script(call) { continuation.yield(event) }
-                    continuation.finish()
-                }
-            }, nil)
-        })
+        return TalkSession.Services(
+            makeInput: { StubTalkInput() },
+            output: StubTalkOutput(),
+            capture: { throw CancellationError() },
+            acceptInput: { text, id, _ in
+                .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
+            },
+            run: { input, _ in
+                calls += 1
+                onRun()
+                let call = calls
+                return (input.threadID, AsyncStream { continuation in
+                    Task { @MainActor in
+                        for event in await script(call) { continuation.yield(event) }
+                        continuation.finish()
+                    }
+                }, nil)
+            }
+        )
+    }
+
+    /// A Services literal from a two-arg accept plus the new-signature run —
+    /// TalkSession owns spatial/skill construction now, so `run` receives the
+    /// SpatialContext it built.
+    private func scriptedServices(
+        accept: @escaping @MainActor (String, UUID?) -> HomeController.AcceptedInput,
+        run: @escaping @MainActor (HomeController.AcceptedInput, AgentCoordinator.SpatialContext) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
+    ) -> TalkSession.Services {
+        TalkSession.Services(
+            makeInput: { StubTalkInput() },
+            output: StubTalkOutput(),
+            capture: { throw CancellationError() },
+            acceptInput: { text, id, _ in accept(text, id) },
+            run: run
+        )
     }
 
     private func answering(_ text: String) -> [AgentLoopEvent] {
@@ -126,19 +153,19 @@ final class AskSessionControllerTests: XCTestCase {
         var dispatched = false
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: {
+            capture: {
                 let saved = await ThreadStore(directory: root).thread(id: original.id)
                 XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["Keep my typed request"])
                 XCTAssertEqual(saved?.draft, original.draft)
                 entered.fulfill()
                 await capture.wait()
                 return self.observation()
-            }, runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, _ in
+            }, services: scriptedServices(accept: { home.acceptInput($0, threadID: $1) }, run: { input, _ in
                 dispatched = true
                 return (input.threadID, AsyncStream { $0.finish() }, nil)
             })
         )
-        controller.submit(question: "Keep my typed request")
+        controller.submitComposer(question: "Keep my typed request")
         await fulfillment(of: [entered], timeout: 2)
         controller.cancel()
         _ = session.requestDismissal()
@@ -159,11 +186,11 @@ final class AskSessionControllerTests: XCTestCase {
         var accepted = 0
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: {
+            capture: {
                 captured.fulfill()
                 await capture.wait()
                 return self.observation()
-            }, runner: .init(accept: { text, id in
+            }, services: scriptedServices(accept: { text, id in
                 accepted += 1
                 let isFirst = accepted == 1
                 return .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {
@@ -176,8 +203,8 @@ final class AskSessionControllerTests: XCTestCase {
                 (input.threadID, AsyncStream { $0.finish() }, nil)
             })
         )
-        controller.submit(question: "First")
-        controller.submit(question: "Replacement")
+        controller.submitComposer(question: "First")
+        controller.submitComposer(question: "Replacement")
         await fulfillment(of: [captured], timeout: 2)
         await firstSave.release()
         try await Task.sleep(for: .milliseconds(30))
@@ -205,12 +232,12 @@ final class AskSessionControllerTests: XCTestCase {
             let output = OutputStub()
             let controller = makeController(
                 sessionController: session, overlayState: PerryCursorState(), output: output,
-                observationProvider: { self.observation() },
-                runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
-                    home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+                capture: { self.observation() },
+                services: scriptedServices(accept: { home.acceptInput($0, threadID: $1) }, run: { input, spatial in
+                    home.runSpokenTurn(input, spatial: spatial, coordinator: coordinator)
                 })
             )
-            controller.submit(question: "Remember Orchid")
+            controller.submitComposer(question: "Remember Orchid")
             await waitForCondition {
                 guard case .asking(let ask) = session.state else { return false }
                 return !ask.isWorking
@@ -219,7 +246,7 @@ final class AskSessionControllerTests: XCTestCase {
                 guard case .asking(let first) = session.state else { return XCTFail("Missing Ask session") }
                 let originalID = try XCTUnwrap(first.threadID)
                 home.homeModel.sidebarSelection = .thread(UUID())
-                controller.submit(question: "Which document?")
+                controller.submitComposer(question: "Which document?")
                 await waitForCondition {
                     guard case .asking(let ask) = session.state else { return false }
                     return ask.turnCount == 2 && !ask.isWorking
@@ -257,12 +284,12 @@ final class AskSessionControllerTests: XCTestCase {
         let output = OutputStub()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { self.observation() },
-            runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
-                home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+            capture: { self.observation() },
+            services: scriptedServices(accept: { home.acceptInput($0, threadID: $1) }, run: { input, spatial in
+                home.runSpokenTurn(input, spatial: spatial, coordinator: coordinator)
             })
         )
-        controller.submit(question: "Keep my question")
+        controller.submitComposer(question: "Keep my question")
         await waitForCondition {
             guard case .asking(let ask) = session.state else { return false }
             return ask.answerText == "Orchid"
@@ -284,13 +311,13 @@ final class AskSessionControllerTests: XCTestCase {
             let barrier = AsyncBarrier()
             let controller = makeController(
                 sessionController: session, overlayState: PerryCursorState(), output: output,
-                observationProvider: { self.observation() },
-                runner: scriptedRunner { _ in
+                capture: { self.observation() },
+                services: scriptedRunner { _ in
                     await barrier.wait()
                     return self.answering("Ready")
                 }
             )
-            controller.submit(question: "Explain this")
+            controller.submitComposer(question: "Explain this")
             var transitioned = false
             controller.afterCurrentAnswer { _ in XCTFail("Superseded transition ran") }
             controller.afterCurrentAnswer { state in
@@ -317,10 +344,10 @@ final class AskSessionControllerTests: XCTestCase {
         let barrier = AsyncBarrier()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: OutputStub(),
-            observationProvider: { self.observation() },
-            runner: scriptedRunner { _ in self.answering("Ready") }
+            capture: { self.observation() },
+            services: scriptedRunner { _ in self.answering("Ready") }
         )
-        controller.submit(question: "Explain this")
+        controller.submitComposer(question: "Explain this")
         var saved = false
         var transitioned = false
         controller.afterCurrentAnswer(prepare: {
@@ -358,10 +385,10 @@ final class AskSessionControllerTests: XCTestCase {
         var requests = 0
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { self.observation() },
-            runner: .init(accept: { home.acceptInput($0, threadID: $1) }, run: { input, observation in
+            capture: { self.observation() },
+            services: scriptedServices(accept: { home.acceptInput($0, threadID: $1) }, run: { input, spatial in
                 requests += 1
-                let run = home.runSpokenTurn(input, spatial: .init(observation: observation, bindings: [], skill: nil), coordinator: coordinator)
+                let run = home.runSpokenTurn(input, spatial: spatial, coordinator: coordinator)
                 if requests > 1 {
                     XCTAssertTrue(retired, "A follow-up outran presentation cleanup")
                     return run
@@ -374,7 +401,7 @@ final class AskSessionControllerTests: XCTestCase {
                 return (run.threadID, run.events, completion)
             })
         )
-        controller.submit(question: "First")
+        controller.submitComposer(question: "First")
         await waitForCondition {
             guard case .asking(let ask) = session.state else { return false }
             return ask.turnCount == 1
@@ -385,7 +412,7 @@ final class AskSessionControllerTests: XCTestCase {
         controller.afterCurrentAnswer { _ in transitioned = true }
         try await Task.sleep(for: .milliseconds(30))
         XCTAssertFalse(transitioned)
-        controller.submit(question: "Follow up")
+        controller.submitComposer(question: "Follow up")
         await home.joinInputSaves()
         XCTAssertEqual(requests, 1)
         let waiting = await ThreadStore(directory: root).thread(id: threadID)
@@ -409,11 +436,11 @@ final class AskSessionControllerTests: XCTestCase {
         let output = OutputStub()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { self.observation() },
-            runner: scriptedRunner { _ in self.answering("Save writes the document.") }
+            capture: { self.observation() },
+            services: scriptedRunner { _ in self.answering("Save writes the document.") }
         )
 
-        controller.submit(question: "What does Save do?")
+        controller.submitComposer(question: "What does Save do?")
 
         await waitForCondition {
             if case .asking(let ask) = session.state { return !ask.isWorking }
@@ -438,11 +465,11 @@ final class AskSessionControllerTests: XCTestCase {
         )
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { protected },
-            runner: scriptedRunner(onRun: { ran = true }) { _ in self.answering("x") }
+            capture: { protected },
+            services: scriptedRunner(onRun: { ran = true }) { _ in self.answering("x") }
         )
 
-        controller.submit(question: "What is this?")
+        controller.submitComposer(question: "What is this?")
         await waitForCondition {
             if case .asking(let ask) = session.state { return !ask.isWorking }
             return false
@@ -459,18 +486,18 @@ final class AskSessionControllerTests: XCTestCase {
             sessionController: session,
             overlayState: PerryCursorState(),
             output: output,
-            observationProvider: {
+            capture: {
                 captures += 1
                 return self.observation()
             },
-            runner: scriptedRunner { _ in self.answering("x") }
+            services: scriptedRunner { _ in self.answering("x") }
         )
         session.debugSet(.executing(ExecutionSessionState(
             taskID: UUID(), goal: "task", startedAt: Date(),
             appBundleID: nil, workspace: URL(fileURLWithPath: "/tmp"), lifecycle: .running
         )))
 
-        controller.submit(question: "What is this?")
+        controller.submitComposer(question: "What is this?")
 
         XCTAssertEqual(captures, 0)
         XCTAssertTrue(output.statuses.contains("Finish or dismiss the current session before asking."))
@@ -482,14 +509,14 @@ final class AskSessionControllerTests: XCTestCase {
         let barrier = AsyncBarrier()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { self.observation() },
-            runner: scriptedRunner { _ in
+            capture: { self.observation() },
+            services: scriptedRunner { _ in
                 await barrier.wait()
                 return self.answering("too late")
             }
         )
 
-        controller.submit(question: "What is this?")
+        controller.submitComposer(question: "What is this?")
         await waitForCondition {
             if case .asking(let ask) = session.state { return ask.isWorking }
             return false
@@ -508,13 +535,13 @@ final class AskSessionControllerTests: XCTestCase {
         let output = OutputStub()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: output,
-            observationProvider: { self.observation() },
-            runner: scriptedRunner { call in
+            capture: { self.observation() },
+            services: scriptedRunner { call in
                 call == 1 ? [.finished(.failed("The model is unavailable."))] : self.answering("Second try worked.")
             }
         )
 
-        controller.submit(question: "What is this?")
+        controller.submitComposer(question: "What is this?")
         await waitForCondition {
             if case .asking(let ask) = session.state { return !ask.isWorking && output.buddyStates.last == .blocked }
             return false
@@ -524,7 +551,7 @@ final class AskSessionControllerTests: XCTestCase {
         XCTAssertEqual(ask.turnCount, 0)
         XCTAssertTrue(output.spoken.isEmpty)
 
-        controller.submit(question: "What is this?")
+        controller.submitComposer(question: "What is this?")
         await waitForCondition {
             if case .asking(let ask) = session.state { return ask.turnCount == 1 }
             return false

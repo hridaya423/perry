@@ -9,7 +9,7 @@ protocol DemoFlowHost: AnyObject {
     var spatial: SpatialSelectionController { get }
     var guideCoordinator: GuideSessionCoordinator { get }
     var foreground: ForegroundTaskController { get }
-    var askController: AskSessionController { get }
+    var talkSession: TalkSession { get }
     var probe: EnvironmentProbe { get }
     var runtimes: RuntimeCatalog { get }
     var sessionState: SessionState { get }
@@ -92,7 +92,7 @@ final class DemoFlowController {
     }
 
     private static func cancelPendingInputs(host: any DemoFlowHost) {
-        host.askController.cancel()
+        host.talkSession.cancelAsk()
         if case .invoking(let invocation) = host.sessionState {
             host.foreground.cancelInvocationIfCurrent(invocation.id)
         }

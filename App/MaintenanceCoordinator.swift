@@ -14,7 +14,6 @@ protocol MaintenanceHost: AnyObject {
     var guideCoordinator: GuideSessionCoordinator { get }
     var workers: CuaWorkerService { get }
     var foreground: ForegroundTaskController { get }
-    var askController: AskSessionController { get }
     var talkSession: TalkSession { get }
     var notchStatus: NotchStatusController { get }
     var perryScheduler: PerrySchedulerController? { get }
@@ -222,9 +221,9 @@ final class MaintenanceCoordinator {
         guard let host else { return }
         host.backgroundTasks.closeControls()
         await host.brain.stopSetup()
-        host.askController.cancel()
+        host.talkSession.cancelAsk()
         host.talkSession.cancel()
-        await host.askController.joinInputSaves()
+        await host.talkSession.joinInputSaves()
         host.notchStatus.hide()
         host.homeController.stop()
         host.perryScheduler?.stop()
@@ -256,9 +255,9 @@ final class MaintenanceCoordinator {
         await host.mcp.discard()
         await host.brain.stopSetup()
         host.demoDirector.cancel()
-        host.askController.cancel()
+        host.talkSession.cancelAsk()
         host.talkSession.cancel()
-        await host.askController.joinInputSaves()
+        await host.talkSession.joinInputSaves()
         host.notchStatus.hide()
         host.homeController.stop()
         host.perryScheduler?.stop()

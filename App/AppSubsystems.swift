@@ -188,20 +188,6 @@ final class AppSubsystems {
     )
 
 #endif
-    lazy var askController = AskSessionController(
-        sessionController: app.sessionController,
-        workers: self.workers,
-        overlayState: self.overlayState,
-        output: app.guideBridge,
-        context: app.guideBridge,
-        runner: .init(accept: { [unowned app = app] in self.homeController.acceptInput($0, threadID: $1) }, run: { [unowned app = app] input, observation in
-            self.homeController.runSpokenTurn(
-                input,
-                spatial: .init(observation: observation, bindings: [], skill: self.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)),
-                coordinator: self.agentCoordinator
-            )
-        })
-    )
 
     lazy var talkCapture = TalkObservationCapture(
         workers: self.workers,

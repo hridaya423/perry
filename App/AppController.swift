@@ -36,7 +36,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var memoryStore: MemoryStore { subsystems.memoryStore }
     var transcriptStore: TranscriptStore { subsystems.transcriptStore }
     var guideCoordinator: GuideSessionCoordinator { subsystems.guideCoordinator }
-    var askController: AskSessionController { subsystems.askController }
     var talkCapture: TalkObservationCapture { subsystems.talkCapture }
     var talkSkillLibrary: AppSkillLibrary { subsystems.talkSkillLibrary }
     var talkSession: TalkSession { subsystems.talkSession }
@@ -413,7 +412,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
         sessionStatus = "Ready when you are."
         probe.clearInvocationTarget()
-        askController.cancel()
         guideCoordinator.stopClickObservation()
         guideCoordinator.cancelPendingDemoInputs()
         spatial.stopMonitoring()

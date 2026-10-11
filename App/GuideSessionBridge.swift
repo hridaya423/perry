@@ -20,7 +20,7 @@ protocol GuideBridgeHost: AnyObject {
     func clearSessionSurfaces()
 }
 
-/// GuideSessionCoordinator and AskSessionController see the app only through
+/// GuideSessionCoordinator and TalkSession see the app only through
 /// GuideSessionOutput/GuideSessionContext; this bridge forwards those calls
 /// to the extracted owners, so neither session needs the whole controller.
 @MainActor
@@ -135,7 +135,7 @@ extension AppController {
 extension AppController {
     func ask(question: String) {
         guard !maintenance.isUnderMaintenance else { return }
-        askController.submit(question: question)
+        talkSession.submitComposer(question: question)
     }
 
     func advanceGuide() {

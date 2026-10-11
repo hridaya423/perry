@@ -9,7 +9,7 @@ import PerryGuide
 protocol CommandRouteHost: AnyObject {
     var sessionController: SessionController { get }
     var homeController: HomeController { get }
-    var askController: AskSessionController { get }
+    var talkSession: TalkSession { get }
     var guideCoordinator: GuideSessionCoordinator { get }
     var foreground: ForegroundTaskController { get }
     var sessionStatus: String { get set }
@@ -96,7 +96,7 @@ final class CommandRouter {
             $0.pendingGuideRequest = input
         }
         host.sessionStatus = "Saving your request while this answer finishes…"
-        host.askController.afterCurrentAnswer(prepare: { [weak host] in
+        host.talkSession.afterCurrentAnswer(prepare: { [weak host] in
             guard let host else { return false }
             do {
                 try await accepted.saved.value
