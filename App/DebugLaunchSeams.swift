@@ -113,5 +113,129 @@ extension AppController {
             showPanel()
         }
     }
+
+    /// True when an early-return debug surface consumed the launch path.
+    func debugHandleEarlyLaunchSurface() -> Bool {
+        let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
+        if debugSurface == .backgroundTasksStorageError {
+            guard debugSeams.storageDirectory != nil else { return true }
+            DispatchQueue.main.async { [weak self] in
+                self?.showDebugBackgroundTasksStorageError()
+            }
+            return true
+        }
+        return false
+    }
+
+    /// Presents the --perry-debug-* surface the launch arguments asked for
+    /// (or runs onboarding when none did), then applies any state fixture.
+    func applyDebugLaunchSurface() {
+        let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
+        if debugSurface == nil {
+            onboarding.runIfNeeded()
+        }
+        if debugSurface == .settings {
+            DispatchQueue.main.async { [weak self] in
+                self?.showSettings()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        } else if debugSurface == .onboarding {
+            DispatchQueue.main.async { [weak self] in
+                self?.onboarding.runDenied()
+            }
+        } else if debugSurface == .session {
+            DispatchQueue.main.async { [weak self] in
+                self?.showPanel()
+            }
+        } else if debugSurface == .activity {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.foreground.debugShowActivityFixture()
+            }
+        } else if debugSurface == .guideControls {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.guideCoordinator.debugShowGuideControlsFixture()
+            }
+        } else if debugSurface == .history {
+            DispatchQueue.main.async { [weak self] in
+                self?.debugShowHistoryFixture()
+            }
+        } else if debugSurface == .prototypes {
+            DispatchQueue.main.async {
+                DebugPrototypeWindow.show()
+            }
+        } else if debugSurface == .cursors {
+            DispatchQueue.main.async {
+                DebugCursorGalleryWindow.show()
+            }
+        } else if debugSurface == .intentCard {
+            DispatchQueue.main.async {
+                IntentCardWindow(card: PerryDebugLaunchSurface.intentCardFixture, allowsStepThrough: true) { _ in }.show()
+            }
+        } else if debugSurface == .notch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                self?.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
+            }
+        } else if debugSurface == .backgroundTasksStorageError {
+            DispatchQueue.main.async { [weak self] in
+                self?.showBackgroundTasks()
+            }
+        }
+        if let fixture = DebugStateFixture(arguments: ProcessInfo.processInfo.arguments) {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyDebugStateFixture(fixture)
+            }
+        }
+    }
+
+    func runFailureDrill(_ drill: FailureDrill) {
+        switch drill {
+        case .routeFlip:
+            voice.speak("The audio route drill is speaking now.")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.voice.debugSimulateAudioRouteChange("simulated AirPods")
+            }
+        case .microphoneWedge:
+            voice.debugSimulateDictationFailure()
+        case .mutedOutput:
+            let message = "This reply is from the muted-output recovery drill."
+            voice.speak(message)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.voice.copyReplyToClipboard(
+                    message,
+                    status: "Muted-output drill passed; the reply is on your clipboard."
+                )
+            }
+        case .runtimeMissing:
+            runOnboarding(force: true)
+            voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
+        }
+    }
+
+    func installTalkDrillTrigger() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.talk-drill"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            switch note.userInfo?["phase"] as? String {
+            case "down":
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+            case "up":
+                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+            default:
+                break
+            }
+        }
+    }
+    func showDebugBackgroundTasksStorageError() {
+        runtimes.refreshChoices()
+        homeController.openHome(selection: .tasks)
+    }
 }
 #endif
