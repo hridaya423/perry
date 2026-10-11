@@ -68,6 +68,16 @@ Production changes — landed 2026-10-11 (`CodexAppServerProvider` +
    data, and keeping it in `developerInstructions` would pin turn-1's index
    or force a new thread every turn.
 
+## End-to-end verification (talk-drill, 2026-10-11)
+
+Server logs confirm one `thread/start` served four consecutive Talk turns
+(`thread.id=01a12b61…`, turns carry `model=gpt-5.6-terra`, `effort=none` —
+the turn-level override applies while thread identity persists). Warm
+`capture.done → answer.first_text` p50 3.5 s (n=4), vs 17–43 s baseline.
+End-to-end `keyup → first_text` still reads ~14 s because the capture path
+(`capture_begin → capture.done`) runs 5–15 s with driver request timeouts
+— that is the Phase 1 capture work, not the brain.
+
 ## Risks
 
 - `gpt-5.6-terra`/`gpt-5.6-luna` may not exist on every account tier. If the

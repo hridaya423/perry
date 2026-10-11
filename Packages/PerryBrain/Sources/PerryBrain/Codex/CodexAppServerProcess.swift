@@ -229,7 +229,7 @@ public actor CodexAppServerProcess {
     private static func cappedLogHandle(for url: URL) -> FileHandle? {
         let limit = 512 * 1024, keep = 256 * 1024
         do {
-            if let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
+            if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int,
                size > limit,
                let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
                 try data.suffix(keep).write(to: url)
