@@ -100,14 +100,14 @@ public struct RuntimeGuidePlanner: GuidePlanner {
     /// dropped rather than painted in the wrong place.
     static func parsePath(text: String, observation: GuideObservation) throws -> [GuideStep] {
         let payload = try strictJSONObject(text)
-        guard Set(payload.keys) == ["steps"], let list = payload["steps"] as? [[String: Any]], list.count <= 8 else {
-            throw GuidePlannerError.malformedResponse("expected at most eight steps")
+        guard Set(payload.keys) == ["steps"], let list = payload["steps"] as? [[String: Any]], list.count <= 25 else {
+            throw GuidePlannerError.malformedResponse("expected at most twenty-five steps")
         }
         return try list.map { try GuideTargetValidator.validated(parseStep($0, observation: observation), in: observation) }
     }
 
     private static func parseStep(_ raw: [String: Any], observation: GuideObservation) throws -> GuideStep {
-        guard Set(raw.keys).isSubset(of: ["instruction", "target", "wait", "opens_window"]),
+        guard Set(raw.keys).isSubset(of: ["instruction", "target", "wait", "opens_window", "post"]),
               let instruction = raw["instruction"] as? String,
               !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let rawTarget = raw["target"] else {
@@ -138,7 +138,54 @@ public struct RuntimeGuidePlanner: GuidePlanner {
             target = .screenPoint(CGPointShim(x: try coordinate(pair[0]), y: try coordinate(pair[1])))
         default: throw GuidePlannerError.malformedResponse("invalid target")
         }
-        return GuideStep(instruction: instruction, target: target, waitForUserAction: wait, opensWindow: opensWindow)
+        var postcondition: GuideStep.Postcondition?
+        if let rawPost = raw["post"] {
+            postcondition = try parsePostcondition(rawPost, observation: observation)
+        }
+        return GuideStep(
+            instruction: instruction, target: target, waitForUserAction: wait,
+            postcondition: postcondition, opensWindow: opensWindow
+        )
+    }
+
+    /// The verifiable end-state of a step: {"exists":"id"}, {"absent":"id"},
+    /// {"label":"id","equals":"text"}, or {"window_title":"..."}. absent/label
+    /// reference the element being changed, so the id must be grounded in the
+    /// live window or verification could never run.
+    private static func parsePostcondition(_ value: Any, observation: GuideObservation) throws -> GuideStep.Postcondition {
+        guard let post = value as? [String: Any], !post.isEmpty else {
+            throw GuidePlannerError.malformedResponse("post must be an object")
+        }
+        func elementID(_ key: String) throws -> String {
+            guard let id = post[key] as? String,
+                  !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw GuidePlannerError.malformedResponse("post.\(key) requires a nonempty element id")
+            }
+            return id
+        }
+        func requireGrounded(_ id: String) throws {
+            guard observation.snapshot.element(withStableID: id) != nil else {
+                throw GuidePlannerError.malformedResponse("post references element \(id) that is not in the live window")
+            }
+        }
+        if Set(post.keys) == ["exists"] {
+            return .elementExists(stableID: try elementID("exists"))
+        }
+        if Set(post.keys) == ["absent"] {
+            let id = try elementID("absent")
+            try requireGrounded(id)
+            return .elementAbsent(stableID: id)
+        }
+        if Set(post.keys) == ["label", "equals"], let label = post["equals"] as? String {
+            let id = try elementID("label")
+            try requireGrounded(id)
+            return .elementLabelEquals(stableID: id, label: label)
+        }
+        if Set(post.keys) == ["window_title"], let title = post["window_title"] as? String,
+           !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .windowTitleEquals(title)
+        }
+        throw GuidePlannerError.malformedResponse("unknown postcondition shape")
     }
 
     private static func coordinate(_ value: Any?) throws -> Double {
@@ -241,6 +288,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         Reply: {"step":{"instruction":"<short spoken instruction>","target":"<control id>"}}
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}
         When the click opens a sheet, popover, or new window in the same app, add "opens_window":true to that step.
+        When the step waits for the user, add the observable proof it happened: "post":{"exists":"<control id>"}, {"absent":"<control id>"}, {"label":"<control id>","equals":"<text>"}, or {"window_title":"<title>"}.
         Only when the goal is complete: {"done":true}
         When you cannot advance or verify completion: {"blocked":"<brief reason>"}
         When the user must clarify: {"needs_input":{"prompt":"<question>","choices":["<optional choice>"]}}
@@ -256,8 +304,9 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         """
         \(sharedContext(goal: goal, observation: observation, context: context, skill: skill))
         List, in order, the controls the user should click that are visible right now — never a control that is not on screen.
-        Return at most eight steps. If no controls can be grounded, return {"steps":[]}.
-        Reply: {"steps":[{"instruction":"<short spoken instruction>","target":"<control id>"}]}
+        If no controls can be grounded, return {"steps":[]}.
+        Reply: {"steps":[{"instruction":"<short spoken instruction>","target":"<control id>","post":{"<observable proof>"},"wait":true,"opens_window":false}]}
+        "post" is the proof the click happened: {"exists":"<control id>"}, {"absent":"<control id>"}, {"label":"<control id>","equals":"<text>"}, or {"window_title":"<title>"}. "wait" and "opens_window" may be omitted when false.
         """
     }
 }

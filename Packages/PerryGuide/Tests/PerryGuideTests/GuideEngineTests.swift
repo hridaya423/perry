@@ -40,6 +40,30 @@ private enum GuideReaderTestError: Error {
     case captureUnavailable
 }
 
+/// Records planner calls so tests can prove the engine consumes its seeded
+/// plan instead of paying a round-trip per step.
+private final class CountingPlanner: GuidePlanner, @unchecked Sendable {
+    var path: [GuideStep]
+    var decisions: [GuideDecision]
+    private(set) var nextStepCalls = 0
+    private(set) var visiblePathCalls = 0
+
+    init(path: [GuideStep], decisions: [GuideDecision] = []) {
+        self.path = path
+        self.decisions = decisions
+    }
+
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
+        nextStepCalls += 1
+        return decisions.isEmpty ? .complete(evidence: .explanationOnly) : decisions.removeFirst()
+    }
+
+    func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
+        visiblePathCalls += 1
+        return path
+    }
+}
+
 /// Returns steps from a queue, one per planner call, ignoring the observation.
 private struct QueueGuidePlanner: GuidePlanner {
     let steps: [GuideStep?]
@@ -58,7 +82,10 @@ private struct QueueGuidePlanner: GuidePlanner {
     }
 
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
-        steps.compactMap { $0 }
+        // The plan call consumes the queue — the seeded horizon replaces the
+        // per-step planner calls it predicts.
+        defer { position.index = steps.count }
+        return steps.compactMap { $0 }
     }
 }
 
@@ -472,6 +499,85 @@ final class GuideEngineTests: XCTestCase {
 
     /// A window change must not ride along on a skip: the step that predicted
     /// it was never performed, so a new windowID still blocks.
+    /// Steps already planned up front validate against the live window and
+    /// present without another planner call — the click→next-step cost drops
+    /// to one observation read.
+    func testPlannedStepsAdvanceWithoutReplanning() async throws {
+        let stepA = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let stepB = GuideStep(
+            instruction: "confirm",
+            target: .axElement(stableID: "done")
+        )
+        let before = observation([button("target", label: "Open")])
+        let after = observation([button("target", label: "Open"), button("done", label: "Done")])
+        let observer = StubObserver(observations: [before, after, after])
+        let planner = CountingPlanner(path: [stepA, stepB])
+        let engine = GuideEngine(planner: planner, observer: observer)
+
+        _ = try await engine.start(goal: "open the file")
+        XCTAssertEqual(planner.nextStepCalls, 0)
+        XCTAssertEqual(planner.visiblePathCalls, 1)
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        guard case .advanced(let step, _) = result else {
+            return XCTFail("expected planned advance, got \(result)")
+        }
+        XCTAssertEqual(step.instruction, "confirm")
+        XCTAssertEqual(planner.nextStepCalls, 0)
+    }
+
+    /// A planned step whose target vanished is a deviation: the rest of the
+    /// plan is stale, so the engine calls the planner once to replan.
+    func testDeviationFromThePlanTriggersOneReplan() async throws {
+        let stepA = GuideStep(
+            instruction: "open it",
+            target: .axElement(stableID: "target"),
+            postcondition: .elementExists(stableID: "done")
+        )
+        let stepB = GuideStep(
+            instruction: "confirm",
+            target: .axElement(stableID: "gone")
+        )
+        let before = observation([button("target", label: "Open")])
+        let after = observation([button("done", label: "Done")])
+        let observer = StubObserver(observations: [before, after, after])
+        let planner = CountingPlanner(
+            path: [stepA, stepB],
+            decisions: [.step(GuideStep(instruction: "replanned", target: .axElement(stableID: "done")))]
+        )
+        let engine = GuideEngine(planner: planner, observer: observer)
+
+        _ = try await engine.start(goal: "open the file")
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        guard case .advanced(let step, _) = result else {
+            return XCTFail("expected replanned advance, got \(result)")
+        }
+        XCTAssertEqual(step.instruction, "replanned")
+        XCTAssertEqual(planner.nextStepCalls, 1)
+    }
+
+    /// Skipping invalidates the rest of the seeded plan — later steps were
+    /// predicted on the skipped step happening.
+    func testSkipDiscardsTheSeededPlan() async throws {
+        let stepA = GuideStep(instruction: "open it", target: .axElement(stableID: "target"))
+        let stepB = GuideStep(instruction: "confirm", target: .axElement(stableID: "done"))
+        let snap = observation([button("target", label: "Open"), button("done", label: "Done")])
+        let observer = StubObserver(observations: [snap, snap])
+        let planner = CountingPlanner(
+            path: [stepA, stepB],
+            decisions: [.complete(evidence: .explanationOnly)]
+        )
+        let engine = GuideEngine(planner: planner, observer: observer)
+
+        _ = try await engine.start(goal: "open the file")
+        _ = await engine.skip()
+        XCTAssertEqual(planner.nextStepCalls, 1)
+    }
+
     func testSkipStillBlocksAcrossChangedWindowForOpensWindowStep() async throws {
         let otherWindow = observation([button("a", label: "A")], windowID: 8)
         let observer = StubObserver(observations: [
@@ -637,14 +743,19 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
+    /// A deviation triggers exactly one replan — and the replanned step is
+    /// held to the same grounding check. An invented target there blocks.
     func testInventedTargetOnReplanBlocksHonestly() async throws {
         let first = snapshot([button("a", label: "A")])
         let changed = snapshot([button("b", label: "B")])
         let observer = StubObserver(snapshots: [first, changed])
-        let planner = QueueGuidePlanner(steps: [
-            GuideStep(instruction: "click a", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a")),
-            GuideStep(instruction: "ghost", target: .axElement(stableID: "invented")),
-        ])
+        let planner = CountingPlanner(
+            path: [
+                GuideStep(instruction: "click a", target: .axElement(stableID: "a"), postcondition: .elementAbsent(stableID: "a")),
+                GuideStep(instruction: "stale", target: .axElement(stableID: "a")),
+            ],
+            decisions: [.step(GuideStep(instruction: "ghost", target: .axElement(stableID: "invented")))]
+        )
         let engine = GuideEngine(planner: planner, observer: observer)
         _ = try await engine.start(goal: "g")
 
@@ -652,6 +763,7 @@ final class GuideEngineTests: XCTestCase {
         guard case .blocked = result else {
             return XCTFail("expected blocked, got \(result)")
         }
+        XCTAssertEqual(planner.nextStepCalls, 1)
     }
 
     func testOutOfWindowPointIsRejected() async throws {

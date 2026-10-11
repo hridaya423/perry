@@ -30,6 +30,10 @@ public actor GuideEngine {
     /// reuse it.
     private var inputAnswer: String?
     private var maximumSteps: Int?
+    /// The seeded horizon: steps the planner predicted up front. Consumed
+    /// while each target still validates against the live window; the first
+    /// deviation discards the rest and falls back to a live replan.
+    private var plannedSteps: [GuideStep] = []
 
     public init(
         planner: GuidePlanner,
@@ -47,6 +51,9 @@ public actor GuideEngine {
     public func start(goal: String, maximumSteps: Int? = nil, context: GuideContext = .empty) async throws -> GuideStep? {
         reset(goal: goal, context: context, maximumSteps: maximumSteps)
         let observation = try await observer.observe()
+        // Seed the horizon with one plan call; each later step validates
+        // against the live window instead of paying a planner round-trip.
+        plannedSteps = (try? await planner.visiblePath(goal: goal, observation: observation, context: context)) ?? []
         guard let step = try await nextValidStep(observation: observation) else {
             phase = .finished
             return nil
@@ -74,6 +81,9 @@ public actor GuideEngine {
         for prior in steps[..<selectedIndex] {
             progress.recordSkipped(prior)
         }
+        // The map's remaining steps are the seeded horizon — same plan, no
+        // extra planner call when the user picks up mid-path.
+        plannedSteps = Array(steps.dropFirst(selectedIndex + 1))
         let step = try GuideTargetValidator.validated(steps[selectedIndex], in: observation)
         present(step, observation: observation)
         return step
@@ -149,6 +159,7 @@ public actor GuideEngine {
             return .notPresenting
         }
         progress.recordSkipped(step)
+        plannedSteps = []
         let observation: GuideObservation
         do {
             observation = try await observer.observe()
@@ -175,6 +186,7 @@ public actor GuideEngine {
             return .notPresenting
         }
         inputAnswer = answer
+        plannedSteps = []
         let observation: GuideObservation
         do {
             observation = try await observer.observe()
@@ -195,6 +207,7 @@ public actor GuideEngine {
         progress = GuideProgress()
         hasRepointed = false
         inputAnswer = nil
+        plannedSteps = []
     }
 
     private func reset(goal: String, context: GuideContext, maximumSteps: Int?) {
@@ -208,6 +221,7 @@ public actor GuideEngine {
         progress = GuideProgress()
         hasRepointed = false
         inputAnswer = nil
+        plannedSteps = []
     }
 
     private var currentStepIndex: Int? {
@@ -288,6 +302,21 @@ public actor GuideEngine {
         // can't silently reuse it.
         let answer = inputAnswer
         inputAnswer = nil
+        if !plannedSteps.isEmpty {
+            let candidate = plannedSteps.removeFirst()
+            // Mid-run, a planned step that no longer grounds is a deviation:
+            // drop the stale horizon and replan. At session start there is no
+            // prior state to deviate from — a bad first step is the planner's
+            // own output and surfaces instead of being silently retried.
+            if presentationObservation != nil {
+                if let validated = try? GuideTargetValidator.validated(candidate, in: observation) {
+                    return validated
+                }
+                plannedSteps = []
+            } else {
+                return try GuideTargetValidator.validated(candidate, in: observation)
+            }
+        }
         let decision = try await planner.nextStep(
             goal: goal,
             observation: observation,

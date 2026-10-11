@@ -230,8 +230,8 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         }
     }
 
-    func testVisiblePathRejectsMoreThanEightSteps() async throws {
-        let list = (0..<9).map { #"{"instruction":"click \#($0)","target":"b1"}"# }.joined(separator: ",")
+    func testVisiblePathRejectsMoreThanTwentyFiveSteps() async throws {
+        let list = (0..<26).map { #"{"instruction":"click \#($0)","target":"b1"}"# }.joined(separator: ",")
         let planner = planner(body: {
             try self.openAIBody("{\"steps\":[\(list)]}")
         })
@@ -370,6 +370,63 @@ final class RuntimeGuidePlannerTests: XCTestCase {
     func testOpensWindowRejectsNonBoolean() {
         XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"open preferences","target":"b1","opens_window":"yes"}}"#,
+            observation: observation()
+        )) { error in
+            guard case GuidePlannerError.malformedResponse = error else {
+                return XCTFail("expected malformedResponse, got \(error)")
+            }
+        }
+    }
+
+    /// The wire finally carries postconditions — without them click-advance
+    /// can only stall waiting for an explicit confirmation.
+    func testPostconditionIsAcceptedAndDecoded() throws {
+        guard case .step(let step) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click Open","target":"b1","post":{"exists":"b2"}}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertEqual(step.postcondition, .elementExists(stableID: "b2"))
+
+        guard case .step(let labelled) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"save","target":"b1","post":{"label":"b1","equals":"Saved"}}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertEqual(labelled.postcondition, .elementLabelEquals(stableID: "b1", label: "Saved"))
+
+        guard case .step(let titled) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"open prefs","target":"b1","post":{"window_title":"Preferences"}}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertEqual(titled.postcondition, .windowTitleEquals("Preferences"))
+    }
+
+    /// absent/label postconditions reference the element being changed — an
+    /// id that is not in the live window can never verify, so it is rejected.
+    func testPostconditionRejectsUngroundedElementIDs() {
+        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click","target":"b1","post":{"absent":"nope"}}}"#,
+            observation: observation()
+        )) { error in
+            guard case GuidePlannerError.malformedResponse = error else {
+                return XCTFail("expected malformedResponse, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click","target":"b1","post":{"label":"nope","equals":"X"}}}"#,
+            observation: observation()
+        )) { error in
+            guard case GuidePlannerError.malformedResponse = error else {
+                return XCTFail("expected malformedResponse, got \(error)")
+            }
+        }
+        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click","target":"b1","post":{"exists":123}}}"#,
             observation: observation()
         )) { error in
             guard case GuidePlannerError.malformedResponse = error else {
