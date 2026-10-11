@@ -451,26 +451,13 @@ final class TalkSession {
         let overlay: PerryGuidanceOverlay
         switch command.verb {
         case .point:
-            let center = CGPoint(x: rect.midX, y: rect.midY)
-            overlay = .scribble(points: [center, center], accentHex: accentHex, lineWidth: 6, caption: command.label)
+            overlay = .pointMark(center: CGPoint(x: rect.midX, y: rect.midY), accentHex: accentHex, caption: command.label)
         case .arrow:
-            overlay = .scribble(
-                points: [
-                    CGPoint(x: rect.midX, y: rect.minY - 44),
-                    CGPoint(x: rect.midX, y: rect.minY - 6),
-                ],
-                accentHex: accentHex, lineWidth: 5, caption: command.label
-            )
+            overlay = .arrowMark(to: rect, accentHex: accentHex, caption: command.label)
         case .underline:
-            overlay = .scribble(
-                points: [
-                    CGPoint(x: rect.minX, y: rect.maxY + 4),
-                    CGPoint(x: rect.maxX, y: rect.maxY + 4),
-                ],
-                accentHex: accentHex, lineWidth: 4, caption: command.label
-            )
+            overlay = .underlineMark(below: rect, accentHex: accentHex, caption: command.label)
         case .ring, .caption:
-            overlay = .rectangle(rect: rect, accentHex: accentHex, caption: command.label)
+            overlay = .ringMark(around: rect, accentHex: accentHex, caption: command.label)
         case .clear:
             return
         }

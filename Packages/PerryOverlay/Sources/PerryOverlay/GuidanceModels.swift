@@ -74,6 +74,7 @@ public struct PerryGuidanceRect: Codable, Equatable, Hashable, Sendable {
 public enum PerryGuidanceOverlayKind: String, Codable, Equatable, Sendable {
     case scribble
     case rectangle
+    case ellipse
 }
 
 public struct PerryGuidanceStyle: Codable, Equatable, Hashable, Sendable {
@@ -119,7 +120,7 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
 
     var screenBounds: CGRect {
         switch kind {
-        case .rectangle:
+        case .rectangle, .ellipse:
             return rect?.normalized.cgRect ?? .null
         case .scribble:
             guard let first = points.first else { return .null }
@@ -140,7 +141,7 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
         switch kind {
         case .scribble:
             return points.count >= 2
-        case .rectangle:
+        case .rectangle, .ellipse:
             guard let rect else { return false }
             let normalized = rect.normalized
             return normalized.width > 1 && normalized.height > 1
@@ -194,6 +195,101 @@ extension PerryGuidanceOverlay {
             kind: .rectangle,
             rect: PerryGuidanceRect(rect).normalized,
             style: PerryGuidanceStyle(accentHex: accentHex, lineWidth: lineWidth, fillOpacity: fillOpacity, caption: caption),
+            duration: duration
+        )
+    }
+
+    public static func ellipse(
+        rect: CGRect,
+        accentHex: String? = nil,
+        lineWidth: Double = 4,
+        fillOpacity: Double = 0.05,
+        caption: String? = nil,
+        duration: TimeInterval = 6
+    ) -> PerryGuidanceOverlay {
+        PerryGuidanceOverlay(
+            kind: .ellipse,
+            rect: PerryGuidanceRect(rect).normalized,
+            style: PerryGuidanceStyle(accentHex: accentHex, lineWidth: lineWidth, fillOpacity: fillOpacity, caption: caption),
+            duration: duration
+        )
+    }
+
+    // MARK: - Mark verbs (§5)
+
+    /// `point`: a hand-inked dot on the element's center, reached by a short
+    /// leader stroke from below-left. Replaces the degenerate two-point
+    /// scribble, which rendered nothing.
+    public static func pointMark(
+        center: CGPoint,
+        accentHex: String? = nil,
+        caption: String? = nil,
+        duration: TimeInterval = 6
+    ) -> PerryGuidanceOverlay {
+        let radius: Double = 5
+        let startAngle = -Double.pi * 0.75
+        var points = [
+            CGPoint(x: center.x - 14, y: center.y - 22),
+            CGPoint(x: center.x + radius * cos(startAngle), y: center.y + radius * sin(startAngle)),
+        ]
+        for i in 1...8 {
+            let theta = startAngle + Double(i) / 8 * 2 * .pi
+            points.append(CGPoint(x: center.x + radius * cos(theta), y: center.y + radius * sin(theta)))
+        }
+        return .scribble(points: points, accentHex: accentHex, lineWidth: 4.5, caption: caption, duration: duration)
+    }
+
+    /// `arrow`: a shaft ending in a hand-inked head just below the element's
+    /// edge — the head, not a bare line end, carries the direction.
+    public static func arrowMark(
+        to rect: CGRect,
+        accentHex: String? = nil,
+        caption: String? = nil,
+        duration: TimeInterval = 6
+    ) -> PerryGuidanceOverlay {
+        let tip = CGPoint(x: rect.midX, y: rect.minY - 4)
+        let tail = CGPoint(x: rect.midX, y: rect.minY - 40)
+        return .scribble(
+            points: [
+                tail, tip,
+                CGPoint(x: tip.x - 6.5, y: tip.y - 12),
+                tip,
+                CGPoint(x: tip.x + 6.5, y: tip.y - 12),
+            ],
+            accentHex: accentHex, lineWidth: 5, caption: caption, duration: duration
+        )
+    }
+
+    /// `underline`: a short stroke just below the element's bottom edge —
+    /// AppKit space, so below is `minY -`, not `maxY +`.
+    public static func underlineMark(
+        below rect: CGRect,
+        accentHex: String? = nil,
+        caption: String? = nil,
+        duration: TimeInterval = 6
+    ) -> PerryGuidanceOverlay {
+        .scribble(
+            points: [
+                CGPoint(x: rect.minX, y: rect.minY - 4),
+                CGPoint(x: rect.maxX, y: rect.minY - 4),
+            ],
+            accentHex: accentHex, lineWidth: 4, caption: caption, duration: duration
+        )
+    }
+
+    /// `ring` / `caption`: a hand-inked ellipse around the element, padded so
+    /// the ink never touches the control it circles.
+    public static func ringMark(
+        around rect: CGRect,
+        padding: Double = 8,
+        accentHex: String? = nil,
+        caption: String? = nil,
+        duration: TimeInterval = 6
+    ) -> PerryGuidanceOverlay {
+        .ellipse(
+            rect: rect.insetBy(dx: -padding, dy: -padding),
+            accentHex: accentHex,
+            caption: caption,
             duration: duration
         )
     }

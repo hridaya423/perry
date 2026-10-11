@@ -86,26 +86,13 @@ private struct DrawVerbExecutor: ToolExecutor {
         let overlay: PerryGuidanceOverlay
         switch verb {
         case .point:
-            let center = CGPoint(x: appKitRect.midX, y: appKitRect.midY)
-            overlay = .scribble(points: [center, center], accentHex: "#34D399", lineWidth: 6, caption: label, duration: duration)
+            overlay = .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
         case .arrow:
-            overlay = .scribble(
-                points: [
-                    CGPoint(x: appKitRect.midX, y: appKitRect.minY - 44),
-                    CGPoint(x: appKitRect.midX, y: appKitRect.minY - 6),
-                ],
-                accentHex: "#34D399", lineWidth: 5, caption: label, duration: duration
-            )
+            overlay = .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         case .underline:
-            overlay = .scribble(
-                points: [
-                    CGPoint(x: appKitRect.minX, y: appKitRect.maxY + 4),
-                    CGPoint(x: appKitRect.maxX, y: appKitRect.maxY + 4),
-                ],
-                accentHex: "#34D399", lineWidth: 4, caption: label, duration: duration
-            )
+            overlay = .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         case .ring, .caption:
-            overlay = .rectangle(rect: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         }
 
         await MainActor.run {

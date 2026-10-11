@@ -129,6 +129,22 @@ public enum InkStroke {
         ])
     }
 
+    /// A closed elliptical loop inscribed in `rect` — the ring mark's
+    /// hand-inked form (§5). The join sits off-axis so it doesn't land on a
+    /// pole of the ellipse where the eye looks first.
+    public static func ellipse(in rect: CGRect, controlPoints count: Int = 14, seed: UInt64 = 1) -> [CGPoint] {
+        guard count > 2, rect.width > 0, rect.height > 0 else { return [] }
+        let rx = rect.width / 2
+        let ry = rect.height / 2
+        var control = (0..<count).map { i -> CGPoint in
+            let theta = CGFloat(i) / CGFloat(count) * 2 * .pi + 0.35
+            return CGPoint(x: rect.midX + rx * cos(theta),
+                           y: rect.midY + ry * sin(theta))
+        }
+        control.append(control[0])
+        return sampled(through: control, seed: seed)
+    }
+
     /// Arc-length position along sampled center points — where the pen tip
     /// sits at `progress` for draw-on.
     public static func point(on samples: [CGPoint], progress: CGFloat) -> CGPoint? {

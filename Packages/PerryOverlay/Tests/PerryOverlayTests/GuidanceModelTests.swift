@@ -121,3 +121,72 @@ struct PerryGuidanceOverlayTests {
         return resolved
     }
 }
+
+struct MarkGeometryTests {
+    private let element = CGRect(x: 400, y: 300, width: 90, height: 30)
+
+    /// `point` used to be `.scribble([center, center])` — a zero-length path
+    /// that renders nothing. The mark is now a real dot with a leader.
+    @Test func pointMarkProducesANonDegenerateDotAndLeader() {
+        let overlay = PerryGuidanceOverlay.pointMark(center: CGPoint(x: 445, y: 315))
+        let cg = overlay.points.map(\.cgPoint)
+
+        #expect(overlay.kind == PerryGuidanceOverlayKind.scribble)
+        #expect(overlay.isRenderable)
+        #expect(Set(cg).count > 2)
+        // The loop of the dot stays within ~6pt of the element center.
+        let dot = cg.dropFirst(2)
+        for p in dot {
+            #expect(hypot(p.x - 445, p.y - 315) < 7)
+        }
+        // The leader approaches from below-left (AppKit: -x, -y).
+        #expect(cg[0].x < 445 && cg[0].y < 315)
+    }
+
+    /// The arrow keeps its below-approach and carries a real head: two barbs
+    /// retraced at the tip, all short of the element's bottom edge.
+    @Test func arrowMarkEndsInAHeadShortOfTheElement() {
+        let overlay = PerryGuidanceOverlay.arrowMark(to: element)
+        let cg = overlay.points.map(\.cgPoint)
+
+        #expect(cg.count == 5)
+        #expect(cg[1] == cg[3]) // tip retraced between barbs
+        for p in cg {
+            #expect(p.y < element.minY) // never overlaps the element
+        }
+        #expect(cg[1].y > cg[2].y && cg[1].y > cg[4].y) // head points up at the element
+    }
+
+    /// `underline` drew at `maxY + 4` — above the element in AppKit space.
+    /// It belongs below: `minY -`.
+    @Test func underlineMarkSitsBelowTheElement() {
+        let overlay = PerryGuidanceOverlay.underlineMark(below: element)
+        for p in overlay.points.map(\.cgPoint) {
+            #expect(p.y < element.minY)
+            #expect(p.x >= element.minX && p.x <= element.maxX)
+        }
+    }
+
+    /// `ring` is an ellipse padded off the element, not the old crisp rect.
+    @Test func ringMarkIsAPaddedEllipse() {
+        let overlay = PerryGuidanceOverlay.ringMark(around: element, padding: 8)
+        #expect(overlay.kind == PerryGuidanceOverlayKind.ellipse)
+        #expect(overlay.isRenderable)
+        let r = overlay.rect!.cgRect
+        #expect(r.minX == element.minX - 8 && r.minY == element.minY - 8)
+        #expect(r.width == element.width + 16 && r.height == element.height + 16)
+    }
+
+    @Test func ellipseInkIsAClosedDeterministicLoopInsideTheRect() {
+        let rect = CGRect(x: 0, y: 0, width: 100, height: 50)
+        let a = InkStroke.ellipse(in: rect)
+        let b = InkStroke.ellipse(in: rect)
+        #expect(a == b)
+        #expect(a.count > 14)
+        // Every sample stays inside (plus jitter slack); loop closes near start.
+        for p in a {
+            #expect(rect.insetBy(dx: -2, dy: -2).contains(p))
+        }
+        #expect(hypot(a.last!.x - a.first!.x, a.last!.y - a.first!.y) < 3)
+    }
+}

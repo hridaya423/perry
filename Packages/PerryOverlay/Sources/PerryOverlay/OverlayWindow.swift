@@ -691,6 +691,8 @@ struct PerryBuddyView: View {
                 visualGuidanceScribble(overlay, color: color)
             case .rectangle:
                 visualGuidanceRectangle(overlay, color: color)
+            case .ellipse:
+                visualGuidanceEllipse(overlay, color: color)
             }
 
             if let caption = overlay.style.caption?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -755,6 +757,16 @@ struct PerryBuddyView: View {
 
     @ViewBuilder
     private func visualGuidanceRectangle(_ overlay: PerryGuidanceOverlay, color: Color) -> some View {
+        guidanceLoop(overlay, color: color, ellipse: false)
+    }
+
+    @ViewBuilder
+    private func visualGuidanceEllipse(_ overlay: PerryGuidanceOverlay, color: Color) -> some View {
+        guidanceLoop(overlay, color: color, ellipse: true)
+    }
+
+    @ViewBuilder
+    private func guidanceLoop(_ overlay: PerryGuidanceOverlay, color: Color, ellipse: Bool) -> some View {
         if let rect = overlay.rect?.normalized.cgRect {
             let localRect = convertScreenRectToSwiftUICoordinates(rect)
             PerryGuidanceRectangleView(
@@ -762,7 +774,8 @@ struct PerryBuddyView: View {
                 lineWidth: CGFloat(overlay.style.lineWidth),
                 fillOpacity: overlay.style.fillOpacity,
                 drawingDuration: min(0.95, max(0.38, overlay.duration * 0.22)),
-                reduceMotion: accessibilityReduceMotion
+                reduceMotion: accessibilityReduceMotion,
+                ellipse: ellipse
             )
             .frame(width: localRect.width, height: localRect.height)
             .position(x: localRect.midX, y: localRect.midY)
@@ -1510,6 +1523,7 @@ private struct PerryGuidanceRectangleView: View {
     let fillOpacity: Double
     let drawingDuration: TimeInterval
     let reduceMotion: Bool
+    var ellipse: Bool = false
 
     @State private var drawProgress: CGFloat = 0
 
@@ -1520,11 +1534,11 @@ private struct PerryGuidanceRectangleView: View {
 
             let inkRect = CGRect(origin: .zero, size: size)
                 .insetBy(dx: lineWidth, dy: lineWidth)
-            let samples = InkStroke.rectangle(in: inkRect)
+            let samples = ellipse ? InkStroke.ellipse(in: inkRect) : InkStroke.rectangle(in: inkRect)
             let widths = InkStroke.widths(count: samples.count, baseWidth: lineWidth)
 
             ZStack(alignment: .topLeading) {
-                Rectangle()
+                (ellipse ? AnyShape(Ellipse()) : AnyShape(Rectangle()))
                     .fill(color.opacity(fillOpacity * Double(clampedProgress)))
 
                 // Inked perimeter (§5): hand-drawn loop, not a crisp rect.
