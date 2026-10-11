@@ -58,7 +58,7 @@ final class CodexAppServerProviderTests: XCTestCase {
         }
 
         let crashed = Process()
-        crashed.executableURL = URL(fileURLWithPath: "/bin/true")
+        crashed.executableURL = URL(fileURLWithPath: "/usr/bin/true")
         try crashed.run()
         crashed.waitUntilExit()
         let deadPID = crashed.processIdentifier

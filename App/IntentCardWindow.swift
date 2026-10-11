@@ -67,7 +67,7 @@ final class IntentCardWindow: NSPanel {
             let anchor = AXCoordinateConverter.appKitRect(
                 axX: targetFrame.minX, axY: targetFrame.minY,
                 width: targetFrame.width, height: targetFrame.height,
-                primaryScreenMaxY: NSScreen.screens.first?.frame.maxY ?? 0
+                primaryScreenMaxY: Double(NSScreen.screens.first?.frame.maxY ?? 0)
             )
             if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchor) }) {
                 origin = CaptionPlacer.place(
