@@ -22,7 +22,10 @@ enum ToolApprovalPresenter {
         spec: ToolSpec,
         consentScope: String? = nil,
         consentStore: ToolConsentStore,
-        unattended: Bool = false
+        unattended: Bool = false,
+        /// AX-space frame of the element the call acts on, when the last
+        /// observation can supply one — anchors the card at the target.
+        targetFrame: CGRect? = nil
     ) async -> ToolApproval {
         if let consentScope,
            spec.tier < .red,
@@ -59,7 +62,7 @@ enum ToolApprovalPresenter {
                     }
                 }
                 presentation.window = window
-                window.showNearCursor()
+                window.show(anchoredAt: targetFrame)
             }
         } onCancel: {
             Task { @MainActor in presentation.window?.cancel() }

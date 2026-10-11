@@ -252,9 +252,13 @@ final class AgentCoordinator: ObservableObject {
                     runID: pending.id,
                     threadID: threadID.uuidString,
                     approve: { call, spec in
-                        await ToolApprovalPresenter.present(
+                        let elementID = call.arguments.objectValue?["elementID"]?.stringValue
+                        let frame = elementID.flatMap {
+                            self.observations.resolveElement($0, runID: runID)?.frame
+                        }
+                        return await ToolApprovalPresenter.present(
                             call: call, spec: spec, consentScope: scope, consentStore: self.consent,
-                            unattended: unattended
+                            unattended: unattended, targetFrame: frame
                         )
                     },
                     unattended: unattended

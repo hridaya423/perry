@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import PerryGuide
+import PerryOverlay
 import PerryRuntimes
 
 /// Floating intent card anchored near the cursor. Orange: click the action
@@ -53,17 +54,36 @@ final class IntentCardWindow: NSPanel {
         minSize = NSSize(width: 388, height: 280)
     }
 
-    func showNearCursor() {
+    /// Anchor the card beside the element it acts on through CaptionPlacer
+    /// (§4.4); with no target — plan cards cover several elements — fall back
+    /// to the cursor. `targetFrame` is AX-space, same as observed elements.
+    func show(anchoredAt targetFrame: CGRect? = nil) {
         Self.active?.cancel()
         Self.active = self
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousFrontmostApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? .zero
-        let x = min(mouse.x + 24, visible.maxX - frame.width - 12)
-        let y = max(visible.minY + 12, mouse.y - frame.height - 24)
-        setFrameOrigin(NSPoint(x: max(visible.minX + 12, x), y: y))
+        var origin: CGPoint?
+        if let targetFrame, !targetFrame.isNull, targetFrame.width > 0, targetFrame.height > 0 {
+            let anchor = AXCoordinateConverter.appKitRect(
+                axX: targetFrame.minX, axY: targetFrame.minY,
+                width: targetFrame.width, height: targetFrame.height,
+                primaryScreenMaxY: NSScreen.screens.first?.frame.maxY ?? 0
+            )
+            if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchor) }) {
+                origin = CaptionPlacer.place(
+                    size: frame.size, anchor: anchor, in: screen.visibleFrame
+                ).origin
+            }
+        }
+        if origin == nil {
+            let mouse = NSEvent.mouseLocation
+            let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
+            let visible = screen?.visibleFrame ?? .zero
+            let x = min(mouse.x + 24, visible.maxX - frame.width - 12)
+            let y = max(visible.minY + 12, mouse.y - frame.height - 24)
+            origin = NSPoint(x: max(visible.minX + 12, x), y: y)
+        }
+        setFrameOrigin(origin ?? .zero)
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)
     }

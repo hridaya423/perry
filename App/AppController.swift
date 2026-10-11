@@ -1020,7 +1020,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                     approveLabel: "Run",
                     reversible: true
                 )
-                IntentCardWindow(card: card, allowsStepThrough: true) { _ in }.showNearCursor()
+                IntentCardWindow(card: card, allowsStepThrough: true) { _ in }.show()
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -2243,7 +2243,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                     continuation.resume(returning: decision)
                 }
                 intentCardWindow = window
-                window.showNearCursor()
+                window.show()
             }
         } onCancel: {
             Task { @MainActor [weak self] in
@@ -2483,7 +2483,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         case .approvalOrange, .approvalRed:
             guard let card = fixture.intentCard else { return }
             intentCardWindow = IntentCardWindow(card: card) { _ in }
-            intentCardWindow?.showNearCursor()
+            intentCardWindow?.show()
         default:
             if let state = fixture.sessionState {
                 sessionController.debugSet(state)
