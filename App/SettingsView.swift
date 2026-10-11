@@ -264,6 +264,14 @@ struct SettingsView: View {
                     let voice = AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice
                     if let voice { controller.voice.previewSpeechVoice(voice) }
                 }
+                if (AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice)?.quality == .default {
+                    Text("This is a compact voice. Enhanced and Premium voices sound far more natural and are free to download.")
+                        .settingNote()
+                    Button("Download a natural voice…") {
+                        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
+                        NSWorkspace.shared.open(url)
+                    }
+                }
                 Text("Perry uses the system voice installed on this Mac. Voice previews never leave the device.")
                     .settingNote()
             }

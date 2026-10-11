@@ -152,8 +152,15 @@ final class VoiceController: NSObject, ObservableObject {
     /// (identifier, language) pair so a per-utterance lookup stays cheap;
     /// a preference change produces a new key and re-resolves (H6).
     private static var voiceCache: [String: AVSpeechSynthesisVoice?] = [:]
+    /// A voice downloaded while Perry runs must win over the cached compact one.
+    private static let voiceCacheInvalidation: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil, queue: .main
+    ) { _ in
+        MainActor.assumeIsolated { voiceCache.removeAll() }
+    }
 
     static func speakingVoice(for languageIdentifier: String? = nil) -> AVSpeechSynthesisVoice? {
+        _ = voiceCacheInvalidation
         let preferences = currentSpeechPreferences()
         let key = "\(preferences.voiceIdentifier ?? "")\u{1F}\(languageIdentifier ?? "")"
         if let cached = voiceCache[key] { return cached }
