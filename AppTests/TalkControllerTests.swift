@@ -435,10 +435,21 @@ final class TalkCompletionTests: XCTestCase {
     }
 
     private final class Output: TalkSpeechOutput, GuideSessionOutput, GuideSessionContext {
-        var isSpeaking = false
+        private(set) var isSpeaking = false
+        private var pending = 0
+        /// Holds playback open so tests can act while speech is still "playing".
+        var speechHeld = false { didSet { if !speechHeld && pending == 0 { isSpeaking = false } } }
         var stopped = 0
-        func speak(_ sentence: String) { isSpeaking = true }
-        func shutUp() { isSpeaking = false; stopped += 1 }
+        func speak(_ sentence: String) {
+            pending += 1
+            isSpeaking = true
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(20))
+                self.pending -= 1
+                self.isSpeaking = self.pending > 0 || self.speechHeld
+            }
+        }
+        func shutUp() { pending = 0; isSpeaking = false; stopped += 1 }
         func guideShowOverlay() {}
         func guideStopSpatialInput() {}
         func guideSetStatus(_ status: String) {}
@@ -574,6 +585,41 @@ final class TalkCompletionTests: XCTestCase {
         XCTAssertTrue(state.isListening)
         XCTAssertFalse(state.isWorking)
         XCTAssertEqual(state.turnCount, 0)
+        talk.cancel()
+    }
+
+    func testKeyPressDuringSpeechPlaybackBargesIn() async throws {
+        let controller = SessionController()
+        let overlay = PerryCursorState()
+        let output = Output()
+        output.speechHeld = true
+        let talk = TalkSession(
+            sessionController: controller, overlayState: overlay, output: output,
+            services: .init(makeInput: { Input() }, output: output, capture: {
+                GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []))
+            }, acceptInput: { text, id in
+                .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
+            }, run: { input, _ in
+                (input.threadID, AsyncStream { continuation in
+                    continuation.yield(.textDelta("Done. "))
+                    continuation.yield(.finished(.completed))
+                    continuation.finish()
+                }, nil)
+            }), tracer: PointerTraceRecorder(point: { .zero })
+        )
+        talk.keyDown()
+        talk.holdCommitted()
+        talk.keyUp()
+        for _ in 0..<200 {
+            if case .talking(let state) = controller.state, state.turnCount == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        talk.keyDown()
+        XCTAssertEqual(output.stopped, 1)
+        XCTAssertFalse(output.isSpeaking)
+        XCTAssertEqual(talk.phase, .listening)
+        output.speechHeld = false
         talk.cancel()
     }
 

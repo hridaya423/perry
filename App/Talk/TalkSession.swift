@@ -380,6 +380,13 @@ final class TalkSession {
             speak(remainder)
         }
         sessionController.updateTalk { $0.isWorking = false; $0.turnCount += 1 }
+        // The turn stays active while queued utterances still play — going
+        // idle now would make a key press mid-sentence start a new hold over
+        // the old audio instead of cutting it.
+        while services.output.isSpeaking {
+            try Task.checkCancellation()
+            try await Task.sleep(for: .milliseconds(25))
+        }
         overlayState.voiceState = .idle
         overlayState.buddyState = .success
         phase = .idle
