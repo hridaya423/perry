@@ -2667,18 +2667,36 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
         activeSpatialSelection?.description
     }
 
-    /// Talk's screen capture: same worker/target-store path Ask uses, with its
-    /// own store so Talk and Ask hint caches never cross. The observation's
-    /// screenshot stays in memory for the turn only.
+    /// Talk's screen capture. The local observer (window list + AX hit-test +
+    /// bounded index + ScreenCaptureKit) runs first — it's ~10x faster than
+    /// the driver tree walk and claims no worker. The driver path remains for
+    /// when Perry lacks grants or the local walk fails.
     func captureTalkObservation() async throws -> GuideObservation {
         PerfMark.mark("talk.capture_begin")
         let hint = guideTargetHint()
         await talkTargetStore.set(hint)
-        var resources = Set<BackgroundTaskResource>()
-        if let bundleID = guideAppBundleID(for: hint) {
-            resources.insert(.application(bundleID))
-        }
         do {
+            if AXIsProcessTrusted() {
+                do {
+                    let observation = try await LocalTalkObserver(
+                        hint: hint,
+                        pointerAXPoint: PointerTraceRecorder.mouseLocationInAXSpace(),
+                        targetStore: talkTargetStore
+                    ).observe()
+                    PerfMark.mark("talk.capture_local")
+                    if observation.screenshotData == nil {
+                        PerfMark.mark("talk.capture_no_screenshot")
+                    }
+                    PerfMark.mark("capture.done")
+                    return observation
+                } catch {
+                    PerfMark.markDynamic("talk.capture_local_failed.\(String(describing: error))")
+                }
+            }
+            var resources = Set<BackgroundTaskResource>()
+            if let bundleID = guideAppBundleID(for: hint) {
+                resources.insert(.application(bundleID))
+            }
             let observation = try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
                 try await CuaGuideTreeReader(worker: worker, targetStore: self.talkTargetStore).observe()
             }

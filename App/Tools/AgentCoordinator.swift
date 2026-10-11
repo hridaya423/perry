@@ -260,15 +260,21 @@ final class AgentCoordinator: ObservableObject {
                 )
                 let loop = AgentLoop(provider: selected, host: host)
                 loops[threadID] = loop
-                var parts: [ModelContentPart] = contextParts.isEmpty ? [] : [.text(contextParts.joined(separator: "\n\n"))]
-                parts.append(.text(goal))
+                var parts: [ModelContentPart] = [.text(goal)]
                 if let observation = spatialContext?.observation, let screenshot = observation.screenshotData {
                     parts.append(.image(data: screenshot, mimeType: observation.screenshotMIMEType))
                 }
-                let messages = try await loop.prepareConversation(
+                var messages = try await loop.prepareConversation(
                     thread: thread, question: goal, runID: runID, store: threads,
                     system: system, context: context, tier: tier, currentParts: parts
                 )
+                // The spatial payload rides as its own user message: the stored
+                // question stays bare, and a provider with a server-side
+                // conversation gets fresh context per turn without the stored
+                // history replaying stale snapshots.
+                if !contextParts.isEmpty {
+                    messages.insert(.user([.text(contextParts.joined(separator: "\n\n"))]), at: messages.count - 1)
+                }
                 if selected.capabilities.contains(.tools) {
                     try await workerLease.withRun(runID, workers: workers) { @MainActor in
                         (answer, labels, finish) = await self.consume(loop, system: system, messages: messages, context: context, tier: tier, sink: sink)

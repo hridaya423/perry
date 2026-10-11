@@ -371,9 +371,17 @@ final class AgentCoordinatorTests: XCTestCase {
             spatialContext: .init(observation: observation, bindings: [], skill: "Read the current page before explaining.")
         ))
         XCTAssertEqual(first.last, .finished(.completed))
-        XCTAssertTrue(provider.requests[0].system.contains("Save"))
-        XCTAssertFalse(provider.requests[0].system.contains("Private password"))
-        XCTAssertTrue(provider.requests[0].system.contains("Read the current page"))
+        guard case .user(let contextParts)? = provider.requests[0].messages.dropLast().last else {
+            return XCTFail("spatial context should ride as its own user message")
+        }
+        let contextText = contextParts.compactMap { part -> String? in
+            if case .text(let text) = part { return text }
+            return nil
+        }.joined(separator: "\n")
+        XCTAssertTrue(contextText.contains("Save"))
+        XCTAssertFalse(contextText.contains("Private password"))
+        XCTAssertTrue(contextText.contains("Read the current page"))
+        XCTAssertFalse(provider.requests[0].system.contains("Save"))
         XCTAssertEqual(provider.requests[0].messages.last, .user([.text("Remember Cedar"), .image(data: Data([1, 2, 3]), mimeType: "image/jpeg")]))
         XCTAssertNil(observations.snapshot(runID: runID))
         let second = await collect(coordinator.run(threadID: id, goal: "Which project?"))

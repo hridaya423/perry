@@ -1421,7 +1421,7 @@ actor CuaDriverClient {
                 return nil
             }
             let rawRole = element["role"] as? String ?? ""
-            let role = guideRole(rawRole)
+            let role = axGuideRole(rawRole)
             let label = nonEmpty(element["label"] as? String)
             let sensitivity: AXSensitivity = rawRole == "AXSecureTextField" ? .secure : .unknown
             let value: String? = nil
@@ -1430,7 +1430,7 @@ actor CuaDriverClient {
                 role: role,
                 label: label,
                 frame: AXElementFrame(x: x, y: y, width: width, height: height),
-                isActionable: guideRoleIsActionable(role),
+                isActionable: axGuideRoleIsActionable(role),
                 value: value,
                 rawRole: rawRole,
                 subrole: nonEmpty(element["subrole"] as? String),
@@ -1438,30 +1438,6 @@ actor CuaDriverClient {
             )
         }
         return AXSnapshot(appBundleID: target.bundleID, windowTitle: target.title, elements: mapped)
-    }
-
-    private func guideRole(_ rawRole: String) -> AXElement.Role {
-        switch rawRole {
-        case "AXButton", "button": return .button
-        case "AXTextField", "AXSecureTextField", "AXTextArea", "textField": return .textField
-        case "AXSlider", "slider": return .slider
-        case "AXCheckBox", "checkBox": return .checkBox
-        case "AXMenu", "menu": return .menu
-        case "AXMenuItem", "menuItem": return .menuItem
-        case "AXTabGroup", "tabGroup": return .tabGroup
-        case "AXStaticText", "staticText": return .staticText
-        case "AXImage", "image": return .image
-        default: return .other
-        }
-    }
-
-    private func guideRoleIsActionable(_ role: AXElement.Role) -> Bool {
-        switch role {
-        case .button, .textField, .slider, .checkBox, .menu, .menuItem:
-            return true
-        default:
-            return false
-        }
     }
 
     private func elementLabels(from value: [String: Any]?) -> [String: String] {
