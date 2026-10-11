@@ -107,3 +107,9 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
         host?.spatial.selection?.description
     }
 }
+
+extension AppController: GuideBridgeHost {
+    var sessionPanelFrame: CGRect? { sessionPanel.frame }
+    var intentCardFrame: CGRect? { intentCards.frame }
+
+}

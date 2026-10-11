@@ -319,3 +319,69 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func cursorPrototypeAction() { DebugCursorGalleryWindow.show() }
 #endif
 }
+
+extension AppController: StatusMenuHost {
+    var isUpdateAvailable: Bool { updateNoticeController.availability == .available }
+    var isNotchStatusEnabled: Bool { notchStatus.isEnabled }
+    var isRecordingDemonstration: Bool { routineLibrary.isRecording }
+
+    func speak(_ text: String) { voice.speak(text) }
+    func checkForUpdates() { updateNoticeController.checkForUpdates() }
+    func toggleDemonstrationRecording() { routineLibrary.toggleRecording() }
+
+    func toggleNotchStatus() -> Bool {
+        let enabled = !notchStatus.isEnabled
+        notchStatus.setEnabled(enabled)
+        if enabled {
+            notchStatus.update(
+                isRecording: routineLibrary.isRecording,
+                backgroundCount: lastBackgroundCount,
+                awaitingApproval: lastAwaitingApprovalCount
+            )
+        }
+        return enabled
+    }
+
+    func routines() -> [LearnedRoutine] { routineLibrary.routines() }
+    func runRoutine(_ routine: LearnedRoutine) { routineLibrary.run(routine) }
+    func importRoutine(from url: URL) { routineLibrary.importRoutine(from: url) }
+    func exportRoutine(_ routine: LearnedRoutine, to url: URL) { routineLibrary.exportRoutine(routine, to: url) }
+    func removeRoutine(_ routine: LearnedRoutine) { routineLibrary.remove(routine) }
+
+    func setWorkspaceRoot(_ url: URL) {
+        WorkspaceScope.setRoot(url)
+        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
+    }
+
+    func showFullGuideForFrontmostWindow() {
+        let target = probe.currentTargetHint()
+        Task { await showEverything(goal: "walk through the frontmost window", targetHint: target) }
+    }
+
+    /// "Run in background" lives on the composer's send action — the menu
+    /// item opens that composer in Do mode with the toggle already on.
+    func presentBackgroundComposer() {
+        pendingPromptRunInBackground = true
+        presentPrompt(prefill: "", asTask: true)
+    }
+
+    func retryLastTask() { foreground.retry() }
+    func runDemo() { demoFlow.director.run() }
+    func showSettings() { homeController.openHome(selection: .settings) }
+
+    func toggleMemory() {
+        schedulePersistence { [weak self, memoryStore] in
+            let current = await memoryStore.currentConfiguration()
+            await memoryStore.setConfiguration(
+                MemoryConfiguration(enabled: !current.enabled, categoryToggles: current.categoryToggles)
+            )
+            await self?.statusMenu.refreshMemoryTitle()
+        }
+    }
+
+#if DEBUG
+    func runBrainSmokeTest() {
+        brain.smokeTest { [weak self] status in self?.sessionStatus = status }
+    }
+#endif
+}

@@ -47,3 +47,45 @@ final class IntentCardPresenter {
     }
 #endif
 }
+
+struct InteractiveConfirmer: Confirmer {
+    weak var controller: AppController?
+
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
+        guard let controller = await MainActor.run(body: { controller }) else { return false }
+        let card = IntentCard(
+            title: "About to \(request.actionSummary)",
+            detail: request.reason,
+            tier: request.tier,
+            targetSummary: request.targetSummary ?? request.actionSummary,
+            requiredPhrase: request.requiredText,
+            approveLabel: request.actionSummary,
+            reversible: request.reversible
+        )
+        SoundPlayer.play(.receive)
+        await MainActor.run { controller.voice.speak(card.spokenLine) }
+        return await controller.requestIntentApproval(id: request.id, card: card)
+    }
+
+    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
+        guard let controller = await MainActor.run(body: { controller }) else { return .cancel }
+        let card = IntentCard(
+            title: "About to \(request.actionSummary)",
+            detail: request.reason,
+            tier: request.tier,
+            targetSummary: request.targetSummary ?? request.actionSummary,
+            requiredPhrase: request.requiredText,
+            // The plan card approves the whole rehearsal — the button is the
+            // action, not the goal.
+            approveLabel: "Run",
+            reversible: request.reversible
+        )
+        SoundPlayer.play(.receive)
+        await MainActor.run { controller.voice.speak(card.spokenLine) }
+        let decision = await controller.requestPlanDecision(id: request.id, card: card)
+        if decision == .edit {
+            await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
+        }
+        return decision
+    }
+}

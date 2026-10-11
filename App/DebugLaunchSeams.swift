@@ -1,4 +1,5 @@
 #if DEBUG
+import AppKit
 import Foundation
 import PerryGuide
 import PerryRuntimes
@@ -56,6 +57,61 @@ struct DebugLaunchSeams {
             }
         }
         return seams
+    }
+}
+#endif
+
+#if DEBUG
+extension AppController {
+    func debugSetMaintenanceFixture(
+        skipEraseConfirmation: Bool,
+        barrier: (@MainActor () async throws -> Void)?
+    ) {
+        maintenance.debugSetFixture(skipEraseConfirmation: skipEraseConfirmation, barrier: barrier)
+    }
+
+    func debugInvokeWipeDataAction() {
+        requestCompleteErasure()
+    }
+
+    var debugMaintenanceOwnerHeld: Bool {
+        maintenance.isUnderMaintenance
+    }
+
+    /// Test seam for the dictated-command path — identical to what
+    /// VoiceController's dispatch hook delivers after wake word/dictation.
+    func debugDispatch(_ text: String) {
+        commandRouter.route(commandText: text)
+    }
+
+    /// Seeds the History fixture and opens History for the capture lane.
+    func debugShowHistoryFixture() {
+        Task { @MainActor in
+            for entry in PerryDebugLaunchSurface.historyEntries() {
+                await transcriptStore.append(entry)
+            }
+            showHistory()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Applies a deterministic `DebugStateFixture` — see DebugStateFixtures.swift.
+    func applyDebugStateFixture(_ fixture: DebugStateFixture) {
+        switch fixture {
+        case .permissionDenied:
+            onboarding.runDenied()
+        case .approvalOrange, .approvalRed:
+            guard let card = fixture.intentCard else { return }
+            intentCards.showFixture(card)
+        default:
+            if let state = fixture.sessionState {
+                sessionController.debugSet(state)
+            }
+            if let status = fixture.statusText {
+                sessionStatus = status
+            }
+            showPanel()
+        }
     }
 }
 #endif

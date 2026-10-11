@@ -73,7 +73,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var subsystems = AppSubsystems(app: self)
     lazy var maintenance = MaintenanceCoordinator(host: self)
     lazy var statusMenu = StatusMenuController(host: self)
-    private lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
+    lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
 #if DEBUG
         NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
             to: CompactConversationView(controller: self)
@@ -84,12 +84,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
     let intentCards = IntentCardPresenter()
     private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
-    private lazy var updateNoticeController = UpdateNoticeController(
+    lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
     private var manifestRefresher: CuaCapabilityManifest.Refresher?
-    private lazy var demoFlow = DemoFlowController(host: self)
+    lazy var demoFlow = DemoFlowController(host: self)
     var demoDirector: DemoDirector { demoFlow.director }
 
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
@@ -113,7 +113,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         talkSession: { [unowned self] in talkSession },
         preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() }
     )
-    private var persistenceTasks: [UUID: Task<Void, Never>] = [:]
+    var persistenceTasks: [UUID: Task<Void, Never>] = [:]
 #if DEBUG
     var debugUnsavedQuitDecision: (() -> Bool)? {
         get { maintenance.debugUnsavedQuitDecision }
@@ -201,22 +201,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 #endif
 
-#if DEBUG
-    func debugSetMaintenanceFixture(
-        skipEraseConfirmation: Bool,
-        barrier: (@MainActor () async throws -> Void)?
-    ) {
-        maintenance.debugSetFixture(skipEraseConfirmation: skipEraseConfirmation, barrier: barrier)
-    }
-
-    func debugInvokeWipeDataAction() {
-        requestCompleteErasure()
-    }
-
-    var debugMaintenanceOwnerHeld: Bool {
-        maintenance.isUnderMaintenance
-    }
-#endif
 
     var isTaskActive: Bool {
         if case .executing = sessionState { return true }
@@ -729,7 +713,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         homeController.openHome(selection: .whatsNew)
     }
 
-    private func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {
+    func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {
         guard !maintenance.isErasureInProgress else { return }
         let id = UUID()
         persistenceTasks[id] = Task { @MainActor [weak self] in
@@ -781,43 +765,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onboarding.run(force: force)
     }
 
-#if DEBUG
-    /// Test seam for the dictated-command path — identical to what
-    /// VoiceController's dispatch hook delivers after wake word/dictation.
-    func debugDispatch(_ text: String) {
-        commandRouter.route(commandText: text)
-    }
-
-    /// Seeds the History fixture and opens History for the capture lane.
-    private func debugShowHistoryFixture() {
-        Task { @MainActor in
-            for entry in PerryDebugLaunchSurface.historyEntries() {
-                await transcriptStore.append(entry)
-            }
-            showHistory()
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
-
-    /// Applies a deterministic `DebugStateFixture` — see DebugStateFixtures.swift.
-    func applyDebugStateFixture(_ fixture: DebugStateFixture) {
-        switch fixture {
-        case .permissionDenied:
-            onboarding.runDenied()
-        case .approvalOrange, .approvalRed:
-            guard let card = fixture.intentCard else { return }
-            intentCards.showFixture(card)
-        default:
-            if let state = fixture.sessionState {
-                sessionController.debugSet(state)
-            }
-            if let status = fixture.statusText {
-                sessionStatus = status
-            }
-            showPanel()
-        }
-    }
-#endif
 
     func updateWakeShortcut(_ shortcut: WakeShortcut) throws {
         if let hotkey {
@@ -867,134 +814,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
 }
 
-extension AppController: StatusMenuHost {
-    var isUpdateAvailable: Bool { updateNoticeController.availability == .available }
-    var isNotchStatusEnabled: Bool { notchStatus.isEnabled }
-    var isRecordingDemonstration: Bool { routineLibrary.isRecording }
 
-    func speak(_ text: String) { voice.speak(text) }
-    func checkForUpdates() { updateNoticeController.checkForUpdates() }
-    func toggleDemonstrationRecording() { routineLibrary.toggleRecording() }
 
-    func toggleNotchStatus() -> Bool {
-        let enabled = !notchStatus.isEnabled
-        notchStatus.setEnabled(enabled)
-        if enabled {
-            notchStatus.update(
-                isRecording: routineLibrary.isRecording,
-                backgroundCount: lastBackgroundCount,
-                awaitingApproval: lastAwaitingApprovalCount
-            )
-        }
-        return enabled
-    }
 
-    func routines() -> [LearnedRoutine] { routineLibrary.routines() }
-    func runRoutine(_ routine: LearnedRoutine) { routineLibrary.run(routine) }
-    func importRoutine(from url: URL) { routineLibrary.importRoutine(from: url) }
-    func exportRoutine(_ routine: LearnedRoutine, to url: URL) { routineLibrary.exportRoutine(routine, to: url) }
-    func removeRoutine(_ routine: LearnedRoutine) { routineLibrary.remove(routine) }
 
-    func setWorkspaceRoot(_ url: URL) {
-        WorkspaceScope.setRoot(url)
-        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
-    }
 
-    func showFullGuideForFrontmostWindow() {
-        let target = probe.currentTargetHint()
-        Task { await showEverything(goal: "walk through the frontmost window", targetHint: target) }
-    }
-
-    /// "Run in background" lives on the composer's send action — the menu
-    /// item opens that composer in Do mode with the toggle already on.
-    func presentBackgroundComposer() {
-        pendingPromptRunInBackground = true
-        presentPrompt(prefill: "", asTask: true)
-    }
-
-    func retryLastTask() { foreground.retry() }
-    func runDemo() { demoFlow.director.run() }
-    func showSettings() { homeController.openHome(selection: .settings) }
-
-    func toggleMemory() {
-        schedulePersistence { [weak self, memoryStore] in
-            let current = await memoryStore.currentConfiguration()
-            await memoryStore.setConfiguration(
-                MemoryConfiguration(enabled: !current.enabled, categoryToggles: current.categoryToggles)
-            )
-            await self?.statusMenu.refreshMemoryTitle()
-        }
-    }
-
-#if DEBUG
-    func runBrainSmokeTest() {
-        brain.smokeTest { [weak self] status in self?.sessionStatus = status }
-    }
-#endif
-}
-
-struct InteractiveConfirmer: Confirmer {
-    weak var controller: AppController?
-
-    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
-        guard let controller = await MainActor.run(body: { controller }) else { return false }
-        let card = IntentCard(
-            title: "About to \(request.actionSummary)",
-            detail: request.reason,
-            tier: request.tier,
-            targetSummary: request.targetSummary ?? request.actionSummary,
-            requiredPhrase: request.requiredText,
-            approveLabel: request.actionSummary,
-            reversible: request.reversible
-        )
-        SoundPlayer.play(.receive)
-        await MainActor.run { controller.voice.speak(card.spokenLine) }
-        return await controller.requestIntentApproval(id: request.id, card: card)
-    }
-
-    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
-        guard let controller = await MainActor.run(body: { controller }) else { return .cancel }
-        let card = IntentCard(
-            title: "About to \(request.actionSummary)",
-            detail: request.reason,
-            tier: request.tier,
-            targetSummary: request.targetSummary ?? request.actionSummary,
-            requiredPhrase: request.requiredText,
-            // The plan card approves the whole rehearsal — the button is the
-            // action, not the goal.
-            approveLabel: "Run",
-            reversible: request.reversible
-        )
-        SoundPlayer.play(.receive)
-        await MainActor.run { controller.voice.speak(card.spokenLine) }
-        let decision = await controller.requestPlanDecision(id: request.id, card: card)
-        if decision == .edit {
-            await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
-        }
-        return decision
-    }
-}
-
-extension AppController: GuideBridgeHost {
-    var sessionPanelFrame: CGRect? { sessionPanel.frame }
-    var intentCardFrame: CGRect? { intentCards.frame }
-
-}
-
-extension AppController: DemoFlowHost {
-    func wakeForDemo() { wake() }
-    func dismissIntentCard() { intentCards.dismiss() }
-    func runOnboardingForDemo() { runOnboarding(force: true) }
-    func showDemoReport() { showHistory() }
-}
-
-extension AppController: CommandRouteHost {
-    var isUnderMaintenance: Bool { maintenance.isUnderMaintenance }
-}
-
-extension AppController: MaintenanceHost {
-    var hasUnsavedHomeRequests: Bool {
-        !homeController.homeModel.unsavedInputs.isEmpty
-    }
-
-}

@@ -281,3 +281,10 @@ final class MaintenanceCoordinator {
         host.backgroundTasks.resetTasks()
     }
 }
+
+extension AppController: MaintenanceHost {
+    var hasUnsavedHomeRequests: Bool {
+        !homeController.homeModel.unsavedInputs.isEmpty
+    }
+
+}

@@ -102,3 +102,10 @@ final class DemoFlowController {
         Task { await host.foreground.cancelActiveSupervisor() }
     }
 }
+
+extension AppController: DemoFlowHost {
+    func wakeForDemo() { wake() }
+    func dismissIntentCard() { intentCards.dismiss() }
+    func runOnboardingForDemo() { runOnboarding(force: true) }
+    func showDemoReport() { showHistory() }
+}

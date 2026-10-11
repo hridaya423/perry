@@ -118,3 +118,7 @@ final class CommandRouter {
         }
     }
 }
+
+extension AppController: CommandRouteHost {
+    var isUnderMaintenance: Bool { maintenance.isUnderMaintenance }
+}
