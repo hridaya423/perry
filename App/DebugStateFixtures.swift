@@ -196,4 +196,76 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         )
     }
 }
+
+enum PerryDebugLaunchSurface: String, Equatable {
+    case settings
+    case onboarding
+    case session
+    case activity
+    case guideControls = "guide-controls"
+    case history
+    case prototypes
+    case cursors
+    case notch
+    case intentCard = "intent-card"
+    case backgroundTasksStorageError = "background-tasks-storage-error"
+
+    init?(arguments: [String]) {
+        guard let index = arguments.firstIndex(of: "--perry-debug-surface"),
+              arguments.indices.contains(index + 1) else { return nil }
+        self.init(rawValue: arguments[index + 1])
+    }
+}
+
+extension PerryDebugLaunchSurface {
+    static let intentCardFixture = IntentCard(
+        title: "Rename 12 screenshots in ~/PerryDemo",
+        detail: "1. Observe Desktop\n2. Select screenshot files\n3. Rename each with its date",
+        tier: .orange,
+        targetSummary: "12 files",
+        approveLabel: "Run",
+        reversible: true
+    )
+
+    /// Three transcript entries across two days with mixed outcomes, so the
+    /// History capture shows a populated surface instead of an empty state.
+    static func historyEntries() -> [TranscriptEntry] {
+        let day = Calendar.current.startOfDay(for: Date())
+        return [
+            TranscriptEntry(
+                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F1")!,
+                request: "Move the two named files into Archive",
+                appBundleID: "com.apple.finder",
+                summary: "Verified: both files moved and contents unchanged.",
+                outcome: .completed,
+                startedAt: day.addingTimeInterval(-300),
+                finishedAt: day.addingTimeInterval(-280),
+                steps: ["Located draft-a.txt", "Moved to ~/Documents/Archive"],
+                verified: true
+            ),
+            TranscriptEntry(
+                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F2")!,
+                request: "Guide me through exporting a PDF",
+                appBundleID: "com.apple.Preview",
+                summary: "Guided: File → Export as PDF completed.",
+                outcome: .completed,
+                startedAt: day.addingTimeInterval(-86_400),
+                finishedAt: day.addingTimeInterval(-86_340),
+                steps: ["Opened the File menu", "Pointed at Export as PDF"],
+                verified: true
+            ),
+            TranscriptEntry(
+                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F3")!,
+                request: "Rename every screenshot in Downloads",
+                appBundleID: "com.apple.finder",
+                summary: "Stopped: the target window closed before the second step.",
+                outcome: .failed,
+                startedAt: day.addingTimeInterval(-86_000),
+                finishedAt: day.addingTimeInterval(-85_970),
+                steps: ["Renamed Screen Shot 1.png"],
+                verified: false
+            ),
+        ]
+    }
+}
 #endif

@@ -9,28 +9,6 @@ import PerryCapture
 import PerryGuide
 import PerryRuntimes
 
-#if DEBUG
-enum PerryDebugLaunchSurface: String, Equatable {
-    case settings
-    case onboarding
-    case session
-    case activity
-    case guideControls = "guide-controls"
-    case history
-    case prototypes
-    case cursors
-    case notch
-    case intentCard = "intent-card"
-    case backgroundTasksStorageError = "background-tasks-storage-error"
-
-    init?(arguments: [String]) {
-        guard let index = arguments.firstIndex(of: "--perry-debug-surface"),
-              arguments.indices.contains(index + 1) else { return nil }
-        self.init(rawValue: arguments[index + 1])
-    }
-}
-#endif
-
 /// Owns the live session: hotkey → overlay + panel, Guide/Do flows, intent
 /// cards, notifications, memory. Everything the PRD's Session Orchestrator
 /// implies, bound to real UI.
@@ -1016,15 +994,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         } else if debugSurface == .intentCard {
             DispatchQueue.main.async {
-                let card = IntentCard(
-                    title: "Rename 12 screenshots in ~/PerryDemo",
-                    detail: "1. Observe Desktop\n2. Select screenshot files\n3. Rename each with its date",
-                    tier: .orange,
-                    targetSummary: "12 files",
-                    approveLabel: "Run",
-                    reversible: true
-                )
-                IntentCardWindow(card: card, allowsStepThrough: true) { _ in }.show()
+                IntentCardWindow(card: PerryDebugLaunchSurface.intentCardFixture, allowsStepThrough: true) { _ in }.show()
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -1805,48 +1775,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         dispatch(commandText: text)
     }
 
-    /// Seeds three deterministic transcript entries (two days, mixed
-    /// outcomes) and opens History so the capture lane can screenshot a
-    /// populated surface instead of an empty state.
+    /// Seeds the History fixture and opens History for the capture lane.
     private func debugShowHistoryFixture() {
-        let day = Calendar.current.startOfDay(for: Date())
-        let entries: [TranscriptEntry] = [
-            TranscriptEntry(
-                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F1")!,
-                request: "Move the two named files into Archive",
-                appBundleID: "com.apple.finder",
-                summary: "Verified: both files moved and contents unchanged.",
-                outcome: .completed,
-                startedAt: day.addingTimeInterval(-300),
-                finishedAt: day.addingTimeInterval(-280),
-                steps: ["Located draft-a.txt", "Moved to ~/Documents/Archive"],
-                verified: true
-            ),
-            TranscriptEntry(
-                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F2")!,
-                request: "Guide me through exporting a PDF",
-                appBundleID: "com.apple.Preview",
-                summary: "Guided: File → Export as PDF completed.",
-                outcome: .completed,
-                startedAt: day.addingTimeInterval(-86_400),
-                finishedAt: day.addingTimeInterval(-86_340),
-                steps: ["Opened the File menu", "Pointed at Export as PDF"],
-                verified: true
-            ),
-            TranscriptEntry(
-                sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F3")!,
-                request: "Rename every screenshot in Downloads",
-                appBundleID: "com.apple.finder",
-                summary: "Stopped: the target window closed before the second step.",
-                outcome: .failed,
-                startedAt: day.addingTimeInterval(-86_000),
-                finishedAt: day.addingTimeInterval(-85_970),
-                steps: ["Renamed Screen Shot 1.png"],
-                verified: false
-            ),
-        ]
         Task { @MainActor in
-            for entry in entries {
+            for entry in PerryDebugLaunchSurface.historyEntries() {
                 await transcriptStore.append(entry)
             }
             showHistory()
