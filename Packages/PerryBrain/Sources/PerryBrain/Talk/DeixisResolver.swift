@@ -103,13 +103,19 @@ public enum DeixisResolver {
 
         return demonstratives.map { word in
             if windowLevel {
+                // A held-still pointer is still pointing: when it rests on an
+                // element, "this" means that element; only empty space falls
+                // back to the window.
+                let element = first.flatMap {
+                    hitTest($0, elements: elements, windowOffsets: windowOffsets)
+                }
                 return DeixisBinding(
                     word: word.text,
                     time: word.start,
                     point: first?.point ?? .zero,
                     windowID: first?.windowID,
-                    element: nil,
-                    isWindowLevel: true
+                    element: element,
+                    isWindowLevel: element == nil
                 )
             }
             let sample = nearestSample(to: word, in: eligible)

@@ -43,7 +43,9 @@ final class DeixisResolverTests: XCTestCase {
         XCTAssertEqual(bindings[1].element?.id, "target")
     }
 
-    func testStillPointerIsWindowLevel() {
+    func testStillPointerOnElementBindsElement() {
+        // Holding the pointer steady on a control while saying "this" is the
+        // natural pointing gesture — it must bind the element, not the window.
         let trace = [
             TraceSample(t: 0, point: CGPoint(x: 100, y: 100), windowID: 42),
             TraceSample(t: 1, point: CGPoint(x: 102, y: 101), windowID: 42),
@@ -53,9 +55,25 @@ final class DeixisResolverTests: XCTestCase {
             element("a", frame: CGRect(x: 90, y: 90, width: 40, height: 40)),
         ])
         XCTAssertEqual(bindings.count, 1)
+        XCTAssertFalse(bindings[0].isWindowLevel)
+        XCTAssertEqual(bindings[0].element?.id, "a")
+        XCTAssertEqual(bindings[0].point, CGPoint(x: 100, y: 100))
+        XCTAssertEqual(bindings[0].windowID, 42)
+    }
+
+    func testStillPointerOffElementIsWindowLevel() {
+        let trace = [
+            TraceSample(t: 0, point: CGPoint(x: 200, y: 200), windowID: 42),
+            TraceSample(t: 1, point: CGPoint(x: 202, y: 201), windowID: 42),
+        ]
+        let words = [SpokenWord(text: "this", start: 1, duration: 0.2)]
+        let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: [
+            element("a", frame: CGRect(x: 90, y: 90, width: 40, height: 40)),
+        ])
+        XCTAssertEqual(bindings.count, 1)
         XCTAssertTrue(bindings[0].isWindowLevel)
         XCTAssertNil(bindings[0].element)
-        XCTAssertEqual(bindings[0].point, CGPoint(x: 100, y: 100))
+        XCTAssertEqual(bindings[0].point, CGPoint(x: 200, y: 200))
         XCTAssertEqual(bindings[0].windowID, 42)
     }
 
