@@ -169,7 +169,7 @@ The remaining feature-level partials require live evidence or external infrastru
 
 Remote integrations now include on-device OAuth for Google Workspace, Notion, Slack, and Linear, with provider-specific PKCE/secret and scope rules, Keychain credentials, refresh/retry, allowlisted reads, per-service write enablement that defaults off, orange confirmation for enabled writes, and redacted summaries. There is still no PowerUps marketplace backend or hosted connector service.
 
-Perry now has a pinned Sparkle updater and consent-gated Sentry/PostHog clients with local privacy evidence. The signed, notarized distribution and real hosted-credential run are still unproven. Remote feature flags, hosted accounts, a Perry OAuth broker, and provider-region routing remain outside the 1.0 contract.
+Perry has a pinned Sparkle updater and a user-initiated, redacted diagnostics export. It ships no crash-reporting or analytics SDK (no Sentry, no PostHog). The signed, notarized distribution and real hosted-credential run are still unproven. Remote feature flags, hosted accounts, a Perry OAuth broker, and provider-region routing remain outside the 1.0 contract.
 
 **Rejected by PRD §5 (stay rejected):** notch stack, widgets, team/cloud accounts, hosted inference, billing/paywall, Windows.
 

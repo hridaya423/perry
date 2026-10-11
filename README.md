@@ -31,6 +31,6 @@ Tests: `swift test` inside any package under `Packages/`, or `xcodebuild test -p
 ## Layout
 
 - `App/` — the Perry application target
-- `Packages/` — local Swift packages (PerryCore, PerryRuntimes, PerryOverlay, PerryCapture, PerryGuide)
+- `Packages/` — local Swift packages (PerryCore, PerryBrain, PerryRuntimes, PerryOverlay, PerryCapture, PerryGuide)
 - `docs/transplant-inventory.md` — what we take from openclicky and why
 - `vendor/` — inert reference clones, never on a build path

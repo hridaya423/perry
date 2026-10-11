@@ -76,7 +76,7 @@ For irreversible acts (delete, send, purchase, overwrite): Perry highlights the 
 
 ### Form factor
 
-Buddy sprite appears near your pointer whenever a task runs (smooth choreography from openclicky's overlay engine), retreats to menu bar when idle. No notch dependency.
+The living glass cursor (see DESIGN.md) appears beside your pointer whenever Perry listens, thinks, draws, or acts, and never covers the OS cursor. When idle, Perry rests in Notch Home: an invisible hover strip beside the camera housing on notched Macs, or a small menu-bar zone on Macs without a notch. No feature depends on the notch.
 
 ### Personality
 
@@ -92,7 +92,7 @@ General, Voice & Input, Runtimes, Integrations, Memory & Privacy, Appearance, an
 
 ## 5. Explicitly out of scope (v1)
 
-Notch UI, cloud accounts, billing, hosted inference, Windows/Linux, proactive cloud agents, hosted region routing, and a hosted skills marketplace. Slack, Notion, Linear, and Google Workspace are the direct-auth integration set for 1.0.
+Notch-only features, cloud accounts, billing, hosted inference, Windows/Linux, proactive cloud agents, hosted region routing, and a hosted skills marketplace. Slack, Notion, Linear, and Google Workspace are the direct-auth integration set for 1.0.
 
 ## 6. Architecture
 
