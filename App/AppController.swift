@@ -352,7 +352,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             self?.talkSessionStarted = true
             self?.talkSession.keyDown()
         },
+        onHoldCommit: { [weak self] in self?.talkSession.holdCommitted() },
         onHoldEnd: { [weak self] in self?.talkSession.keyUp() },
+        onHoldCancel: { [weak self] in self?.talkSession.holdCancelled() },
         onComposer: { [weak self] in self?.toggleSession() }
     )
     lazy var voice = VoiceController(

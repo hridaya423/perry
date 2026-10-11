@@ -79,8 +79,10 @@ final class TalkSession {
 
     // MARK: Hold lifecycle
 
-    /// Key-down: listening UI within the ≤50 ms budget, then parallel
-    /// capture / STT / pointer trace / provider warm-up.
+    /// Key-down: listening cue within the ≤50 ms budget. No real work yet —
+    /// the monitor commits the hold after its chord threshold, which is when
+    /// mic, trace, capture and warm-up start. A stray ⌃⌥ shortcut never gets
+    /// this far.
     func keyDown() {
         if phase != .idle {
             bargeIn()
@@ -114,7 +116,13 @@ final class TalkSession {
         sessionController.updateTalk { $0.isListening = true }
         output?.guideShowOverlay()
         PerfMark.mark("talk.listening")
+    }
 
+    /// Commit: the hold survived the monitor's chord threshold — start the
+    /// real work in parallel: STT, pointer trace, capture, provider warm-up.
+    func holdCommitted() {
+        guard phase == .listening, input == nil else { return }
+        PerfMark.mark("talk.hold_commit")
         tracer.start()
         let speech = services.makeInput()
         input = speech
@@ -127,7 +135,6 @@ final class TalkSession {
         }
         captureTask = Task { @MainActor in try await services.capture() }
         warmTask = Task { @MainActor in await services.warm() }
-
     }
 
     /// Key-up: freeze the trace, finalize STT, resolve deixis, run the turn.
@@ -146,6 +153,34 @@ final class TalkSession {
     /// Barge-in: key press during a turn cancels provider output and speech.
     func bargeIn() {
         PerfMark.mark("talk.bargein")
+        abortActiveWork()
+        PerfMark.mark("bargein.silence")
+    }
+
+    /// A hold the monitor cancelled — a chorded key, a release before commit,
+    /// or a dead event tap. Discard everything without submitting and let the
+    /// session go back to sleep; there is no utterance to answer.
+    func holdCancelled() {
+        guard phase == .listening else { return }
+        PerfMark.mark("talk.cancel")
+        abortActiveWork()
+        _ = tracer.stop()
+        overlayState.buddyState = .idle
+        _ = sessionController.requestDismissal()
+    }
+
+    /// Session teardown: stop everything; SessionController owns the transition.
+    func cancel() {
+        PerfMark.mark("talk.cancel")
+        abortActiveWork()
+        _ = tracer.stop()
+        overlayState.visualGuidanceOverlays = []
+        markOverlayIDs = []
+        stopReanchor()
+        overlayState.buddyState = .idle
+    }
+
+    private func abortActiveWork() {
         turnTask?.cancel()
         turnTask = nil
         warmTask?.cancel()
@@ -155,20 +190,9 @@ final class TalkSession {
         input?.cancel()
         input = nil
         services.output.shutUp()
-        PerfMark.mark("bargein.silence")
         sessionController.updateTalk { $0.isListening = false; $0.isWorking = false }
         overlayState.voiceState = .idle
         phase = .idle
-    }
-
-    /// Session teardown: stop everything; SessionController owns the transition.
-    func cancel() {
-        bargeIn()
-        _ = tracer.stop()
-        overlayState.visualGuidanceOverlays = []
-        markOverlayIDs = []
-        stopReanchor()
-        overlayState.buddyState = .idle
     }
 
     private func inputFailed(_ error: Error) {
@@ -193,6 +217,9 @@ final class TalkSession {
             try Task.checkCancellation()
             guard let speech = input else { throw CancellationError() }
             let (transcript, words) = await speech.finalize()
+            // The utterance's job ends at finalize — clear so the next hold
+            // builds a fresh input instead of re-finalizing this one.
+            input = nil
             try Task.checkCancellation()
             sessionController.updateTalk { $0.transcript = transcript }
             guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

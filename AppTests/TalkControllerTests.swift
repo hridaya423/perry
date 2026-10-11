@@ -7,11 +7,14 @@ import PerryOverlay
 
 @MainActor
 final class ModifierHoldMonitorTests: XCTestCase {
-    private func makeMonitor() -> (ModifierHoldMonitor, CallLog) {
+    private func makeMonitor(commitDelay: TimeInterval = 0) -> (ModifierHoldMonitor, CallLog) {
         let log = CallLog()
         let monitor = ModifierHoldMonitor(
+            commitDelay: commitDelay,
             onHoldStart: { log.starts += 1 },
+            onHoldCommit: { log.commits += 1 },
             onHoldEnd: { log.ends += 1 },
+            onHoldCancel: { log.cancels += 1 },
             onComposer: { log.composers += 1 }
         )
         return (monitor, log)
@@ -19,7 +22,9 @@ final class ModifierHoldMonitorTests: XCTestCase {
 
     final class CallLog {
         var starts = 0
+        var commits = 0
         var ends = 0
+        var cancels = 0
         var composers = 0
     }
 
@@ -30,6 +35,7 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.starts, 1)
         monitor.handle(timestamp: 1.2, control: false, option: true, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.ends, 1)
+        XCTAssertEqual(log.cancels, 0)
     }
 
     func testBareOptionOrControlAloneDoesNotHold() {
@@ -39,6 +45,48 @@ final class ModifierHoldMonitorTests: XCTestCase {
         monitor.handle(timestamp: 1.2, control: false, option: true, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.starts, 0)
         XCTAssertEqual(log.ends, 0)
+    }
+
+    /// ⌃⌥← / ⌃⌥⌘V style chords: a key press during the hold means the user
+    /// wanted a shortcut, not a talk turn — cancel, never submit.
+    func testKeyPressDuringHoldCancelsInsteadOfSubmitting() {
+        let (monitor, log) = makeMonitor()
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown()
+        monitor.handle(timestamp: 1.4, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.starts, 1)
+        XCTAssertEqual(log.cancels, 1)
+        XCTAssertEqual(log.ends, 0)
+    }
+
+    /// A hold released before the commit threshold was never a real utterance.
+    func testReleaseBeforeCommitCancels() {
+        let (monitor, log) = makeMonitor(commitDelay: 60)
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.05, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.starts, 1)
+        XCTAssertEqual(log.cancels, 1)
+        XCTAssertEqual(log.ends, 0)
+        XCTAssertEqual(log.commits, 0)
+    }
+
+    func testHoldCommitsAfterThresholdAndSubmitsOnRelease() async throws {
+        let (monitor, log) = makeMonitor(commitDelay: 0.02)
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(log.commits, 1)
+        monitor.handle(timestamp: 1.5, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.ends, 1)
+        XCTAssertEqual(log.cancels, 0)
+    }
+
+    /// A cancelled hold must not commit later — the timer dies with the hold.
+    func testCancelledHoldNeverCommits() async throws {
+        let (monitor, log) = makeMonitor(commitDelay: 0.02)
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown()
+        try await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(log.commits, 0)
     }
 
     func testDoubleTapControlOpensComposer() {
@@ -58,11 +106,46 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.composers, 0)
     }
 
-    func testTapDisabledEndsHold() {
+    /// ⌃A ⌃E in a terminal: key presses inside a ⌃ press dirty it, so ⌃
+    /// chords during normal typing can never compose a double-tap.
+    func testControlChordsNeverOpenComposer() {
+        let (monitor, log) = makeMonitor()
+        monitor.handle(timestamp: 1.00, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown() // ⌃A
+        monitor.handle(timestamp: 1.05, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.15, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown() // ⌃E
+        monitor.handle(timestamp: 1.20, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.composers, 0)
+    }
+
+    /// Any typed key between the two taps breaks the double-tap.
+    func testTypedKeyBetweenControlTapsBreaksDoubleTap() {
+        let (monitor, log) = makeMonitor()
+        monitor.handle(timestamp: 1.0, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.1, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown() // regular typing between taps
+        monitor.handle(timestamp: 1.2, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.composers, 0)
+    }
+
+    /// A long ⌃ press is a modifier hold, not a tap.
+    func testLongControlPressDoesNotCountAsTap() {
+        let (monitor, log) = makeMonitor()
+        monitor.handle(timestamp: 1.0, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.5, control: false, option: false, isFlagsChanged: true, tapDisabled: false) // held 500 ms
+        monitor.handle(timestamp: 1.6, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.composers, 0)
+    }
+
+    /// A disabled tap must discard the hold — submitting a turn on a dead
+    /// event stream could send a truncated utterance.
+    func testTapDisabledDuringHoldCancels() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
         monitor.handle(timestamp: 1.1, control: true, option: true, isFlagsChanged: false, tapDisabled: true)
-        XCTAssertEqual(log.ends, 1)
+        XCTAssertEqual(log.cancels, 1)
+        XCTAssertEqual(log.ends, 0)
     }
 }
 
@@ -438,6 +521,7 @@ final class TalkCompletionTests: XCTestCase {
             }), tracer: PointerTraceRecorder(point: { .zero })
         )
         talk.keyDown()
+        talk.holdCommitted()
         talk.keyUp()
         for _ in 0..<200 {
             if await store.thread(id: thread.id)?.waitingInputs?.first != nil { break }
@@ -475,6 +559,7 @@ final class TalkCompletionTests: XCTestCase {
         var completed = 0
         talk.onTurnCompleted = { completed += 1 }
         talk.keyDown()
+        talk.holdCommitted()
         talk.keyUp()
         await fulfillment(of: [started], timeout: 2)
         talk.keyDown()
@@ -544,6 +629,7 @@ final class TalkCompletionTests: XCTestCase {
         )
         talk.onTurnCompleted = { finished.fulfill() }
         talk.keyDown()
+        talk.holdCommitted()
         talk.keyUp()
         await fulfillment(of: [finished], timeout: 2)
         XCTAssertTrue(overlay.visualGuidanceOverlays.isEmpty)
@@ -594,12 +680,14 @@ final class TalkCompletionTests: XCTestCase {
                 }), tracer: PointerTraceRecorder(point: { .zero })
             )
             talk.keyDown()
+            talk.holdCommitted()
             talk.keyUp()
             for _ in 0..<200 where talk.phase != .idle { try await Task.sleep(for: .milliseconds(10)) }
             guard case .talking(let first) = session.state else { return XCTFail("Missing Talk session") }
             let threadID = try XCTUnwrap(first.threadID)
             home.homeModel.sidebarSelection = .thread(UUID())
             talk.keyDown()
+            talk.holdCommitted()
             talk.keyUp()
             await fulfillment(of: [waiting], timeout: 2)
             XCTAssertNil(guideTask)
@@ -658,10 +746,12 @@ final class TalkCompletionTests: XCTestCase {
             }), tracer: PointerTraceRecorder(point: { .zero })
         )
         talk.keyDown()
+        talk.holdCommitted()
         talk.keyUp()
         for _ in 0..<200 where talk.phase != .idle { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(requests, 1)
         talk.keyDown()
+        talk.holdCommitted()
         talk.keyUp()
         for _ in 0..<200 {
             if await store.thread(id: thread.id)?.waitingInputs?.count == 1 { break }
@@ -698,6 +788,7 @@ final class TalkCompletionTests: XCTestCase {
         var originalID: UUID?
         for count in 1...2 {
             talk.keyDown()
+            talk.holdCommitted()
             talk.keyUp()
             for _ in 0..<200 where talk.phase != .idle {
                 try await Task.sleep(for: .milliseconds(10))
@@ -732,6 +823,7 @@ final class TalkCompletionTests: XCTestCase {
             var completed = 0
             talk.onTurnCompleted = { completed += 1 }
             talk.keyDown()
+            talk.holdCommitted()
             talk.keyUp()
             for _ in 0..<200 where talk.phase != .idle {
                 try await Task.sleep(for: .milliseconds(10))
