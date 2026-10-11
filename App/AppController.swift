@@ -180,6 +180,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
     }
     private let intentCards = IntentCardPresenter()
+    private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
     private lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
@@ -1225,21 +1226,18 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.cancelInput()
         intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
-        overlayState.voiceState = .idle
-        overlayState.taskBubbleText = nil
-        overlayState.agentTaskBubbleText = nil
-        overlayState.detectedElementScreenLocation = nil
-        overlayState.detectedElementDisplayFrame = nil
-        overlayState.detectedElementBubbleText = nil
-        overlayState.activeControlGlowRect = nil
-        overlayState.activeControlGlowLabel = nil
-        overlayState.circleSelectSnappedRect = nil
-        overlayState.circleSelectSnapLabel = nil
-        overlayState.visualGuidanceOverlays = []
+        clearSessionSurfaces()
+    }
+
+    /// Takes every session mark off the overlay, hides the overlay and panel,
+    /// and lets the wake word listen again.
+    private func clearSessionSurfaces() {
+        guideOverlay.clearAll()
         overlayManager.fadeOutAndHideOverlay()
         hidePanel()
         voice.refreshWakeWordListener()
     }
+
     // MARK: Status item
 
     /// System sleep settles an active run at a step boundary and hands
@@ -1862,72 +1860,23 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
     }
 
     func guidePresent(_ presentation: GuidePresentation) {
-        guard let target = presentation.target else {
-            guideClearHighlight()
-            return
-        }
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let frame = AXCoordinateConverter.appKitRect(
-            axX: target.frame.x,
-            axY: target.frame.y,
-            width: target.frame.width,
-            height: target.frame.height,
-            primaryScreenMaxY: primaryMaxY
-        )
-        overlayState.detectedElementScreenLocation = CGPoint(x: frame.midX, y: frame.midY)
-        overlayState.detectedElementDisplayFrame = frame
-        overlayState.detectedElementBubbleText = presentation.step.instruction
-        overlayState.activeControlGlowRect = frame.insetBy(dx: -6, dy: -6)
-        overlayState.activeControlGlowLabel = target.label ?? presentation.step.instruction
+        guideOverlay.present(presentation)
     }
 
     func guideShowFullPath(_ viewPlan: EverythingViewPlan) {
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let overlays = viewPlan.markers.map { marker in
-            let point = AXCoordinateConverter.appKitPoint(
-                axX: marker.position.x,
-                axY: marker.position.y,
-                primaryScreenMaxY: primaryMaxY,
-                elementHeight: 24
-            )
-            return PerryGuidanceOverlay.scribble(
-                points: [point, point],
-                accentHex: "#34D399",
-                lineWidth: 6,
-                caption: "\(marker.number). \(marker.caption)",
-                duration: 20
-            )
-        }
-        overlayState.visualGuidanceOverlays.append(contentsOf: overlays)
+        guideOverlay.showFullPath(viewPlan)
     }
 
     func guideClearPresentation() {
-        overlayState.voiceState = .idle
-        overlayState.taskBubbleText = nil
-        overlayState.agentTaskBubbleText = nil
-        overlayState.detectedElementScreenLocation = nil
-        overlayState.detectedElementDisplayFrame = nil
-        overlayState.detectedElementBubbleText = nil
-        overlayState.activeControlGlowRect = nil
-        overlayState.activeControlGlowLabel = nil
-        overlayState.circleSelectSnappedRect = nil
-        overlayState.circleSelectSnapLabel = nil
-        overlayState.visualGuidanceOverlays = []
-        overlayManager.fadeOutAndHideOverlay()
-        hidePanel()
-        voice.refreshWakeWordListener()
+        clearSessionSurfaces()
     }
 
     func guideClearHighlight() {
-        overlayState.detectedElementScreenLocation = nil
-        overlayState.detectedElementDisplayFrame = nil
-        overlayState.detectedElementBubbleText = nil
-        overlayState.activeControlGlowRect = nil
-        overlayState.activeControlGlowLabel = nil
+        guideOverlay.clearHighlight()
     }
 
     func guideClearFullPath() {
-        overlayState.visualGuidanceOverlays = []
+        guideOverlay.clearFullPath()
     }
 
     func guideRequestTakeOver(_ handoff: GuideHandoff) {
