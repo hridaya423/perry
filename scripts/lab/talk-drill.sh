@@ -2,14 +2,21 @@
 # talk-drill.sh — exercise the real ⌃⌥ talk loop end to end and report the
 # hero latencies plus deixis outcomes.
 #
-# Per run: open a Calculator window, resolve a real AX button's centre via
+# Per run: front the target app, resolve a real AX button's centre via
 # cua-driver, post a synthetic ⌃⌥ hold with the pointer resting on it, and
 # wait for the turn to reach answer.first_text (or a failure marker). Speech
 # comes from the app-side lab input: --perry-talk-script <text> (default —
 # deterministic, no Speech permission needed) or --perry-talk-audio <file>
 # when TALK_WAV=<path> is set (real SFSpeechURLRecognitionTask).
 #
+# The default target is DrillTarget — a compiled keypad fixture
+# (scripts/lab/drill-target.swift). Under Stage Manager any app that loses
+# focus collapses to an edge thumbnail and Calculator cannot reliably reopen
+# its window; the fixture exists so the drill never depends on that. Set
+# TALK_TARGET_APP to a real app name to use one instead.
+#
 #   RUNS=10 HOLD=1.6 scripts/lab/talk-drill.sh
+#   TALK_TARGET_APP=Calculator scripts/lab/talk-drill.sh
 #   scripts/lab/talk-drill.sh --assert          # enforce the Phase-1 gates
 #
 # Assert budgets (override per environment):
@@ -36,6 +43,33 @@ ASSERT=0
 [ "${1:-}" = "--assert" ] && ASSERT=1
 
 swiftc -O -o "$HOLD_BIN" "$REPO_ROOT/scripts/lab/talk-hold.swift"
+
+TARGET_APP="${TALK_TARGET_APP:-DrillTarget}"
+TARGET_PID=""
+if [ "$TARGET_APP" = "DrillTarget" ]; then
+    TARGET_BIN="$REPO_ROOT/build/lab/DrillTarget"
+    mkdir -p "$(dirname "$TARGET_BIN")"
+    [ "$TARGET_BIN" -nt "$REPO_ROOT/scripts/lab/drill-target.swift" ] || \
+        swiftc -O -o "$TARGET_BIN" "$REPO_ROOT/scripts/lab/drill-target.swift"
+    for stale in $(pgrep -x DrillTarget); do kill "$stale" 2>/dev/null || true; done
+    "$TARGET_BIN" &
+    sleep 1
+    TARGET_PID="$(pgrep -x DrillTarget | head -1)"
+    # Unbundled binaries cannot front themselves under Stage Manager; an
+    # osascript `set frontmost` can.
+    activate_target() {
+        osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $TARGET_PID) to true" >/dev/null 2>&1
+    }
+else
+    activate_target() { open -a "$TARGET_APP"; }
+fi
+
+front_target() {
+    activate_target
+    sleep 1
+    TARGET_PID="${TARGET_PID:-$(pgrep -x "$TARGET_APP" | head -1)}"
+    [ -n "$TARGET_PID" ] || { echo "talk-drill: no $TARGET_APP process" >&2; exit 1; }
+}
 
 LAB_ARGS=(--perry-talk-drill --perry-talk-script "${TALK_SCRIPT:-what does this do}")
 if [ -n "${TALK_WAV:-}" ]; then
@@ -67,19 +101,17 @@ echo "markers=$MARKERS"
 # app the Talk capture observes. This must repeat per run — Perry captures
 # the frontmost app at hold time, and anything that activates another app
 # between runs silently retargets the observation.
-open -a Calculator
-sleep 1.2
-CALC_PID="$(pgrep -x Calculator | head -1)"
+front_target
 
 pick_target() {
     local win state
-    win="$("$CUA" call list_windows "{\"pid\":$CALC_PID}" \
+    win="$("$CUA" call list_windows "{\"pid\":$TARGET_PID}" \
         | python3 -c 'import json,sys
 ws=[w for w in json.load(sys.stdin)["windows"] if w.get("is_on_screen")]
 w=max(ws,key=lambda w:w["bounds"]["width"]*w["bounds"]["height"]) if ws else None
 print(w["window_id"] if w else "")')"
     [ -n "$win" ] || return 1
-    state="$("$CUA" call get_window_state "{\"pid\":$CALC_PID,\"window_id\":$win,\"include_screenshot\":false}")"
+    state="$("$CUA" call get_window_state "{\"pid\":$TARGET_PID,\"window_id\":$win,\"include_screenshot\":false}")"
     printf '%s' "$state" | python3 -c 'import json,sys
 els=json.load(sys.stdin).get("elements",[])
 buttons=[e for e in els if e.get("role")=="AXButton" and e.get("enabled",True)]
@@ -121,8 +153,8 @@ marker_count() { [ -f "$MARKERS" ] && wc -l < "$MARKERS" | tr -d ' ' || echo 0; 
 
 for run in $(seq 1 "$RUNS"); do
     from=$(( $(marker_count) + 1 ))
-    open -a Calculator
-    sleep 0.7
+    front_target
+    sleep 0.2
     "$HOLD_BIN" "$CX" "$CY" "$HOLD" 2>/dev/null
     if wait_for "$from" 'answer\.first_text|talk\.input_failed|talk\.turn_failed|talk\.capture_failed' "$TIMEOUT"; then
         if tail -n "+$from" "$MARKERS" | grep -q 'answer.first_text'; then
@@ -154,6 +186,8 @@ if [ "$BARGE" != "0" ]; then
 fi
 
 echo
+[ "$TARGET_APP" = "DrillTarget" ] && kill "$TARGET_PID" 2>/dev/null || true
+
 echo "== talk drill latencies =="
 python3 "$REPORT" "$MARKERS" \
     --pair talk.keydown:talk.listening \
@@ -167,7 +201,7 @@ python3 "$REPORT" "$MARKERS" \
 echo
 echo "== deixis outcomes =="
 for name in deixis.element deixis.point deixis.window deixis.none talk.input_failed talk.cancel; do
-    n=$(grep -c "\"$name\"" "$MARKERS" 2>/dev/null || true)
+    n=$(grep -c "\"$name" "$MARKERS" 2>/dev/null || true)
     echo "  $name: $n"
 done
 
