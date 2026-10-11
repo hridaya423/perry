@@ -45,6 +45,43 @@ final class CodexAppServerProviderTests: XCTestCase {
         )
     }
 
+    /// §6.2: a crash mid-turn leaves `perry-brain-images-<pid>-*` behind; the
+    /// launch sweep must remove only the directories whose owner is dead.
+    func testLaunchSweepRemovesOnlyDeadOwnersImageDirectories() throws {
+        let temp = FileManager.default.temporaryDirectory
+        func imageDir(_ name: String) throws -> URL {
+            let dir = temp.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data("screenshot".utf8).write(to: dir.appendingPathComponent("leftover.png"))
+            tempDirs.append(dir)
+            return dir
+        }
+
+        let crashed = Process()
+        crashed.executableURL = URL(fileURLWithPath: "/bin/true")
+        try crashed.run()
+        crashed.waitUntilExit()
+        let deadPID = crashed.processIdentifier
+        let probe = kill(deadPID, 0)
+        let probeErrno = errno
+        XCTAssertEqual(probe, -1)
+        XCTAssertEqual(probeErrno, ESRCH)
+
+        let crashedDir = try imageDir("perry-brain-images-\(deadPID)-crash")
+        let ownDir = try imageDir("perry-brain-images-\(ProcessInfo.processInfo.processIdentifier)-live")
+        let runningDir = try imageDir("perry-brain-images-1-launchd")
+
+        CodexAppServerProvider.pruneImageDirectories()
+
+        var isDirectory: ObjCBool = false
+        XCTAssertFalse(FileManager.default.fileExists(atPath: crashedDir.path, isDirectory: &isDirectory),
+                       "dead owner's leftover images must be swept")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ownDir.path, isDirectory: &isDirectory),
+                      "this process's image directory is still in use")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: runningDir.path, isDirectory: &isDirectory),
+                      "another live process's images are not ours to delete")
+    }
+
     func testConcurrentConnectionsShareOneInitialization() async throws {
         let log = tempDir().appendingPathComponent("shared.jsonl")
         let process = try makeProcess(scenario: "b", log: log)

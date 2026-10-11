@@ -559,7 +559,9 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
     private let imageDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("perry-brain-images-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString.prefix(8))", isDirectory: true)
 
-    private static func pruneImageDirectories() {
+    /// Internal (not private) so tests can prove a crash-simulated turn
+    /// leaves nothing behind — the launch call site stays inside init.
+    static func pruneImageDirectories() {
         let temp = FileManager.default.temporaryDirectory
         let prefix = "perry-brain-images-"
         let ownPID = ProcessInfo.processInfo.processIdentifier
