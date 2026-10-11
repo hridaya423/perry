@@ -1210,8 +1210,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         spatialMonitor.start()
         showPanel()
         SoundPlayer.play(.wake)
-        voice.speak("Perry here.")
-        runtimes.refreshChoices()
     }
 
     func dismiss() {
@@ -1867,9 +1865,19 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return p
     }
 
+    /// The app the user was in before Perry activated — restored on dismiss
+    /// so an invocation never leaves focus kidnapped. Same convention as
+    /// IntentCardWindow and AgentActivityStrip.
+    private var previousFrontmostApplication: NSRunningApplication?
+
     private func showPanel() {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost.processIdentifier != ownPID {
+            previousFrontmostApplication = frontmost
+        }
         NSApp.activate(ignoringOtherApps: true)
         ensurePanel().makeKeyAndOrderFront(nil)
         PerfMark.mark("panel.visible")
@@ -1884,6 +1892,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private func hidePanel() {
         panel?.orderOut(nil)
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if NSApp.isActive,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
+           let previous = previousFrontmostApplication,
+           previous.processIdentifier != ownPID {
+            previous.activate(options: [.activateAllWindows])
+        }
+        previousFrontmostApplication = nil
     }
 
     func showBackgroundTasks() {

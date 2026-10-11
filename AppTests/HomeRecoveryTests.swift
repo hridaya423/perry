@@ -137,6 +137,9 @@ final class HomeRecoveryTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("build/dependable-evidence/unsaved-requests-\(name).png")
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
             window.close()
         }
@@ -166,6 +169,9 @@ final class HomeRecoveryTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("build/dependable-evidence/unsaved-home-\(name).png")
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
             window.close()
         }

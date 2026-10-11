@@ -181,6 +181,21 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertTrue(entry.setup.status.contains("Check storage and folder permissions"))
     }
 
+    /// The inventory cache key leans on `fileStamp` — it must change when the
+    /// file does and report "missing" cleanly.
+    func testFileStampReflectsContentAndExistence() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let file = directory.appendingPathComponent("runtime")
+
+        XCTAssertEqual(RuntimeCatalog.fileStamp(file), "missing")
+        try Data("a".utf8).write(to: file)
+        let first = RuntimeCatalog.fileStamp(file)
+        try Data("much longer contents".utf8).write(to: file)
+        XCTAssertNotEqual(RuntimeCatalog.fileStamp(file), first)
+    }
+
     private struct FixtureError: Error, CustomStringConvertible {
         var description: String { "seeded-secret" }
     }
