@@ -1,17 +1,10 @@
 import CoreFoundation
 import Foundation
 import PerryCore
-import PerryRuntimes
 
 public struct RuntimeGuidePlanner: GuidePlanner {
     private let complete: @Sendable (String, (Data, String)?) async throws -> String
     private let skillLibrary: AppSkillLibrary
-
-    public init(client: DirectProviderClient, skillLibrary: AppSkillLibrary = AppSkillLibrary()) {
-        self.init(complete: { prompt, screenshot in
-            try await client.complete(prompt: prompt, screenshot: screenshot)
-        }, skillLibrary: skillLibrary)
-    }
 
     public init(
         complete: @escaping @Sendable (String, (Data, String)?) async throws -> String,
@@ -19,22 +12,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
     ) {
         self.complete = complete
         self.skillLibrary = skillLibrary
-    }
-
-    public init(
-        configuration: DirectProviderConfiguration,
-        apiKeyProvider: @escaping @Sendable () -> String?,
-        transport: (@Sendable (URLRequest) async throws -> (Data, HTTPURLResponse))? = nil,
-        skillLibrary: AppSkillLibrary = AppSkillLibrary()
-    ) {
-        self.init(
-            client: DirectProviderClient(
-                configuration: configuration,
-                apiKeyProvider: apiKeyProvider,
-                transport: transport
-            ),
-            skillLibrary: skillLibrary
-        )
     }
 
     public func nextStep(
@@ -308,57 +285,5 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         Reply: {"steps":[{"instruction":"<short spoken instruction>","target":"<control id>","post":{"<observable proof>"},"wait":true,"opens_window":false}]}
         "post" is the proof the click happened: {"exists":"<control id>"}, {"absent":"<control id>"}, {"label":"<control id>","equals":"<text>"}, or {"window_title":"<title>"}. "wait" and "opens_window" may be omitted when false.
         """
-    }
-}
-
-/// Runtime router per PRD §4: CLI runtimes take file/dev/browser tasks;
-/// GUI grounding routes to vision-capable runtimes; local tier only when the
-/// hardware probe passes and the experimental flag is on.
-public struct RuntimeRouter: Sendable {
-    public enum TaskKind: String, Sendable {
-        case fileOrDev
-        case guiGrounding
-    }
-
-    public struct Decision: Equatable, Sendable {
-        public let runtimeID: String
-        public let reason: String
-    }
-
-    private let cliAvailable: Bool
-    private let byokAvailable: Bool
-    private let localPassesFloor: Bool
-    private let localExperimentalFlagOn: Bool
-
-    public init(
-        cliAvailable: Bool,
-        byokAvailable: Bool,
-        localPassesFloor: Bool,
-        localExperimentalFlagOn: Bool = false
-    ) {
-        self.cliAvailable = cliAvailable
-        self.byokAvailable = byokAvailable
-        self.localPassesFloor = localPassesFloor
-        self.localExperimentalFlagOn = localExperimentalFlagOn
-    }
-
-    public func route(task: TaskKind) -> Decision {
-        switch task {
-        case .fileOrDev:
-            if cliAvailable { return Decision(runtimeID: "cli.claude-code", reason: "installed CLI handles files and dev tasks natively") }
-            if byokAvailable { return Decision(runtimeID: "byok.cloud", reason: "cloud fallback with no CLI installed") }
-            if isLocalTierOffered() { return Decision(runtimeID: "local.task-planner", reason: "private local planner handles supported file and accessibility tasks") }
-            return Decision(runtimeID: "none", reason: "install a coding-agent CLI or add a cloud key")
-        case .guiGrounding:
-            if byokAvailable { return Decision(runtimeID: "byok.cloud", reason: "vision-capable cloud model grounds GUI elements") }
-            if cliAvailable { return Decision(runtimeID: "cli.claude-code", reason: "CLI fallback; screenshot-driven but weaker at pixel pointing") }
-            if isLocalTierOffered() { return Decision(runtimeID: "local.task-planner", reason: "private local planner grounds supported accessibility targets") }
-            return Decision(runtimeID: "none", reason: "add a cloud vision key for reliable GUI grounding")
-        }
-    }
-
-    /// Local tier gate: passes floor AND explicit opt-in flag.
-    public func isLocalTierOffered() -> Bool {
-        localPassesFloor && localExperimentalFlagOn
     }
 }

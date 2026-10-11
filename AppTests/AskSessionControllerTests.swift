@@ -61,9 +61,8 @@ final class AskSessionControllerTests: XCTestCase {
         sessionController: SessionController,
         overlayState: PerryCursorState,
         output: OutputStub,
-        answerer: AskSessionController.Answerer? = nil,
         observationProvider: AskSessionController.ObservationProvider? = nil,
-        runner: AskSessionController.Runner? = nil
+        runner: AskSessionController.Runner
     ) -> AskSessionController {
         AskSessionController(
             sessionController: sessionController,
@@ -71,10 +70,34 @@ final class AskSessionControllerTests: XCTestCase {
             overlayState: overlayState,
             output: output,
             context: ContextStub(),
-            answererFactory: { answerer },
             observationProvider: observationProvider,
             runner: runner
         )
+    }
+
+    /// A runner whose Nth turn streams the events `script(N)` returns.
+    private func scriptedRunner(
+        onRun: @escaping @MainActor () -> Void = {},
+        _ script: @escaping @MainActor (Int) async -> [AgentLoopEvent]
+    ) -> AskSessionController.Runner {
+        var calls = 0
+        return .init(accept: { text, id in
+            .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
+        }, run: { input, _ in
+            calls += 1
+            onRun()
+            let call = calls
+            return (input.threadID, AsyncStream { continuation in
+                Task { @MainActor in
+                    for event in await script(call) { continuation.yield(event) }
+                    continuation.finish()
+                }
+            }, nil)
+        })
+    }
+
+    private func answering(_ text: String) -> [AgentLoopEvent] {
+        [.textDelta(text), .finished(.completed)]
     }
 
     private func waitForCondition(
@@ -261,10 +284,11 @@ final class AskSessionControllerTests: XCTestCase {
             let barrier = AsyncBarrier()
             let controller = makeController(
                 sessionController: session, overlayState: PerryCursorState(), output: output,
-                answerer: { _, observation, _, _ in
+                observationProvider: { self.observation() },
+                runner: scriptedRunner { _ in
                     await barrier.wait()
-                    return SpatialAnswer(text: "Ready", references: [], followUp: nil, observationID: observation.observationID)
-                }, observationProvider: { self.observation() }
+                    return self.answering("Ready")
+                }
             )
             controller.submit(question: "Explain this")
             var transitioned = false
@@ -293,9 +317,8 @@ final class AskSessionControllerTests: XCTestCase {
         let barrier = AsyncBarrier()
         let controller = makeController(
             sessionController: session, overlayState: PerryCursorState(), output: OutputStub(),
-            answerer: { _, observation, _, _ in
-                SpatialAnswer(text: "Ready", references: [], followUp: nil, observationID: observation.observationID)
-            }, observationProvider: { self.observation() }
+            observationProvider: { self.observation() },
+            runner: scriptedRunner { _ in self.answering("Ready") }
         )
         controller.submit(question: "Explain this")
         var saved = false
@@ -381,109 +404,42 @@ final class AskSessionControllerTests: XCTestCase {
         await completion?.value
     }
 
-    func testAnswerPublishesReferencesAndSpeech() async {
+    func testStreamedAnswerUpdatesSessionAndSpeaks() async {
         let session = SessionController()
-        let overlay = PerryCursorState()
         let output = OutputStub()
-        let answerer: AskSessionController.Answerer = { _, observation, _, _ in
-            SpatialAnswer(
-                text: "Save writes the document.",
-                references: [
-                    SpatialReference(
-                        caption: "Save button",
-                        observationID: observation.observationID,
-                        target: .element(stableID: "save"),
-                        frame: AXElementFrame(x: 10, y: 20, width: 60, height: 24)
-                    )
-                ],
-                followUp: "Want the shortcut?",
-                observationID: observation.observationID
-            )
-        }
         let controller = makeController(
-            sessionController: session,
-            overlayState: overlay,
-            output: output,
-            answerer: answerer,
-            observationProvider: { self.observation() }
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { self.observation() },
+            runner: scriptedRunner { _ in self.answering("Save writes the document.") }
         )
 
         controller.submit(question: "What does Save do?")
 
         await waitForCondition {
-            if case .asking(let ask) = session.state { return ask.answerText != nil }
+            if case .asking(let ask) = session.state { return !ask.isWorking }
             return false
         }
         guard case .asking(let ask) = session.state else { return XCTFail("expected asking") }
         XCTAssertEqual(ask.answerText, "Save writes the document.")
-        XCTAssertEqual(ask.followUpPrompt, "Want the shortcut?")
         XCTAssertEqual(ask.turnCount, 1)
-        XCTAssertFalse(ask.isWorking)
-        XCTAssertEqual(overlay.visualGuidanceOverlays.count, 1)
         XCTAssertEqual(output.spoken, ["Save writes the document."])
         XCTAssertEqual(output.overlayShows, 1)
     }
 
-    func testFollowUpReusesSessionAndConversation() async {
+    func testProtectedWindowNeverReachesRunner() async {
         let session = SessionController()
         let output = OutputStub()
-        var seenTurnCounts: [Int] = []
-        let answerer: AskSessionController.Answerer = { _, observation, conversation, _ in
-            seenTurnCounts.append(conversation.turns.count)
-            return SpatialAnswer(
-                text: "answer \(conversation.turns.count)",
-                references: [],
-                followUp: nil,
-                observationID: observation.observationID
-            )
-        }
-        let controller = makeController(
-            sessionController: session,
-            overlayState: PerryCursorState(),
-            output: output,
-            answerer: answerer,
-            observationProvider: { self.observation() }
+        var ran = false
+        let protected = GuideObservation(
+            snapshot: AXSnapshot(appBundleID: "com.agilebits.onepassword-osx", windowTitle: "Vault", elements: []),
+            processID: 9, windowID: 9, connectionGeneration: 1,
+            windowBounds: AXElementFrame(x: 0, y: 0, width: 100, height: 100),
+            observationID: "p1"
         )
-
-        controller.submit(question: "first")
-        await waitForCondition {
-            if case .asking(let ask) = session.state { return ask.turnCount == 1 }
-            return false
-        }
-        controller.submit(question: "second")
-        await waitForCondition {
-            if case .asking(let ask) = session.state { return ask.turnCount == 2 }
-            return false
-        }
-
-        XCTAssertEqual(seenTurnCounts, [0, 1])
-        guard case .asking(let ask) = session.state else { return XCTFail("expected asking") }
-        XCTAssertEqual(ask.question, "second")
-        XCTAssertEqual(ask.answerText, "answer 1")
-    }
-
-    func testChangedWindowInvalidatesLateAnswer() async {
-        let session = SessionController()
-        let output = OutputStub()
-        var captures = 0
-        let answerer: AskSessionController.Answerer = { _, observation, _, _ in
-            SpatialAnswer(
-                text: "Late answer",
-                references: [],
-                followUp: nil,
-                observationID: observation.observationID
-            )
-        }
         let controller = makeController(
-            sessionController: session,
-            overlayState: PerryCursorState(),
-            output: output,
-            answerer: answerer,
-            observationProvider: {
-                captures += 1
-                // Second capture sees a different window: the baseline answer is stale.
-                return self.observation(id: "capture-\(captures)", windowID: captures == 1 ? 7 : 99)
-            }
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { protected },
+            runner: scriptedRunner(onRun: { ran = true }) { _ in self.answering("x") }
         )
 
         controller.submit(question: "What is this?")
@@ -491,42 +447,8 @@ final class AskSessionControllerTests: XCTestCase {
             if case .asking(let ask) = session.state { return !ask.isWorking }
             return false
         }
-
-        guard case .asking(let ask) = session.state else { return XCTFail("expected asking") }
-        XCTAssertNil(ask.answerText)
-        XCTAssertEqual(ask.turnCount, 0)
-        XCTAssertTrue(output.statuses.contains(SpatialAnswerError.staleObservation.errorDescription ?? ""))
-        XCTAssertTrue(output.spoken.isEmpty)
-    }
-
-    func testProtectedWindowNeverReachesAnswerer() async {
-        let session = SessionController()
-        let output = OutputStub()
-        var answererCalled = false
-        let answerer: AskSessionController.Answerer = { _, _, _, _ in
-            answererCalled = true
-            return SpatialAnswer(text: "x", references: [], followUp: nil, observationID: "x")
-        }
-        let protected = GuideObservation(
-            snapshot: AXSnapshot(appBundleID: "com.agilebits.onepassword-osx", windowTitle: "Vault", elements: []),
-            processID: 9, windowID: 9, connectionGeneration: 1,
-            windowBounds: AXElementFrame(x: 0, y: 0, width: 100, height: 100),
-            observationID: "p1"
-        )
-        let protectedController = makeController(
-            sessionController: session,
-            overlayState: PerryCursorState(),
-            output: output,
-            answerer: answerer,
-            observationProvider: { protected }
-        )
-
-        protectedController.submit(question: "What is this?")
-        await waitForCondition {
-            if case .asking(let ask) = session.state { return !ask.isWorking }
-            return false
-        }
-        XCTAssertFalse(answererCalled)
+        XCTAssertFalse(ran)
+        XCTAssertEqual(output.buddyStates.last, .blocked)
     }
 
     func testBusySessionIsNotPreempted() {
@@ -540,7 +462,8 @@ final class AskSessionControllerTests: XCTestCase {
             observationProvider: {
                 captures += 1
                 return self.observation()
-            }
+            },
+            runner: scriptedRunner { _ in self.answering("x") }
         )
         session.debugSet(.executing(ExecutionSessionState(
             taskID: UUID(), goal: "task", startedAt: Date(),
@@ -555,22 +478,15 @@ final class AskSessionControllerTests: XCTestCase {
 
     func testCancelStopsPendingAnswer() async {
         let session = SessionController()
-        let overlay = PerryCursorState()
         let output = OutputStub()
         let barrier = AsyncBarrier()
-        let answerer: AskSessionController.Answerer = { _, observation, _, _ in
-            await barrier.wait()
-            return SpatialAnswer(
-                text: "too late", references: [], followUp: nil,
-                observationID: observation.observationID
-            )
-        }
         let controller = makeController(
-            sessionController: session,
-            overlayState: overlay,
-            output: output,
-            answerer: answerer,
-            observationProvider: { self.observation() }
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { self.observation() },
+            runner: scriptedRunner { _ in
+                await barrier.wait()
+                return self.answering("too late")
+            }
         )
 
         controller.submit(question: "What is this?")
@@ -587,47 +503,35 @@ final class AskSessionControllerTests: XCTestCase {
         XCTAssertTrue(output.spoken.isEmpty)
     }
 
-    func testProviderFailureLeavesSessionReadyForRetry() async {
+    func testFailedAnswerLeavesSessionReadyForRetry() async {
         let session = SessionController()
-        let overlay = PerryCursorState()
         let output = OutputStub()
-        var calls = 0
-        let answerer: AskSessionController.Answerer = { _, observation, _, _ in
-            calls += 1
-            if calls == 1 { throw SpatialAnswerError.invalidResponse }
-            return SpatialAnswer(
-                text: "Second try worked.", references: [], followUp: nil,
-                observationID: observation.observationID
-            )
-        }
         let controller = makeController(
-            sessionController: session,
-            overlayState: overlay,
-            output: output,
-            answerer: answerer,
-            observationProvider: { self.observation() }
+            sessionController: session, overlayState: PerryCursorState(), output: output,
+            observationProvider: { self.observation() },
+            runner: scriptedRunner { call in
+                call == 1 ? [.finished(.failed("The model is unavailable."))] : self.answering("Second try worked.")
+            }
         )
 
         controller.submit(question: "What is this?")
         await waitForCondition {
-            if case .asking(let ask) = session.state { return !ask.isWorking && output.statuses.count > 1 }
+            if case .asking(let ask) = session.state { return !ask.isWorking && output.buddyStates.last == .blocked }
             return false
         }
         guard case .asking(let ask) = session.state else { return XCTFail("expected asking") }
         XCTAssertNil(ask.answerText)
         XCTAssertEqual(ask.turnCount, 0)
-        XCTAssertTrue(overlay.visualGuidanceOverlays.isEmpty)
         XCTAssertTrue(output.spoken.isEmpty)
 
         controller.submit(question: "What is this?")
         await waitForCondition {
-            if case .asking(let ask) = session.state { return ask.answerText != nil }
+            if case .asking(let ask) = session.state { return ask.turnCount == 1 }
             return false
         }
         guard case .asking(let retried) = session.state else { return XCTFail("expected asking") }
         XCTAssertEqual(retried.answerText, "Second try worked.")
-        XCTAssertEqual(retried.turnCount, 1)
-        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(output.spoken, ["Second try worked."])
     }
 
     func testSessionControllerAskTransitions() throws {
