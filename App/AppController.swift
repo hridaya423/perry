@@ -297,7 +297,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             )
         })
     )
-    private let talkTargetStore = CuaGuideTargetStore()
+    private lazy var talkCapture = TalkObservationCapture(
+        workers: workers,
+        targetHint: { [unowned self] in guideTargetHint() },
+        appBundleID: { [unowned self] in guideAppBundleID(for: $0) }
+    )
     private lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: storageDirectory)
     private var talkSessionStarted = false
     lazy var talkSession = TalkSession(
@@ -316,7 +320,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             output: SharedTalkOutput(voice: voice),
             capture: { [weak self] in
                 guard let self else { throw CancellationError() }
-                return try await self.captureTalkObservation()
+                return try await self.talkCapture.capture()
             },
             acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1, contextKey: $2) },
             targetHint: { [unowned self] in self.guideTargetHint() },
@@ -1945,47 +1949,6 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
 
     func guideSpatialRegionDescription() -> String? {
         spatial.selection?.description
-    }
-
-    /// Talk's screen capture. The local observer (window list + AX hit-test +
-    /// bounded index + ScreenCaptureKit) runs first — it's ~10x faster than
-    /// the driver tree walk and claims no worker. The driver path remains for
-    /// when Perry lacks grants or the local walk fails.
-    func captureTalkObservation() async throws -> GuideObservation {
-        PerfMark.mark("talk.capture_begin")
-        let hint = guideTargetHint()
-        await talkTargetStore.set(hint)
-        do {
-            if AXIsProcessTrusted() {
-                do {
-                    let observation = try await LocalTalkObserver(
-                        hint: hint,
-                        pointerAXPoint: PointerTraceRecorder.mouseLocationInAXSpace(),
-                        targetStore: talkTargetStore
-                    ).observe()
-                    PerfMark.mark("talk.capture_local")
-                    if observation.screenshotData == nil {
-                        PerfMark.mark("talk.capture_no_screenshot")
-                    }
-                    PerfMark.mark("capture.done")
-                    return observation
-                } catch {
-                    PerfMark.markDynamic("talk.capture_local_failed.\(String(describing: error))")
-                }
-            }
-            var resources = Set<BackgroundTaskResource>()
-            if let bundleID = guideAppBundleID(for: hint) {
-                resources.insert(.application(bundleID))
-            }
-            let observation = try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
-                try await CuaGuideTreeReader(worker: worker, targetStore: self.talkTargetStore).observe()
-            }
-            PerfMark.mark("capture.done")
-            return observation
-        } catch {
-            PerfMark.markDynamic("talk.capture_failed.\(String(describing: error))")
-            throw error
-        }
     }
 
 #if DEBUG
