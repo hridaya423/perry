@@ -140,16 +140,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         runDo: { [weak self] goal in await self?.foreground.runForDemo(goal: goal) },
         report: { [weak self] outcome in self?.handleDemoReport(outcome) }
     ))
-#if DEBUG
-    private let debugStorageDirectory: URL?
-#endif
+
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
     /// plan path so fixtures stay deterministic without a provider.
     private let foregroundUsesAgentRunner: Bool
     private var storageDirectory: URL? {
 #if DEBUG
-        return debugStorageDirectory ?? Self.supportDirectory
+        return debugSeams.storageDirectory ?? Self.supportDirectory
 #else
         return Self.supportDirectory
 #endif
@@ -159,20 +157,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private lazy var transcriptStore = TranscriptStore(directory: storageDirectory)
     private let notifier: any AppNotificationClient
 #if DEBUG
-    typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
-    typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
-    typealias FullGuidePlanner = @MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep]
-    typealias FinalizationPersistenceBarrier = @Sendable () async -> Void
-    private let debugRuntimeInventoryLoader: RuntimeCatalog.InventoryLoader?
-    private let debugPermissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader?
-    private let debugCuaHealthLoader: EnvironmentProbe.CuaHealthLoader?
-    private let debugScreenContextLoader: EnvironmentProbe.ScreenContextLoader?
-    private let debugFullGuideCaptureLoader: FullGuideCaptureLoader?
-    private let debugFullGuideContinuationBarrier: FullGuideContinuationBarrier?
-    private let debugFullGuidePlanner: FullGuidePlanner?
-    private let debugGuidePlanner: (any GuidePlanner)?
-    private let debugFinalizationBarrier: FinalizationBarrier?
-    private let debugTypedVerifier: (any TypedActionVerifier)?
+    private let debugSeams: DebugLaunchSeams
 #endif
     private let debugFinalizationPersistenceBarrier: (@Sendable () async -> Void)?
     private lazy var guideBridge = GuideSessionBridge(host: self)
@@ -185,12 +170,12 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         storageDirectory: storageDirectory,
         output: guideBridge,
         context: guideBridge,
-        fullGuideCaptureLoader: debugFullGuideCaptureLoader,
-        fullGuideContinuationBarrier: debugFullGuideContinuationBarrier,
-        fullGuidePlanner: debugFullGuidePlanner,
+        fullGuideCaptureLoader: debugSeams.fullGuideCaptureLoader,
+        fullGuideContinuationBarrier: debugSeams.fullGuideContinuationBarrier,
+        fullGuidePlanner: debugSeams.fullGuidePlanner,
         guidePlannerProvider: { [weak self] guide in
             guard let self else { return nil }
-            return self.debugGuidePlanner ?? self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
+            return self.debugSeams.guidePlanner ?? self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
                 guard let self else { throw CancellationError() }
                 return try await self.agentCoordinator.prepareGuideRequest(
                     threadID: guide.threadID, runID: guide.id, provider: provider, request: request
@@ -330,7 +315,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
         return RuntimeCatalog(
             setStatus: { [weak self] status in self?.sessionStatus = status },
-            inventoryLoader: debugRuntimeInventoryLoader
+            inventoryLoader: debugSeams.runtimeInventoryLoader
         )
 #else
         return RuntimeCatalog(setStatus: { [weak self] status in self?.sessionStatus = status })
@@ -345,9 +330,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             remoteIntegrationPermissions: remoteIntegrationPermissions,
             spatialSelection: { [weak self] in self?.spatial.selection },
             storageDirectory: { [weak self] in self?.storageDirectory },
-            permissionSnapshotLoader: debugPermissionSnapshotLoader,
-            cuaHealthLoader: debugCuaHealthLoader,
-            screenContextLoader: debugScreenContextLoader
+            permissionSnapshotLoader: debugSeams.permissionSnapshotLoader,
+            cuaHealthLoader: debugSeams.cuaHealthLoader,
+            screenContextLoader: debugSeams.screenContextLoader
         )
 #else
         return EnvironmentProbe(
@@ -385,10 +370,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             transcriptStore: transcriptStore,
             overlayState: overlayState,
             hooks: hooks,
-            finalizationBarrier: debugFinalizationBarrier,
-            confirmer: debugConfirmer,
-            askUser: debugAskUser,
-            typedVerifier: debugTypedVerifier,
+            finalizationBarrier: debugSeams.finalizationBarrier,
+            confirmer: debugSeams.confirmer,
+            askUser: debugSeams.askUser,
+            typedVerifier: debugSeams.typedVerifier,
             workspaceCoordinator: backgroundTaskCoordinator
         )
 #else
@@ -554,7 +539,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             runtimes: runtimes,
             probe: probe,
             remoteIntegrationExecutor: remoteIntegrationExecutor,
-            storageDirectory: { [weak self] in self?.debugStorageDirectory },
+            storageDirectory: { [weak self] in self?.debugSeams.storageDirectory },
             hooks: hooks
         )
 #else
@@ -600,8 +585,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         get { maintenance.debugUnsavedQuitDecision }
         set { maintenance.debugUnsavedQuitDecision = newValue }
     }
-    private let debugConfirmer: (any Confirmer)?
-    private let debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
 #endif
     @Published private(set) var sessionStatus = "Press ⌥⌘P when you want Perry."
     @Published private(set) var transcriptPreview = ""
@@ -612,19 +595,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     override init() {
 #if DEBUG
-        debugStorageDirectory = Self.debugStorageDirectoryFromArguments(ProcessInfo.processInfo.arguments)
-        debugRuntimeInventoryLoader = Self.debugRuntimeInventoryLoaderFromArguments(ProcessInfo.processInfo.arguments)
-        debugPermissionSnapshotLoader = nil
-        debugCuaHealthLoader = nil
-        debugScreenContextLoader = nil
-        debugFullGuideCaptureLoader = nil
-        debugFullGuideContinuationBarrier = nil
-        debugFullGuidePlanner = nil
-        debugGuidePlanner = nil
-        debugFinalizationBarrier = nil
-        debugTypedVerifier = nil
-        debugConfirmer = nil
-        debugAskUser = nil
+        debugSeams = .launch(arguments: ProcessInfo.processInfo.arguments)
 #endif
         debugFinalizationPersistenceBarrier = nil
         foregroundUsesAgentRunner = true
@@ -637,19 +608,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     init(sessionController: SessionController) {
 #if DEBUG
-        debugStorageDirectory = nil
-        debugRuntimeInventoryLoader = nil
-        debugPermissionSnapshotLoader = nil
-        debugCuaHealthLoader = nil
-        debugScreenContextLoader = nil
-        debugFullGuideCaptureLoader = nil
-        debugFullGuideContinuationBarrier = nil
-        debugFullGuidePlanner = nil
-        debugGuidePlanner = AXGuidePlanner()
-        debugFinalizationBarrier = nil
-        debugTypedVerifier = nil
-        debugConfirmer = nil
-        debugAskUser = nil
+        debugSeams = DebugLaunchSeams(guidePlanner: AXGuidePlanner())
 #endif
         debugFinalizationPersistenceBarrier = nil
         foregroundUsesAgentRunner = false
@@ -681,20 +640,22 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
         usesAgentRunner: Bool = false
     ) {
-        self.debugStorageDirectory = debugStorageDirectory
-        self.debugRuntimeInventoryLoader = runtimeInventoryLoader
-        self.debugPermissionSnapshotLoader = permissionSnapshotLoader
-        self.debugCuaHealthLoader = cuaHealthLoader
-        self.debugScreenContextLoader = screenContextLoader
-        self.debugFullGuideCaptureLoader = fullGuideCaptureLoader
-        self.debugFullGuideContinuationBarrier = fullGuideContinuationBarrier
-        self.debugFullGuidePlanner = fullGuidePlanner
-        self.debugGuidePlanner = guidePlanner
-        self.debugFinalizationBarrier = finalizationBarrier
-        self.debugFinalizationPersistenceBarrier = finalizationPersistenceBarrier
-        self.debugTypedVerifier = typedVerifier
-        self.debugConfirmer = confirmer
-        self.debugAskUser = askUser
+        debugSeams = DebugLaunchSeams(
+            storageDirectory: debugStorageDirectory,
+            runtimeInventoryLoader: runtimeInventoryLoader,
+            permissionSnapshotLoader: permissionSnapshotLoader,
+            cuaHealthLoader: cuaHealthLoader,
+            screenContextLoader: screenContextLoader,
+            fullGuideCaptureLoader: fullGuideCaptureLoader,
+            fullGuideContinuationBarrier: fullGuideContinuationBarrier,
+            fullGuidePlanner: fullGuidePlanner,
+            guidePlanner: guidePlanner,
+            finalizationBarrier: finalizationBarrier,
+            typedVerifier: typedVerifier,
+            confirmer: confirmer,
+            askUser: askUser
+        )
+        debugFinalizationPersistenceBarrier = finalizationPersistenceBarrier
         foregroundUsesAgentRunner = usesAgentRunner
         self.notifier = notifier ?? SystemNotifier()
         self.sessionController = sessionController ?? SessionController()
@@ -782,38 +743,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             .appendingPathComponent("Perry", isDirectory: true)
     }
 
-#if DEBUG
-    private static func debugStorageDirectoryFromArguments(_ arguments: [String]) -> URL? {
-        guard PerryDebugLaunchSurface(arguments: arguments) == .backgroundTasksStorageError,
-              let index = arguments.firstIndex(of: "--perry-debug-storage-directory"),
-              arguments.indices.contains(index + 1),
-              !arguments[index + 1].isEmpty else { return nil }
-        let path = arguments[index + 1]
-        var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
-              isDirectory.boolValue else { return nil }
-        return URL(fileURLWithPath: path, isDirectory: true)
-    }
-
-    /// `--perry-debug-runtimes none` reports an inventory with only Automatic +
-    /// the planning-only local planner, so UI captures can exercise the
-    /// panel's inline no-runtime recovery deterministically.
-    private static func debugRuntimeInventoryLoaderFromArguments(
-        _ arguments: [String]
-    ) -> RuntimeCatalog.InventoryLoader? {
-        guard let index = arguments.firstIndex(of: "--perry-debug-runtimes"),
-              arguments.indices.contains(index + 1),
-              arguments[index + 1] == "none" else { return nil }
-        return { workingDirectory in
-            try await RuntimeInventoryInspector(
-                readDirectProvider: { nil },
-                commandLineProviders: []
-            ).inspect(workingDirectory: workingDirectory)
-        }
-    }
-#endif
-
-
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         homeController.openHome()
         return false
@@ -829,7 +758,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == .backgroundTasksStorageError {
-            guard debugStorageDirectory != nil else { return }
+            guard debugSeams.storageDirectory != nil else { return }
             DispatchQueue.main.async { [weak self] in
                 self?.showDebugBackgroundTasksStorageError()
             }
