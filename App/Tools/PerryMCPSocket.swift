@@ -1,5 +1,6 @@
 import Foundation
 import PerryBrain
+import Security
 
 final class PerryMCPSocket: @unchecked Sendable {
     private let host: PerryToolHost
@@ -118,6 +119,14 @@ final class PerryMCPSocket: @unchecked Sendable {
     private func serve(client fd: Int32) {
         var noSignal: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
+        // §6.1: the 0600 mode and token gate the filesystem, but the peer
+        // itself is validated too — same uid via getpeereid, and when Perry
+        // is team-signed the peer must carry the same team identifier so a
+        // foreign binary can't drive the tool surface even with the token.
+        guard Self.peerIsTrusted(fd) else {
+            close(fd)
+            return
+        }
         let id = UUID()
         let incoming = AsyncStream<String>.makeStream(bufferingPolicy: .bufferingOldest(32))
         let completed = DispatchSemaphore(value: 0)
@@ -176,6 +185,43 @@ final class PerryMCPSocket: @unchecked Sendable {
             }
             if pending.count > 1_048_576 { return }
         }
+    }
+
+    /// Same-user check first, then — only when Perry itself is team-signed —
+    /// the peer must match our team identifier. Adhoc debug builds carry no
+    /// team on either side, so the uid gate is the enforceable floor there.
+    private static func peerIsTrusted(_ fd: Int32) -> Bool {
+        var uid = uid_t(0)
+        var gid = gid_t(0)
+        guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else { return false }
+        guard let teamID = ourTeamIdentifier() else { return true }
+        var pid = pid_t(0)
+        var size = socklen_t(MemoryLayout<pid_t>.size)
+        guard getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &size) == 0, pid > 0 else { return false }
+        return teamIdentifier(forPID: pid) == teamID
+    }
+
+    private static func ourTeamIdentifier() -> String? {
+        var code: SecCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+        return signingTeamIdentifier(code)
+    }
+
+    private static func teamIdentifier(forPID pid: pid_t) -> String? {
+        var guest: SecCode?
+        let attributes = [kSecGuestAttributePid: pid] as CFDictionary
+        guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &guest) == errSecSuccess,
+              let guest else { return nil }
+        return signingTeamIdentifier(guest)
+    }
+
+    private static func signingTeamIdentifier(_ code: SecCode) -> String? {
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+        var info: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+              let dict = info as? [String: Any] else { return nil }
+        return dict[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
     private static func write(_ line: String, to fd: Int32) async throws {
