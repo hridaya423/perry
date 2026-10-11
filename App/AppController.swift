@@ -76,8 +76,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return scheduler
     }()
 
-    private var mcpSocket: PerryMCPSocket?
-    private var mcpStartupTask: Task<Void, Never>?
+    private lazy var mcp = MCPSocketLifecycle(
+        makeSocket: { [unowned self] directory in
+            PerryMCPSocket(host: toolHost, directory: directory, workers: workers, workerLease: foregroundWorkerLease)
+        },
+        mayStart: { [unowned self] in maintenanceOwner == nil && !terminationPrepared },
+        reportFailure: { [unowned self] in sessionStatus = $0 }
+    )
     private lazy var overlaySampleLog: PerformanceSampleLog? = {
         try? PerformanceSampleLog.shared.get()
     }()
@@ -877,19 +882,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         perryScheduler?.start()
         suggestionController.start()
         if let dir = storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            mcpStartupTask = Task { @MainActor [weak self] in
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                    guard let self, self.maintenanceOwner == nil, !self.terminationPrepared else { return }
-                    defer { self.mcpStartupTask = nil }
-                    let socket = PerryMCPSocket(host: self.toolHost, directory: dir, workers: self.workers, workerLease: self.foregroundWorkerLease)
-                    try socket.start()
-                    self.mcpSocket = socket
-                } catch is CancellationError {
-                } catch {
-                    self?.sessionStatus = "Perry could not start its tool connection: \(error.localizedDescription)"
-                }
-            }
+            mcp.startAfterLaunch(directory: dir)
         }
 #if DEBUG
         if debugSurface == nil {
@@ -991,8 +984,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             do {
                 try await self.prepareForTermination()
                 try await self.workers.shutdown()
-                await self.mcpStartupTask?.value
-                await self.mcpSocket?.stop()
+                await self.mcp.stop()
                 await self.joinAfterWorkerShutdown()
                 guard self.confirmQuitDiscardingUnsavedRequests() else {
                     self.backgroundTasks.reopenControls()
@@ -1033,8 +1025,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func acquireMaintenance(_ operation: MaintenanceOperation) -> Bool {
         guard maintenanceOwner == nil else { return false }
         maintenanceOwner = operation
-        mcpStartupTask?.cancel()
-        mcpSocket?.closeAdmission()
+        mcp.suspend()
         agentCoordinator.closeAdmission()
         brain.closeAdmission()
         homeController.closeAdmission()
@@ -1049,20 +1040,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             agentCoordinator.reopenAdmission()
             brain.reopenAdmission()
             homeController.reopenAdmission()
-            if let socket = mcpSocket {
-                let previousStartup = mcpStartupTask
-                mcpStartupTask = Task { @MainActor [weak self] in
-                    await previousStartup?.value
-                    await socket.stop()
-                    guard let self, !Task.isCancelled, self.maintenanceOwner == nil else { return }
-                    defer { self.mcpStartupTask = nil }
-                    do {
-                        try socket.start()
-                    } catch {
-                        self.sessionStatus = "Perry could not restart its tool connection: \(error.localizedDescription)"
-                    }
-                }
-            }
+            mcp.resume()
         }
     }
 
@@ -1351,10 +1329,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func stopWorkForErasure() async {
-        await mcpStartupTask?.value
-        mcpStartupTask = nil
-        await mcpSocket?.stop()
-        mcpSocket = nil
+        await mcp.discard()
         await brain.stopSetup()
         demoDirector.cancel()
         askController.cancel()
