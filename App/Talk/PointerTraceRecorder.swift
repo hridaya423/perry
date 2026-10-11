@@ -92,10 +92,20 @@ final class PointerTraceRecorder {
     /// must treat as "over our own UI".
     static func perryWindowFramesInAXSpace() -> [CGRect] {
         let maxY = NSScreen.screens.first?.frame.maxY ?? 0
-        return NSApp.windows.map { window in
-            let frame = window.frame
-            return CGRect(x: frame.minX, y: maxY - frame.maxY, width: frame.width, height: frame.height)
-        }
+        return perryInteractiveFrames(of: NSApp.windows, primaryMaxY: maxY)
+    }
+
+    /// Only Perry windows the user can actually point at count as "over
+    /// Perry": the Talk overlay and cursor follower are full-screen and
+    /// click-through, so including them would flag every sample overPerry and
+    /// deixis could never bind.
+    static func perryInteractiveFrames(of windows: [NSWindow], primaryMaxY maxY: CGFloat) -> [CGRect] {
+        windows
+            .filter { $0.isVisible && !$0.ignoresMouseEvents && $0.alphaValue > 0.01 }
+            .map { window in
+                let frame = window.frame
+                return CGRect(x: frame.minX, y: maxY - frame.maxY, width: frame.width, height: frame.height)
+            }
     }
 
     /// Topmost on-screen layer-0 window under the AX-space point, skipping
