@@ -93,50 +93,21 @@ final class SFSpeechInput: TalkSpeechInput {
     }
 }
 
-/// AVSpeechSynthesizer output — queued utterances, honours the user's speech
-/// prefs (voice, 0.5–1.5× rate, output disabled), immediate cut on barge-in.
+/// Talk output over VoiceController's one synthesizer — a single speech owner
+/// means Talk barge-in silences Guide instructions and announcements too, and
+/// `isSpeaking` reflects every feature's speech (plan Phase 2.3). Queued via
+/// `enqueueSpeech` so streamed sentences play back-to-back.
 @MainActor
-final class SystemVoiceOutput: NSObject, TalkSpeechOutput {
-    private let synthesizer = AVSpeechSynthesizer()
-    private(set) var isSpeaking = false
+final class SharedTalkOutput: TalkSpeechOutput {
+    private let voice: VoiceController
 
-    override init() {
-        super.init()
-        synthesizer.delegate = self
-    }
+    init(voice: VoiceController) { self.voice = voice }
 
-    func speak(_ sentence: String) {
-        let cleaned = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        let preferences = VoiceController.currentSpeechPreferences()
-        guard preferences.outputEnabled else { return }
-        let utterance = AVSpeechUtterance(string: cleaned)
-        utterance.voice = VoiceController.speakingVoice
-        utterance.rate = VoiceController.speechRate(for: preferences.rateMultiplier)
-        synthesizer.speak(utterance)
-        isSpeaking = true
-    }
+    var isSpeaking: Bool { voice.isSpeaking }
 
-    func shutUp() {
-        synthesizer.stopSpeaking(at: .immediate)
-        isSpeaking = false
-    }
-}
+    func speak(_ sentence: String) { voice.enqueueSpeech(sentence) }
 
-extension SystemVoiceOutput: AVSpeechSynthesizerDelegate {
-    nonisolated func speechSynthesizer(
-        _ synthesizer: AVSpeechSynthesizer,
-        didFinish utterance: AVSpeechUtterance
-    ) {
-        Task { @MainActor in self.isSpeaking = synthesizer.isSpeaking }
-    }
-
-    nonisolated func speechSynthesizer(
-        _ synthesizer: AVSpeechSynthesizer,
-        didCancel utterance: AVSpeechUtterance
-    ) {
-        Task { @MainActor in self.isSpeaking = synthesizer.isSpeaking }
-    }
+    func shutUp() { voice.shutUp() }
 }
 
 #if DEBUG

@@ -324,7 +324,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
                 return SFSpeechInput()
             },
-            output: SystemVoiceOutput(),
+            output: SharedTalkOutput(voice: voice),
             capture: { [weak self] in
                 guard let self else { throw CancellationError() }
                 return try await self.captureTalkObservation()
@@ -658,7 +658,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     )
     private var onboardingDirector: OnboardingDirector?
-    private lazy var onboardingSpeech = SystemVoiceOutput()
+    private lazy var onboardingSpeech: any TalkSpeechOutput = SharedTalkOutput(voice: voice)
     private lazy var practiceWindow = PracticeWindow()
     private var memoryMenuItem: NSMenuItem?
     private var notchStatusMenuItem: NSMenuItem?

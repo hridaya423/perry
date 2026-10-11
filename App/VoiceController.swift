@@ -297,6 +297,40 @@ final class VoiceController: NSObject, ObservableObject {
         )
     }
 
+    /// Whether the shared speech engine is mid-utterance — Talk barge-in and
+    /// the output adapter read this so every feature's speech is observed.
+    var isSpeaking: Bool { synthesizer.isSpeaking }
+
+    /// Global barge-in. All speech routes through this one synthesizer, so a
+    /// single immediate stop silences Talk, Guide, and announcements alike.
+    func shutUp() {
+        synthesizer.stopSpeaking(at: .immediate)
+        currentSpeechText = nil
+    }
+
+    /// Queued speech for Talk's sentence-chunked answers — unlike `speak`,
+    /// which announces by interrupting, this appends to the synthesizer queue
+    /// so streamed sentences play back-to-back.
+    func enqueueSpeech(_ text: String) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        let preferences = Self.currentSpeechPreferences()
+        guard preferences.outputEnabled else { return }
+        overlayState.taskBubbleText = cleaned
+        let outputAvailable = AudioRouteMonitor.defaultOutputAvailable()
+        guard outputAvailable, !AudioRouteMonitor.defaultOutputMuted() else {
+            currentSpeechText = nil
+            overlayState.voiceState = .idle
+            hooks.setStatus(outputAvailable ? "Audio output is muted." : "No audio output is available.")
+            return
+        }
+        overlayState.voiceState = .responding
+        let utterance = AVSpeechUtterance(string: cleaned)
+        utterance.voice = Self.speakingVoice(for: lastDictationLanguageIdentifier)
+        utterance.rate = Self.speechRate(for: preferences.rateMultiplier)
+        synthesizer.speak(utterance)
+    }
+
     /// `copiesReplyWhenMuted` is reserved for reply content — acknowledgments
     /// and prompts must never clobber the user's clipboard.
     func speak(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil, copiesReplyWhenMuted: Bool = false) {
