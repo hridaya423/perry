@@ -17,94 +17,62 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
 
     private var hotkey: HotkeyController?
-    let overlayState = PerryCursorState()
-    let brain = BrainController()
-    let foregroundWorkerLease = ForegroundWorkerLease()
-
-    lazy var toolHost = AppToolHost.make(
-        overlayState: overlayState,
-        workers: workers,
-        lease: foregroundWorkerLease,
-        supportDirectory: storageDirectory,
-        integrationBackend: integrationBackend,
-        perryStore: perryStore,
-        openSettings: { [weak self] in self?.openSettings(tab: $0) }
-    )
-
-    /// The shared Perry registry — agent tools, the scheduler, and Home's
-    /// sidebar all read the same directory.
-    private lazy var perryStore: PerryStore? = storageDirectory.map {
-        PerryStore(directory: $0.appendingPathComponent("perrys", isDirectory: true))
+    // Subsystem forwards — the composition graph lives in `subsystems`;
+    // these keep existing call sites and host-protocol conformances working.
+    var overlayState: PerryCursorState { subsystems.overlayState }
+    var brain: BrainController { subsystems.brain }
+    var foregroundWorkerLease: ForegroundWorkerLease { subsystems.foregroundWorkerLease }
+    var toolHost: PerryToolHost { subsystems.toolHost }
+    var perryStore: PerryStore? { subsystems.perryStore }
+    var integrationBackend: AppIntegrationBackend { subsystems.integrationBackend }
+    var suggestionController: SuggestionController { subsystems.suggestionController }
+    var perryScheduler: PerrySchedulerController? { subsystems.perryScheduler }
+    var mcp: MCPSocketLifecycle { subsystems.mcp }
+    var overlaySampleLog: PerformanceSampleLog? { subsystems.overlaySampleLog }
+    var overlayManager: OverlayWindowManager { subsystems.overlayManager }
+    var workers: CuaWorkerService { subsystems.workers }
+    var spatial: SpatialSelectionController { subsystems.spatial }
+    var storageDirectory: URL? { subsystems.storageDirectory }
+    var activityLog: ActivityLog { subsystems.activityLog }
+    var memoryStore: MemoryStore { subsystems.memoryStore }
+    var transcriptStore: TranscriptStore { subsystems.transcriptStore }
+    var guideCoordinator: GuideSessionCoordinator { subsystems.guideCoordinator }
+    var askController: AskSessionController { subsystems.askController }
+    var talkCapture: TalkObservationCapture { subsystems.talkCapture }
+    var talkSkillLibrary: AppSkillLibrary { subsystems.talkSkillLibrary }
+    var talkSession: TalkSession { subsystems.talkSession }
+    var modifierHoldMonitor: ModifierHoldMonitor { subsystems.modifierHoldMonitor }
+    var voice: VoiceController { subsystems.voice }
+    var oauthCoordinator: OAuthCoordinator { subsystems.oauthCoordinator }
+    var remoteIntegrationPermissions: RemoteIntegrationPermissionStore { subsystems.remoteIntegrationPermissions }
+    var integrationClient: RemoteIntegrationClient { subsystems.integrationClient }
+    var integrationConnections: IntegrationConnections { subsystems.integrationConnections }
+    var remoteIntegrationExecutor: RemoteIntegrationActionRuntime { subsystems.remoteIntegrationExecutor }
+    var executionFinalizer: ExecutionFinalizer { subsystems.executionFinalizer }
+    var runtimes: RuntimeCatalog { subsystems.runtimes }
+    var probe: EnvironmentProbe { subsystems.probe }
+    var foreground: ForegroundTaskController { subsystems.foreground }
+    var backgroundTaskCoordinator: TaskCoordinator {
+        get { subsystems.backgroundTaskCoordinator }
+        set { subsystems.backgroundTaskCoordinator = newValue }
     }
-
-    /// The integration tool backend, shared with the morning researcher.
-    private lazy var integrationBackend = AppIntegrationBackend(
-        client: integrationClient,
-        oauth: oauthCoordinator,
-        permissionStore: remoteIntegrationPermissions
-    )
-
-    /// Phase 9: morning suggestion researcher over connected apps.
-    lazy var suggestionController: SuggestionController = {
-        let controller = SuggestionController(
-            coordinator: agentCoordinator,
-            backend: integrationBackend,
-            isBusy: { [weak self] in self?.foreground.supervisorActive ?? false }
-        )
-        controller.onSuggestionsChanged = { [weak self] cards in
-            self?.homeController.updateSuggestions(cards)
-        }
-        return controller
-    }()
-
-    /// Phase 9: fires scheduled Perrys into the agent loop and publishes the
-    /// Perry list for Home's sidebar.
-    lazy var perryScheduler: PerrySchedulerController? = {
-        guard let perryStore else { return nil }
-        let scheduler = PerrySchedulerController(
-            store: perryStore,
-            coordinator: agentCoordinator,
-            isBusy: { [weak self] in self?.foreground.supervisorActive ?? false }
-        )
-        scheduler.onPerrysChanged = { [weak self] perrys in
-            self?.homeController.updatePerrys(perrys)
-        }
-        return scheduler
-    }()
-
-    lazy var mcp = MCPSocketLifecycle(
-        makeSocket: { [unowned self] directory in
-            PerryMCPSocket(host: toolHost, directory: directory, workers: workers, workerLease: foregroundWorkerLease)
-        },
-        mayStart: { [unowned self] in maintenance.isIdle },
-        reportFailure: { [unowned self] in sessionStatus = $0 }
-    )
-    private lazy var maintenance = MaintenanceCoordinator(host: self)
-    private lazy var overlaySampleLog: PerformanceSampleLog? = {
-        try? PerformanceSampleLog.shared.get()
-    }()
-    lazy var overlayManager: OverlayWindowManager = {
-        let manager = OverlayWindowManager()
-        manager.onSample = { [weak self] metricID, unit, value in
-            guard let log = self?.overlaySampleLog else { return }
-            Task {
-                try? await log.append(
-                    PerformanceSample(
-                        metricID: metricID,
-                        collector: "overlay",
-                        unit: unit,
-                        value: value,
-                        scenario: "overlay"
-                    )
-                )
-            }
-        }
-        OverlayPerfProbe.shared.onCursorTrackingDegraded = {
-            PerfMark.markDynamic("cursor.follow.fallback")
-        }
-        return manager
-    }()
-    private lazy var statusMenu = StatusMenuController(host: self)
+    var backgroundTaskRunner: ResumableTaskRunner { subsystems.backgroundTaskRunner }
+    var notchStatus: NotchStatusController { subsystems.notchStatus }
+    var homeThreadStore: ThreadStore { subsystems.homeThreadStore }
+    var toolConsent: ToolConsentStore { subsystems.toolConsent }
+    var agentCoordinator: AgentCoordinator {
+        get { subsystems.agentCoordinator }
+        set { subsystems.agentCoordinator = newValue }
+    }
+    var homeController: HomeController { subsystems.homeController }
+    var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
+    var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
+    var backgroundTasks: BackgroundTaskController { subsystems.backgroundTasks }
+    var erasurePaths: PerryErasurePaths { subsystems.erasurePaths }
+    var completeErasure: CompleteErasureCoordinator { subsystems.completeErasure }
+    private lazy var subsystems = AppSubsystems(app: self)
+    lazy var maintenance = MaintenanceCoordinator(host: self)
+    lazy var statusMenu = StatusMenuController(host: self)
     private lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
 #if DEBUG
         NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
@@ -114,457 +82,31 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         NSHostingView(rootView: CompactConversationView(controller: self))
 #endif
     }
-    private let intentCards = IntentCardPresenter()
+    let intentCards = IntentCardPresenter()
     private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
     private lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
-    let workers = CuaWorkerService()
     private var manifestRefresher: CuaCapabilityManifest.Refresher?
-    lazy var spatial = SpatialSelectionController(
-        overlayState: overlayState,
-        workers: workers,
-        targetHint: { [unowned self] in await probe.currentTargetHint() },
-        speak: { [unowned self] in voice.deliverVoiceReply($0) },
-        setStatus: { [unowned self] in sessionStatus = $0 }
-    )
     private lazy var demoFlow = DemoFlowController(host: self)
     var demoDirector: DemoDirector { demoFlow.director }
 
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
     /// plan path so fixtures stay deterministic without a provider.
-    private let foregroundUsesAgentRunner: Bool
-    private var storageDirectory: URL? {
+    let foregroundUsesAgentRunner: Bool
+    let notifier: any AppNotificationClient
 #if DEBUG
-        return debugSeams.storageDirectory ?? Self.supportDirectory
-#else
-        return Self.supportDirectory
+    let debugSeams: DebugLaunchSeams
 #endif
-    }
-    private lazy var activityLog = ActivityLog(storageDirectory: storageDirectory)
-    private lazy var memoryStore = MemoryStore(storageDirectory: storageDirectory)
-    private lazy var transcriptStore = TranscriptStore(directory: storageDirectory)
-    private let notifier: any AppNotificationClient
-#if DEBUG
-    private let debugSeams: DebugLaunchSeams
-#endif
-    private let debugFinalizationPersistenceBarrier: (@Sendable () async -> Void)?
-    private lazy var guideBridge = GuideSessionBridge(host: self)
-#if DEBUG
-    lazy var guideCoordinator = GuideSessionCoordinator(
-        sessionController: sessionController,
-        workers: workers,
-        transcriptStore: transcriptStore,
-        memoryStore: memoryStore,
-        storageDirectory: storageDirectory,
-        output: guideBridge,
-        context: guideBridge,
-        fullGuideCaptureLoader: debugSeams.fullGuideCaptureLoader,
-        fullGuideContinuationBarrier: debugSeams.fullGuideContinuationBarrier,
-        fullGuidePlanner: debugSeams.fullGuidePlanner,
-        guidePlannerProvider: { [weak self] guide in
-            guard let self else { return nil }
-            return self.debugSeams.guidePlanner ?? self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
-                guard let self else { throw CancellationError() }
-                return try await self.agentCoordinator.prepareGuideRequest(
-                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
-                )
-            }
-        },
-        executionOwner: agentCoordinator
-    )
-#else
-    lazy var guideCoordinator = GuideSessionCoordinator(
-        sessionController: sessionController,
-        workers: workers,
-        transcriptStore: transcriptStore,
-        memoryStore: memoryStore,
-        storageDirectory: storageDirectory,
-        output: guideBridge,
-        context: guideBridge,
-        guidePlannerProvider: { [weak self] guide in
-            guard let self else { return nil }
-            return self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [weak self] provider, request in
-                guard let self else { throw CancellationError() }
-                return try await self.agentCoordinator.prepareGuideRequest(
-                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
-                )
-            }
-        },
-        executionOwner: agentCoordinator
-    )
-#endif
-    lazy var askController = AskSessionController(
-        sessionController: sessionController,
-        workers: workers,
-        overlayState: overlayState,
-        output: guideBridge,
-        context: guideBridge,
-        runner: .init(accept: { [unowned self] in homeController.acceptInput($0, threadID: $1) }, run: { [unowned self] input, observation in
-            homeController.runSpokenTurn(
-                input,
-                spatial: .init(observation: observation, bindings: [], skill: talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)),
-                coordinator: agentCoordinator
-            )
-        })
-    )
-    private lazy var commandRouter = CommandRouter(host: self)
-    private lazy var talkCapture = TalkObservationCapture(
-        workers: workers,
-        targetHint: { [unowned self] in self.guideBridge.guideTargetHint() },
-        appBundleID: { [unowned self] in self.guideBridge.guideAppBundleID(for: $0) }
-    )
-    private lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: storageDirectory)
-    private var talkSessionStarted = false
-    lazy var talkSession = TalkSession(
-        sessionController: sessionController,
-        overlayState: overlayState,
-        output: guideBridge,
-        services: TalkSession.Services(
-            makeInput: {
-#if DEBUG
-                if let lab = TalkLabInput.makeInput(arguments: ProcessInfo.processInfo.arguments) {
-                    return lab
-                }
-#endif
-                return SFSpeechInput()
-            },
-            output: SharedTalkOutput(voice: voice),
-            capture: { [weak self] in
-                guard let self else { throw CancellationError() }
-                return try await self.talkCapture.capture()
-            },
-            acceptInput: { [unowned self] in homeController.acceptInput($0, threadID: $1, contextKey: $2) },
-            targetHint: { [unowned self] in self.guideBridge.guideTargetHint() },
-            run: { [unowned self] input, spatial in
-                homeController.runSpokenTurn(input, spatial: spatial, coordinator: agentCoordinator)
-            },
-            waitForConversation: { [weak self] threadID in
-                await self?.agentCoordinator.waitForCompletion(threadID: threadID)
-            },
-            guide: { [weak self] input, spatial, full in
-                guard let self else { return }
-                let id = input.threadID
-                self.homeController.homeModel.sidebarSelection = .thread(id)
-                self.homeController.homeModel.conversationTargets[id] = spatial.target
-                self.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
-            },
-            warm: { [weak self] in
-                guard let self, let decision = try? await brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
-                await decision.provider.warm()
-            },
-            skill: { [weak self] observation in
-                self?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
-            }
-        )
-    )
-    private lazy var modifierHoldMonitor = ModifierHoldMonitor(
-        onHoldStart: { [weak self] in
-            guard self?.maintenance.isUnderMaintenance != true else { return }
-            self?.probe.pinInvocationTarget()
-            self?.talkSessionStarted = true
-            self?.talkSession.keyDown()
-        },
-        onHoldCommit: { [weak self] in self?.talkSession.holdCommitted() },
-        onHoldEnd: { [weak self] in self?.talkSession.keyUp() },
-        onHoldCancel: { [weak self] in self?.talkSession.holdCancelled() },
-        onComposer: { [weak self] in self?.toggleSession() }
-    )
-    lazy var voice = VoiceController(
-        overlayState: overlayState,
-        workers: workers,
-        notifier: notifier,
-        supportDirectory: { [weak self] in self?.storageDirectory },
-        hooks: VoiceController.Hooks(
-            setStatus: { [weak self] status in self?.sessionStatus = status },
-            setTranscriptPreview: { [weak self] text in self?.transcriptPreview = text },
-            dispatch: { [weak self] text in self?.commandRouter.route(commandText: text) },
-            wake: { [weak self] in self?.wake() },
-            sessionIsIdle: { [weak self] in self?.isIdle ?? false },
-            refreshStatusItem: { [weak self] in self?.statusMenu.refreshIndicator() },
-            guideSpeechFinished: { [weak self] identity in self?.guideCoordinator.handleSpeechFinished(identity: identity) }
-        )
-    )
-    let oauthCoordinator = OAuthCoordinator()
-    private let remoteIntegrationPermissions = RemoteIntegrationPermissionStore()
-    private lazy var integrationClient = RemoteIntegrationClient(permissionStore: remoteIntegrationPermissions)
-    lazy var integrationConnections = IntegrationConnections(
-        oauth: oauthCoordinator, client: integrationClient, permissions: remoteIntegrationPermissions
-    )
-    private lazy var remoteIntegrationExecutor = RemoteIntegrationActionRuntime(
-        client: integrationClient,
-        permissionStore: remoteIntegrationPermissions
-    )
-    private lazy var executionFinalizer = ExecutionFinalizer(
-        transcriptStore: transcriptStore,
-        memoryStore: memoryStore,
-        notifier: notifier,
-        beforeTranscriptAppend: debugFinalizationPersistenceBarrier
-    )
-    lazy var runtimes: RuntimeCatalog = {
-#if DEBUG
-        return RuntimeCatalog(
-            setStatus: { [weak self] status in self?.sessionStatus = status },
-            inventoryLoader: debugSeams.runtimeInventoryLoader
-        )
-#else
-        return RuntimeCatalog(setStatus: { [weak self] status in self?.sessionStatus = status })
-#endif
-    }()
-    lazy var probe: EnvironmentProbe = {
-#if DEBUG
-        return EnvironmentProbe(
-            workers: workers,
-            memoryStore: memoryStore,
-            oauthCoordinator: oauthCoordinator,
-            remoteIntegrationPermissions: remoteIntegrationPermissions,
-            spatialSelection: { [weak self] in self?.spatial.selection },
-            storageDirectory: { [weak self] in self?.storageDirectory },
-            permissionSnapshotLoader: debugSeams.permissionSnapshotLoader,
-            cuaHealthLoader: debugSeams.cuaHealthLoader,
-            screenContextLoader: debugSeams.screenContextLoader
-        )
-#else
-        return EnvironmentProbe(
-            workers: workers,
-            memoryStore: memoryStore,
-            oauthCoordinator: oauthCoordinator,
-            remoteIntegrationPermissions: remoteIntegrationPermissions,
-            spatialSelection: { [weak self] in self?.spatial.selection },
-            storageDirectory: { [weak self] in self?.storageDirectory }
-        )
-#endif
-    }()
-    lazy var foreground: ForegroundTaskController = {
-        let hooks = ForegroundTaskController.Hooks(
-            setStatus: { [weak self] status in self?.sessionStatus = status },
-            setTranscriptPreview: { [weak self] text in self?.transcriptPreview = text },
-            isErasureInProgress: { [weak self] in self?.maintenance.isErasureInProgress ?? false },
-            requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
-            hidePanel: { [weak self] in self?.hidePanel() },
-            dismissIntentCard: { [weak self] in self?.intentCards.dismiss() },
-            stopSpatialMonitoring: { [weak self] in self?.spatial.stopMonitoring() },
-            stopGuideObservation: { [weak self] in self?.guideCoordinator.stopClickObservation() },
-            makeConfirmer: { [weak self] in self?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) }
-        )
-#if DEBUG
-        let controller = ForegroundTaskController(
-            sessionController: sessionController,
-            workers: workers,
-            probe: probe,
-            runtimes: runtimes,
-            voice: voice,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            activityLog: activityLog,
-            executionFinalizer: executionFinalizer,
-            transcriptStore: transcriptStore,
-            overlayState: overlayState,
-            hooks: hooks,
-            finalizationBarrier: debugSeams.finalizationBarrier,
-            confirmer: debugSeams.confirmer,
-            askUser: debugSeams.askUser,
-            typedVerifier: debugSeams.typedVerifier,
-            workspaceCoordinator: backgroundTaskCoordinator
-        )
-#else
-        let controller = ForegroundTaskController(
-            sessionController: sessionController,
-            workers: workers,
-            probe: probe,
-            runtimes: runtimes,
-            voice: voice,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            activityLog: activityLog,
-            executionFinalizer: executionFinalizer,
-            transcriptStore: transcriptStore,
-            overlayState: overlayState,
-            workspaceCoordinator: backgroundTaskCoordinator,
-            hooks: hooks
-        )
-#endif
-        // Open-ended Do goals route through the agent loop; its tools run on
-        // the session's claimed worker, not a competing background one.
-        // Test harnesses opt out (`usesAgentRunner: false`) to keep the typed
-        // plan path deterministic.
-        controller.agentCoordinator = foregroundUsesAgentRunner ? agentCoordinator : nil
-        controller.workerLease = foregroundWorkerLease
-        return controller
-    }()
-    private lazy var backgroundTaskCoordinator = TaskCoordinator(storageDirectory: storageDirectory)
-    private lazy var backgroundTaskRunner = ResumableTaskRunner(
-        coordinator: backgroundTaskCoordinator,
-        notifier: notifier,
-        activityLog: activityLog
-    )
-    lazy var notchStatus = NotchStatusController()
-    private lazy var homeThreadStore = ThreadStore(
-        directory: (storageDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory()))
-            .appendingPathComponent("Threads", isDirectory: true)
-    )
-    private lazy var toolConsent = ToolConsentStore(directory: Self.supportDirectory)
-    lazy var agentCoordinator = AgentCoordinator(
-        provider: { [unowned self] requirement in
-            try await self.brain.route(requirement).provider
-        },
-        host: toolHost, threads: homeThreadStore, consent: toolConsent,
-        perrys: perryStore,
-        workers: workers, workerLease: foregroundWorkerLease,
-        memoryContext: { [memoryStore] in
-            let config = await memoryStore.currentConfiguration()
-            return (config.enabled, await memoryStore.promptContext(appBundleID: nil))
-        }
-    )
-    lazy var homeController: HomeController = {
-        let controller = HomeController()
-        controller.threadStore = homeThreadStore
-        controller.captureTarget = { [weak self] in self?.probe.presentationTarget() }
-        controller.answerProvider = { [weak self] input, target, onPartial in
-            guard let self else { return .failed("Perry is shutting down.") }
-            let threadID = input.threadID
-            let prompt = input.request.text
-            switch GuideIntentParser.parse(prompt) {
-            case .guide:
-                return await self.commandRouter.runHomeGuide(input: input, target: target, full: false, onPartial: onPartial)
-            case .showEverything:
-                return await self.commandRouter.runHomeGuide(input: input, target: target, full: true, onPartial: onPartial)
-            default: break
-            }
-            var text = ""
-            var finish: AgentFinish = .interrupted
-            for await event in agentCoordinator.run(threadID: threadID, goal: prompt, runID: input.request.id, target: target, waitingInputID: input.request.id) {
-                if case .textDelta(let delta) = event {
-                    text += delta
-                    onPartial(text)
-                }
-                if case .finished(let outcome) = event { finish = outcome }
-            }
-            if finish == .completed { self.onboarding.noteTalkTurnCompleted() }
-            return finish
-        }
-        controller.onStop = { [weak self] id in self?.agentCoordinator.stop(threadID: id) }
-        agentRunningObservation = controller.bindWorkingThreads(agentCoordinator.$runningThreads)
-        controller.perryListProvider = { [weak self] in
-            await self?.perryStore?.list() ?? []
-        }
-        controller.suggestionController = suggestionController
-        controller.routineListProvider = { [weak self] in
-            self?.routineLibrary.routines() ?? []
-        }
-        controller.onRoutineRun = { [weak self] routine in
-            self?.routineLibrary.run(routine)
-        }
-        controller.onRoutineRemove = { [weak self] routine in
-            self?.routineLibrary.remove(routine)
-        }
-        controller.configure(deps: HomeModel.Deps(
-            controller: self,
-            brain: brain,
-            transcriptStore: transcriptStore,
-            activityLog: activityLog,
-            undoableEntryIDs: { [backgroundTasks] in
-                await backgroundTasks.reloadRecords()
-                return Set(backgroundTasks.records.compactMap { record -> UUID? in
-                    guard !backgroundTasks.undoableDescriptions(for: record).isEmpty else { return nil }
-                    if case .executable(let plan) = record.plan { return plan.planID }
-                    return UUID(uuidString: record.id.rawValue)
-                })
-            },
-            backgroundTasks: backgroundTasks,
-            runtimes: runtimes,
-            fileRoots: (storageDirectory.map {
-                [$0.appendingPathComponent("PracticeSandbox", isDirectory: true),
-                 $0.appendingPathComponent("Files", isDirectory: true)]
-            } ?? [])
-        ))
-        return controller
-    }()
-    private var lastBackgroundCount = 0
-    private var lastAwaitingApprovalCount = 0
-    lazy var routineLibrary = RoutineLibraryController(
-        store: RoutineStore(storageDirectory: storageDirectory),
-        workers: workers,
-        context: guideBridge,
-        setStatus: { [weak self] status in self?.sessionStatus = status },
-        speak: { [weak self] text in self?.voice.speak(text) },
-        runRoutine: { [weak self] routine, parameters in self?.foreground.startRoutine(routine, parameters: parameters) },
-        onRecordingChanged: { [weak self] recording in
-            self?.notchStatus.update(
-                isRecording: recording,
-                backgroundCount: self?.lastBackgroundCount ?? 0,
-                awaitingApproval: self?.lastAwaitingApprovalCount ?? 0
-            )
-            self?.updateHomePeek(isRecording: recording)
-        },
-        providerCompleter: { [weak self] in
-            guard let brain = self?.brain else { return nil }
-            return { prompt in try await brain.completeText(prompt) }
-        }
-    )
-    private lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: storageDirectory)
-    lazy var backgroundTasks: BackgroundTaskController = {
-        let hooks = BackgroundTaskController.Hooks(
-            setStatus: { [weak self] status in self?.sessionStatus = status },
-            isErasureInProgress: { [weak self] in self?.maintenance.isErasureInProgress ?? false },
-            requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
-            statusCountsChanged: { [weak self] total, active, awaiting in
-                self?.statusMenu.setBackgroundTaskCount(total)
-                self?.lastBackgroundCount = active
-                self?.lastAwaitingApprovalCount = awaiting
-                self?.notchStatus.update(
-                    isRecording: self?.routineLibrary.isRecording ?? false,
-                    backgroundCount: active,
-                    awaitingApproval: awaiting
-                )
-                self?.updateHomePeek(isRecording: self?.routineLibrary.isRecording ?? false)
-            }
-        )
-#if DEBUG
-        return BackgroundTaskController(
-            workers: workers,
-            coordinator: backgroundTaskCoordinator,
-            runner: backgroundTaskRunner,
-            contextStore: backgroundTaskContextStore,
-            transcriptStore: transcriptStore,
-            notifier: notifier,
-            runtimes: runtimes,
-            probe: probe,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            storageDirectory: { [weak self] in self?.debugSeams.storageDirectory },
-            hooks: hooks
-        )
-#else
-        return BackgroundTaskController(
-            workers: workers,
-            coordinator: backgroundTaskCoordinator,
-            runner: backgroundTaskRunner,
-            contextStore: backgroundTaskContextStore,
-            transcriptStore: transcriptStore,
-            notifier: notifier,
-            runtimes: runtimes,
-            probe: probe,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            storageDirectory: { nil },
-            hooks: hooks
-        )
-#endif
-    }()
-    private lazy var erasurePaths = PerryErasurePaths(supportDirectory: storageDirectory)
-    lazy var completeErasure = CompleteErasureCoordinator(
-        erasers: PerryLiveErasureErasers.make(
-            paths: erasurePaths,
-            taskCoordinator: backgroundTaskCoordinator,
-            backgroundTaskContextStore: backgroundTaskContextStore,
-            activityLog: activityLog,
-            transcriptStore: transcriptStore,
-            memoryStore: memoryStore
-        ),
-        ownedDataSweeper: PerryOwnedRootSweeper(
-            roots: erasurePaths.completeErasureRoots
-        )
-    )
-    private lazy var onboarding = OnboardingCoordinator(
+    let debugFinalizationPersistenceBarrier: (@Sendable () async -> Void)?
+    lazy var guideBridge = GuideSessionBridge(host: self)
+    lazy var commandRouter = CommandRouter(host: self)
+    var talkSessionStarted = false
+    var lastBackgroundCount = 0
+    var lastAwaitingApprovalCount = 0
+    lazy var onboarding = OnboardingCoordinator(
         overlayState: overlayState,
         makeSpeech: { [unowned self] in SharedTalkOutput(voice: voice) },
         home: { [unowned self] in homeController },
@@ -579,11 +121,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 #endif
     @Published var sessionStatus = "Press ⌥⌘P when you want Perry."
-    @Published private(set) var transcriptPreview = ""
+    @Published var transcriptPreview = ""
     let sessionController: SessionController
     private var sessionStateObservation: AnyCancellable?
     private var runtimeChoicesObservation: AnyCancellable?
-    private var agentRunningObservation: AnyCancellable?
+    var agentRunningObservation: AnyCancellable?
 
     override init() {
 #if DEBUG
@@ -686,7 +228,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return execution.progress
     }
 
-    private var isIdle: Bool {
+    var isIdle: Bool {
         if case .idle = sessionState { return true }
         return false
     }
@@ -1002,7 +544,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
     /// *that* something is running; the peek says *what* — a live step line
     /// per active agent.
-    private func updateHomePeek(isRecording: Bool) {
+    func updateHomePeek(isRecording: Bool) {
         var lines: [String] = []
         for record in backgroundTasks.records where !record.isTerminal {
             if case .executable(let plan) = record.plan, !plan.actions.isEmpty {
