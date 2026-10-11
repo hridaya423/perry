@@ -33,8 +33,6 @@ struct SessionPanelView: View {
     @State private var skipIntentParse = false
     @State private var text = ""
     @State private var runInBackground = false
-    @State private var runtimeID = RuntimeChoice.automaticID
-    @State private var runtimeDisclosed = false
     @FocusState private var fieldFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -71,11 +69,6 @@ struct SessionPanelView: View {
             guard let window = notification.object as? NSWindow,
                   window.identifier == Self.windowIdentifier else { return }
             fieldFocused = false
-        }
-        .onChange(of: controller.runtimes.choices) { _, choices in
-            if !choices.contains(where: { $0.id == runtimeID }) {
-                runtimeID = RuntimeChoice.automaticID
-            }
         }
         .onChange(of: text) { _, newValue in
             // A rehearsal Edit prefill already knows its mode — don't let the
@@ -163,27 +156,6 @@ struct SessionPanelView: View {
                         .controlSize(.small)
                         .font(PerryTheme.Typography.panelMetadata)
                     Spacer()
-                    Button {
-                        runtimeDisclosed.toggle()
-                    } label: {
-                        Text("Runtime: \(selectedRuntimeName)")
-                        Image(systemName: runtimeDisclosed ? "chevron.up" : "chevron.down")
-                    }
-                    .buttonStyle(.plain)
-                    .font(PerryTheme.Typography.panelMetadata)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .accessibilityLabel("Runtime options")
-                }
-
-                if runtimeDisclosed {
-                    Picker("Runtime", selection: $runtimeID) {
-                        ForEach(controller.runtimes.choices) { runtime in
-                            Text(runtime.name).tag(runtime.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .controlSize(.small)
-                    .help("Automatic picks the best available runtime.")
                 }
 
                 if controller.runtimes.choices.count > 1 && !controller.runtimes.hasExecutionCapableChoice {
@@ -292,10 +264,6 @@ struct SessionPanelView: View {
         .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: mode)
     }
 
-    private var selectedRuntimeName: String {
-        controller.runtimes.choices.first(where: { $0.id == runtimeID })?.name ?? "Automatic"
-    }
-
     private var startTitle: String {
         switch mode {
         case .ask:
@@ -317,7 +285,11 @@ struct SessionPanelView: View {
             skipIntentParse = true
             mode = .do_
         }
+        if controller.pendingPromptRunInBackground {
+            runInBackground = true
+        }
         controller.pendingPromptDoMode = false
+        controller.pendingPromptRunInBackground = false
         text = prefill
     }
 
@@ -365,9 +337,9 @@ struct SessionPanelView: View {
 
     private func dispatchDo(_ goal: String) {
         if runInBackground {
-            controller.backgroundTasks.queue(goal: goal, preferredRuntimeID: runtimeID)
+            controller.backgroundTasks.queue(goal: goal)
         } else {
-            controller.foreground.start(goal: goal, preferredRuntimeID: runtimeID)
+            controller.foreground.start(goal: goal)
         }
     }
 }

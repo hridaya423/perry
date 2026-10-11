@@ -667,7 +667,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var workspaceLabelItem: NSMenuItem?
     private var watchLearnMenu: NSMenu?
     private var activeSpatialSelection: SpatialSelection?
-    private var backgroundPromptTask: Task<Void, Never>?
     private var terminationPrepared = false
     private var maintenanceOwner: MaintenanceOperation?
     private var spatialWaiter: CheckedContinuation<SpatialSelection?, Never>?
@@ -1069,7 +1068,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             return .terminateLater
         }
         runtimes.cancelPendingRefreshes()
-        backgroundPromptTask?.cancel()
         backgroundTasks.closeControls()
         guideCoordinator.prepareForTermination()
         Task { @MainActor [self] in
@@ -1546,45 +1544,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.speak("What are we taking off your hands?")
     }
 
+    /// "Run in background" lives on the composer's send action — the menu
+    /// item opens that composer in Do mode with the toggle already on.
     @objc private func backgroundPromptAction() {
-        backgroundPromptTask?.cancel()
-        backgroundPromptTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let choices = await runtimes.availableChoices()
-            guard !Task.isCancelled else { return }
-            presentBackgroundPrompt(runtimeChoices: choices)
-        }
-    }
-
-    private func presentBackgroundPrompt(runtimeChoices: [RuntimeChoice]) {
-        let alert = NSAlert()
-        alert.messageText = "Run a task in the background"
-        alert.informativeText = "Perry will keep this task locally and resume it from the Background tasks window if it pauses or the app restarts."
-        let taskLabel = NSTextField(labelWithString: "Task")
-        let field = NSTextField(string: "")
-        field.placeholderString = "What should Perry do?"
-        field.frame.size = NSSize(width: 330, height: 24)
-        field.setAccessibilityLabel("Background task")
-        let runtimeLabel = NSTextField(labelWithString: "Runtime")
-        let runtimePicker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 330, height: 26), pullsDown: false)
-        runtimePicker.setAccessibilityLabel("Background task runtime")
-        runtimeChoices.forEach { choice in
-            runtimePicker.addItem(withTitle: choice.name)
-            runtimePicker.lastItem?.representedObject = choice.id
-        }
-        let stack = NSStackView(views: [taskLabel, field, runtimeLabel, runtimePicker])
-        stack.orientation = .vertical
-        stack.spacing = 5
-        stack.frame.size = NSSize(width: 330, height: 94)
-        alert.accessoryView = stack
-        alert.addButton(withTitle: "Queue task")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        backgroundTasks.queue(
-            goal: field.stringValue,
-            preferredRuntimeID: runtimePicker.selectedItem?.representedObject as? String
-        )
+        pendingPromptRunInBackground = true
+        presentPrompt(prefill: "", asTask: true)
     }
 
     @objc private func backgroundTasksAction() {
@@ -1832,6 +1796,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Edit answers come from a plan card — the panel must reopen in Do, not
     /// whatever mode the picker was last on.
     var pendingPromptDoMode = false
+    /// The background-task menu entry arms the composer's background toggle
+    /// so the task is one send away — there is no separate background UI.
+    var pendingPromptRunInBackground = false
 
     func presentPrompt(prefill: String, asTask: Bool = false) {
         pendingPromptDoMode = asTask
@@ -2405,6 +2372,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
         effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
         effects.endPractice = { [weak self] in self?.practiceWindow.close() }
+        effects.preferOnDeviceBrain = { [weak self] in self?.brain.preferOnDeviceModelIfUnchosen() }
         effects.finish = { [weak self] in self?.finishOnboarding() }
         let director = OnboardingDirector(effects: effects, defaults: .standard)
         onboardingDirector = director
