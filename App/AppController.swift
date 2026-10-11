@@ -129,17 +129,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         speak: { [unowned self] in voice.deliverVoiceReply($0) },
         setStatus: { [unowned self] in sessionStatus = $0 }
     )
-    lazy var demoDirector = DemoDirector(hooks: DemoDirector.Hooks(
-        preflight: { [weak self] in await self?.demoPreflight() ?? DemoPreflightResult(ready: false, failureMessage: "Perry could not run the live demo.") },
-        wake: { [weak self] in self?.wake() },
-        speak: { [weak self] text in self?.voice.speak(text) },
-        waitForSpatialSelection: { [weak self] in await self?.spatial.waitForSelection() },
-        cancelPendingInputs: { [weak self] in self?.cancelPendingDemoInputs() },
-        describeSpatialSelection: { [weak self] selection in await self?.spatial.describe(selection) ?? false },
-        runGuide: { [weak self] goal in await self?.runGuideForDemo(goal: goal) ?? false },
-        runDo: { [weak self] goal in await self?.foreground.runForDemo(goal: goal) },
-        report: { [weak self] outcome in self?.handleDemoReport(outcome) }
-    ))
+    private lazy var demoFlow = DemoFlowController(host: self)
+    var demoDirector: DemoDirector { demoFlow.director }
 
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
@@ -1185,61 +1176,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Verified result text from the last completed live demo — onboarding
     /// ends on this evidence rather than a generic "you're set".
-    var demoVerifiedSummary: String? { demoDirector.lastVerifiedResult }
+    var demoVerifiedSummary: String? { demoFlow.verifiedSummary }
 
     func runFlagshipDemo(completion: ((Bool) -> Void)? = nil) {
-        guard isIdle else {
-            voice.speak("Finish the current session before starting the live demo.")
-            completion?(false)
-            return
-        }
-        demoDirector.run(completion: completion)
-    }
-
-    private func demoPreflight() async -> DemoPreflightResult {
-        let permissions = await probe.permissionSnapshot()
-        guard permissions.requiredPermissionsGranted else {
-            runOnboarding(force: true)
-            return DemoPreflightResult(
-                ready: false,
-                failureMessage: "I can’t run the live demo until Accessibility and Screen Recording are granted in System Settings."
-            )
-        }
-        let cuaHealth = await probe.cuaHealth()
-        guard cuaHealth.ready else {
-            return DemoPreflightResult(ready: false, failureMessage: cuaHealth.summary)
-        }
-        do {
-            let inventory = try await runtimes.inspect()
-            if !inventory.hasReadyCLIPlanner {
-                sessionStatus = "Using Perry's private local planner for the supported demo task."
-            }
-            return .ready
-        } catch is CancellationError {
-            return DemoPreflightResult(ready: false, failureMessage: "Runtime inspection was canceled.")
-        } catch {
-            return DemoPreflightResult(ready: false, failureMessage: "Perry could not inspect the available runtimes. Refresh runtime setup and try again.")
-        }
-    }
-
-
-    private func cancelPendingDemoInputs() {
-        askController.cancel()
-        if case .invoking(let invocation) = sessionState {
-            foreground.cancelInvocationIfCurrent(invocation.id)
-        }
-        spatial.releaseWaiter()
-        guideCoordinator.cancelPendingDemoInputs()
-        intentCards.dismiss()
-        Task { await self.foreground.cancelActiveSupervisor() }
-    }
-
-    private func runGuideForDemo(goal: String) async -> Bool {
-        await guideCoordinator.runGuideForDemo(goal: goal)
-    }
-
-    private func handleDemoReport(_: DoOutcome) {
-        showHistory()
+        demoFlow.run(completion: completion)
     }
 
     func showWhatsNew() {
@@ -1540,7 +1480,7 @@ extension AppController: StatusMenuHost {
     }
 
     func retryLastTask() { foreground.retry() }
-    func runDemo() { demoDirector.run() }
+    func runDemo() { demoFlow.director.run() }
     func showSettings() { homeController.openHome(selection: .settings) }
 
     func toggleMemory() {
@@ -1609,6 +1549,14 @@ extension AppController: GuideBridgeHost {
     func reportGuideStatus(_ status: String) {
         sessionStatus = status
     }
+}
+
+extension AppController: DemoFlowHost {
+    func wakeForDemo() { wake() }
+    func dismissIntentCard() { intentCards.dismiss() }
+    func reportDemoStatus(_ status: String) { sessionStatus = status }
+    func runOnboardingForDemo() { runOnboarding(force: true) }
+    func showDemoReport() { showHistory() }
 }
 
 extension AppController: MaintenanceHost {
