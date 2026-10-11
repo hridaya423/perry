@@ -191,7 +191,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
         return manager
     }()
-    private var statusItem: NSStatusItem?
+    private lazy var statusMenu = StatusMenuController(host: self)
     private var panel: NSPanel?
     private var intentCardWindow: IntentCardWindow?
     private lazy var updateNoticeController = UpdateNoticeController(
@@ -377,7 +377,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             dispatch: { [weak self] text in self?.dispatch(commandText: text) },
             wake: { [weak self] in self?.wake() },
             sessionIsIdle: { [weak self] in self?.isIdle ?? false },
-            refreshStatusItem: { [weak self] in self?.refreshStatusItemIndicator() },
+            refreshStatusItem: { [weak self] in self?.statusMenu.refreshIndicator() },
             guideSpeechFinished: { [weak self] identity in self?.guideCoordinator.handleSpeechFinished(identity: identity) }
         )
     )
@@ -603,7 +603,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             isErasureInProgress: { [weak self] in self?.erasureInProgress ?? false },
             requestOnboarding: { [weak self] in self?.runOnboarding(force: true) },
             statusCountsChanged: { [weak self] total, active, awaiting in
-                self?.backgroundTasksMenuItem?.title = "Background Tasks (\(total))"
+                self?.statusMenu.setBackgroundTaskCount(total)
                 self?.lastBackgroundCount = active
                 self?.lastAwaitingApprovalCount = awaiting
                 self?.notchStatus.update(
@@ -661,12 +661,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var onboardingDirector: OnboardingDirector?
     private lazy var onboardingSpeech: any TalkSpeechOutput = SharedTalkOutput(voice: voice)
     private lazy var practiceWindow = PracticeWindow()
-    private var memoryMenuItem: NSMenuItem?
-    private var notchStatusMenuItem: NSMenuItem?
-    private var backgroundTasksMenuItem: NSMenuItem?
-    private var recordDemoMenuItem: NSMenuItem?
-    private var workspaceLabelItem: NSMenuItem?
-    private var watchLearnMenu: NSMenu?
     private var activeSpatialSelection: SpatialSelection?
     private var terminationPrepared = false
     private var maintenanceOwner: MaintenanceOperation?
@@ -794,7 +788,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func debugInvokeWipeDataAction() {
-        wipeDataAction()
+        requestCompleteErasure()
     }
 
     var debugMaintenanceOwnerHeld: Bool {
@@ -942,7 +936,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         )
         ensureSupportDirectory()
-        installStatusItem()
+        statusMenu.install()
         installHotkey()
         voice.startInputListeners()
         modifierHoldMonitor.start()
@@ -984,7 +978,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
         if debugSurface == .settings {
             DispatchQueue.main.async { [weak self] in
-                self?.settingsAction()
+                self?.showSettings()
                 NSApp.activate(ignoringOtherApps: true)
             }
         } else if debugSurface == .onboarding {
@@ -1173,7 +1167,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc private func handleWipeDataRequested() {
-        wipeDataAction()
+        requestCompleteErasure()
     }
 
     private func ensureSupportDirectory() {
@@ -1211,7 +1205,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    private func wake() {
+    func wake() {
         guard isIdle, transitionSession({ try sessionController.wake() }) else { return }
         voice.refreshWakeWordListener()
         sessionStatus = "Listening for a request."
@@ -1274,122 +1268,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         hidePanel()
         voice.refreshWakeWordListener()
     }
-     // MARK: Status item
     // MARK: Status item
-
-    private func installStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.menu = buildMenu()
-        item.menu?.delegate = self
-        statusItem = item
-        refreshStatusItemIndicator()
-    }
-
-    private func refreshStatusItemIndicator() {
-        let ambientWakeEnabled = PerryPreferences.wakeWordEnabled
-        let symbolName = ambientWakeEnabled ? "waveform.circle.fill" : "scope"
-        let description = ambientWakeEnabled ? "Perry is listening for hey Perry" : "Perry"
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)
-        image?.isTemplate = true
-        statusItem?.button?.image = image
-        statusItem?.button?.title = image == nil ? (ambientWakeEnabled ? "Mic" : "Perry") : ""
-        statusItem?.button?.toolTip = description
-    }
-
-    private func buildMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(withTitle: "Wake Perry (⌥⌘P)", action: #selector(wakeAction), keyEquivalent: "").target = self
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Ask Perry…", action: #selector(askPromptAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Guide me…", action: #selector(guidePromptAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Show full guide", action: #selector(everythingAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Do a task…", action: #selector(doPromptAction), keyEquivalent: "").target = self
-        let backgroundItem = NSMenuItem(title: "Run in background…", action: #selector(backgroundPromptAction), keyEquivalent: "")
-        backgroundItem.target = self
-        menu.addItem(backgroundItem)
-        let backgroundTasksItem = NSMenuItem(title: "Background tasks", action: #selector(backgroundTasksAction), keyEquivalent: "")
-        backgroundTasksItem.target = self
-        backgroundTasksMenuItem = backgroundTasksItem
-        menu.addItem(backgroundTasksItem)
-        menu.addItem(withTitle: "Retry last task", action: #selector(retryAction), keyEquivalent: "").target = self
-        let workspaceLabel = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        workspaceLabel.isEnabled = false
-        workspaceLabelItem = workspaceLabel
-        menu.addItem(workspaceLabel)
-        refreshWorkspaceLabel()
-        menu.addItem(withTitle: "Choose workspace folder…", action: #selector(chooseWorkspaceAction), keyEquivalent: "").target = self
-        let watchItem = NSMenuItem(title: "Watch & Learn", action: nil, keyEquivalent: "")
-        let watchMenu = NSMenu()
-        watchMenu.delegate = self
-        let recordItem = NSMenuItem(title: "Record a demonstration…", action: #selector(recordDemoAction), keyEquivalent: "")
-        recordItem.target = self
-        recordDemoMenuItem = recordItem
-        watchMenu.addItem(recordItem)
-        let importItem = NSMenuItem(title: "Import routine…", action: #selector(importRoutineAction), keyEquivalent: "")
-        importItem.target = self
-        watchMenu.addItem(importItem)
-        watchMenu.addItem(.separator())
-        watchItem.submenu = watchMenu
-        watchLearnMenu = watchMenu
-        menu.addItem(watchItem)
-#if DEBUG
-        menu.addItem(withTitle: "Run live Perry demo", action: #selector(demoAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Brain smoke test", action: #selector(brainSmokeTestAction), keyEquivalent: "").target = self
-        let drills = NSMenuItem(title: "Failure drills", action: nil, keyEquivalent: "")
-        let drillMenu = NSMenu()
-        for drill in FailureDrill.allCases {
-            let item = NSMenuItem(title: drill.title, action: #selector(failureDrillAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = drill.rawValue
-            drillMenu.addItem(item)
-        }
-        drills.submenu = drillMenu
-        menu.addItem(drills)
-        let fixtures = NSMenuItem(title: "State fixtures", action: nil, keyEquivalent: "")
-        let fixtureMenu = NSMenu()
-        for fixture in DebugStateFixture.allCases {
-            let item = NSMenuItem(title: fixture.title, action: #selector(stateFixtureAction(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = fixture.rawValue
-            fixtureMenu.addItem(item)
-        }
-        fixtures.submenu = fixtureMenu
-        menu.addItem(fixtures)
-        menu.addItem(withTitle: "Invocation prototypes", action: #selector(prototypeAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Cursor prototypes", action: #selector(cursorPrototypeAction), keyEquivalent: "").target = self
-#endif
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "History", action: #selector(historyAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Export diagnostics…", action: #selector(diagnosticsAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "What’s New", action: #selector(whatsNewAction), keyEquivalent: "").target = self
-        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdatesAction), keyEquivalent: "")
-        updateItem.target = self
-        updateItem.isEnabled = updateNoticeController.availability == .available
-        menu.addItem(updateItem)
-        menu.addItem(withTitle: "Settings…", action: #selector(settingsAction), keyEquivalent: ",").target = self
-
-        let memoryItem = NSMenuItem(title: "Memory:…", action: #selector(toggleMemoryAction), keyEquivalent: "")
-        memoryItem.target = self
-        memoryMenuItem = memoryItem
-        menu.addItem(memoryItem)
-
-        let notchItem = NSMenuItem(title: "Notch status", action: #selector(toggleNotchStatusAction(_:)), keyEquivalent: "")
-        notchItem.target = self
-        notchItem.state = notchStatus.isEnabled ? .on : .off
-        notchStatusMenuItem = notchItem
-        menu.addItem(notchItem)
-
-        let wipeItem = NSMenuItem(title: "Erase all Perry data…", action: #selector(wipeDataAction), keyEquivalent: "")
-        wipeItem.target = self
-        menu.addItem(wipeItem)
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Perry", action: #selector(quitAction), keyEquivalent: "q").target = self
-        return menu
-    }
-
-    @objc private func wakeAction() { wake() }
-    @objc private func checkForUpdatesAction() { updateNoticeController.checkForUpdates() }
-    @objc private func quitAction() { NSApp.terminate(nil) }
 
     /// System sleep settles an active run at a step boundary and hands
     /// control to the user — after wake, Continue replans against whatever
@@ -1398,43 +1277,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         foreground.takeOver()
     }
 
-    private func refreshMemoryMenuTitle() async {
-        let current = await memoryStore.currentConfiguration()
-        memoryMenuItem?.title = "Memory: \(current.enabled ? "on" : "off")"
-    }
-
-    @objc private func askPromptAction() {
-        wake()
-        voice.speak("What are you curious about?")
-    }
-
-    @objc private func guidePromptAction() {
-        wake()
-        voice.speak("What should I teach you?")
-    }
-
-    @objc private func recordDemoAction() {
-        routineLibrary.toggleRecording()
-    }
-
     /// Onboarding's post-demo offer: starts a Watch & Learn recording once
     /// onboarding has finished — never a required step.
     func startDemonstrationRecording() {
         guard !routineLibrary.isRecording else { return }
         routineLibrary.toggleRecording()
-    }
-
-    @objc private func toggleNotchStatusAction(_ sender: NSMenuItem) {
-        let enabled = !notchStatus.isEnabled
-        notchStatus.setEnabled(enabled)
-        sender.state = enabled ? .on : .off
-        if enabled {
-            notchStatus.update(
-                isRecording: routineLibrary.isRecording,
-                backgroundCount: lastBackgroundCount,
-                awaitingApproval: lastAwaitingApprovalCount
-            )
-        }
     }
 
     /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
@@ -1460,142 +1307,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-    @objc private func runRoutineAction(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let id = UUID(uuidString: raw),
-              let routine = routineLibrary.routines().first(where: { $0.id == id }) else { return }
-        routineLibrary.run(routine)
-    }
-
-    private func refreshWatchLearnMenu(_ menu: NSMenu) {
-        recordDemoMenuItem?.title = routineLibrary.isRecording ? "Stop recording & review" : "Record a demonstration…"
-        while menu.items.count > 3 { menu.removeItem(at: menu.items.count - 1) }
-        let routines = routineLibrary.routines()
-        guard !routines.isEmpty else {
-            let empty = NSMenuItem(title: "No routines yet", action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            menu.addItem(empty)
-            return
-        }
-        for routine in routines {
-            let item = NSMenuItem(title: routine.name, action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            let run = NSMenuItem(title: "Run", action: #selector(runRoutineAction(_:)), keyEquivalent: "")
-            run.target = self
-            run.representedObject = routine.id.uuidString
-            let export = NSMenuItem(title: "Export…", action: #selector(exportRoutineAction(_:)), keyEquivalent: "")
-            export.target = self
-            export.representedObject = routine.id.uuidString
-            let delete = NSMenuItem(title: "Delete", action: #selector(deleteRoutineAction(_:)), keyEquivalent: "")
-            delete.target = self
-            delete.representedObject = routine.id.uuidString
-            submenu.addItem(run)
-            submenu.addItem(export)
-            submenu.addItem(delete)
-            item.submenu = submenu
-            menu.addItem(item)
-        }
-    }
-
-    @objc private func chooseWorkspaceAction() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use as workspace"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        WorkspaceScope.setRoot(url)
-        refreshWorkspaceLabel()
-        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
-    }
-
-    private func refreshWorkspaceLabel() {
-        workspaceLabelItem?.title = "Workspace: \((WorkspaceScope.root.path() as NSString).abbreviatingWithTildeInPath)"
-    }
-
-    @objc private func importRoutineAction() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json, UTType(filenameExtension: "md") ?? .data]
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        routineLibrary.importRoutine(from: url)
-    }
-
-    @objc private func exportRoutineAction(_ sender: NSMenuItem) {
-        guard let routine = routineFrom(sender) else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(routine.name).md"
-        panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        routineLibrary.exportRoutine(routine, to: url)
-    }
-
-    @objc private func deleteRoutineAction(_ sender: NSMenuItem) {
-        guard let routine = routineFrom(sender) else { return }
-        routineLibrary.remove(routine)
-    }
-
-    private func routineFrom(_ sender: NSMenuItem) -> LearnedRoutine? {
-        guard let raw = sender.representedObject as? String,
-              let id = UUID(uuidString: raw) else { return nil }
-        return routineLibrary.routines().first(where: { $0.id == id })
-    }
-
-    @objc private func everythingAction() {
-        let target = probe.currentTargetHint()
-        Task { await showEverything(goal: "walk through the frontmost window", targetHint: target) }
-    }
-
-    @objc private func doPromptAction() {
-        wake()
-        voice.speak("What are we taking off your hands?")
-    }
-
-    /// "Run in background" lives on the composer's send action — the menu
-    /// item opens that composer in Do mode with the toggle already on.
-    @objc private func backgroundPromptAction() {
-        pendingPromptRunInBackground = true
-        presentPrompt(prefill: "", asTask: true)
-    }
-
-    @objc private func backgroundTasksAction() {
-        showBackgroundTasks()
-    }
-
-    @objc private func retryAction() {
-        foreground.retry()
-    }
-
-    @objc private func demoAction() {
-        demoDirector.run()
-    }
-
 #if DEBUG
-    @objc private func brainSmokeTestAction() {
-        brain.smokeTest { [weak self] status in self?.sessionStatus = status }
-    }
-
-    @objc private func failureDrillAction(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let drill = FailureDrill(rawValue: rawValue) else { return }
-        runFailureDrill(drill)
-    }
-
-    @objc private func stateFixtureAction(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let fixture = DebugStateFixture(rawValue: rawValue) else { return }
-        applyDebugStateFixture(fixture)
-    }
-
-    @objc private func prototypeAction() {
-        DebugPrototypeWindow.show()
-    }
-
-    @objc private func cursorPrototypeAction() {
-        DebugCursorGalleryWindow.show()
-    }
-
-    private func runFailureDrill(_ drill: FailureDrill) {
+    func runFailureDrill(_ drill: FailureDrill) {
         switch drill {
         case .routeFlip:
             voice.speak("The audio route drill is speaking now.")
@@ -1618,38 +1331,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
         }
     }
-
 #endif
-
-    @objc private func historyAction() {
-        showHistory()
-    }
-
-    @objc private func diagnosticsAction() {
-        exportDiagnostics()
-    }
-
-    @objc private func whatsNewAction() {
-        showWhatsNew()
-    }
 
     func openSettings(tab: SettingsTab) {
         PerryPreferences.settingsTab = tab.rawValue
-        settingsAction()
-    }
-
-    @objc private func settingsAction() {
-        homeController.openHome(selection: .settings)
-    }
-
-    @objc private func toggleMemoryAction() {
-        schedulePersistence { [weak self, memoryStore] in
-            let current = await memoryStore.currentConfiguration()
-            await memoryStore.setConfiguration(
-                MemoryConfiguration(enabled: !current.enabled, categoryToggles: current.categoryToggles)
-            )
-            await self?.refreshMemoryMenuTitle()
-        }
+        showSettings()
     }
 
     func currentMemoryConfiguration() async -> MemoryConfiguration {
@@ -1674,7 +1360,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
     }
 
-    @objc private func wipeDataAction() {
+    func requestCompleteErasure() {
 #if DEBUG
         guard debugSkipEraseConfirmation || CompleteErasurePrompt.confirm() else { return }
 #else
@@ -2096,7 +1782,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         showHistory()
     }
 
-    private func showWhatsNew() {
+    func showWhatsNew() {
         homeController.openHome(selection: .whatsNew)
     }
 
@@ -2483,7 +2169,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     /// Applies a deterministic `DebugStateFixture` — see DebugStateFixtures.swift.
-    private func applyDebugStateFixture(_ fixture: DebugStateFixture) {
+    func applyDebugStateFixture(_ fixture: DebugStateFixture) {
         switch fixture {
         case .permissionDenied:
             runDebugOnboarding()
@@ -2715,15 +2401,70 @@ extension AppController: GuideSessionOutput, GuideSessionContext {
 #endif
 }
 
-extension AppController: NSMenuDelegate {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu === watchLearnMenu {
-            refreshWatchLearnMenu(menu)
-            return
+extension AppController: StatusMenuHost {
+    var isUpdateAvailable: Bool { updateNoticeController.availability == .available }
+    var isNotchStatusEnabled: Bool { notchStatus.isEnabled }
+    var isRecordingDemonstration: Bool { routineLibrary.isRecording }
+
+    func speak(_ text: String) { voice.speak(text) }
+    func checkForUpdates() { updateNoticeController.checkForUpdates() }
+    func toggleDemonstrationRecording() { routineLibrary.toggleRecording() }
+
+    func toggleNotchStatus() -> Bool {
+        let enabled = !notchStatus.isEnabled
+        notchStatus.setEnabled(enabled)
+        if enabled {
+            notchStatus.update(
+                isRecording: routineLibrary.isRecording,
+                backgroundCount: lastBackgroundCount,
+                awaitingApproval: lastAwaitingApprovalCount
+            )
         }
-        refreshWorkspaceLabel()
-        Task { await refreshMemoryMenuTitle() }
+        return enabled
     }
+
+    func routines() -> [LearnedRoutine] { routineLibrary.routines() }
+    func runRoutine(_ routine: LearnedRoutine) { routineLibrary.run(routine) }
+    func importRoutine(from url: URL) { routineLibrary.importRoutine(from: url) }
+    func exportRoutine(_ routine: LearnedRoutine, to url: URL) { routineLibrary.exportRoutine(routine, to: url) }
+    func removeRoutine(_ routine: LearnedRoutine) { routineLibrary.remove(routine) }
+
+    func setWorkspaceRoot(_ url: URL) {
+        WorkspaceScope.setRoot(url)
+        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
+    }
+
+    func showFullGuideForFrontmostWindow() {
+        let target = probe.currentTargetHint()
+        Task { await showEverything(goal: "walk through the frontmost window", targetHint: target) }
+    }
+
+    /// "Run in background" lives on the composer's send action — the menu
+    /// item opens that composer in Do mode with the toggle already on.
+    func presentBackgroundComposer() {
+        pendingPromptRunInBackground = true
+        presentPrompt(prefill: "", asTask: true)
+    }
+
+    func retryLastTask() { foreground.retry() }
+    func runDemo() { demoDirector.run() }
+    func showSettings() { homeController.openHome(selection: .settings) }
+
+    func toggleMemory() {
+        schedulePersistence { [weak self, memoryStore] in
+            let current = await memoryStore.currentConfiguration()
+            await memoryStore.setConfiguration(
+                MemoryConfiguration(enabled: !current.enabled, categoryToggles: current.categoryToggles)
+            )
+            await self?.statusMenu.refreshMemoryTitle()
+        }
+    }
+
+#if DEBUG
+    func runBrainSmokeTest() {
+        brain.smokeTest { [weak self] status in self?.sessionStatus = status }
+    }
+#endif
 }
 
 struct InteractiveConfirmer: Confirmer {
