@@ -458,6 +458,10 @@ final class AgentCoordinatorTests: XCTestCase {
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "When does the Orchid project ship?"))
         XCTAssertEqual(events.last, .finished(.completed))
+        // The event stream closes on .finished while the deferred condensation
+        // still runs inside the run task — join the task before asserting on
+        // provider/store state it owns.
+        await coordinator.waitForCompletion(threadID: original.id)
         XCTAssertGreaterThan(provider.requests.count, 1)
         // The first request is the answer — a condensation call ahead of it
         // would put a model round-trip back on the first-token path.
@@ -492,6 +496,9 @@ final class AgentCoordinatorTests: XCTestCase {
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "Continue safely"))
         XCTAssertEqual(events.last, .finished(.completed))
+        // Same race: .finished precedes the deferred maintenance write —
+        // join the run task before asserting on requests or the store.
+        await coordinator.waitForCompletion(threadID: original.id)
         XCTAssertGreaterThan(provider.requests.count, 1)
         XCTAssertFalse(provider.requests.first?.system.contains("Condense earlier conversation") ?? true)
         XCTAssertTrue(provider.requests.dropFirst().contains { $0.system.contains("Condense earlier conversation") })
