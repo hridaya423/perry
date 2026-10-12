@@ -197,6 +197,11 @@ final class AppSubsystems {
 
     lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: self.storageDirectory)
 
+    /// Shared Talk speech input: its DictationController carries the
+    /// engine + recognizer built once, so hold-to-talk re-arms them
+    /// instead of rebuilding audio infrastructure per key-down.
+    lazy var talkSpeechInput = SFSpeechInput()
+
     lazy var talkSession = TalkSession(
         sessionController: app.sessionController,
         overlayState: self.overlayState,
@@ -208,7 +213,7 @@ final class AppSubsystems {
                     return lab
                 }
 #endif
-                return SFSpeechInput()
+                return self.talkSpeechInput
             },
             output: SharedTalkOutput(voice: self.voice),
             capture: { [weak app = app] in

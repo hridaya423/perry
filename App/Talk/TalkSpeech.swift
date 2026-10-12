@@ -8,10 +8,18 @@ import Speech
 /// PointerTraceRecorder samples use, so DeixisResolver can align them.
 @MainActor
 protocol TalkSpeechInput: AnyObject {
+    /// Starts synchronously when the mic path is already warm (permission
+    /// cached, engine reusable) so key-down never suspends on async setup —
+    /// plan Phase-1 H7. Returns false when `start()` is still required.
+    func startIfReady() throws -> Bool
     func start() async throws
     /// Stops capture and returns the final transcript plus word segments.
     func finalize() async -> (transcript: String, words: [SpokenWord])
     func cancel()
+}
+
+extension TalkSpeechInput {
+    func startIfReady() throws -> Bool { false }
 }
 
 /// Sentence-level speech output. `shutUp()` is the barge-in path and must
@@ -28,16 +36,11 @@ protocol TalkSpeechOutput: AnyObject {
 /// each recognition event for deixis.
 @MainActor
 final class SFSpeechInput: TalkSpeechInput {
-    private var dictation: DictationController?
-    private var latestWords: [SpokenWord] = []
-    private var latestTranscript = ""
-    private var settled = false
-    private var finalization: CheckedContinuation<Void, Never>?
-
-    func start() async throws {
-        latestWords = []
-        latestTranscript = ""
-        settled = false
+    /// One engine + recognizer per Talk lifetime, re-armed per hold —
+    /// plan Phase-1 H7. Reuse is safe: start() aborts any in-flight
+    /// recognition before re-installing the tap, and the recognition gate
+    /// rejects callbacks from older generations.
+    private lazy var dictation: DictationController = {
         let controller = DictationController(
             onTranscript: { [weak self] transcript in
                 Task { @MainActor in self?.finish(transcript: transcript) }
@@ -57,16 +60,43 @@ final class SFSpeechInput: TalkSpeechInput {
             }
         )
         controller.configure(.default)
-        dictation = controller
-        guard await DictationController.requestPermission() else {
+        return controller
+    }()
+    private var latestWords: [SpokenWord] = []
+    private var latestTranscript = ""
+    private var settled = false
+    private var finalization: CheckedContinuation<Void, Never>?
+
+    /// Constructs the engine + recognizer at launch so the first hold only
+    /// pays re-arming (tap install + engine start), not audio setup.
+    func warmUp() {
+        _ = dictation
+    }
+
+    func startIfReady() throws -> Bool {
+        guard DictationController.permissionGranted else { return false }
+        try begin()
+        return true
+    }
+
+    func start() async throws {
+        if try startIfReady() { return }
+        guard await DictationController.ensurePermission() else {
             throw DictationController.DictationError.unavailable
         }
-        try controller.start()
+        try begin()
+    }
+
+    private func begin() throws {
+        latestWords = []
+        latestTranscript = ""
+        settled = false
+        try dictation.start()
     }
 
     func finalize() async -> (transcript: String, words: [SpokenWord]) {
         guard !settled else { return (latestTranscript, latestWords) }
-        dictation?.finish()
+        dictation.finish()
         await withCheckedContinuation { continuation in
             if settled {
                 continuation.resume()
@@ -78,7 +108,7 @@ final class SFSpeechInput: TalkSpeechInput {
     }
 
     func cancel() {
-        dictation?.cancel()
+        dictation.cancel()
         finish(transcript: nil)
     }
 
@@ -169,7 +199,7 @@ final class WAVSpeechInput: TalkSpeechInput {
     init(url: URL) { self.url = url }
 
     func start() async throws {
-        guard await DictationController.requestPermission() else {
+        guard await DictationController.ensurePermission() else {
             throw DictationController.DictationError.unavailable
         }
         guard let recognizer = SFSpeechRecognizer() else {

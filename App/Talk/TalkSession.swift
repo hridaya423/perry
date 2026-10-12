@@ -130,11 +130,22 @@ final class TalkSession {
         tracer.start()
         let speech = services.makeInput()
         input = speech
-        Task { @MainActor [weak self, weak speech] in
-            do {
-                try await speech?.start()
-            } catch {
-                self?.inputFailed(error)
+        let startedSynchronously: Bool
+        do {
+            // Mic warm (permission cached + engine reusable): start the
+            // engine inline on key-down instead of behind a Task hop.
+            startedSynchronously = try speech.startIfReady()
+        } catch {
+            inputFailed(error)
+            startedSynchronously = true
+        }
+        if !startedSynchronously {
+            Task { @MainActor [weak self, weak speech] in
+                do {
+                    try await speech?.start()
+                } catch {
+                    self?.inputFailed(error)
+                }
             }
         }
         captureTask = Task { @MainActor in try await services.capture() }

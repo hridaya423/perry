@@ -212,6 +212,31 @@ final class DictationController {
         }
     }
 
+    /// Mic + speech grant, cached so the hold path never suspends key-down
+    /// on a TCC round-trip once the answer is known (plan Phase-1 H7).
+    /// Set by `warmPermissionCache()` at launch and by `ensurePermission()`
+    /// on first grant. Denials are not cached — the user can reverse them
+    /// in Settings, so the next request re-checks.
+    private(set) static var permissionGranted = false
+
+    /// Records an already-determined grant without prompting. Called once
+    /// at launch; an undetermined status stays uncached and the first real
+    /// request populates the cache instead.
+    static func warmPermissionCache() {
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+              SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
+        permissionGranted = true
+    }
+
+    /// Returns immediately once granted; otherwise requests (prompting if
+    /// undetermined) and caches the grant.
+    static func ensurePermission() async -> Bool {
+        if permissionGranted { return true }
+        let granted = await requestPermission()
+        if granted { permissionGranted = true }
+        return granted
+    }
+
     func start() throws {
         guard !isRunning else { return }
         abortRecognition()

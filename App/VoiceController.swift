@@ -500,7 +500,7 @@ final class VoiceController: NSObject, ObservableObject {
         let attemptID = UUID()
         dictationAttemptID = attemptID
         Task { @MainActor in
-            let granted = await DictationController.requestPermission()
+            let granted = await DictationController.ensurePermission()
             guard dictationAttemptID == attemptID else { return }
             guard granted else {
                 dictationAttemptID = nil
@@ -917,7 +917,7 @@ final class VoiceController: NSObject, ObservableObject {
         hooks.refreshStatusItem()
         if enabled {
             Task { @MainActor in
-                guard await DictationController.requestPermission() else {
+                guard await DictationController.ensurePermission() else {
                     PerryPreferences.wakeWordEnabled = false
                     self.hooks.refreshStatusItem()
                     self.hooks.setStatus("Wake word needs microphone and speech permission; the hotkey still works.")

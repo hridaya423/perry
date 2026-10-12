@@ -318,6 +318,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #endif
         updateNoticeController.start()
         SoundPlayer.warmUp()
+        DictationController.warmPermissionCache()
+        subsystems.talkSpeechInput.warmUp()
         voice.refreshWakeWordListener()
         Task { @MainActor [weak self] in
             await self?.backgroundTasks.recoverInterruptedAndStartQueued()
