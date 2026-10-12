@@ -141,8 +141,6 @@ public final class PerryCursorState: ObservableObject {
     @Published public var detectedElementScreenLocation: CGPoint?
     @Published public var detectedElementDisplayFrame: CGRect?
     @Published public var agentTaskBubbleText: String?
-    @Published public var externalPrimaryCaptionText: String?
-    @Published public var externalPrimaryCaptionAccentHex: String?
     @Published public var externalSecondaryCursors: [PerryExternalCursor] = []
     @Published public var visualGuidanceOverlays: [PerryGuidanceOverlay] = []
     @Published public var circleSelectLivePoints: [CGPoint] = []
