@@ -56,6 +56,12 @@ struct DebugLaunchSeams {
                 ).inspect(workingDirectory: workingDirectory)
             }
         }
+        // `--perry-guide-drill` swaps the model planner for the offline
+        // AXGuidePlanner — the lab's Preview click→next-mark drill stays
+        // deterministic and needs no provider key.
+        if arguments.contains("--perry-guide-drill") {
+            seams.guidePlanner = AXGuidePlanner()
+        }
         return seams
     }
 }
@@ -233,6 +239,39 @@ extension AppController {
             }
         }
     }
+    /// Phase-3 lab seam: `app.perry.guide-drill` notifications carrying a
+    /// `goal` string start a real guide session on the frontmost app —
+    /// scripts/lab/guide-drill.sh drives Preview through it end to end.
+    func installGuideDrillTrigger() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.guide-drill"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let goal = note.userInfo?["goal"] as? String,
+                  !goal.isEmpty else { return }
+            _ = self.guideCoordinator.startGuiding(goal: goal)
+        }
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.guide-drill-click"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self,
+                  let x = (note.userInfo?["x"] as? NSNumber)?.doubleValue,
+                  let y = (note.userInfo?["y"] as? NSNumber)?.doubleValue else { return }
+            self.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
+        }
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.guide-drill-stop"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.guideCoordinator.dismissIfActive()
+        }
+    }
+
     func showDebugBackgroundTasksStorageError() {
         runtimes.refreshChoices()
         homeController.openHome(selection: .tasks)

@@ -303,6 +303,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
             installTalkDrillTrigger()
         }
+        if ProcessInfo.processInfo.arguments.contains("--perry-guide-drill") {
+            installGuideDrillTrigger()
+        }
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         homeController.start()
@@ -320,6 +323,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         SoundPlayer.warmUp()
         DictationController.warmPermissionCache()
         subsystems.talkSpeechInput.warmUp()
+        subsystems.realtimeTalkVoice()?.warmUp()
         voice.refreshWakeWordListener()
         Task { @MainActor [weak self] in
             await self?.backgroundTasks.recoverInterruptedAndStartQueued()

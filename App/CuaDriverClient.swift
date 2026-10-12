@@ -933,9 +933,7 @@ actor CuaDriverClient {
                   let x = double(bounds["x"]),
                   let y = double(bounds["y"]),
                   let width = double(bounds["width"]),
-                  let height = double(bounds["height"]),
-                  width > 80,
-                  height > 60 else { return nil }
+                  let height = double(bounds["height"]) else { return nil }
             let processID = Int32(pid)
             let bundleID = (raw["bundle_id"] as? String)
                 ?? NSRunningApplication(processIdentifier: processID)?.bundleIdentifier
@@ -969,11 +967,23 @@ actor CuaDriverClient {
             guard let processID = hint?.processID else { return true }
             return Int32(processID) == window.processID
         }
-        if let windowID = hint?.windowID {
-            return scopedWindows.first { $0.windowID == windowID }
+        // A stored windowID can go stale when the window is recreated or
+        // momentarily unlisted mid-guide (resize, zoom, sheet attach). Fall
+        // back to title/topmost scoping instead of hard-failing.
+        if let windowID = hint?.windowID,
+           let exact = scopedWindows.first(where: { $0.windowID == windowID }) {
+            return exact
         }
-        let visibleWindows = scopedWindows.filter { $0.isOnScreen && $0.isOnCurrentSpace }
-        let candidates = visibleWindows.isEmpty ? scopedWindows : visibleWindows
+        // The ≥80×60 floor only applies to unnamed discovery: a window the
+        // session already named (by id or title) stays resolvable even when
+        // it has legitimately shrunk below palette size mid-guide.
+        let explicitlyNamed = hint?.windowID != nil
+            || !(hint?.windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let usableWindows = explicitlyNamed
+            ? scopedWindows
+            : scopedWindows.filter { $0.width > 80 && $0.height > 60 }
+        let visibleWindows = usableWindows.filter { $0.isOnScreen && $0.isOnCurrentSpace }
+        let candidates = visibleWindows.isEmpty ? usableWindows : visibleWindows
         guard !candidates.isEmpty else { return nil }
         if let title = hint?.windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
             return candidates.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }

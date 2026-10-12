@@ -281,6 +281,20 @@ final class GuideSessionCoordinator {
         guidePlannerProvider?(guide) ?? AXGuidePlanner(skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory))
     }
 
+    #if DEBUG
+    /// Lab seam: injects a click at an AX-space point through the real
+    /// handleSessionClick → engine.acceptClick path (hit test, postcondition
+    /// verification, and presentation all run unchanged). Only the
+    /// CGEvent→global-monitor hop is bypassed.
+    func debugGuideDrillClick(axX: Double, axY: Double) {
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        handleSessionClick(ClickLocation(
+            axPoint: CGPointShim(x: axX, y: axY),
+            appKitPoint: CGPointShim(x: axX, y: Double(primaryMaxY) - axY)
+        ))
+    }
+    #endif
+
     var debugGuideScopeID: UUID? {
         currentGuideScope?.id
     }
@@ -779,6 +793,9 @@ final class GuideSessionCoordinator {
                 scope.finishContinuation.finish()
             }
         } catch is CancellationError {
+            #if DEBUG
+            GuideDrillRecorder.status("cancelled outer=\(Task.isCancelled) opFinished=\(scope.workerBodyActive)")
+            #endif
             self.resetGuideAfterWorkerFailure(
                 guideID: guide.id,
                 summary: "The guide stopped before its Cua worker could finish."
@@ -1013,6 +1030,7 @@ final class GuideSessionCoordinator {
             return
         }
         guard let guideID = activeGuideID, let scope = currentGuideScope, let engine = scope.engine, let callbackID = scope.reserveAction() else { return }
+        PerfMark.mark("guide.click")
         let task = Task { @MainActor [weak self, weak scope] in
             defer { scope?.removeCallback(callbackID) }
             guard !Task.isCancelled else { return }
@@ -1085,6 +1103,7 @@ final class GuideSessionCoordinator {
         case .blocked(let reason):
             finishGuide(guideID: guideID, outcome: .failed, summary: reason)
         case .ignoredClick(_, let hitLabel):
+            PerfMark.mark("guide.click.ignored")
             if let hitLabel, !hitLabel.isEmpty {
                 output?.guideSetStatus("That's \(hitLabel) — we want the highlighted control.")
                 speak("That's \(hitLabel) — we want the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
