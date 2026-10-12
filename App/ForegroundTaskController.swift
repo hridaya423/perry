@@ -207,7 +207,7 @@ final class ForegroundTaskController: ObservableObject {
 
     // MARK: Do mode
 
-    func start(goal: String, preferredRuntimeID: String? = nil, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) {
+    func start(goal: String, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) {
         guard !hooks.isErasureInProgress() else {
             voice.speak("I’m finishing a data erase before starting anything new.")
             return
@@ -222,21 +222,21 @@ final class ForegroundTaskController: ObservableObject {
             hooks.setStatus("Finish or stop the current session first.")
             return
         }
-        start(goal: goal, preferredRuntimeID: preferredRuntimeID, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
+        start(goal: goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
     }
 
-    private func start(goal: String, preferredRuntimeID: String? = nil, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
+    private func start(goal: String, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
         doStartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.cancelInvocationIfCurrent(attemptID)
                 self.doStartTask = nil
             }
-            _ = await self.begin(goal: goal, attemptID: attemptID, preferredRuntimeID: preferredRuntimeID, threadID: threadID, targetHint: targetHint)
+            _ = await self.begin(goal: goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
         }
     }
 
-    func begin(goal: String, attemptID: UUID, preferredRuntimeID: String? = nil, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) async -> DoOutcome? {
+    func begin(goal: String, attemptID: UUID, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) async -> DoOutcome? {
         guard !supervisorActive else {
             guard taskStartIsCurrent(attemptID) else { return nil }
             voice.speak("I’m already working on a task. Stop or pause that one first.")
@@ -248,7 +248,6 @@ final class ForegroundTaskController: ObservableObject {
                 try await self.runForegroundOperation(
                     goal: goal,
                     attemptID: attemptID,
-                    preferredRuntimeID: preferredRuntimeID,
                     worker: worker, threadID: threadID, targetHint: targetHint
                 )
             }
@@ -391,7 +390,6 @@ final class ForegroundTaskController: ObservableObject {
     private func runForegroundOperation(
         goal: String,
         attemptID: UUID,
-        preferredRuntimeID: String?,
         worker: CuaWorkerHandle,
         threadID: UUID? = nil,
         targetHint: CuaTargetHint? = nil
@@ -1240,7 +1238,6 @@ final class ForegroundTaskController: ObservableObject {
             try await self.runForegroundOperation(
                 goal: goal,
                 attemptID: attemptID,
-                preferredRuntimeID: nil,
                 worker: worker
             )
         }
