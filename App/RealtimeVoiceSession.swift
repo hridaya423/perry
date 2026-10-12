@@ -590,6 +590,10 @@ protocol RealtimeVoiceTransport: Sendable {
     func connect() async throws
     func sendAudio(_ data: Data) async throws
     func finishInput(tag: RealtimeVoicePacketTag, request: RealtimeVoiceResponseRequest) async throws
+    /// Commits the buffered utterance for transcription only — no
+    /// response.create. Talk's input path needs the transcript without a
+    /// provider-generated reply (§1.5).
+    func commitInput(tag: RealtimeVoicePacketTag) async throws
     func cancelResponse() async throws
     func sendText(_ text: String, request: RealtimeVoiceResponseRequest) async throws
     func clearInput() async throws
@@ -620,6 +624,7 @@ final class RealtimeVoicePipeline {
         case clearInput
         case cancelResponse
         case finishInput
+        case commitInput
         case sendText(String)
     }
 
@@ -803,24 +808,47 @@ final class RealtimeVoicePipeline {
         utteranceGeneration: Int,
         responseRequest: RealtimeVoiceResponseRequest? = nil
     ) async throws -> CommitResult {
-        try Task.checkCancellation()
         let tag = RealtimeVoicePacketTag(
             sessionID: sessionID,
             utteranceGeneration: utteranceGeneration
         )
+        let request = responseRequest ?? RealtimeVoiceResponseRequest(tag: tag)
+        guard request.tag == tag else { throw RealtimeVoiceError.responseCorrelationUnavailable }
+        return try await enqueueCommit(tag: tag, operation: Operation(
+            sessionID: sessionID,
+            utteranceGeneration: utteranceGeneration,
+            kind: .finishInput,
+            responseRequest: request
+        ))
+    }
+
+    /// Commit for transcription only — no `response.create` (§1.5 Talk input).
+    func commitTranscribing(
+        sessionID: Int,
+        utteranceGeneration: Int
+    ) async throws -> CommitResult {
+        let tag = RealtimeVoicePacketTag(
+            sessionID: sessionID,
+            utteranceGeneration: utteranceGeneration
+        )
+        return try await enqueueCommit(tag: tag, operation: Operation(
+            sessionID: sessionID,
+            utteranceGeneration: utteranceGeneration,
+            kind: .commitInput
+        ))
+    }
+
+    private func enqueueCommit(
+        tag: RealtimeVoicePacketTag,
+        operation: Operation
+    ) async throws -> CommitResult {
+        try Task.checkCancellation()
         guard tag == activeTag, !isStopped else { return .superseded }
         if commitCompleted.contains(tag) { return .committed }
         if let failure = failures[tag] { throw failure }
         if !commitEnqueued.contains(tag) {
-            let request = responseRequest ?? RealtimeVoiceResponseRequest(tag: tag)
-            guard request.tag == tag else { throw RealtimeVoiceError.responseCorrelationUnavailable }
+            append(operation)
             commitEnqueued.insert(tag)
-            append(Operation(
-                sessionID: sessionID,
-                utteranceGeneration: utteranceGeneration,
-                kind: .finishInput,
-                responseRequest: request
-            ))
         }
         return try await waitForCommit(tag: tag)
     }
@@ -862,8 +890,10 @@ final class RealtimeVoicePipeline {
             guard let operation = nextOperation() else { return }
             do {
                 try await executor(operation)
-                if case .finishInput = operation.kind,
-                   operation.tag == activeTag {
+                if case .finishInput = operation.kind, operation.tag == activeTag {
+                    commitCompleted.insert(operation.tag)
+                    resolveCommit(operation.tag, result: .committed)
+                } else if case .commitInput = operation.kind, operation.tag == activeTag {
                     commitCompleted.insert(operation.tag)
                     resolveCommit(operation.tag, result: .committed)
                 }
@@ -971,7 +1001,7 @@ private extension RealtimeVoicePipeline.OperationKind {
         switch self {
         case .clearInput, .cancelResponse:
             return true
-        case .audio, .finishInput, .sendText:
+        case .audio, .finishInput, .commitInput, .sendText:
             return false
         }
     }
@@ -1053,6 +1083,22 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
             if !commitSent {
                 correlation.removePendingCommit(tag: tag)
             }
+            throw error
+        }
+    }
+
+    /// Commit without `response.create`: the provider transcribes the
+    /// buffered audio and stays silent — Talk's brain owns the reply.
+    func commitInput(tag: RealtimeVoicePacketTag) async throws {
+        guard inputHasAudio else { throw RealtimeVoiceError.emptyInput }
+        guard correlation.enqueueCommit(tag: tag) else {
+            throw RealtimeVoiceError.inputCorrelationLimitReached
+        }
+        inputHasAudio = false
+        do {
+            try await send(payload: ["type": "input_audio_buffer.commit"])
+        } catch {
+            correlation.removePendingCommit(tag: tag)
             throw error
         }
     }
@@ -1365,6 +1411,11 @@ final class RealtimeVoiceSession {
     private(set) var state: RealtimeVoiceSessionState = .idle
     private(set) var echoCancellationEnabled = false
 
+    /// Whether uncommitted microphone audio is buffered — a silent hold
+    /// should settle empty rather than commit nothing and fail the
+    /// session on `emptyInput` (§1.5 transcribe-only input path).
+    var hasPendingInputAudio: Bool { inputHasAudio }
+
     init(
         configuration: RealtimeVoiceConfiguration,
         apiKey: String,
@@ -1395,6 +1446,8 @@ final class RealtimeVoiceSession {
                     throw RealtimeVoiceError.responseCorrelationUnavailable
                 }
                 try await resolvedTransport.finishInput(tag: operation.tag, request: request)
+            case .commitInput:
+                try await resolvedTransport.commitInput(tag: operation.tag)
             case .sendText(let text):
                 guard let request = operation.responseRequest else {
                     throw RealtimeVoiceError.responseCorrelationUnavailable
@@ -1625,6 +1678,17 @@ final class RealtimeVoiceSession {
     }
 
     func finishInput() {
+        finishInput(createsResponse: true)
+    }
+
+    /// Commit for transcription only: the buffered utterance is committed
+    /// without `response.create`, so the provider transcribes and stays
+    /// silent — Talk's own brain answers (§1.5 `RealtimeInput`).
+    func finishInputTranscribing() {
+        finishInput(createsResponse: false)
+    }
+
+    private func finishInput(createsResponse: Bool) {
         inputFinishRequested = true
         guard state == .listening else { return }
         guard !inputFinished else { return }
@@ -1636,7 +1700,7 @@ final class RealtimeVoiceSession {
             sessionID: sessionID,
             utteranceGeneration: generation
         )
-        let responseRequest = RealtimeVoiceResponseRequest(tag: tag)
+        let responseRequest = createsResponse ? RealtimeVoiceResponseRequest(tag: tag) : nil
         let audioDrainTask = finishInputAudio()
         let commitToken = startWorker(.commit, tag: tag)
         commitTask = Task { @MainActor [weak self] in
@@ -1657,35 +1721,43 @@ final class RealtimeVoiceSession {
                 self.onEvent(.error(RealtimeVoiceError.emptyInput.localizedDescription))
                 return
             }
-            guard self.responseTracker.authorize(responseRequest) else {
-                self.transcriptBarrier.failInput(tag)
-                self.state = .failed(RealtimeVoiceError.responseCorrelationUnavailable.localizedDescription)
-                self.onEvent(.error(RealtimeVoiceError.responseCorrelationUnavailable.localizedDescription))
-                return
+            if let responseRequest {
+                guard self.responseTracker.authorize(responseRequest) else {
+                    self.transcriptBarrier.failInput(tag)
+                    self.state = .failed(RealtimeVoiceError.responseCorrelationUnavailable.localizedDescription)
+                    self.onEvent(.error(RealtimeVoiceError.responseCorrelationUnavailable.localizedDescription))
+                    return
+                }
+                self.state = .responding
             }
-            self.state = .responding
+            let committedState: RealtimeVoiceSessionState = createsResponse ? .responding : .listening
             do {
-                let result = try await self.operationPipeline.commit(
-                    sessionID: sessionID,
-                    utteranceGeneration: generation,
-                    responseRequest: responseRequest
-                )
+                let result = responseRequest != nil
+                    ? try await self.operationPipeline.commit(
+                        sessionID: sessionID,
+                        utteranceGeneration: generation,
+                        responseRequest: responseRequest
+                    )
+                    : try await self.operationPipeline.commitTranscribing(
+                        sessionID: sessionID,
+                        utteranceGeneration: generation
+                    )
                 guard result == .committed,
                       self.transcriptBarrier.activeTag == tag,
                       generation == self.inputGeneration,
-                      self.state == .responding,
+                      self.state == committedState,
                       !self.audioSendFailed else {
-                    self.responseTracker.cancel(responseRequest)
+                    if let responseRequest { self.responseTracker.cancel(responseRequest) }
                     return
                 }
                 if let commit = self.transcriptBarrier.markInputCommitted(tag) {
                     self.publishTranscript(commit)
                 }
             } catch is CancellationError {
-                self.responseTracker.cancel(responseRequest)
+                if let responseRequest { self.responseTracker.cancel(responseRequest) }
                 return
             } catch {
-                self.responseTracker.cancel(responseRequest)
+                if let responseRequest { self.responseTracker.cancel(responseRequest) }
                 if case .failed = self.state { return }
                 guard self.transcriptBarrier.activeTag == tag,
                       generation == self.inputGeneration,
@@ -1943,6 +2015,7 @@ final class RealtimeVoiceSession {
         error: Error
     ) {
         if case .finishInput = operation.kind { return }
+        if case .commitInput = operation.kind { return }
         guard !shutdownRequested,
               operation.tag == RealtimeVoicePacketTag(
                   sessionID: sessionGeneration,

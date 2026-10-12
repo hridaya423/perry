@@ -202,6 +202,20 @@ final class AppSubsystems {
     /// instead of rebuilding audio infrastructure per key-down.
     lazy var talkSpeechInput = SFSpeechInput()
 
+    /// BYOK realtime Talk voice (§1.5), built once when configured and
+    /// reused per hold. Re-checked per makeInput so a Settings change can
+    /// engage it without relaunch; a failed session rebuilds inside.
+    private var realtimeTalkVoiceInstance: RealtimeTalkVoice?
+    func realtimeTalkVoice() -> RealtimeTalkVoice? {
+        if let realtimeTalkVoiceInstance { return realtimeTalkVoiceInstance }
+        guard let built = RealtimeTalkVoice.configured(
+            fallbackInput: talkSpeechInput,
+            fallbackOutput: SharedTalkOutput(voice: voice)
+        ) else { return nil }
+        realtimeTalkVoiceInstance = built
+        return built
+    }
+
     lazy var talkSession = TalkSession(
         sessionController: app.sessionController,
         overlayState: self.overlayState,
@@ -213,9 +227,12 @@ final class AppSubsystems {
                     return lab
                 }
 #endif
-                return self.talkSpeechInput
+                return self.realtimeTalkVoice()?.input ?? self.talkSpeechInput
             },
-            output: SharedTalkOutput(voice: self.voice),
+            output: TalkSpeechOutputRouter(
+                realtime: { self.realtimeTalkVoice()?.output },
+                fallback: SharedTalkOutput(voice: self.voice)
+            ),
             capture: { [weak app = app] in
                 guard let app else { throw CancellationError() }
                 return try await app.talkCapture.capture()
