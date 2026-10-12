@@ -31,11 +31,9 @@ class OverlayWindow: NSWindow {
         // itself must ignore events to stay transparent.
         self.isOpaque = false
         self.backgroundColor = .clear
-        // Perry's overlay must never appear in screenshots or screen shares.
-        self.sharingType = .none
-        PerryWindowLevels.applyCursorOverlayLevel(to: self)
+        PerryWindowChrome.applyChrome(to: self)
+        self.level = PerryWindowChrome.cursorOverlay
         self.ignoresMouseEvents = true
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         self.isReleasedWhenClosed = false
         self.hasShadow = false
 

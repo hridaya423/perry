@@ -28,10 +28,13 @@ case "$cmd" in
             codesign --force --sign - "$APP/Contents/MacOS/Perry" >/dev/null 2>&1
             echo "perry-drive: re-signed adhoc without hardened runtime for lab launch" >&2
         fi
+        # Lab runs opt into screen capture — Perry chrome is share-hidden
+        # by default (PerryWindowChrome.applyChrome) and evidence tooling
+        # must be able to record it.
         if [ "$#" -gt 0 ]; then
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --args "$@"
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --args "$@"
         else
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG"
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1"
         fi
         for _ in $(seq 1 30); do
             pid="$(perry_pid)"

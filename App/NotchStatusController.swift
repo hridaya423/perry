@@ -1,4 +1,5 @@
 import AppKit
+import PerryOverlay
 
 /// A glanceable pill that drops below the camera notch with live status —
 /// only while a demonstration is recording or background tasks are active.
@@ -111,7 +112,7 @@ final class NotchStatusController {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        PerryWindowChrome.applyChrome(to: panel)
 
         let font = NSFont.systemFont(ofSize: 11, weight: .medium)
         controller.dot.wantsLayer = true

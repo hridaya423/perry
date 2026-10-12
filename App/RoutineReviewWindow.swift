@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import PerryGuide
+import PerryOverlay
 import SwiftUI
 
 /// Floating Watch & Learn surface. While recording it shows the bounded
@@ -181,6 +182,7 @@ final class RoutineReviewWindow: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         ignoresMouseEvents = false
+        PerryWindowChrome.applyChrome(to: self)
         let hostingView = NSHostingView(
             rootView: RoutineReviewView(
                 state: state,

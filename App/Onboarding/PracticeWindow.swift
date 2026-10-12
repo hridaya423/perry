@@ -1,4 +1,5 @@
 import AppKit
+import PerryOverlay
 import SwiftUI
 
 /// Bundled practice surface for onboarding (§4.1.5): a real window with fake
@@ -122,6 +123,7 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
         window.delegate = self
         window.center()
         window.isReleasedWhenClosed = false
+        PerryWindowChrome.applyChrome(to: window)
         return window
     }
 

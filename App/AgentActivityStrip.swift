@@ -633,6 +633,7 @@ final class AgentActivityStripWindow: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         ignoresMouseEvents = false
+        PerryWindowChrome.applyChrome(to: self)
         contentView = NSHostingView(rootView: AgentActivityStripView(state: state, onPause: onPause, onResume: onResume, onStop: onStop, onRetry: onRetry, onSteer: onSteer, onTakeOver: onTakeOver, onToggleExpanded: { [weak self] in self?.setExpanded(!(self?.state.isExpanded ?? false)) }))
     }
 

@@ -39,6 +39,7 @@ final class IntentCardWindow: NSPanel {
         isFloatingPanel = true
         level = .modalPanel
         hidesOnDeactivate = false
+        PerryWindowChrome.applyChrome(to: self)
         let hostingView = NSHostingView(rootView: IntentCardView(
             card: card,
             allowsStepThrough: allowsStepThrough,

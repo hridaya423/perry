@@ -227,24 +227,27 @@ public final class OverlayPerfProbe {
     }
 }
 
-public enum PerryWindowLevels {
+/// The chrome contract every Perry window follows (plan §10): excluded
+/// from screenshots and screen shares (`sharingType = .none`), visible on
+/// every space including fullscreen apps, stationary, and out of the
+/// ⌘⇥ window cycle. Interactive levels stack just under the system
+/// dragging-window ceiling so a drag over Perry chrome never loses it.
+public enum PerryWindowChrome {
     private static let interactiveCeiling = CGWindowLevelForKey(.draggingWindow)
 
-    public static let statusSurface = NSWindow.Level(rawValue: Int(interactiveCeiling) - 1)
-    public static let cursorOverlay = statusSurface
-    public static let mainPanel = NSWindow.Level(rawValue: Int(interactiveCeiling) - 3)
-    public static let panelDialog = NSWindow.Level(rawValue: Int(interactiveCeiling) - 2)
+    /// The overlay cursor surface — above every app window, one step under
+    /// the ceiling so it never captures a drag.
+    public static let cursorOverlay = NSWindow.Level(rawValue: Int(interactiveCeiling) - 1)
 
-    public static func applyCursorOverlayLevel(to window: NSWindow?) {
-        window?.level = cursorOverlay
-    }
-
-    public static func applyMainPanelLevel(to window: NSWindow?) {
-        window?.level = mainPanel
-    }
-
-    public static func applyPanelDialogLevel(to window: NSWindow?) {
-        window?.level = panelDialog
+    /// Applies the share-hiding and space behavior. Every Perry window
+    /// calls this; windows that also need a specific level set it after.
+    /// `PERRY_ALLOW_SCREEN_CAPTURE=1` opts back into capture for lab and
+    /// evidence runs — the product default is always hidden.
+    public static func applyChrome(to window: NSWindow) {
+        if ProcessInfo.processInfo.environment["PERRY_ALLOW_SCREEN_CAPTURE"] == nil {
+            window.sharingType = .none
+        }
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
     }
 }
 

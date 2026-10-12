@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import PerryBrain
 import PerryGuide
+import PerryOverlay
 
 /// Notch Home (Phase 5 §4.7): a resting strip in the notch, a hover peek,
 /// and the full Home window. Event-driven only — pointer position arrives
@@ -325,7 +326,7 @@ final class HomeController {
         dot.isOpaque = false
         dot.backgroundColor = .clear
         dot.hasShadow = false
-        dot.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        PerryWindowChrome.applyChrome(to: dot)
         let view = NSView()
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.6).cgColor
@@ -369,7 +370,7 @@ final class HomeController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary]
+        PerryWindowChrome.applyChrome(to: panel)
         let capsule = NSVisualEffectView()
         capsule.material = .popover
         capsule.state = .active
@@ -435,6 +436,7 @@ final class HomeController {
         )
         window.title = "Perry Home"
         window.isReleasedWhenClosed = false
+        PerryWindowChrome.applyChrome(to: window)
         window.contentView = NSHostingView(rootView: HomeView(model: homeModel))
         if let saved = PerryPreferences.homeFrame {
             window.setFrame(from: saved)

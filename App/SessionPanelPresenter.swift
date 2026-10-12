@@ -1,4 +1,5 @@
 import AppKit
+import PerryOverlay
 
 /// The floating type/talk panel: built once, shown on invocation, and on
 /// hide hands focus back to the app the user came from.
@@ -69,6 +70,7 @@ final class SessionPanelPresenter {
         p.backgroundColor = .clear
         p.titlebarAppearsTransparent = true
         p.level = .floating
+        PerryWindowChrome.applyChrome(to: p)
         if !p.setFrameUsingName(Self.frameAutosaveName), let screen = NSScreen.main {
             let frame = screen.visibleFrame
             p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))

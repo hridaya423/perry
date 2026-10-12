@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import PerryOverlay
 import SwiftUI
 
 /// Floating guide-controls surface shown while Perry is pointing at a target.
@@ -188,6 +189,7 @@ final class GuideControlsWindow: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         ignoresMouseEvents = false
+        PerryWindowChrome.applyChrome(to: self)
         let hostingView = NSHostingView(
             rootView: GuideControlsView(
                 state: state,
