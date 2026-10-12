@@ -106,10 +106,15 @@ public struct ConversationContext {
         let saved = thread.contextSummary
         var covered = saved?.sourceTurnCount ?? 0
         var summary = saved?.text ?? ""
-        if covered < 0 || covered > firstRecent || covered > thread.turns.count || summary.utf8.count > summaryLimit {
+        if covered < 0 || covered > thread.turns.count || summary.utf8.count > summaryLimit {
             covered = 0
             summary = ""
         }
+        // The verbatim/summary boundary jitters as turns append: a saved
+        // summary may already cover turns now counted as recent. Replaying
+        // from the covered edge keeps it instead of discarding and
+        // re-condensing on every turn.
+        if covered > firstRecent { firstRecent = covered }
         var maintenance: (@Sendable () async throws -> Void)?
         if covered < firstRecent {
             if deferSummarization {

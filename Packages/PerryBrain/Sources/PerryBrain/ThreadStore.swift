@@ -316,8 +316,13 @@ public actor ThreadStore {
         return try upsert(t)
     }
 
+    /// Saves a condensation result. Accepted while the owning turn is in
+    /// flight (`pendingTurn.id == runID`) or once it has finished and the
+    /// thread is quiescent — deferred maintenance (H5) writes *after*
+    /// `finishTurn` cleared `pendingTurn`, still inside the owning run task.
+    /// The prefix-equality check below is the real staleness guard either way.
     public func saveContextSummary(_ text: String, sourceTurns: [PerryThread.Turn], to id: UUID, runID: UUID) throws {
-        guard var thread = thread(id: id), thread.pendingTurn?.id == runID else { throw ThreadStoreError.runMismatch }
+        guard var thread = thread(id: id), thread.pendingTurn == nil || thread.pendingTurn?.id == runID else { throw ThreadStoreError.runMismatch }
         guard !sourceTurns.isEmpty, thread.turns.prefix(sourceTurns.count).elementsEqual(sourceTurns) else {
             throw ThreadStoreError.contextChanged
         }

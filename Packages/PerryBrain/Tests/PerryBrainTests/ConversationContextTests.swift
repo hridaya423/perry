@@ -58,6 +58,36 @@ final class ConversationContextTests: XCTestCase {
         _ = root
     }
 
+    /// H5 regression: AgentCoordinator runs deferred maintenance *after*
+    /// finishTurn cleared pendingTurn — the summary save must land on a
+    /// quiescent thread. A write attributed to a different in-flight turn is
+    /// still rejected.
+    func testSummarySaveAfterTurnCompletion() async throws {
+        let (root, store) = try fixture()
+        let original = longThread()
+        _ = try await store.upsert(original)
+        let thread = try await store.beginTurn(to: original.id, question: "Continue")
+        let runID = try XCTUnwrap(thread.pendingTurn?.id)
+        try await store.finishTurn(to: thread.id, runID: runID, answer: "Done.", outcome: .completed)
+
+        let reloaded = await store.thread(id: thread.id)
+        let finished = try XCTUnwrap(reloaded)
+        let covered = Array(finished.turns.prefix(4))
+        try await store.saveContextSummary("Cedar", sourceTurns: covered, to: thread.id, runID: runID)
+        let saved = await store.thread(id: thread.id)
+        XCTAssertEqual(saved?.contextSummary?.text, "Cedar")
+
+        // A stale run's write must not land while another turn is in flight.
+        _ = try await store.beginTurn(to: thread.id, question: "Next")
+        do {
+            try await store.saveContextSummary("Stale Cedar", sourceTurns: covered, to: thread.id, runID: runID)
+            XCTFail("expected runMismatch")
+        } catch {
+            guard case ThreadStoreError.runMismatch = error else { return XCTFail("expected runMismatch, got \(error)") }
+        }
+        _ = root
+    }
+
     func testSummarySurvivesRestartAndRetainsSourceTurns() async throws {
         let (root, store) = try fixture()
         let original = longThread()

@@ -58,14 +58,23 @@ final class AgentCoordinator: ObservableObject {
 
     func run(threadID: UUID, goal: String, perryID: String? = nil, surface: ToolSurface = .agent, runID: UUID = UUID(), target: CuaTargetHint? = nil, spatialContext: SpatialContext? = nil, waitingInputID: UUID? = nil, unattended: Bool = false) -> AsyncStream<AgentLoopEvent> {
         AsyncStream { continuation in
+            // finish() also fires onTermination — the flag keeps a natural
+            // .finished close from cancelling the run task's deferred
+            // maintenance; only a consumer abandoning the stream should.
+            let finished = LockedFlag()
             let task = start(
                 threadID: threadID, goal: goal, perryID: perryID, surface: surface, runID: runID,
                 target: spatialContext?.target ?? target, spatialContext: spatialContext, waitingInputID: waitingInputID, unattended: unattended
             ) { event in
                 continuation.yield(event)
-                if case .finished = event { continuation.finish() }
+                if case .finished = event {
+                    finished.set()
+                    continuation.finish()
+                }
             }
-            continuation.onTermination = { _ in task?.cancel() }
+            continuation.onTermination = { _ in
+                if !finished.value { task?.cancel() }
+            }
         }
     }
 
@@ -396,6 +405,25 @@ final class AgentCoordinator: ObservableObject {
         try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
         ).appendingPathComponent("Perry/workspace", isDirectory: true).path
+    }
+}
+
+/// Lock-protected one-way flag for crossing the MainActor sink → onTermination
+/// boundary in `run(_:)` without a data race.
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flag = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return flag
+    }
+
+    func set() {
+        lock.lock()
+        flag = true
+        lock.unlock()
     }
 }
 
