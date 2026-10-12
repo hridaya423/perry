@@ -1,0 +1,14 @@
+{"captured_at":"2026-10-12T16:18:10.549Z","name":"ptt.capture.fallback"}
+{"captured_at":"2026-10-12T16:18:10.598Z","name":"sound.warmup"}
+{"captured_at":"2026-10-12T16:19:44.295Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-12T16:19:44.303Z","name":"wake.pinned"}
+{"captured_at":"2026-10-12T16:19:44.304Z","name":"wake.overlay"}
+{"captured_at":"2026-10-12T16:19:44.325Z","name":"panel.visible"}
+{"captured_at":"2026-10-12T16:19:44.385Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-12T16:23:49.713Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-12T16:24:11.325Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-12T16:24:11.328Z","name":"wake.pinned"}
+{"captured_at":"2026-10-12T16:24:11.329Z","name":"wake.overlay"}
+{"captured_at":"2026-10-12T16:24:11.335Z","name":"panel.visible"}
+{"captured_at":"2026-10-12T16:24:11.383Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-12T16:24:29.555Z","name":"talk.cancel.session"}
