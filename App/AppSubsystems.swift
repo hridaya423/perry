@@ -344,7 +344,6 @@ final class AppSubsystems {
             sessionController: app.sessionController,
             workers: self.workers,
             probe: self.probe,
-            runtimes: self.runtimes,
             voice: self.voice,
             remoteIntegrationExecutor: self.remoteIntegrationExecutor,
             activityLog: self.activityLog,
@@ -363,7 +362,6 @@ final class AppSubsystems {
             sessionController: app.sessionController,
             workers: self.workers,
             probe: self.probe,
-            runtimes: self.runtimes,
             voice: self.voice,
             remoteIntegrationExecutor: self.remoteIntegrationExecutor,
             activityLog: self.activityLog,
@@ -376,9 +374,7 @@ final class AppSubsystems {
 #endif
         // Open-ended Do goals route through the agent loop; its tools run on
         // the session's claimed worker, not a competing background one.
-        // Test harnesses opt out (`usesAgentRunner: false`) to keep the typed
-        // plan path deterministic.
-        controller.agentCoordinator = app.foregroundUsesAgentRunner ? agentCoordinator : nil
+        controller.agentCoordinator = agentCoordinator
         controller.workerLease = self.foregroundWorkerLease
         return controller
     }()

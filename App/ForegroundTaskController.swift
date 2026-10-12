@@ -31,7 +31,6 @@ final class ForegroundTaskController: ObservableObject {
     private let sessionController: SessionController
     private let workers: CuaWorkerService
     private let probe: EnvironmentProbe
-    private let runtimes: RuntimeCatalog
     private let voice: VoiceController
     private let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
     private let activityLog: ActivityLog
@@ -89,7 +88,6 @@ final class ForegroundTaskController: ObservableObject {
         sessionController: SessionController,
         workers: CuaWorkerService,
         probe: EnvironmentProbe,
-        runtimes: RuntimeCatalog,
         voice: VoiceController,
         remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
         activityLog: ActivityLog,
@@ -102,7 +100,6 @@ final class ForegroundTaskController: ObservableObject {
         self.sessionController = sessionController
         self.workers = workers
         self.probe = probe
-        self.runtimes = runtimes
         self.voice = voice
         self.remoteIntegrationExecutor = remoteIntegrationExecutor
         self.activityLog = activityLog
@@ -124,7 +121,6 @@ final class ForegroundTaskController: ObservableObject {
         sessionController: SessionController,
         workers: CuaWorkerService,
         probe: EnvironmentProbe,
-        runtimes: RuntimeCatalog,
         voice: VoiceController,
         remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
         activityLog: ActivityLog,
@@ -142,7 +138,6 @@ final class ForegroundTaskController: ObservableObject {
             sessionController: sessionController,
             workers: workers,
             probe: probe,
-            runtimes: runtimes,
             voice: voice,
             remoteIntegrationExecutor: remoteIntegrationExecutor,
             activityLog: activityLog,
@@ -417,57 +412,23 @@ final class ForegroundTaskController: ObservableObject {
                 title: $0.title.isEmpty ? "Frontmost window" : $0.title
             )
         } ?? probe.targetWindow(for: captured.context)
-        if let coordinator = agentCoordinator {
-            // Open-ended Do runs the agent loop: the model observes and acts
-            // through the tool host itself (intent cards per call) instead of
-            // committing to a typed plan up front. preferredRuntimeID is
-            // folded into the brain's deep route, not the runtime catalog.
-            return try await executeAgentRun(
-                goal: goal,
-                attemptID: attemptID,
-                targetWindow: targetWindow,
-                target: captured.target?.hint ?? targetHint,
-                conversationID: threadID,
-                worker: worker,
-                workspace: workspace,
-                coordinator: coordinator
-            )
-        }
-        // Legacy path: typed plan → supervisor. Kept for callers that
-        // construct the controller without an agent coordinator (DEBUG test
-        // harnesses); the plan path is retired for product entry points.
-        guard let runtimeSelection = await runtimes.select(
-            workingDirectory: workspace,
-            preferredProviderID: RuntimeCatalog.providerID(from: preferredRuntimeID),
-            goal: goal,
-            attemptID: attemptID,
-            attemptIsCurrent: { [weak self] id in self?.taskStartIsCurrent(id) ?? false }
-        ) else {
-            guard taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus("No authenticated, healthy, bounded runtime is available.")
-            voice.speak("No authenticated, healthy, bounded runtime is available.")
+        // Open-ended Do runs the agent loop: the model observes and acts
+        // through the tool host itself (intent cards per call) instead of
+        // committing to a typed plan up front.
+        guard let coordinator = agentCoordinator else {
+            hooks.setStatus("Perry's agent runner is unavailable.")
+            voice.speak("Perry's agent runner is unavailable.")
             return nil
         }
-        guard taskStartIsCurrent(attemptID) else { return nil }
-        let taskUUID = UUID()
-        let taskID = TaskID(taskUUID.uuidString)
-        let request = try PlanningRequest(
-            goal: goal,
-            taskID: taskID,
-            workspace: workspace,
-            context: .screen(captured.context)
-        )
-        let plan = try await runtimeSelection.provider.plan(request)
-        return try await executePreparedPlan(
-            plan: plan,
+        return try await executeAgentRun(
             goal: goal,
             attemptID: attemptID,
-            captured: captured,
             targetWindow: targetWindow,
+            target: captured.target?.hint ?? targetHint,
+            conversationID: threadID,
             worker: worker,
             workspace: workspace,
-            sandboxLabel: runtimes.name(for: runtimeSelection.providerID.rawValue),
-            initialWarnings: runtimeSelection.explanation.fallbackReason.map { [$0] } ?? []
+            coordinator: coordinator
         )
     }
 
@@ -1271,7 +1232,7 @@ final class ForegroundTaskController: ObservableObject {
         activityStripWindow?.debugInvokeStop()
     }
 
-    func debugRun(goal: String, preferredRuntimeID: String? = nil) async throws -> DoOutcome? {
+    func debugRun(goal: String) async throws -> DoOutcome? {
         let attemptID = sessionController.currentOrFreshAttemptID
         guard beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
         defer { cancelInvocationIfCurrent(attemptID) }
@@ -1279,7 +1240,7 @@ final class ForegroundTaskController: ObservableObject {
             try await self.runForegroundOperation(
                 goal: goal,
                 attemptID: attemptID,
-                preferredRuntimeID: preferredRuntimeID,
+                preferredRuntimeID: nil,
                 worker: worker
             )
         }

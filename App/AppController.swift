@@ -93,7 +93,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
     /// plan path so fixtures stay deterministic without a provider.
-    let foregroundUsesAgentRunner: Bool
     let notifier: any AppNotificationClient
 #if DEBUG
     let debugSeams: DebugLaunchSeams
@@ -130,7 +129,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugSeams = .launch(arguments: ProcessInfo.processInfo.arguments)
 #endif
         debugFinalizationPersistenceBarrier = nil
-        foregroundUsesAgentRunner = true
         let notifier = SystemNotifier()
         self.notifier = notifier
         sessionController = SessionController()
@@ -143,7 +141,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         debugSeams = DebugLaunchSeams(guidePlanner: AXGuidePlanner())
 #endif
         debugFinalizationPersistenceBarrier = nil
-        foregroundUsesAgentRunner = false
         let notifier = SystemNotifier()
         self.notifier = notifier
         self.sessionController = sessionController
@@ -170,7 +167,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         notifier: (any AppNotificationClient)? = nil,
         confirmer: (any Confirmer)? = nil,
         askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
-        usesAgentRunner: Bool = false
     ) {
         debugSeams = DebugLaunchSeams(
             storageDirectory: debugStorageDirectory,
@@ -188,7 +184,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             askUser: askUser
         )
         debugFinalizationPersistenceBarrier = finalizationPersistenceBarrier
-        foregroundUsesAgentRunner = usesAgentRunner
         self.notifier = notifier ?? SystemNotifier()
         self.sessionController = sessionController ?? SessionController()
         super.init()

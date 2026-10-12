@@ -543,86 +543,22 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(probe.currentTargetHint(), next)
     }
 
-    func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let workspace = WorkspaceCapture()
-        let inspector = RuntimeInventoryInspector(
-            readDirectProvider: { nil },
-            commandLineProviders: []
-        )
-        let inventory = try await inspector.inspect(workingDirectory: directory)
-        let provider = try XCTUnwrap(inventory.registry.provider(for: "local.workspace-files"))
-        XCTAssertEqual(provider.descriptor.operations, [.planning, .execution])
-        XCTAssertEqual(provider.descriptor.capabilities, RuntimeCapabilities(fileIO: true, latencyClass: .fast))
-        XCTAssertEqual(
-            ProductionRuntimeSelector().select(
-                from: inventory.registry,
-                preferredProviderID: "local.workspace-files"
-            )?.providerID,
-            "local.workspace-files"
-        )
-        let controller = makeProductionController(
-            directory: directory,
-            inspector: inspector,
-            workspace: workspace
-        )
-
-        let goal = #"create file "report.txt" with "typed foreground""#
-        let outcome = try await controller.foreground.debugRun(
-            goal: goal,
-            preferredRuntimeID: "local.workspace-files"
-        )
-        let taskWorkspace = try XCTUnwrap(workspace.value)
-        let file = taskWorkspace.appendingPathComponent("report.txt")
-        let history = await TranscriptStore(directory: directory).snapshot()
-
-        XCTAssertEqual(outcome, .completed(stepsRun: 1))
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "typed foreground")
-        XCTAssertEqual(history.first?.outcome, .completed)
-        XCTAssertEqual(history.first?.verified, true)
-
-        // The transform journaled through the shared write-ahead record —
-        // a foreground run lands the same durable receipt Undo reads.
-        await controller.backgroundTasks.reloadRecords()
-        let taskRecord = try XCTUnwrap(controller.backgroundTasks.records.first)
-        XCTAssertTrue(taskRecord.isTerminal)
-        XCTAssertEqual(taskRecord.state, .completed)
-        XCTAssertEqual(taskRecord.workspaceJournal?.completed.count, 1)
-        XCTAssertEqual(taskRecord.workspaceJournal?.completed.first?.receipt.effect, .createdFile(path: "report.txt", byteCount: 16))
-    }
-
     func testDoStartDuringPendingInvocationAdoptsIt() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let workspace = WorkspaceCapture()
         let session = SessionController()
-        let controller = makeWakingController(
-            directory: directory,
-            session: session,
-            workspace: workspace
-        )
+        let controller = makeWakingController(directory: directory, session: session)
+        installAgentRunner(on: controller, directory: directory)
 
         // Hotkey wake leaves the session .invoking; a Do submission must
         // adopt that invocation instead of dropping on a mismatched id.
         try session.wake()
-        controller.foreground.start(goal: #"create file "adopted.txt" with "post-wake""#)
+        controller.foreground.start(goal: "describe the screen")
 
-        var created = false
-        for _ in 0..<200 where !created {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            if let taskWorkspace = workspace.value {
-                created = FileManager.default.fileExists(
-                    atPath: taskWorkspace.appendingPathComponent("adopted.txt").path
-                )
-            }
+        let finished = await waitUntil(timeout: .seconds(10)) {
+            controller.transcriptPreview == "The fixture answer."
         }
-        XCTAssertTrue(created, "Do goal submitted while .invoking never ran — state: \(controller.sessionState), status: \(controller.sessionStatus)")
-        let taskWorkspace = try XCTUnwrap(workspace.value)
-        XCTAssertEqual(
-            try String(contentsOf: taskWorkspace.appendingPathComponent("adopted.txt"), encoding: .utf8),
-            "post-wake"
-        )
+        XCTAssertTrue(finished, "Do goal submitted while .invoking never ran — state: \(controller.sessionState), status: \(controller.sessionStatus)")
         await controller.foreground.joinStartTask()
     }
 
@@ -694,10 +630,17 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
-        let controller = makeController(
+        let controller = makeWakingController(
             directory: directory,
-            planner: ForegroundPlanner(),
-            askUser: { _, _ in await gate.pause() }
+            session: SessionController()
+        )
+        installAgentRunner(
+            on: controller,
+            directory: directory,
+            provider: ForegroundAnswerProvider(
+                reason: .endTurn,
+                waitAfterFirstText: { await gate.pause() }
+            )
         )
         defer { Task { await gate.release() } }
 
@@ -748,57 +691,6 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(dismissed, "dismiss while .asking did not settle — state: \(controller.sessionState)")
     }
 
-    func testFileGoalRoutesAwayFromConfiguredDirectProvider() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let endpoint = BYOKAgentEndpoint(
-            baseURL: try XCTUnwrap(URL(string: "https://api.openai.com")),
-            model: "fixture-model"
-        )
-        let inspector = RuntimeInventoryInspector(
-            readDirectProvider: {
-                ConfiguredDirectRuntime(endpoint: endpoint, credential: "fixture-secret")
-            },
-            commandLineProviders: []
-        )
-        let workspace = WorkspaceCapture()
-        let controller = makeProductionController(
-            directory: directory,
-            inspector: inspector,
-            workspace: workspace
-        )
-
-        let outcome = try await controller.foreground.debugRun(
-            goal: #"create file "routed.txt" with "workspace route""#
-        )
-        let taskWorkspace = try XCTUnwrap(workspace.value)
-
-        XCTAssertEqual(outcome, .completed(stepsRun: 1))
-        XCTAssertEqual(
-            try String(contentsOf: taskWorkspace.appendingPathComponent("routed.txt"), encoding: .utf8),
-            "workspace route"
-        )
-    }
-
-    func testTypedPlanningErrorDoesNotCallLegacyPlannerOrExecute() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let planner = ForegroundPlanner(error: PlanningError.typedPlanRejected("fixture planning failure"))
-        let controller = makeController(
-            directory: directory,
-            planner: planner
-        )
-
-        do {
-            _ = try await controller.foreground.debugRun(goal: "typed planning failure")
-            XCTFail("typed planning failure should stop foreground execution")
-        } catch let error as PlanningError {
-            XCTAssertEqual(error, .typedPlanRejected("fixture planning failure"))
-        }
-
-        XCTAssertEqual(controller.sessionState, .idle)
-    }
-
     func testAgentRunnerRouteSkipsTheTypedPlanner() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
@@ -822,28 +714,25 @@ final class ForegroundPlanningTests: XCTestCase {
     func testFailedForegroundTaskRetryDispatchesTheReplacementOnce() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let planner = ForegroundPlanner()
-        let askUser = FailOnceAskUser()
-        let controller = makeController(
+        let provider = FailOnceProvider()
+        let controller = makeWakingController(
             directory: directory,
-            planner: planner,
-            askUser: { _, _ in try await askUser.answer() }
+            session: SessionController()
         )
+        installAgentRunner(on: controller, directory: directory, provider: provider)
 
         let firstOutcome = try await controller.foreground.debugRun(goal: "retry this task")
-        XCTAssertEqual(
-            firstOutcome,
-            .failed(stepSummary: "Typed action", reason: "retry fixture failure")
-        )
+        guard case .failed = firstOutcome else {
+            return XCTFail("expected the first attempt to fail, got \(firstOutcome)")
+        }
 
         controller.foreground.retry()
         let retried = await waitUntil(timeout: .seconds(10)) {
-            await askUser.callCount == 2
+            provider.callCount == 2
         }
 
         XCTAssertTrue(retried, "session state after retry: \(controller.sessionState), status: \(controller.sessionStatus)")
-        let callCount = await askUser.callCount
-        XCTAssertEqual(callCount, 2)
+        XCTAssertEqual(provider.callCount, 2)
         await controller.foreground.joinStartTask()
     }
 
@@ -879,13 +768,12 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
-        let planner = ForegroundPlanner()
-        let controller = makeController(
+        let controller = makeWakingController(
             directory: directory,
-            planner: planner,
-            finalizationBarrier: { await gate.pause() },
-            typedVerifier: AlwaysVerifiedTypedActionVerifier()
+            session: SessionController(),
+            finalizationBarrier: { await gate.pause() }
         )
+        installAgentRunner(on: controller, directory: directory)
 
         let operation = Task {
             try await controller.foreground.debugRun(goal: "stop during finalization")
@@ -910,12 +798,12 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let gate = FinalizationGate()
-        let controller = makeController(
+        let controller = makeWakingController(
             directory: directory,
-            planner: ForegroundPlanner(),
-            finalizationPersistenceBarrier: { await gate.pause() },
-            typedVerifier: AlwaysVerifiedTypedActionVerifier()
+            session: SessionController(),
+            finalizationPersistenceBarrier: { await gate.pause() }
         )
+        installAgentRunner(on: controller, directory: directory)
 
         let operation = Task {
             try await controller.foreground.debugRun(goal: "stop during persistence")
@@ -925,7 +813,7 @@ final class ForegroundPlanningTests: XCTestCase {
         await gate.release()
 
         let outcome = try await operation.value
-        XCTAssertEqual(outcome, .completed(stepsRun: 1))
+        XCTAssertEqual(outcome, .completed(stepsRun: 0))
         guard case .reporting(let report) = controller.sessionState else {
             return XCTFail("expected a completed report")
         }
@@ -1304,38 +1192,6 @@ final class ForegroundPlanningTests: XCTestCase {
         await replacementRun.value
     }
 
-    func testStaleStartupErrorCannotOverwriteReplacementAttempt() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let gate = StartupPlanningGate()
-        let planner = StaleErrorPlanner(gate: gate)
-        let controller = makeController(
-            directory: directory,
-            planner: planner,
-            typedVerifier: AlwaysVerifiedTypedActionVerifier()
-        )
-        controller.foreground.start(goal: "old attempt")
-        await gate.waitForCall(1)
-        controller.dismiss()
-        controller.foreground.start(goal: "replacement attempt")
-        let replacementStatus = controller.sessionStatus
-        await gate.releaseFirst()
-        await gate.waitForFirstError()
-        await Task.yield()
-
-        XCTAssertEqual(controller.sessionStatus, replacementStatus)
-        guard case .invoking = controller.sessionState else {
-            return XCTFail("replacement attempt was lost: \(controller.sessionState)")
-        }
-        controller.dismiss()
-        await gate.releaseSecond()
-        let replacementCancelled = await waitUntil {
-            if case .idle = controller.sessionState { return true }
-            return false
-        }
-        XCTAssertTrue(replacementCancelled, "replacement state: \(controller.sessionState)")
-    }
-
     func testOlderActivityRetirementCannotClearReplacementWithSameTaskID() async throws {
         let session = SessionController()
         let taskID = UUID()
@@ -1475,7 +1331,9 @@ final class ForegroundPlanningTests: XCTestCase {
     private func makeWakingController(
         directory: URL,
         session: SessionController,
-        workspace: WorkspaceCapture? = nil
+        workspace: WorkspaceCapture? = nil,
+        finalizationBarrier: (@MainActor () async -> Void)? = nil,
+        finalizationPersistenceBarrier: (@Sendable () async -> Void)? = nil
     ) -> AppController {
         let inspector = RuntimeInventoryInspector(
             readDirectProvider: { nil },
@@ -1498,6 +1356,8 @@ final class ForegroundPlanningTests: XCTestCase {
             cuaHealthLoader: {
                 CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
             },
+            finalizationBarrier: finalizationBarrier,
+            finalizationPersistenceBarrier: finalizationPersistenceBarrier,
             screenContextLoader: { _, _ in
                 (
                     ScreenContext(
@@ -1511,6 +1371,21 @@ final class ForegroundPlanningTests: XCTestCase {
             },
             notifier: ForegroundNotifier(),
             confirmer: ApprovingConfirmer()
+        )
+    }
+
+    /// Routes `foreground`'s open-ended Do path through an AgentCoordinator
+    /// backed by `provider`, the same production route `AppSubsystems` wires.
+    private func installAgentRunner(
+        on controller: AppController,
+        directory: URL,
+        provider: any ModelProvider = ForegroundAnswerProvider(reason: .endTurn)
+    ) {
+        controller.foreground.agentCoordinator = AgentCoordinator(
+            provider: { _ in provider },
+            host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: directory.appendingPathComponent("agent-threads")),
+            consent: ToolConsentStore(directory: nil)
         )
     }
 
@@ -1583,119 +1458,11 @@ private final class ForegroundPlanner: TaskPlanner, @unchecked Sendable {
     }
 }
 
-private final class StaleErrorPlanner: TaskPlanner, @unchecked Sendable {
-    let id = "fixture.stale-error"
-    let capabilities = RuntimeCapabilities(latencyClass: .fast)
-    private let gate: StartupPlanningGate
-    private let fixture = ForegroundPlanner()
-
-    init(gate: StartupPlanningGate) {
-        self.gate = gate
-    }
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        switch await gate.enter() {
-        case 1:
-            await gate.waitForFirstRelease()
-            await gate.markFirstError()
-            throw StaleStartupError.firstAttempt
-        default:
-            await gate.waitForSecondRelease()
-            return try await fixture.plan(request)
-        }
-    }
-}
-
-private enum StaleStartupError: Error {
-    case firstAttempt
-}
-
 private enum FullGuidePlannerError: Error, LocalizedError {
     case failed
 
     var errorDescription: String? {
         "fixture full-guide planner failure"
-    }
-}
-
-private actor StartupPlanningGate {
-    private var callCount = 0
-    private var callWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
-    private var firstReleased = false
-    private var secondReleased = false
-    private var firstErrorObserved = false
-    private var firstReleaseWaiter: CheckedContinuation<Void, Never>?
-    private var secondReleaseWaiter: CheckedContinuation<Void, Never>?
-    private var firstErrorWaiter: CheckedContinuation<Void, Never>?
-
-    func enter() -> Int {
-        callCount += 1
-        callWaiters[callCount]?.resume()
-        callWaiters[callCount] = nil
-        return callCount
-    }
-
-    func waitForCall(_ count: Int) async {
-        if callCount >= count { return }
-        await withCheckedContinuation { continuation in
-            callWaiters[count] = continuation
-        }
-    }
-
-    func waitForFirstRelease() async {
-        if firstReleased { return }
-        await withCheckedContinuation { continuation in
-            firstReleaseWaiter = continuation
-        }
-    }
-
-    func markFirstError() {
-        firstErrorObserved = true
-        firstErrorWaiter?.resume()
-        firstErrorWaiter = nil
-    }
-
-    func waitForFirstError() async {
-        if firstErrorObserved { return }
-        await withCheckedContinuation { continuation in
-            firstErrorWaiter = continuation
-        }
-    }
-
-    func waitForSecondRelease() async {
-        if secondReleased { return }
-        await withCheckedContinuation { continuation in
-            secondReleaseWaiter = continuation
-        }
-    }
-
-    func releaseFirst() {
-        firstReleased = true
-        firstReleaseWaiter?.resume()
-        firstReleaseWaiter = nil
-    }
-
-    func releaseSecond() {
-        secondReleased = true
-        secondReleaseWaiter?.resume()
-        secondReleaseWaiter = nil
-    }
-}
-
-private enum RetryFixtureError: Error, CustomStringConvertible {
-    case firstAttempt
-
-    var description: String { "retry fixture failure" }
-}
-
-private actor FailOnceAskUser {
-    private(set) var callCount = 0
-
-    func answer() throws {
-        callCount += 1
-        if callCount == 1 {
-            throw RetryFixtureError.firstAttempt
-        }
     }
 }
 
@@ -1865,6 +1632,32 @@ private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
             continuation.yield(.textDelta("Done."))
             continuation.yield(.done(.endTurn))
             continuation.finish()
+        }
+    }
+}
+
+/// Fails its first stream so retry coverage can prove the replacement run is
+/// dispatched exactly once; the second attempt answers normally.
+private final class FailOnceProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.fail-once"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.streaming]
+    private let lock = NSLock()
+    private var calls = 0
+    var callCount: Int { lock.withLock { calls } }
+    func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        let call = lock.withLock { calls += 1; return calls }
+        if call == 1 {
+            return AsyncThrowingStream {
+                $0.finish(throwing: ExecutionError(message: "first attempt failed"))
+            }
+        }
+        return AsyncThrowingStream {
+            $0.yield(.textDelta("Retried."))
+            $0.yield(.done(.endTurn))
+            $0.finish()
         }
     }
 }
