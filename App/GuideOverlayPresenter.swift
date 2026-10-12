@@ -23,7 +23,6 @@ struct GuideOverlayPresenter {
         )
         overlayState.detectedElementScreenLocation = CGPoint(x: frame.midX, y: frame.midY)
         overlayState.detectedElementDisplayFrame = frame
-        overlayState.detectedElementBubbleText = presentation.step.instruction
         overlayState.activeControlGlowRect = frame.insetBy(dx: -6, dy: -6)
         overlayState.activeControlGlowLabel = target.label ?? presentation.step.instruction
     }
@@ -51,7 +50,6 @@ struct GuideOverlayPresenter {
     func clearHighlight() {
         overlayState.detectedElementScreenLocation = nil
         overlayState.detectedElementDisplayFrame = nil
-        overlayState.detectedElementBubbleText = nil
         overlayState.activeControlGlowRect = nil
         overlayState.activeControlGlowLabel = nil
     }

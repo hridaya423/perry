@@ -140,8 +140,6 @@ public final class PerryCursorState: ObservableObject {
     @Published public var currentAudioPowerLevel: CGFloat = 0
     @Published public var detectedElementScreenLocation: CGPoint?
     @Published public var detectedElementDisplayFrame: CGRect?
-    @Published public var detectedElementBubbleText: String?
-    @Published public var detectedElementReturnsImmediately: Bool = false
     @Published public var agentTaskBubbleText: String?
     @Published public var externalPrimaryCaptionText: String?
     @Published public var externalPrimaryCaptionAccentHex: String?
@@ -152,14 +150,16 @@ public final class PerryCursorState: ObservableObject {
     @Published public var circleSelectSnapLabel: String?
     @Published public var activeControlGlowRect: CGRect?
     @Published public var activeControlGlowLabel: String?
+    /// Set by OverlayWindowManager: overlay windows are persistent now, so
+    /// this flag — not view appear/disappear — drives cursor tracking. A
+    /// hidden host must hold zero monitors and timers (idle CPU budget).
+    @Published public var overlayVisible: Bool = false
 
     public init() {}
 
     public func clearDetectedElementLocation() {
         detectedElementScreenLocation = nil
         detectedElementDisplayFrame = nil
-        detectedElementBubbleText = nil
-        detectedElementReturnsImmediately = false
     }
 }
 
