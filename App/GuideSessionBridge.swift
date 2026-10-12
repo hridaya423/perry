@@ -54,6 +54,10 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
         host?.voice.deliverVoiceReply(text, guideSpeechIdentity: identity)
     }
 
+    func guideIsSpeaking() -> Bool {
+        host?.voice.isSpeaking ?? false
+    }
+
     func guidePlay(_ cue: SoundPlayer.Cue) {
         SoundPlayer.play(cue)
     }

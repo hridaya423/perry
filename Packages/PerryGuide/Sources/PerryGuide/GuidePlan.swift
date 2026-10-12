@@ -163,6 +163,13 @@ public struct GuideProgress: Equatable, Sendable {
         presentedCount += 1
     }
 
+    /// Going back un-presents the current step: it leaves the presented
+    /// count and the step bound but is not recorded as skipped or
+    /// completed — it may be presented again on the way forward.
+    public mutating func recordUnpresented() {
+        presentedCount = max(0, presentedCount - 1)
+    }
+
     public mutating func recordCompleted(_ step: GuideStep) {
         completedInstructions.append(step.instruction)
         if completedInstructions.count > Self.historyLimit {

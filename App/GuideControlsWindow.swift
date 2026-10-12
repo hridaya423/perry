@@ -18,6 +18,8 @@ final class GuideControlsState: ObservableObject {
     /// click — the manual Done is hidden so it can't confirm what the
     /// observation can already prove (§3.4).
     @Published var hasPostcondition = false
+    /// Whether a previous presented step exists to return to (§3.4 Back).
+    @Published var canGoBack = false
 
     var mapIsPresented: Bool { !markerCaptions.isEmpty }
     var inputIsPending: Bool { pendingPrompt != nil }
@@ -29,12 +31,14 @@ final class GuideControlsState: ObservableObject {
         pendingPrompt = nil
         pendingChoices = []
         hasPostcondition = false
+        canGoBack = false
     }
 }
 
 struct GuideControlsView: View {
     @ObservedObject var state: GuideControlsState
     let onDone: () -> Void
+    let onBack: () -> Void
     let onSkip: () -> Void
     let onRepoint: () -> Void
     let onSelectMarker: (Int) -> Void
@@ -84,6 +88,9 @@ struct GuideControlsView: View {
                         .keyboardShortcut(.defaultAction)
                         .accessibilityHint("Tell Perry you finished this step")
                 }
+                Button("Back") { onBack() }
+                    .disabled(!state.canGoBack)
+                    .accessibilityHint("Show the previous step again")
                 Button("Skip") { onSkip() }
                     .accessibilityHint("Skip this step")
                 Button("Re-point") { onRepoint() }
@@ -166,6 +173,7 @@ final class GuideControlsWindow: NSPanel {
     init(
         state: GuideControlsState,
         onDone: @escaping () -> Void,
+        onBack: @escaping () -> Void,
         onSkip: @escaping () -> Void,
         onRepoint: @escaping () -> Void,
         onSelectMarker: @escaping (Int) -> Void,
@@ -194,6 +202,7 @@ final class GuideControlsWindow: NSPanel {
             rootView: GuideControlsView(
                 state: state,
                 onDone: onDone,
+                onBack: onBack,
                 onSkip: onSkip,
                 onRepoint: onRepoint,
                 onSelectMarker: onSelectMarker,

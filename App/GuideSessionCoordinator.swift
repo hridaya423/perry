@@ -39,10 +39,14 @@ protocol GuideSessionOutput: AnyObject {
     /// The user asked Perry to finish the guided task itself — shared
     /// control, one direction. The coordinator hands over the same goal.
     func guideRequestTakeOver(_ handoff: GuideHandoff)
+    /// True while Perry's synthesizer is talking — voice commands gate on
+    /// it so Perry's own instruction can't echo in as a command.
+    func guideIsSpeaking() -> Bool
 }
 
 extension GuideSessionOutput {
     func guideRequestTakeOver(_ handoff: GuideHandoff) {}
+    func guideIsSpeaking() -> Bool { false }
 }
 
 @MainActor
@@ -229,6 +233,12 @@ final class GuideSessionCoordinator {
     private var everythingGuideSession: EverythingGuideSession?
     private var guideControlsState = GuideControlsState()
     private var guideControlsWindow: GuideControlsWindow?
+    /// §3.4 voice controls — only listens while the guide controls are up
+    /// and only when mic + speech permission is already granted.
+    private lazy var guideVoiceCommands = GuideVoiceCommands(
+        onCommand: { [weak self] command in self?.handleVoiceCommand(command) },
+        isSpeaking: { [weak self] in self?.output?.guideIsSpeaking() ?? false }
+    )
     private var guideStepPosition = 0
     private var activeGuideStepID: UUID?
     private var activeGuideInstruction: String?
@@ -490,11 +500,13 @@ final class GuideSessionCoordinator {
     }
 
     private func showGuideControls() {
+        guideVoiceCommands.startIfPermitted()
         output?.guideSetBuddyState(.guiding)
         if guideControlsWindow == nil {
             guideControlsWindow = GuideControlsWindow(
                 state: guideControlsState,
                 onDone: { [weak self] in self?.advanceGuide() },
+                onBack: { [weak self] in self?.goBackGuideStep() },
                 onSkip: { [weak self] in self?.skipGuideStep() },
                 onRepoint: { [weak self] in self?.repointGuideStep() },
                 onSelectMarker: { [weak self] index in self?.selectMarker(index: index) },
@@ -509,6 +521,7 @@ final class GuideSessionCoordinator {
     }
 
     private func hideGuideControls() {
+        guideVoiceCommands.stop()
         guideControlsWindow?.orderOut(nil)
         guideControlsWindow = nil
         guideControlsState.reset()
@@ -580,6 +593,34 @@ final class GuideSessionCoordinator {
             defer { scope?.removeCallback(callbackID) }
             guard !Task.isCancelled else { return }
             let result = await engine.skip()
+            guard !Task.isCancelled, let self, self.guideIsCurrent(guideID) else { return }
+            self.handleGuideResult(result, guideID: guideID)
+        }
+        scope.addAction(task, id: callbackID)
+    }
+
+    /// §3.4: "next" / "back" / "skip" / "stop" / "do it" route to the same
+    /// affordances the controls panel exposes.
+    private func handleVoiceCommand(_ command: GuideVoiceCommands.Command) {
+        PerfMark.mark("guide.voice.command")
+        switch command {
+        case .next: advanceGuide()
+        case .back: goBackGuideStep()
+        case .skip: skipGuideStep()
+        case .stop: _ = dismissIfActive()
+        case .doIt: takeOverGuide()
+        }
+    }
+
+    private func goBackGuideStep() {
+        guard let guideID = activeGuideID,
+              let scope = currentGuideScope,
+              let engine = scope.engine,
+              let callbackID = scope.reserveAction() else { return }
+        let task = Task { @MainActor [weak self, weak scope] in
+            defer { scope?.removeCallback(callbackID) }
+            guard !Task.isCancelled else { return }
+            let result = await engine.back()
             guard !Task.isCancelled, let self, self.guideIsCurrent(guideID) else { return }
             self.handleGuideResult(result, guideID: guideID)
         }
@@ -1028,6 +1069,11 @@ final class GuideSessionCoordinator {
             present(step: step)
             speak(step.instruction, guideID: guideID, stepID: step.id)
             if !step.waitForUserAction { scheduleGuideFinish(after: 1.5) }
+        case .wentBack(let step, _):
+            guideStepPosition = max(1, guideStepPosition - 1)
+            present(step: step)
+            speak(step.instruction, guideID: guideID, stepID: step.id)
+            if !step.waitForUserAction { scheduleGuideFinish(after: 1.5) }
         case .finished:
             finishGuide(guideID: guideID, outcome: .completed)
         case .explanationEnded:
@@ -1192,6 +1238,7 @@ final class GuideSessionCoordinator {
             guard let self, let presentation = await engine.currentPresentation(), presentation.step.id == step.id, self.activeGuideID == guideID else { return }
             self.output?.guidePresent(presentation)
             self.guideControlsState.targetLabel = presentation.target?.label ?? presentation.target?.role.rawValue
+            self.guideControlsState.canGoBack = await engine.canGoBack
         }
         scope.addCallback(task, id: callbackID)
     }

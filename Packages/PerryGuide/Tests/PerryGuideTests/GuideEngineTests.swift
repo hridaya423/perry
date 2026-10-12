@@ -1373,6 +1373,79 @@ final class GuideEngineTests: XCTestCase {
         let reads = await observer.readCount()
         XCTAssertEqual(reads, 1)
     }
+
+    // MARK: - Back navigation (§3.4)
+
+    /// Back re-presents the previous step after re-validating its target
+    /// against a fresh observation — no planner call, no stale mark.
+    func testBackRePresentsPreviousStep() async throws {
+        let before = snapshot([button("a", label: "First")])
+        let after = snapshot([button("a", label: "First"), button("b", label: "Second")])
+        let observer = StubObserver(snapshots: [before, after])
+        let stepA = GuideStep(
+            instruction: "do first",
+            target: .axElement(stableID: "a"),
+            postcondition: .elementExists(stableID: "b")
+        )
+        let stepB = GuideStep(instruction: "do second", target: .axElement(stableID: "b"))
+        let engine = GuideEngine(planner: CountingPlanner(path: [stepA, stepB]), observer: observer)
+
+        _ = try await engine.start(goal: "two steps")
+        var canGoBack = await engine.canGoBack
+        XCTAssertFalse(canGoBack)
+        let firstStepBack = await engine.back()
+        XCTAssertEqual(firstStepBack, .notPresenting)
+
+        _ = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        canGoBack = await engine.canGoBack
+        XCTAssertTrue(canGoBack)
+        var presented = await engine.progress.presentedCount
+        XCTAssertEqual(presented, 2)
+
+        let result = await engine.back()
+        guard case .wentBack(let step, let index) = result else {
+            return XCTFail("expected wentBack, got \(result)")
+        }
+        XCTAssertEqual(step.instruction, "do first")
+        XCTAssertEqual(index, 0)
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .presenting(stepIndex: 0))
+        presented = await engine.progress.presentedCount
+        XCTAssertEqual(presented, 1)
+        canGoBack = await engine.canGoBack
+        XCTAssertFalse(canGoBack)
+    }
+
+    /// Back to a target that no longer exists is blocked, and the session
+    /// stays on the current step — never a silent jump to a stale mark.
+    func testBackToVanishedTargetBlocksWithoutLosingCurrentStep() async throws {
+        let before = snapshot([button("a", label: "First")])
+        let after = snapshot([button("a", label: "First"), button("b", label: "Second")])
+        let gone = snapshot([button("b", label: "Second")])
+        let observer = StubObserver(snapshots: [before, after, gone])
+        let stepA = GuideStep(
+            instruction: "do first",
+            target: .axElement(stableID: "a"),
+            postcondition: .elementExists(stableID: "b")
+        )
+        let stepB = GuideStep(instruction: "do second", target: .axElement(stableID: "b"))
+        let engine = GuideEngine(planner: CountingPlanner(path: [stepA, stepB]), observer: observer)
+
+        _ = try await engine.start(goal: "two steps")
+        _ = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+
+        let result = await engine.back()
+        guard case .blocked = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 1))
+        let presented = await engine.progress.presentedCount
+        XCTAssertEqual(presented, 2)
+        let canGoBack = await engine.canGoBack
+        XCTAssertTrue(canGoBack)
+    }
+
 }
 
 private struct ObservationPlanner: GuidePlanner {
@@ -1415,4 +1488,7 @@ private struct DecisionQueuePlanner: GuidePlanner {
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
         []
     }
+
+
+   
 }

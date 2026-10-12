@@ -19,6 +19,14 @@ public actor GuideEngine {
     private let clickMatcher: ClickAdvanceMatcher
     private(set) public var phase: Phase
     private(set) public var progress = GuideProgress()
+    /// Every step the user was shown, in order — Back re-presents the
+    /// previous one rather than asking the planner for it again.
+    private var presentedSteps: [GuideStep] = []
+
+    /// True once a second presented step exists to go back to.
+    public var canGoBack: Bool {
+        currentStepIndex != nil && presentedSteps.count >= 2
+    }
     private var currentStep: GuideStep?
     private var presentationObservation: GuideObservation?
     private var actionBaseline: GuideObservation?
@@ -172,6 +180,47 @@ public actor GuideEngine {
         return await presentNext(observation: observation)
     }
 
+    /// Re-present the previous presented step ("Back") so the user can see
+    /// its instruction again. The current step is unpresented — it counts
+    /// neither toward the step bound nor the completed history — and the
+    /// previous step's target is re-validated against a fresh observation
+    /// so a moved or changed window never re-shows a stale mark.
+    public func back() async -> AdvanceResult {
+        guard currentStepIndex != nil, presentedSteps.count >= 2 else {
+            return .notPresenting
+        }
+        let previous = presentedSteps[presentedSteps.count - 2]
+        let observation: GuideObservation
+        do {
+            observation = try await observer.observe()
+        } catch is CancellationError {
+            return .notPresenting
+        } catch {
+            phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
+            return .blocked(reason: "Cua could not read the window to go back: \(error.localizedDescription)")
+        }
+        do {
+            try GuideTargetValidator.requireUnprotected(observation)
+            if let baseline = presentationObservation {
+                try requireSameTarget(observation, as: baseline)
+            }
+            _ = try GuideTargetValidator.validated(previous, in: observation)
+        } catch is CancellationError {
+            return .notPresenting
+        } catch {
+            phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
+            return .blocked(reason: error.localizedDescription)
+        }
+        presentedSteps.removeLast()
+        progress.recordUnpresented()
+        currentStep = previous
+        presentationObservation = observation
+        actionBaseline = observation
+        hasRepointed = false
+        phase = .presenting(stepIndex: progress.presentedCount - 1)
+        return .wentBack(toStep: previous, stepIndex: progress.presentedCount - 1)
+    }
+
     /// Continues after a planner `needsInput` pause: the chosen answer joins
     /// the next planner call alongside a fresh observation. `.idle` is
     /// accepted because a `needsInput` during `start` throws before any step
@@ -222,6 +271,7 @@ public actor GuideEngine {
         hasRepointed = false
         inputAnswer = nil
         plannedSteps = []
+        presentedSteps = []
     }
 
     private var currentStepIndex: Int? {
@@ -378,6 +428,7 @@ public actor GuideEngine {
         currentStep = step
         presentationObservation = observation
         actionBaseline = observation
+        presentedSteps.append(step)
         progress.recordPresented()
         phase = .presenting(stepIndex: progress.presentedCount - 1)
     }
@@ -414,6 +465,7 @@ public struct GuidePresentation: Equatable, Sendable {
 
 public enum AdvanceResult: Equatable, Sendable {
     case advanced(toStep: GuideStep, stepIndex: Int)
+    case wentBack(toStep: GuideStep, stepIndex: Int)
     case stillWaiting(stepIndex: Int)
     case ignoredClick(stepIndex: Int, hitLabel: String? = nil)
     case blocked(reason: String)
