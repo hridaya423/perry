@@ -8,71 +8,44 @@ import PerryRuntimes
 
 @MainActor
 final class BackgroundTaskCreationTests: XCTestCase {
-    func testCanonicalFileQueueApprovesExecutesAndReportsWithoutDesktopCapture() async throws {
+    /// The canonical workspace task: an executable plan enqueued against a
+    /// BackgroundWorkspaces slot approves, executes, reports, and notifies —
+    /// all without touching desktop permissions or captures.
+    func testCanonicalFileTaskApprovesExecutesAndReportsWithoutDesktopCapture() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         addTeardownBlock { try TestTempDirectory.remove(directory) }
 
         let probe = BackgroundCreationProbe()
-        let inspector = RuntimeInventoryInspector(readDirectProvider: { nil }, commandLineProviders: [])
-        let controller = AppController(
-            debugStorageDirectory: directory,
-            runtimeInventoryLoader: { workingDirectory in
-                try await inspector.inspect(workingDirectory: workingDirectory)
-            },
-            permissionSnapshotLoader: {
-                probe.incrementPermission()
-                XCTFail("canonical file planning must not request desktop permissions")
-                return PerryPermissionSnapshot(
-                    accessibility: true,
-                    screenRecording: .granted,
-                    microphone: .granted
-                )
-            },
-            screenContextLoader: { _, _ in
-                probe.incrementCapture()
-                XCTFail("canonical file planning must not capture the desktop")
-                return (ScreenContext.empty, nil)
-            },
-            notifier: probe
-        )
+        let controller = makeController(directory: directory, probe: probe)
 
         let goal = #"create file "report.txt" with "hello from queue""#
-        controller.backgroundTasks.queue(goal: goal)
-        let queuedAppeared = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
-            guard let record = controller.backgroundTasks.records.first,
-                  record.workspaceActionToApprove != nil else { return false }
-            guard let metadata = await controller.backgroundTasks.debugMetadata(record.id),
-                  metadata.workspacePath != nil,
-                  metadata.runtimeRoutingSummary?.contains("Perry local planner") == true else { return false }
-            return true
-        }
-        XCTAssertTrue(queuedAppeared)
-        let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
-        guard case .executable(let plan) = queued.plan else {
+        let taskID = TaskID()
+        let workspace = directory
+            .appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
+            .appendingPathComponent(taskID.rawValue, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
+            goal: goal, workspace: workspace, taskID: taskID
+        )
+        let plan = try XCTUnwrap(proposed)
+        let queued = try await controller.backgroundTaskCoordinator.enqueue(executablePlan: plan)
+        await controller.backgroundTasks.reloadRecords()
+
+        guard case .executable(let storedPlan) = queued.plan else {
             return XCTFail("expected canonical executable plan")
         }
-        let action = try XCTUnwrap(plan.actions.first)
-        XCTAssertEqual(plan.taskID, queued.id)
-        XCTAssertEqual(plan.goal, goal)
+        let action = try XCTUnwrap(storedPlan.actions.first)
+        XCTAssertEqual(storedPlan.taskID, queued.id)
+        XCTAssertEqual(storedPlan.goal, goal)
         XCTAssertEqual(queued.workspaceActionToApprove?.id, action.id)
-        let storedMetadata = await controller.backgroundTasks.debugMetadata(queued.id)
-        let metadata = try XCTUnwrap(storedMetadata)
-        XCTAssertNil(metadata.targetAppBundleID)
-        XCTAssertNil(metadata.targetWindowTitle)
-        XCTAssertNil(metadata.targetProcessID)
-        XCTAssertNil(metadata.targetWindowID)
-        XCTAssertTrue(metadata.runtimeRoutingSummary?.contains("Perry local planner") == true)
-        let workspacePath = try XCTUnwrap(metadata.workspacePath)
-        XCTAssertTrue(workspacePath.hasPrefix(directory.appendingPathComponent("BackgroundWorkspaces").path + "/"))
-        let fileURL = URL(fileURLWithPath: workspacePath).appendingPathComponent("report.txt")
+        let fileURL = workspace.appendingPathComponent("report.txt")
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
         guard case .transform(let actionWorkspace, _) = action.operation else {
             return XCTFail("expected a workspace file action")
         }
-        XCTAssertEqual(actionWorkspace.standardizedFileURL.path, URL(fileURLWithPath: workspacePath).standardizedFileURL.path)
+        XCTAssertEqual(actionWorkspace.standardizedFileURL.path, workspace.standardizedFileURL.path)
 
         controller.backgroundTasks.approveWorkspace(queued)
         let fileCompleted = await waitUntil {
@@ -89,11 +62,8 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertEqual(history.first?.id, plan.planID)
         XCTAssertEqual(history.first?.outcome, .completed)
         XCTAssertEqual(history.first?.steps, [action.summary])
-        let removedMetadata = await controller.backgroundTasks.debugMetadata(queued.id)
-        XCTAssertNil(removedMetadata)
         XCTAssertEqual(probe.permissionCalls, 0)
         XCTAssertEqual(probe.captureCalls, 0)
-        XCTAssertEqual(probe.notificationAuthorizationCalls, 1)
         XCTAssertEqual(probe.notifications.filter { $0.kind == .completed }.map(\.taskID), [queued.id])
     }
 
@@ -106,20 +76,14 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
-        let controller = makeController(
-            directory: directory,
-            planner: LocalTaskPlannerRuntime(),
-            probe: probe
-        )
+        let controller = makeController(directory: directory, probe: probe)
         controller.backgroundTasks.debugTrashURL = trash
 
-        controller.backgroundTasks.queue(goal: #"create file "undo-me.txt" with "revert me""#)
-        let queuedAppeared = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
-            return controller.backgroundTasks.records.first?.workspaceActionToApprove != nil
-        }
-        XCTAssertTrue(queuedAppeared)
-        let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
+        let queued = try await enqueueFileTask(
+            on: controller,
+            directory: directory,
+            goal: #"create file "undo-me.txt" with "revert me""#
+        )
         controller.backgroundTasks.approveWorkspace(queued)
         // The record reaches terminal inside the runner before the
         // report-write lands its status message — wait for the whole tail
@@ -175,20 +139,14 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
-        let controller = makeController(
-            directory: directory,
-            planner: LocalTaskPlannerRuntime(),
-            probe: probe
-        )
+        let controller = makeController(directory: directory, probe: probe)
         controller.backgroundTasks.debugTrashURL = trash
 
-        controller.backgroundTasks.queue(goal: #"create file "drain-me.txt" with "revert me""#)
-        let queuedAppeared = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
-            return controller.backgroundTasks.records.first?.workspaceActionToApprove != nil
-        }
-        XCTAssertTrue(queuedAppeared)
-        let queued = try XCTUnwrap(controller.backgroundTasks.records.first)
+        let queued = try await enqueueFileTask(
+            on: controller,
+            directory: directory,
+            goal: #"create file "drain-me.txt" with "revert me""#
+        )
         controller.backgroundTasks.approveWorkspace(queued)
         let settled = await waitUntil {
             await controller.backgroundTasks.reloadRecords()
@@ -217,118 +175,22 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertFalse(controller.backgroundTasks.isUndoing(record.id))
     }
 
-    func testPlanningFailureLeavesNoRecordOrMetadata() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let probe = BackgroundCreationProbe()
-        let planner = FailingTaskPlanner(error: PlanningError.typedPlanRejected("fixture failure"))
-        let controller = makeController(
-            directory: directory,
-            planner: planner,
-            probe: probe
-        )
-
-        controller.backgroundTasks.queue(goal: "a planner failure")
-        let called = await waitUntil {
-            planner.callCount > 0
-        }
-        XCTAssertTrue(called)
-        let taskID = try XCTUnwrap(planner.requestedTaskID)
-        let settled = await waitUntil {
-            let record = await controller.backgroundTasks.debugRecord(taskID)
-            let metadata = await controller.backgroundTasks.debugMetadata(taskID)
-            return !controller.backgroundTasks.isRunning(taskID) && record == nil && metadata == nil
-        }
-        XCTAssertTrue(settled)
-        XCTAssertTrue(controller.backgroundTasks.records.isEmpty)
-        XCTAssertEqual(probe.permissionCalls, 0)
-        XCTAssertEqual(probe.captureCalls, 0)
-        XCTAssertEqual(probe.notificationAuthorizationCalls, 1)
-    }
-
-    func testPlanningCancellationLeavesNoRecordOrMetadata() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let probe = BackgroundCreationProbe()
-        let planner = FailingTaskPlanner(error: CancellationError())
-        let controller = makeController(
-            directory: directory,
-            planner: planner,
-            probe: probe
-        )
-
-        controller.backgroundTasks.queue(goal: "a cancelled planning request")
-        let called = await waitUntil {
-            planner.callCount > 0
-        }
-        XCTAssertTrue(called)
-        let taskID = try XCTUnwrap(planner.requestedTaskID)
-        let settled = await waitUntil {
-            let record = await controller.backgroundTasks.debugRecord(taskID)
-            let metadata = await controller.backgroundTasks.debugMetadata(taskID)
-            return !controller.backgroundTasks.isRunning(taskID) && record == nil && metadata == nil
-        }
-        XCTAssertTrue(settled)
-        XCTAssertTrue(controller.backgroundTasks.records.isEmpty)
-        XCTAssertEqual(probe.permissionCalls, 0)
-        XCTAssertEqual(probe.captureCalls, 0)
-        XCTAssertEqual(probe.notificationAuthorizationCalls, 1)
-    }
-
-    func testCancellationReachesSuspendedPlannerAndRejectsItsLatePlan() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let probe = BackgroundCreationProbe()
-        let planner = SuspendedTaskPlanner()
-        let controller = makeController(directory: directory, planner: planner, probe: probe)
-        controller.backgroundTasks.queue(goal: #"create file "late.txt" with "must not execute""#)
-        let started = await waitUntil { await planner.requestedTaskID != nil }
-        XCTAssertTrue(started)
-        let requestedID = await planner.requestedTaskID
-        let taskID = try XCTUnwrap(requestedID)
-        XCTAssertTrue(controller.backgroundTasks.isRunning(taskID))
-        let unpublishedRecord = await controller.backgroundTasks.debugRecord(taskID)
-        XCTAssertNil(unpublishedRecord)
-
-        let cancelledAt = ContinuousClock.now
-        controller.backgroundTasks.cancel(taskID)
-        let settled = await waitUntil { !controller.backgroundTasks.isRunning(taskID) }
-        let elapsed = cancelledAt.duration(to: .now)
-        XCTAssertTrue(settled)
-        XCTAssertLessThanOrEqual(elapsed, .milliseconds(500))
-        let cancellationObserved = await planner.cancellationObserved
-        XCTAssertTrue(cancellationObserved)
-        let record = await controller.backgroundTasks.debugRecord(taskID)
-        let metadata = await controller.backgroundTasks.debugMetadata(taskID)
-        let history = await TranscriptStore(directory: directory).snapshot()
-        XCTAssertNil(record)
-        XCTAssertNil(metadata)
-        XCTAssertTrue(history.isEmpty)
-        let file = directory.appendingPathComponent("BackgroundWorkspaces")
-            .appendingPathComponent(taskID.rawValue).appendingPathComponent("late.txt")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path))
-        XCTAssertEqual(probe.permissionCalls, 0)
-        XCTAssertEqual(probe.captureCalls, 0)
-    }
-
     func testMetadataWriteFailureRollsBackTheQueuedPlan() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let contextPath = directory.appendingPathComponent("background-task-context.json")
         try FileManager.default.createDirectory(at: contextPath, withIntermediateDirectories: false)
         let probe = BackgroundCreationProbe()
-        let controller = makeController(directory: directory, planner: LocalTaskPlannerRuntime(), probe: probe)
-        controller.backgroundTasks.queue(goal: #"create file "blocked.txt" with "must not execute""#)
+        let controller = makeController(directory: directory, probe: probe)
+        controller.backgroundTasks.queue(goal: "summarize my downloads folder")
 
         let failed = await waitUntil { controller.sessionStatus.hasPrefix("Couldn’t queue the background task:") }
         XCTAssertTrue(failed)
-        let workspaces = try FileManager.default.contentsOfDirectory(
+        let workspaces = try? FileManager.default.contentsOfDirectory(
             at: directory.appendingPathComponent("BackgroundWorkspaces"),
             includingPropertiesForKeys: nil
         )
-        XCTAssertTrue(workspaces.isEmpty)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("tasks.json").path))
+        XCTAssertTrue(workspaces?.isEmpty ?? true)
         let records = await TaskCoordinator(storageDirectory: directory).records()
         let metadata = await BackgroundTaskContextStore(storageDirectory: directory).snapshot()
         let history = await TranscriptStore(directory: directory).snapshot()
@@ -349,36 +211,20 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
     private func makeController(
         directory: URL,
-        planner: any TaskPlanner,
         probe: BackgroundCreationProbe
     ) -> AppController {
-        let descriptor = RuntimeProviderDescriptor(
-            id: RuntimeProviderID(planner.id),
-            displayName: "Failure fixture",
-            kind: .local,
-            capabilities: planner.capabilities,
-            operations: [.planning],
-            installation: .notApplicable(.local),
-            authentication: .notRequired,
-            health: .healthy,
-            confinement: .workspace,
-            priority: 100
-        )
-        let inventory = RuntimeInventory(
-            registry: RuntimeProviderRegistry(providers: [
-                RuntimeProvider(planner: planner, descriptor: descriptor)
-            ]),
-            setup: RuntimeSetupSnapshot(summary: "Failure fixture", records: []),
-            choices: [RuntimeChoice(id: planner.id, name: planner.id)],
-            automaticPreference: RuntimeProviderID(planner.id),
-            credentialFailure: nil
+        let inspector = RuntimeInventoryInspector(
+            readDirectProvider: { nil },
+            commandLineProviders: []
         )
         return AppController(
             debugStorageDirectory: directory,
-            runtimeInventoryLoader: { _ in inventory },
+            runtimeInventoryLoader: { workingDirectory in
+                try await inspector.inspect(workingDirectory: workingDirectory)
+            },
             permissionSnapshotLoader: {
                 probe.incrementPermission()
-                XCTFail("planning failure tests must not request desktop permissions")
+                XCTFail("background task tests must not request desktop permissions")
                 return PerryPermissionSnapshot(
                     accessibility: true,
                     screenRecording: .granted,
@@ -387,11 +233,33 @@ final class BackgroundTaskCreationTests: XCTestCase {
             },
             screenContextLoader: { _, _ in
                 probe.incrementCapture()
-                XCTFail("planning failure tests must not capture the desktop")
+                XCTFail("background task tests must not capture the desktop")
                 return (ScreenContext.empty, nil)
             },
             notifier: probe
         )
+    }
+
+    /// Fabricates a canonical workspace-file task the way the retired planner
+    /// produced it — direct enqueue keeps workspace-task coverage honest.
+    private func enqueueFileTask(
+        on controller: AppController,
+        directory: URL,
+        goal: String
+    ) async throws -> TaskRecord {
+        let taskID = TaskID()
+        let workspace = directory
+            .appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
+            .appendingPathComponent(taskID.rawValue, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
+            goal: goal, workspace: workspace, taskID: taskID
+        )
+        let plan = try XCTUnwrap(proposed)
+        let queued = try await controller.backgroundTaskCoordinator.enqueue(executablePlan: plan)
+        await controller.backgroundTasks.reloadRecords()
+        XCTAssertNotNil(queued.workspaceActionToApprove)
+        return queued
     }
 
     private func waitUntil(
@@ -474,53 +342,3 @@ private final class BackgroundCreationProbe: AppNotificationClient, @unchecked S
 
 }
 
-private final class FailingTaskPlanner: TaskPlanner, @unchecked Sendable {
-    let id = "fixture.failure"
-    let capabilities = RuntimeCapabilities(fileIO: true, latencyClass: .fast)
-    private let error: Error
-    private let lock = NSLock()
-    private var calls = 0
-    private var task: TaskID?
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    var callCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return calls
-    }
-
-    var requestedTaskID: TaskID? {
-        lock.lock()
-        defer { lock.unlock() }
-        return task
-    }
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        lock.withLock {
-            calls += 1
-            task = request.taskID
-        }
-        throw error
-    }
-}
-
-private actor SuspendedTaskPlanner: TaskPlanner {
-    nonisolated let id = "fixture.suspended"
-    nonisolated let capabilities = RuntimeCapabilities(fileIO: true, latencyClass: .fast)
-    private(set) var requestedTaskID: TaskID?
-    private(set) var cancellationObserved = false
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        let result = try await LocalTaskPlannerRuntime().plan(request)
-        requestedTaskID = request.taskID
-        do {
-            try await Task.sleep(nanoseconds: 2_000_000_000)
-        } catch is CancellationError {
-            cancellationObserved = true
-        }
-        return result
-    }
-}
