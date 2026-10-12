@@ -192,7 +192,7 @@ final class PushToTalkController {
         )
     }
 
-    private func handle(keyCode: Int64, timestamp: TimeInterval, flags: CGEventFlags, isKeyDown: Bool, isKeyUp: Bool, tapDisabled: Bool) {
+    func handle(keyCode: Int64, timestamp: TimeInterval, flags: CGEventFlags, isKeyDown: Bool, isKeyUp: Bool, tapDisabled: Bool) {
         if tapDisabled {
             resetCaptureState()
             if let eventTap {
