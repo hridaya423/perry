@@ -3493,6 +3493,140 @@
           }
         }
       ]
+    },
+    {
+      "id": "talk.hold-loop",
+      "name": "Hold-to-talk request turn that reads the screen",
+      "status": "unit-tested",
+      "owner": "App",
+      "support": "Hold the shortcut, talk while pointing; Perry captures the screen, transcribes, and answers",
+      "limitations": [
+        "The turn pipeline is covered by TalkController/TalkSession tests and lab markers (invoke.keydown → wake.overlay ~1-3 ms), but no registry live-run artifact is recorded."
+      ],
+      "verification": {
+        "supported_environments": {
+          "status": "not-recorded"
+        },
+        "last_successful_run": {
+          "status": "not-recorded"
+        },
+        "benchmark": {
+          "status": "not-recorded"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "source",
+          "reference": "App/Talk/TalkSession.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "AppTests/TalkControllerTests.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "AppTests/TalkSessionAskTests.swift"
+        }
+      ]
+    },
+    {
+      "id": "talk.deixis",
+      "name": "Word-timestamp alignment of spoken references with pointer position",
+      "status": "unit-tested",
+      "owner": "App/PerryBrain",
+      "support": "Resolves words like \"this\" and \"that\" to what the pointer was on when they were said",
+      "limitations": [
+        "Deixis resolution is unit-tested; accuracy in a live dictation run is not recorded."
+      ],
+      "verification": {
+        "supported_environments": {
+          "status": "not-recorded"
+        },
+        "last_successful_run": {
+          "status": "not-recorded"
+        },
+        "benchmark": {
+          "status": "not-recorded"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "source",
+          "reference": "App/Talk/TalkSpeech.swift"
+        },
+        {
+          "kind": "source",
+          "reference": "App/Talk/PointerTraceRecorder.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/DeixisResolverTests.swift"
+        }
+      ]
+    },
+    {
+      "id": "talk.ink",
+      "name": "On-screen guidance marks produced by a talk turn",
+      "status": "unit-tested",
+      "owner": "PerryOverlay",
+      "support": "Scribbles, rectangles, and ellipses Perry draws over the windows it means; marks re-anchor while the target moves",
+      "limitations": [
+        "Mark parsing and rendering are unit-tested; no live talk-to-ink run is recorded in the registry."
+      ],
+      "verification": {
+        "supported_environments": {
+          "status": "not-recorded"
+        },
+        "last_successful_run": {
+          "status": "not-recorded"
+        },
+        "benchmark": {
+          "status": "not-recorded"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "source",
+          "reference": "Packages/PerryOverlay/Sources/PerryOverlay/InkLayer.swift"
+        },
+        {
+          "kind": "source",
+          "reference": "App/Talk/TalkSession.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/InlineMarkupParserTests.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift"
+        }
+      ]
+    },
+    {
+      "id": "voice.neural-output",
+      "name": "Neural/cloud speech output voice",
+      "status": "absent",
+      "owner": "App",
+      "support": "Perry speaks with the local AVSpeechSynthesizer voice; no neural or hosted TTS route is shipped",
+      "limitations": [],
+      "verification": {
+        "supported_environments": {
+          "status": "not-recorded"
+        },
+        "last_successful_run": {
+          "status": "not-recorded"
+        },
+        "benchmark": {
+          "status": "not-recorded"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "source",
+          "reference": "App/VoiceController.swift"
+        }
+      ]
     }
   ]
 }
