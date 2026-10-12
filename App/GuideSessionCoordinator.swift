@@ -355,8 +355,7 @@ final class GuideSessionCoordinator {
             guideWaiter.resume(returning: false)
         }
         if let scope = currentGuideScope,
-           scope.id == guide.id,
-           scope.workerBodyActive {
+           scope.id == guide.id {
             scope.requestFinalization(
                 GuideFinalizationRequest(
                     id: guide.id,
@@ -368,6 +367,11 @@ final class GuideSessionCoordinator {
                     appBundleID: guide.appBundleID
                 )
             )
+            if !scope.workerBodyActive {
+                // Body not started (or already closed): nothing else will
+                // drain the pending request, so schedule the write now.
+                scheduleGuideFinalization(for: scope)
+            }
         }
         currentGuideScope?.finishContinuation.finish()
         // A body suspended in a planner/capture call only unwinds via
@@ -781,7 +785,7 @@ final class GuideSessionCoordinator {
         }
         scope.cancelCallbacks()
         for callback in scope.callbacks() { await callback.value }
-        if scope.workerBodyActive, scope.pendingFinalization != nil, !scope.finalizationSuppressed {
+        if scope.pendingFinalization != nil, !scope.finalizationSuppressed {
             scheduleGuideFinalization(for: scope)
         }
         if let finalizationTask = scope.finalizationTask {

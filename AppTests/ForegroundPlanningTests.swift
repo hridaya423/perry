@@ -990,7 +990,10 @@ final class ForegroundPlanningTests: XCTestCase {
             let history = await TranscriptStore(directory: directory).snapshot()
             return history.contains { $0.request == "replacement" && $0.outcome == .stopped }
         }
-        XCTAssertTrue(replacementPersisted, "replacement guide history was not persisted")
+        if !replacementPersisted {
+            let late = await TranscriptStore(directory: directory).snapshot()
+            XCTFail("replacement guide history was not persisted; history=\(late.map { "\($0.request):\($0.outcome)" }), state=\(controller.sessionState)")
+        }
     }
 
     func testErasureClosesAllGuideScopesAndSuppressesDismissedScopeHistory() async throws {
@@ -1198,16 +1201,10 @@ final class ForegroundPlanningTests: XCTestCase {
         controller.foreground.start(goal: "old attempt")
         await gate.waitForCall(1)
         controller.dismiss()
-        // Teardown is async: wait for the old run to release the session, then
-        // settle the stopped report so the replacement can invoke.
+        // The old run's teardown is async — a start that races it bounces off
+        // `supervisorActive`, so wait for teardown before the replacement.
         let tornDown = await waitUntil { !controller.foreground.supervisorActive }
         XCTAssertTrue(tornDown, "old attempt's supervisor did not clear: \(controller.sessionState)")
-        controller.dismiss()
-        let idled = await waitUntil {
-            if case .idle = controller.sessionState { return true }
-            return false
-        }
-        XCTAssertTrue(idled, "session did not settle to idle: \(controller.sessionState)")
         controller.foreground.start(goal: "replacement attempt")
         await gate.waitForCall(2)
         let replacementStatus = controller.sessionStatus
@@ -1222,9 +1219,15 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         controller.dismiss()
         await gate.releaseSecond()
-        let replacementCancelled = await waitUntil { !controller.foreground.supervisorActive }
+        // A dismissed run lands in a stopped report (the same state the
+        // activity strip retires); idle is equally terminal if the
+        // session settled directly.
+        let replacementCancelled = await waitUntil {
+            if case .idle = controller.sessionState { return true }
+            if case .reporting(let report) = controller.sessionState, report.outcome == .stopped { return true }
+            return false
+        }
         XCTAssertTrue(replacementCancelled, "replacement state: \(controller.sessionState)")
-        controller.dismiss()
     }
 
     func testOlderActivityRetirementCannotClearReplacementWithSameTaskID() async throws {

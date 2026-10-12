@@ -187,11 +187,19 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     private func beginInvokingIfNeeded(attemptID: UUID = UUID()) -> Bool {
-        if case .idle = sessionController.state {
+        switch sessionController.state {
+        case .idle:
             return transitionSession { try sessionController.wake(attemptID: attemptID) }
+        case .reporting, .failed:
+            // A finished/stopped report never gates a new attempt — asking
+            // again is the dismissal (same rule requestDismissal applies).
+            guard transitionSession({ try sessionController.completeDismissal() }) else { return false }
+            return transitionSession { try sessionController.wake(attemptID: attemptID) }
+        case .invoking(let invocation):
+            return invocation.id == attemptID
+        default:
+            return false
         }
-        if case .invoking(let invocation) = sessionController.state, invocation.id == attemptID { return true }
-        return false
     }
 
     func cancelInvocationIfCurrent(_ attemptID: UUID) {
