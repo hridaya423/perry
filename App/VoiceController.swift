@@ -95,7 +95,7 @@ final class VoiceController: NSObject, ObservableObject {
     )
 
     private lazy var pushToTalk = PushToTalkController(
-        shortcut: PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .optionCommandSpace,
+        shortcut: PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .functionHold,
         onPress: { [weak self] in self?.beginDictation() },
         onRelease: { [weak self] in self?.finishDictation() }
     )
@@ -496,7 +496,7 @@ final class VoiceController: NSObject, ObservableObject {
         }
         overlayState.voiceState = .listening
         overlayState.buddyState = .listening
-        hooks.setStatus("Listening on \(dictation.activeInputDeviceName()) — release ⌥⌘Space when you’re done.")
+        hooks.setStatus("Listening on \(dictation.activeInputDeviceName()) — \(pushToTalk.shortcut.releaseHint).")
         let attemptID = UUID()
         dictationAttemptID = attemptID
         Task { @MainActor in

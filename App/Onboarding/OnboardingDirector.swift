@@ -177,7 +177,7 @@ final class OnboardingDirector: ObservableObject {
         case .pointAsk: "In the practice window, point at something and ask what it is."
         case .guide: "Ask Perry to show you how to rename a file."
         case .renameUndo: "Ask Perry to rename the three practice files, then undo the change."
-        case .dictate: "Focus the practice text box, hold ⌥⌘Space, and dictate a sentence."
+        case .dictate: "Focus the practice text box, hold your dictation shortcut, and dictate a sentence."
         }
     }
 }

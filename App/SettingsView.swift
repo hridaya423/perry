@@ -23,7 +23,8 @@ struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
     @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcutRaw = WakeShortcut.optionCommandP.rawValue
-    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcutRaw = PushToTalkShortcut.optionCommandSpace.rawValue
+    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcutRaw = PushToTalkShortcut.functionHold.rawValue
+    @State private var pttSystemConflict = false
     @AppStorage(PerryPreferences.$speechOutputEnabled.key) private var speechOutputEnabled = true
     @AppStorage(PerryPreferences.$speechRate.key) private var speechRate = 1.0
     @AppStorage(PerryPreferences.$speechVoiceIdentifier.key) private var speechVoiceIdentifier = ""
@@ -141,7 +142,7 @@ struct SettingsView: View {
                         settingsError = error.localizedDescription
                     }
                 }
-                Picker("Push to talk", selection: $pttShortcutRaw) {
+                Picker("Dictation", selection: $pttShortcutRaw) {
                     ForEach(PushToTalkShortcut.allCases) { shortcut in
                         Text(shortcut.title).tag(shortcut.rawValue)
                     }
@@ -149,8 +150,13 @@ struct SettingsView: View {
                 .onChange(of: pttShortcutRaw) { _, value in
                     guard let shortcut = PushToTalkShortcut(rawValue: value) else { return }
                     controller.voice.updatePushToTalkShortcut(shortcut)
+                    refreshPttConflict()
                 }
-                Text("Hold the push-to-talk shortcut from any app. Caps Lock double-tap is available for hands-free use.")
+                if pttSystemConflict {
+                    Text("This shortcut is already used by macOS and may not reach Perry — pick another, or change it under System Settings → Keyboard → Keyboard Shortcuts.")
+                        .settingNote()
+                }
+                Text("Hold the dictation shortcut from any app to type by voice. Caps Lock double-tap is available for hands-free use.")
                     .settingNote()
                 Text("If voice input is unavailable, Perry leaves the panel ready for typing.")
                     .settingNote()
@@ -194,7 +200,7 @@ struct SettingsView: View {
             }
             permissionRow(
                 name: "Input Monitoring",
-                why: "Lets Perry hear the push-to-talk key while other apps are focused.",
+                why: "Lets Perry hear the dictation key while other apps are focused.",
                 granted: permissions?.inputMonitoring
             ) {
                 _ = PerryPermissionProbe.requestInputMonitoring()
@@ -232,6 +238,19 @@ struct SettingsView: View {
 
     private func refreshPermissions() async {
         permissions = await PerryPermissionSnapshot.probe()
+        refreshPttConflict()
+    }
+
+    private func refreshPttConflict() {
+        guard let chord = PushToTalkShortcut(rawValue: pttShortcutRaw)?.symbolicChord else {
+            pttSystemConflict = false
+            return
+        }
+        pttSystemConflict = SymbolicHotkeys.conflicts(
+            keyCode: chord.keyCode,
+            modifiers: chord.modifiers,
+            in: SymbolicHotkeys.load()
+        )
     }
 
     private func openPrivacyPane(_ anchor: String) {

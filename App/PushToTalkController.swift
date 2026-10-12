@@ -1,22 +1,48 @@
 import AppKit
 
 enum PushToTalkShortcut: String, CaseIterable, Identifiable {
+    case functionHold
     case optionCommandSpace
     case capsLockDoubleTap
+    case controlOptionCommandHold
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .functionHold: return "Hold fn (globe)"
         case .optionCommandSpace: return "Hold ⌥⌘Space"
         case .capsLockDoubleTap: return "Double-tap Caps Lock"
+        case .controlOptionCommandHold: return "Hold ⌃⌥⌘"
         }
     }
 
     var detail: String {
         switch self {
-        case .optionCommandSpace: return "Hold to talk, release to send"
+        case .functionHold: return "Hold to dictate, release to send"
+        case .optionCommandSpace: return "Hold to dictate, release to send"
         case .capsLockDoubleTap: return "Double-tap to start, tap again to stop"
+        case .controlOptionCommandHold: return "Hold to dictate, release to send"
+        }
+    }
+
+    /// How the listening status line tells the user to end the take.
+    var releaseHint: String {
+        switch self {
+        case .functionHold: return "release fn when you’re done"
+        case .optionCommandSpace: return "release ⌥⌘Space when you’re done"
+        case .capsLockDoubleTap: return "tap Caps Lock when you’re done"
+        case .controlOptionCommandHold: return "release ⌃⌥⌘ when you’re done"
+        }
+    }
+
+    /// The (keyCode, symbolichotkeys modifier bits) a chord-based shortcut
+    /// occupies, for conflict checks against com.apple.symbolichotkeys —
+    /// modifier-hold shortcuts own no key chord and cannot conflict.
+    var symbolicChord: (keyCode: Int, modifiers: Int)? {
+        switch self {
+        case .optionCommandSpace: return (49, 0x180000) // option | command
+        case .functionHold, .capsLockDoubleTap, .controlOptionCommandHold: return nil
         }
     }
 }
@@ -26,6 +52,7 @@ final class PushToTalkController {
     static let eventTapMask =
         (CGEventMask(1) &<< CGEventType.keyDown.rawValue)
         | (CGEventMask(1) &<< CGEventType.keyUp.rawValue)
+        | (CGEventMask(1) &<< CGEventType.flagsChanged.rawValue)
         | (CGEventMask(1) &<< CGEventType.tapDisabledByTimeout.rawValue)
         | (CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue)
 
@@ -48,9 +75,17 @@ final class PushToTalkController {
     private var pressed = false
     private var capsKeyDown = false
     private var lastCapsTap: TimeInterval?
+    private var lastFlags: CGEventFlags = []
+    private var modifierHoldPending = false
+    private var modifierHoldChord = false
+    private var modifierHoldWorkItem: DispatchWorkItem?
+
+    /// Grace before a ⌃⌥⌘ hold commits — inside the window any real key
+    /// means the modifiers were a chord, not a hold.
+    private static let modifierHoldGrace: TimeInterval = 0.18
 
     init(
-        shortcut: PushToTalkShortcut = PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .optionCommandSpace,
+        shortcut: PushToTalkShortcut = PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .functionHold,
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void
     ) {
@@ -76,13 +111,13 @@ final class PushToTalkController {
                 guard let refcon else { return Unmanaged.passUnretained(event) }
                 let controller = Unmanaged<PushToTalkController>.fromOpaque(refcon).takeUnretainedValue()
                 let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-                let modifiers = event.flags.intersection([.maskAlternate, .maskCommand]) == [.maskAlternate, .maskCommand]
+                let flags = event.flags
                 let isKeyDown = type == .keyDown
                 let isKeyUp = type == .keyUp
                 let isDisabled = PushToTalkController.tapIsDisabled(type)
                 let timestamp = TimeInterval(event.timestamp) / 1_000_000_000
                 Task { @MainActor [weak controller] in
-                    controller?.handle(keyCode: keyCode, timestamp: timestamp, isKeyDown: isKeyDown, isKeyUp: isKeyUp, modifiers: modifiers, tapDisabled: isDisabled)
+                    controller?.handle(keyCode: keyCode, timestamp: timestamp, flags: flags, isKeyDown: isKeyDown, isKeyUp: isKeyUp, tapDisabled: isDisabled)
                 }
                 return Unmanaged.passUnretained(event)
             },
@@ -124,7 +159,7 @@ final class PushToTalkController {
     private func installFallbackMonitors() {
         captureMode = .fallbackMonitors
         PerfMark.mark("ptt.capture.fallback")
-        let events: NSEvent.EventTypeMask = [.keyDown, .keyUp]
+        let events: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged]
         fallbackGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
             self?.handleFallback(event)
         }
@@ -136,18 +171,28 @@ final class PushToTalkController {
 
     private func handleFallback(_ event: NSEvent) {
         let keyCode = Int64(event.keyCode)
-        let modifiers = event.modifierFlags.intersection([.option, .command]) == [.option, .command]
         handle(
             keyCode: keyCode,
             timestamp: event.timestamp,
+            flags: CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue)),
             isKeyDown: event.type == .keyDown,
             isKeyUp: event.type == .keyUp,
-            modifiers: modifiers,
             tapDisabled: false
         )
     }
 
     func handle(keyCode: Int64, timestamp: TimeInterval, isKeyDown: Bool, isKeyUp: Bool, modifiers: Bool, tapDisabled: Bool) {
+        handle(
+            keyCode: keyCode,
+            timestamp: timestamp,
+            flags: modifiers ? [.maskAlternate, .maskCommand] : [],
+            isKeyDown: isKeyDown,
+            isKeyUp: isKeyUp,
+            tapDisabled: tapDisabled
+        )
+    }
+
+    private func handle(keyCode: Int64, timestamp: TimeInterval, flags: CGEventFlags, isKeyDown: Bool, isKeyUp: Bool, tapDisabled: Bool) {
         if tapDisabled {
             resetCaptureState()
             if let eventTap {
@@ -155,9 +200,11 @@ final class PushToTalkController {
             }
             return
         }
+        lastFlags = flags
         switch shortcut {
         case .optionCommandSpace:
             guard keyCode == 49 else { return }
+            let modifiers = flags.intersection([.maskAlternate, .maskCommand]) == [.maskAlternate, .maskCommand]
             if isKeyDown, modifiers, !pressed {
                 pressed = true
                 PerfMark.mark("talk.keydown")
@@ -183,6 +230,59 @@ final class PushToTalkController {
             } else if isKeyUp {
                 capsKeyDown = false
             }
+        case .functionHold, .controlOptionCommandHold:
+            handleModifierHold(flags: flags, isKeyDown: isKeyDown)
+        }
+    }
+
+    /// Modifier-hold (fn or ⌃⌥⌘): the modifiers held alone commit after
+    /// the grace window; a non-modifier key inside the window means it was
+    /// a chord (fn+arrow, ⌃⌥⌘V), not a hold.
+    private func handleModifierHold(flags: CGEventFlags, isKeyDown: Bool) {
+        if isKeyDown {
+            if modifierHoldPending {
+                modifierHoldPending = false
+                modifierHoldChord = true
+                modifierHoldWorkItem?.cancel()
+                modifierHoldWorkItem = nil
+            }
+            return
+        }
+        if holdModifiersHeld(flags) {
+            if pressed || modifierHoldPending { return }
+            modifierHoldPending = true
+            modifierHoldChord = false
+            let workItem = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.modifierHoldWorkItem = nil
+                guard self.modifierHoldPending, !self.modifierHoldChord, !self.pressed,
+                      self.holdModifiersHeld(self.lastFlags) else { return }
+                self.modifierHoldPending = false
+                self.pressed = true
+                PerfMark.mark("talk.keydown")
+                self.onPress()
+            }
+            modifierHoldWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.modifierHoldGrace, execute: workItem)
+        } else {
+            modifierHoldPending = false
+            modifierHoldChord = false
+            modifierHoldWorkItem?.cancel()
+            modifierHoldWorkItem = nil
+            releaseIfNeeded()
+        }
+    }
+
+    private func holdModifiersHeld(_ flags: CGEventFlags) -> Bool {
+        switch shortcut {
+        case .functionHold:
+            return flags.contains(.maskSecondaryFn)
+        case .controlOptionCommandHold:
+            return flags.contains([.maskControl, .maskAlternate, .maskCommand])
+                && !flags.contains(.maskShift)
+                && !flags.contains(.maskSecondaryFn)
+        case .optionCommandSpace, .capsLockDoubleTap:
+            return false
         }
     }
 
@@ -199,6 +299,10 @@ final class PushToTalkController {
         pressed = false
         capsKeyDown = false
         lastCapsTap = nil
+        modifierHoldPending = false
+        modifierHoldChord = false
+        modifierHoldWorkItem?.cancel()
+        modifierHoldWorkItem = nil
         if wasPressed {
             onRelease()
         }

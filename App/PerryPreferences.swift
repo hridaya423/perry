@@ -49,7 +49,7 @@ enum PerryPreferences {
 
     @Preference("perry.wakeWord.enabled") static var wakeWordEnabled = false
     @Preference("perry.wakeShortcut") static var wakeShortcut = "optionCommandP"
-    @Preference("perry.ptt.shortcut") static var pttShortcut = "optionCommandSpace"
+    @Preference("perry.ptt.shortcut") static var pttShortcut = "functionHold"
 
     // MARK: Brain & providers
 
