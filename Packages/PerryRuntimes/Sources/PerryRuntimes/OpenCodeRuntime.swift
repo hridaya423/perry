@@ -1,58 +1,9 @@
 import Foundation
 import PerryCore
 
-public struct OpenCodeRuntime: TaskPlanner {
-    public let id = "cli.opencode"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
-
+public enum OpenCodeRuntime {
     public static let pinnedVersion = "1.18.32"
     public static let pinnedBinarySHA256 = "a3c45d4e1d6620b436851f1ef6b25c71befcf06a382e279a1eb1c2196424395e"
-
-    private let locateExecutable: @Sendable () throws -> URL
-    private let invokeCommand: @Sendable (URL, [String]) async throws -> String
-
-    public init(
-        executableLocator: @escaping @Sendable () throws -> URL = OpenCodeRuntime.standardLocator,
-        commandRunner: (@Sendable (URL, [String]) async throws -> String)? = nil,
-        timeout: TimeInterval = 120,
-        workingDirectory: URL? = nil
-    ) {
-        locateExecutable = executableLocator
-        if let commandRunner {
-            invokeCommand = commandRunner
-        } else {
-            invokeCommand = { executable, arguments in
-                let result = try await CLIRuntime.runProcess(
-                    executable: executable,
-                    arguments: arguments,
-                    timeout: timeout,
-                    workingDirectory: workingDirectory,
-                    profile: .openCodePlanning
-                )
-                guard result.exitCode == 0 else {
-                    throw ExecutionError(message: "OpenCode exited \(result.exitCode): \(result.stderr)")
-                }
-                return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-    }
-
-    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        guard case .screen(let context) = request.context else {
-            throw PlanningError.contextRequired
-        }
-        let output = try await invokeCommand(try locateExecutable(), [
-            "run",
-            "--pure",
-            "--agent", "perry",
-            TypedPlanningPrompt.make(goal: request.goal, context: context),
-        ])
-        return try TypedPlanParser.plan(
-            output,
-            request: request,
-            bindings: .init(request: request, context: context)
-        )
-    }
 
     public static let standardLocator: @Sendable () throws -> URL = {
         try locateExecutable()

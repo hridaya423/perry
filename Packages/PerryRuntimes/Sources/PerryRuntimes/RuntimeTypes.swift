@@ -1,34 +1,6 @@
 import Foundation
 import PerryCore
 
-public struct RuntimeCapabilities: Sendable {
-    public var guiGrounding: Bool
-    public var fileIO: Bool
-    public var browser: Bool
-    public var remoteIntegrations: Bool
-    public var latencyClass: LatencyClass
-
-    public enum LatencyClass: String, Sendable {
-        case fast
-        case medium
-        case slow
-    }
-
-    public init(
-        guiGrounding: Bool = false,
-        fileIO: Bool = false,
-        browser: Bool = false,
-        remoteIntegrations: Bool = false,
-        latencyClass: LatencyClass = .medium
-    ) {
-        self.guiGrounding = guiGrounding
-        self.fileIO = fileIO
-        self.browser = browser
-        self.remoteIntegrations = remoteIntegrations
-        self.latencyClass = latencyClass
-    }
-}
-
 public struct ScreenContext: Sendable {
     public enum ScreenshotCoordinateSpace: String, Sendable {
         case screenPoints

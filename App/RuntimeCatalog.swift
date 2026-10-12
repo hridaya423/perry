@@ -116,50 +116,6 @@ final class RuntimeCatalog: ObservableObject {
     /// Selects a provider for one attempt. `attemptIsCurrent` is the caller's
     /// staleness check — it is consulted after each suspension so a superseded
     /// attempt cannot keep routing.
-    func select(
-        workingDirectory: URL?,
-        preferredProviderID requestedProviderID: RuntimeProviderID? = nil,
-        goal: String? = nil,
-        attemptID: UUID? = nil,
-        attemptIsCurrent: (UUID) -> Bool = { _ in true }
-    ) async -> ProductionRuntimeSelection? {
-        func current(_ attemptID: UUID?) -> Bool {
-            guard let attemptID else { return true }
-            return attemptIsCurrent(attemptID)
-        }
-        do {
-            let inventory = try await inspect(workingDirectory: workingDirectory)
-            guard current(attemptID) else { return nil }
-            if let failure = inventory.credentialFailure {
-                guard current(attemptID) else { return nil }
-                setStatus(failure)
-            }
-            let route = Self.foregroundRouteRequirements(for: goal)
-            return ProductionRuntimeSelector().select(
-                from: inventory.registry,
-                preferredProviderID: requestedProviderID ?? inventory.automaticPreference,
-                requiredCapabilities: route.capabilities,
-                requiredOperations: route.operations
-            )
-        } catch is CancellationError {
-            return nil
-        } catch {
-            guard current(attemptID) else { return nil }
-            setStatus("Perry could not inspect the available runtimes. Try refreshing runtime setup.")
-            return nil
-        }
-    }
-
-    static func foregroundRouteRequirements(for goal: String?) -> (
-        capabilities: Set<RuntimeCapability>,
-        operations: Set<RuntimeOperation>
-    ) {
-        guard let goal, LocalTaskPlannerRuntime.supportsWorkspaceExecutionGoal(goal) else {
-            return ([], [.planning])
-        }
-        return ([.fileIO], [.planning, .execution])
-    }
-
     func cancelPendingRefreshes() {
         choicesRefreshTask?.cancel()
     }
@@ -174,11 +130,11 @@ final class RuntimeCatalog: ObservableObject {
         }
     }
 
-    /// Whether any runtime beyond the planning-only local planner is offered —
-    /// i.e. something exists that can actually take a task over. The panel uses
-    /// this for its inline "no runtime" recovery; `start` still re-validates.
+    /// Whether anything beyond "Automatic" is offered — i.e. something exists
+    /// that can actually take a task over. The panel uses this for its inline
+    /// "no runtime" recovery; `start` still re-validates.
     var hasExecutionCapableChoice: Bool {
-        choices.contains { $0.id != RuntimeChoice.automaticID && $0.id != "local.task-planner" }
+        choices.contains { $0.id != RuntimeChoice.automaticID }
     }
 
     func availableChoices() async -> [RuntimeChoice] {
@@ -223,12 +179,6 @@ final class RuntimeCatalog: ObservableObject {
         case DirectAIProvider.openRouter.runtimeID: return DirectAIProvider.openRouter.displayName
         default: return id
         }
-    }
-
-    static func providerID(from preference: String?) -> RuntimeProviderID? {
-        guard let preference,
-              preference != RuntimeChoice.automaticID else { return nil }
-        return RuntimeProviderID(rawValue: preference)
     }
 
     static func currentBYOKVisionEndpoint() -> BYOKAgentEndpoint? {

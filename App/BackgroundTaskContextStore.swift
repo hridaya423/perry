@@ -8,7 +8,6 @@ struct BackgroundTaskMetadata: Codable, Equatable, Sendable {
     let targetProcessID: Int32?
     let targetWindowID: Int64?
     let workspacePath: String?
-    let preferredRuntimeID: RuntimeProviderID?
     let runtimeRoutingSummary: String?
     let createdAt: Date
 
@@ -18,7 +17,6 @@ struct BackgroundTaskMetadata: Codable, Equatable, Sendable {
         targetProcessID: Int32? = nil,
         targetWindowID: Int64? = nil,
         workspacePath: String? = nil,
-        preferredRuntimeID: RuntimeProviderID? = nil,
         runtimeRoutingSummary: String? = nil,
         createdAt: Date = Date()
     ) {
@@ -27,7 +25,6 @@ struct BackgroundTaskMetadata: Codable, Equatable, Sendable {
         self.targetProcessID = targetProcessID
         self.targetWindowID = targetWindowID
         self.workspacePath = workspacePath
-        self.preferredRuntimeID = preferredRuntimeID
         self.runtimeRoutingSummary = runtimeRoutingSummary
         self.createdAt = createdAt
     }
@@ -38,7 +35,6 @@ struct BackgroundTaskMetadata: Codable, Equatable, Sendable {
         case targetProcessID
         case targetWindowID
         case workspacePath
-        case preferredRuntimeID
         case runtimeRoutingSummary
         case createdAt
     }
@@ -50,27 +46,10 @@ struct BackgroundTaskMetadata: Codable, Equatable, Sendable {
         targetProcessID = try container.decodeIfPresent(Int32.self, forKey: .targetProcessID)
         targetWindowID = try container.decodeIfPresent(Int64.self, forKey: .targetWindowID)
         workspacePath = try container.decodeIfPresent(String.self, forKey: .workspacePath)
-        preferredRuntimeID = try container.decodeIfPresent(RuntimeProviderID.self, forKey: .preferredRuntimeID)
         runtimeRoutingSummary = try container.decodeIfPresent(String.self, forKey: .runtimeRoutingSummary)
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
     }
 
-    func runtimeProviderID(for plan: Plan) -> RuntimeProviderID? {
-        RuntimeProviderID(rawValue: plan.runtimeID) ?? preferredRuntimeID
-    }
-
-    func recordingRuntimeRoute(_ selection: ProductionRuntimeSelection) -> BackgroundTaskMetadata {
-        BackgroundTaskMetadata(
-            targetAppBundleID: targetAppBundleID,
-            targetWindowTitle: targetWindowTitle,
-            targetProcessID: targetProcessID,
-            targetWindowID: targetWindowID,
-            workspacePath: workspacePath,
-            preferredRuntimeID: preferredRuntimeID,
-            runtimeRoutingSummary: selection.routingSummary,
-            createdAt: createdAt
-        )
-    }
 }
 
 private struct BackgroundTaskContextEnvelope: Codable {

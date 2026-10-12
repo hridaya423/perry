@@ -1306,7 +1306,7 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertTrue(Self.processHasExited(child))
     }
 
-    func testPlannerJSONReachesTypedComputerExecutionWithoutLosingParameters() async throws {
+    func testTypedComputerExecutionPreservesDriverParameters() async throws {
         let configuration = CuaDriverConfiguration(
             executableURL: driverURL,
             capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
@@ -1314,15 +1314,6 @@ final class CuaDriverClientTests: XCTestCase {
         )
         let service = CuaWorkerService(configuration: configuration)
         addTeardownBlock { try await service.shutdown() }
-        let content = #"{"actions":[{"summary":"press shift-command-return","operation":{"computer":{"command":{"pressKey":{"key":"return","modifiers":["shift","command"]}}}}},{"summary":"scroll down","operation":{"computer":{"command":{"scroll":{"direction":"down","amount":1,"unit":"line"}}}}},{"summary":"drag across the window","operation":{"computer":{"command":{"drag":{"from":{"windowPixels":{"x":1,"y":2}},"to":{"windowPixels":{"x":3,"y":4}},"durationMilliseconds":250,"steps":12}}}}}]}"#
-        let response = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": content]]]])
-        let url = try XCTUnwrap(URL(string: "https://provider.example"))
-        let http = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil))
-        let planner = BYOKAgentRuntime(
-            endpoint: BYOKAgentEndpoint(baseURL: url, model: "fixture"),
-            apiKeyProvider: { "fixture" },
-            transport: { _ in (response, http) }
-        )
         let supervisor = DoSupervisor(
             confirmer: AutoApproveConfirmer(),
             typedVerifier: AlwaysVerifiedTypedVerifier()
@@ -1331,21 +1322,45 @@ final class CuaDriverClientTests: XCTestCase {
             // The plan must be bound to the window identity this session
             // actually resolved — including its connection generation.
             let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
-            let plan = try await planner.plan(PlanningRequest(
-                goal: "exercise keyboard, scroll, and drag",
+            let window = ExecutableAction.WindowIdentity(
+                bundleID: capture.target.bundleID,
+                processID: capture.target.processID,
+                windowID: UInt32(capture.target.windowID),
+                connectionGeneration: capture.target.connectionGeneration
+            )
+            let plan = try ExecutionPlan(
                 taskID: TaskID("typed-computer"),
-                workspace: self.testDirectory,
-                context: .screen(ScreenContext(
-                    screenshotJPEGData: Data([1]),
-                    screenshotCoordinateSpace: .windowPixels,
-                    targetWindow: ExecutableAction.WindowIdentity(
-                        bundleID: capture.target.bundleID,
-                        processID: capture.target.processID,
-                        windowID: UInt32(capture.target.windowID),
-                        connectionGeneration: capture.target.connectionGeneration
-                    )
-                ))
-            ))
+                goal: "exercise keyboard, scroll, and drag",
+                actions: [
+                    try ExecutableAction(
+                        id: "press-key",
+                        summary: "press shift-command-return",
+                        approvalRequirement: .action,
+                        operation: .computer(window: window, command: .pressKey("return", modifiers: [.shift, .command], target: nil)),
+                        postcondition: .elementValue("")
+                    ),
+                    try ExecutableAction(
+                        id: "scroll-down",
+                        summary: "scroll down",
+                        approvalRequirement: .action,
+                        operation: .computer(window: window, command: .scroll(direction: .down, amount: 1, unit: .line, target: nil)),
+                        postcondition: .elementValue("")
+                    ),
+                    try ExecutableAction(
+                        id: "drag-window",
+                        summary: "drag across the window",
+                        approvalRequirement: .action,
+                        operation: .computer(window: window, command: .drag(
+                            from: .windowPixels(x: 1, y: 2),
+                            to: .windowPixels(x: 3, y: 4),
+                            durationMilliseconds: 250,
+                            steps: 12
+                        )),
+                        postcondition: .elementValue("")
+                    ),
+                ],
+                requestedScopes: [.computerControl]
+            )
             return (await supervisor.run(
                 plan: plan,
                 typedExecutor: TypedActionRouter(

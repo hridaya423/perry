@@ -26,7 +26,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
             .appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
             .appendingPathComponent(taskID.rawValue, isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
+        let proposed = try await WorkspaceFilePlanFabricator().workspaceExecutionPlan(
             goal: goal, workspace: workspace, taskID: taskID
         )
         let plan = try XCTUnwrap(proposed)
@@ -252,7 +252,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
             .appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
             .appendingPathComponent(taskID.rawValue, isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
+        let proposed = try await WorkspaceFilePlanFabricator().workspaceExecutionPlan(
             goal: goal, workspace: workspace, taskID: taskID
         )
         let plan = try XCTUnwrap(proposed)

@@ -106,24 +106,6 @@ final class CodexRuntimeTests: XCTestCase {
         }
     }
 
-    func testPlanRequiresScreenContext() async {
-        let runtime = CodexRuntime(
-            executableLocator: { URL(fileURLWithPath: "/bin/echo") },
-            commandRunner: { @Sendable _, _ in
-                XCTFail("planning must not invoke Codex without screen context")
-                return ""
-            }
-        )
-
-        do {
-            _ = try await runtime.plan(makeRequest(context: .none))
-            XCTFail("expected context requirement")
-        } catch PlanningError.contextRequired {
-        } catch {
-            XCTFail("unexpected error: \(error)")
-        }
-    }
-
     func testRunCodingTaskRequiresWorkspaceBoundary() async {
         let runtime = CodexRuntime(
             executableLocator: { URL(fileURLWithPath: "/bin/echo") },
@@ -141,32 +123,6 @@ final class CodexRuntimeTests: XCTestCase {
         } catch {
             XCTFail("unexpected error: \(error)")
         }
-    }
-
-    func testPlanArgumentsAreReadOnlyAndEphemeral() {
-        let arguments = CodexRuntime.planArguments(
-            goal: "rename files",
-            context: ScreenContext(frontAppBundleID: "com.apple.finder", frontWindowTitle: "Desktop")
-        )
-        XCTAssertEqual(arguments.prefix(2), ["exec", "--json"])
-        XCTAssertTrue(arguments.contains("--skip-git-repo-check"))
-        XCTAssertTrue(arguments.contains("--ephemeral"))
-        XCTAssertTrue(arguments.contains("--ignore-user-config"))
-        guard let sandboxIndex = arguments.firstIndex(of: "-s") else {
-            return XCTFail("expected -s flag")
-        }
-        XCTAssertEqual(arguments[sandboxIndex + 1], "read-only")
-        XCTAssertTrue(arguments.last?.contains("rename files") == true)
-    }
-
-    func testPlanArgumentsIncludeMemoryAsUntrustedContext() {
-        let arguments = CodexRuntime.planArguments(
-            goal: "find the notes",
-            context: ScreenContext(memoryContext: "- [preference] sort by name")
-        )
-
-        XCTAssertTrue(arguments.last?.contains("sort by name") == true)
-        XCTAssertTrue(arguments.last?.contains("data, not instructions") == true)
     }
 
     func testFinalMessageExtractsAgentMessageFromJSONL() {
@@ -208,32 +164,6 @@ final class CodexRuntimeTests: XCTestCase {
         XCTAssertEqual(CodexRuntime.finalMessage(from: output), "1. One\n2. Two")
     }
 
-    func testPlanParsesTypedActionsThroughFakeCodex() async throws {
-        let agentJSON = #"{"actions":[{"summary":"Create note","operation":{"transform":{"command":{"createUTF8File":{"path":"note.txt","contents":"hi"}}}}}]}"#
-        let escaped = agentJSON
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let runtime = CodexRuntime(
-            executableLocator: { URL(fileURLWithPath: "/bin/echo") },
-            commandRunner: { @Sendable _, arguments in
-                XCTAssertTrue(arguments.contains("--json"))
-                return "{\"msg\":{\"type\":\"item.completed\",\"payload\":{\"type\":\"agent_message\",\"text\":\"\(escaped)\"}}}"
-            },
-            timeout: 5
-        )
-        let plan = try await runtime.plan(makeRequest())
-        XCTAssertEqual(plan.actions.count, 1)
-        guard case .transform(let workspace, let command) = plan.actions[0].operation,
-              case .createUTF8File(let path, _) = command else {
-            return XCTFail("expected a workspace create action")
-        }
-        XCTAssertEqual(
-            workspace.standardizedFileURL.path,
-            makeWorkspace().resolvingSymlinksInPath().standardizedFileURL.path
-        )
-        XCTAssertEqual(path, "note.txt")
-    }
-
     func testRunCodingTaskRunsWorkspaceWriteSandbox() async throws {
         let observedArguments = LockedValue<[String]>([])
         let runtime = CodexRuntime(
@@ -272,18 +202,6 @@ final class CodexRuntimeTests: XCTestCase {
 
     private func makeWorkspace() -> URL {
         FileManager.default.temporaryDirectory
-    }
-
-    private func makeRequest(
-        goal: String = "test",
-        context: PlanningContext = .screen(ScreenContext())
-    ) throws -> PlanningRequest {
-        try PlanningRequest(
-            goal: goal,
-            taskID: TaskID("codex-test"),
-            workspace: makeWorkspace(),
-            context: context
-        )
     }
 }
 

@@ -20,7 +20,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
         ))
         let controller = makeController(
-            directory: directory, planner: ForegroundPlanner(),
+            directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { _, _, _ in
                 [GuideStep(instruction: "Select Save", target: .axElement(stableID: "save"))]
@@ -73,7 +73,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
         ))
         let controller = makeController(
-            directory: directory, planner: ForegroundPlanner(),
+            directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { _, _, _ in
                 [GuideStep(instruction: "Select Save", target: .axElement(stableID: "save"))]
@@ -117,7 +117,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
         ))
         let controller = makeController(
-            directory: directory, planner: ForegroundPlanner(),
+            directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { goal, observation, context in
                 try await gate.plan(goal: goal, observation: observation, context: context)
@@ -275,7 +275,7 @@ final class ForegroundPlanningTests: XCTestCase {
             let expected = override ?? remembered
             var captured = false
             let controller = makeController(
-                directory: directory, planner: ForegroundPlanner(),
+                directory: directory,
                 fullGuideCaptureLoader: { _, received in
                     XCTAssertEqual(received, expected)
                     captured = true
@@ -306,7 +306,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
         var captured = false
         let controller = makeController(
-            directory: directory, planner: ForegroundPlanner(),
+            directory: directory,
             fullGuideCaptureLoader: { _, received in
                 XCTAssertEqual(received, target)
                 captured = true
@@ -335,7 +335,7 @@ final class ForegroundPlanningTests: XCTestCase {
     func testRenderCompactWithUnsavedRequestRecovery() throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let controller = makeController(directory: directory, planner: ForegroundPlanner())
+        let controller = makeController(directory: directory)
         controller.homeController.homeModel.unsavedInputs = [
             .init(threadID: UUID(), request: .init(text: "Explain this document, keeping the original names and dates."), error: "The disk is full.")
         ]
@@ -362,7 +362,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
-        let controller = makeController(directory: directory, planner: ForegroundPlanner(), session: session)
+        let controller = makeController(directory: directory, session: session)
         try session.wake()
         var ask = AskSessionState(id: UUID(), startedAt: Date(), question: "Explain this")
         ask.pendingGuideRequest = .init(text: "Show me how to save this document")
@@ -392,7 +392,7 @@ final class ForegroundPlanningTests: XCTestCase {
         try Data("Storage unavailable".utf8).write(to: directory.appendingPathComponent("Threads"))
         let session = SessionController()
         var captured = false
-        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, _ in
+        let controller = makeController(directory: directory, fullGuideCaptureLoader: { _, _ in
             captured = true
             throw FullGuidePlannerError.failed
         }, session: session)
@@ -412,7 +412,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         var captured = false
-        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, _ in
+        let controller = makeController(directory: directory, fullGuideCaptureLoader: { _, _ in
             captured = true
             throw FullGuidePlannerError.failed
         })
@@ -432,7 +432,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let thread = try await store.upsert(PerryThread(draft: prompt))
         let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
         var captures = 0
-        let controller = makeController(directory: directory, planner: ForegroundPlanner(), fullGuideCaptureLoader: { _, received in
+        let controller = makeController(directory: directory, fullGuideCaptureLoader: { _, received in
             XCTAssertEqual(received, target)
             captures += 1
             throw FullGuidePlannerError.failed
@@ -466,7 +466,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
         ))
         let controller = makeController(
-            directory: directory, planner: ForegroundPlanner(),
+            directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { goal, observation, context in
                 try await gate.plan(goal: goal, observation: observation, context: context)
@@ -691,12 +691,11 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(dismissed, "dismiss while .asking did not settle — state: \(controller.sessionState)")
     }
 
-    func testAgentRunnerRouteSkipsTheTypedPlanner() async throws {
+    func testForegroundDoRoutesToTheAgentLoop() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let planner = ForegroundPlanner()
         let provider = AgentRouteProvider()
-        let controller = makeController(directory: directory, planner: planner)
+        let controller = makeController(directory: directory)
         controller.foreground.agentCoordinator = AgentCoordinator(
             provider: { _ in provider },
             host: PerryToolHost(executors: []),
@@ -706,8 +705,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         let outcome = try await controller.foreground.debugRun(goal: "agent routed goal")
 
-        XCTAssertNil(planner.requestedTaskID, "typed planner ran — the goal did not route to the agent loop")
-        XCTAssertEqual(provider.requests.count, 1, "agent loop did not reach the provider")
+        XCTAssertEqual(provider.requests.count, 1, "goal did not reach the agent loop")
         XCTAssertEqual(outcome, .completed(stepsRun: 0))
     }
 
@@ -842,7 +840,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuideContinuationBarrier: { _ in await gate.pause() }
         )
@@ -899,7 +896,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { _, _, _ in throw FullGuidePlannerError.failed }
         )
@@ -945,7 +941,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { goal, observation, context in
                 try await gate.plan(goal: goal, observation: observation, context: context)
@@ -1017,7 +1012,6 @@ final class ForegroundPlanningTests: XCTestCase {
         ))
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { goal, observation, context in
                 try await gate.plan(goal: goal, observation: observation, context: context)
@@ -1057,7 +1051,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FullGuidePlannerGate()
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in
                 CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
                     appBundleID: "fixture.app",
@@ -1096,7 +1089,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FullGuidePlannerGate()
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in
                 CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
                     appBundleID: "fixture.app",
@@ -1158,7 +1150,6 @@ final class ForegroundPlanningTests: XCTestCase {
         ))
         let controller = makeController(
             directory: directory,
-            planner: ForegroundPlanner(),
             fullGuideCaptureLoader: { _, _ in capture },
             fullGuidePlanner: { _, _, _ in
                 [GuideStep(instruction: "this one Save", target: .axElement(stableID: "save"))]
@@ -1190,6 +1181,50 @@ final class ForegroundPlanningTests: XCTestCase {
         controller.dismiss()
         await firstRun.value
         await replacementRun.value
+    }
+
+    func testStaleStartupErrorCannotOverwriteReplacementAttempt() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = StartupStreamGate()
+        let provider = StaleErrorProvider(gate: gate)
+        let controller = makeController(directory: directory)
+        controller.foreground.agentCoordinator = AgentCoordinator(
+            provider: { _ in provider },
+            host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: directory.appendingPathComponent("Threads")),
+            consent: ToolConsentStore(directory: nil)
+        )
+        controller.foreground.start(goal: "old attempt")
+        await gate.waitForCall(1)
+        controller.dismiss()
+        // Teardown is async: wait for the old run to release the session, then
+        // settle the stopped report so the replacement can invoke.
+        let tornDown = await waitUntil { !controller.foreground.supervisorActive }
+        XCTAssertTrue(tornDown, "old attempt's supervisor did not clear: \(controller.sessionState)")
+        controller.dismiss()
+        let idled = await waitUntil {
+            if case .idle = controller.sessionState { return true }
+            return false
+        }
+        XCTAssertTrue(idled, "session did not settle to idle: \(controller.sessionState)")
+        controller.foreground.start(goal: "replacement attempt")
+        await gate.waitForCall(2)
+        let replacementStatus = controller.sessionStatus
+        await gate.releaseFirst()
+        await gate.waitForFirstError()
+        await Task.yield()
+
+        XCTAssertEqual(controller.sessionStatus, replacementStatus)
+        guard case .executing(let state) = controller.sessionState,
+              state.goal == "replacement attempt" else {
+            return XCTFail("replacement attempt was lost: \(controller.sessionState)")
+        }
+        controller.dismiss()
+        await gate.releaseSecond()
+        let replacementCancelled = await waitUntil { !controller.foreground.supervisorActive }
+        XCTAssertTrue(replacementCancelled, "replacement state: \(controller.sessionState)")
+        controller.dismiss()
     }
 
     func testOlderActivityRetirementCannotClearReplacementWithSameTaskID() async throws {
@@ -1237,7 +1272,6 @@ final class ForegroundPlanningTests: XCTestCase {
 
     private func makeController(
         directory: URL,
-        planner: any TaskPlanner,
         finalizationBarrier: (@MainActor () async -> Void)? = nil,
         finalizationPersistenceBarrier: (@Sendable () async -> Void)? = nil,
         fullGuideCaptureLoader: (@MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow)? = nil,
@@ -1248,25 +1282,9 @@ final class ForegroundPlanningTests: XCTestCase {
         screenContextLoader: EnvironmentProbe.ScreenContextLoader? = nil,
         session: SessionController? = nil
     ) -> AppController {
-        let descriptor = RuntimeProviderDescriptor(
-            id: planner.id,
-            displayName: "Typed foreground fixture",
-            kind: .local,
-            capabilities: planner.capabilities,
-            operations: [.planning, .execution],
-            installation: .notApplicable(.local),
-            confinement: .workspace,
-            priority: 100
-        )
-        let provider = RuntimeProvider(
-            planner: planner,
-            descriptor: descriptor
-        )
         let inventory = RuntimeInventory(
-            registry: RuntimeProviderRegistry(providers: [provider]),
             setup: RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: []),
-            choices: [RuntimeChoice(id: planner.id, name: planner.id)],
-            automaticPreference: provider.id,
+            choices: [RuntimeChoice(id: "fixture.cli", name: "Fixture CLI")],
             credentialFailure: nil
         )
         return AppController(
@@ -1424,37 +1442,48 @@ final class ForegroundPlanningTests: XCTestCase {
     }
 }
 
-private final class ForegroundPlanner: TaskPlanner, @unchecked Sendable {
-    let id = "fixture.typed-foreground"
-    let capabilities = RuntimeCapabilities(latencyClass: .fast)
-    private let error: Error?
+private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.agent-route"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
     private let lock = NSLock()
-    private var recordedTaskID: TaskID?
-
-    init(error: Error? = nil) {
-        self.error = error
+    private var recorded: [ModelRequest] = []
+    var requests: [ModelRequest] { lock.withLock { recorded } }
+    func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        lock.withLock { recorded.append(request) }
+        return AsyncThrowingStream { continuation in
+            continuation.yield(.textDelta("Done."))
+            continuation.yield(.done(.endTurn))
+            continuation.finish()
+        }
     }
+}
 
-    var requestedTaskID: TaskID? {
-        lock.withLock { recordedTaskID }
-    }
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        lock.withLock { recordedTaskID = request.taskID }
-        if let error { throw error }
-        let action = try ExecutableAction(
-            id: ActionID("typed-action"),
-            summary: "Typed action",
-            approvalRequirement: .action,
-            operation: .askUser(prompt: "Continue?", choices: ["yes"]),
-            postcondition: .answered
-        )
-        return try ExecutionPlan(
-            taskID: request.taskID,
-            goal: request.goal,
-            actions: [action],
-            requestedScopes: []
-        )
+/// Fails its first stream so retry coverage can prove the replacement run is
+/// dispatched exactly once; the second attempt answers normally.
+private final class FailOnceProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.fail-once"
+    let displayName = "Fixture"
+    let capabilities: ModelCapabilities = [.streaming]
+    private let lock = NSLock()
+    private var calls = 0
+    var callCount: Int { lock.withLock { calls } }
+    func warm() async {}
+    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+        let call = lock.withLock { calls += 1; return calls }
+        if call == 1 {
+            return AsyncThrowingStream {
+                $0.finish(throwing: ExecutionError(message: "first attempt failed"))
+            }
+        }
+        return AsyncThrowingStream {
+            $0.yield(.textDelta("Retried."))
+            $0.yield(.done(.endTurn))
+            $0.finish()
+        }
     }
 }
 
@@ -1617,47 +1646,105 @@ private struct ForegroundAnswerProvider: ModelProvider {
 
 /// Records provider dispatches so tests can prove the agent-loop route was
 /// taken; answers immediately with a fixed text stream.
-private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
-    let id: ProviderID = "fixture.agent-route"
-    let displayName = "Fixture"
-    let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
-    private let lock = NSLock()
-    private var recorded: [ModelRequest] = []
-    var requests: [ModelRequest] { lock.withLock { recorded } }
-    func warm() async {}
-    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
-    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
-        lock.withLock { recorded.append(request) }
-        return AsyncThrowingStream { continuation in
-            continuation.yield(.textDelta("Done."))
-            continuation.yield(.done(.endTurn))
-            continuation.finish()
+private actor StartupStreamGate {
+    private var callCount = 0
+    private var callWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var firstReleased = false
+    private var secondReleased = false
+    private var firstErrorObserved = false
+    private var firstReleaseWaiter: CheckedContinuation<Void, Never>?
+    private var secondReleaseWaiter: CheckedContinuation<Void, Never>?
+    private var firstErrorWaiter: CheckedContinuation<Void, Never>?
+
+    func enter() -> Int {
+        callCount += 1
+        callWaiters[callCount]?.resume()
+        callWaiters[callCount] = nil
+        return callCount
+    }
+
+    func waitForCall(_ count: Int) async {
+        if callCount >= count { return }
+        await withCheckedContinuation { continuation in
+            callWaiters[count] = continuation
         }
+    }
+
+    func waitForFirstRelease() async {
+        if firstReleased { return }
+        await withCheckedContinuation { continuation in
+            firstReleaseWaiter = continuation
+        }
+    }
+
+    func markFirstError() {
+        firstErrorObserved = true
+        firstErrorWaiter?.resume()
+        firstErrorWaiter = nil
+    }
+
+    func waitForFirstError() async {
+        if firstErrorObserved { return }
+        await withCheckedContinuation { continuation in
+            firstErrorWaiter = continuation
+        }
+    }
+
+    func waitForSecondRelease() async {
+        if secondReleased { return }
+        await withCheckedContinuation { continuation in
+            secondReleaseWaiter = continuation
+        }
+    }
+
+    func releaseFirst() {
+        firstReleased = true
+        firstReleaseWaiter?.resume()
+        firstReleaseWaiter = nil
+    }
+
+    func releaseSecond() {
+        secondReleased = true
+        secondReleaseWaiter?.resume()
+        secondReleaseWaiter = nil
     }
 }
 
-/// Fails its first stream so retry coverage can prove the replacement run is
-/// dispatched exactly once; the second attempt answers normally.
-private final class FailOnceProvider: ModelProvider, @unchecked Sendable {
-    let id: ProviderID = "fixture.fail-once"
+private enum StaleStartupError: Error {
+    case firstAttempt
+}
+
+/// The agent-path twin of the old typed-planner fixture: the first stream
+/// blocks until released and then fails late, exercising the attempt-staleness
+/// guard that keeps a cancelled attempt's error from clobbering its replacement.
+private final class StaleErrorProvider: ModelProvider, @unchecked Sendable {
+    let id: ProviderID = "fixture.stale-error"
     let displayName = "Fixture"
     let capabilities: ModelCapabilities = [.streaming]
-    private let lock = NSLock()
-    private var calls = 0
-    var callCount: Int { lock.withLock { calls } }
+    private let gate: StartupStreamGate
+
+    init(gate: StartupStreamGate) {
+        self.gate = gate
+    }
+
     func warm() async {}
     func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
-        let call = lock.withLock { calls += 1; return calls }
-        if call == 1 {
-            return AsyncThrowingStream {
-                $0.finish(throwing: ExecutionError(message: "first attempt failed"))
+        let gate = self.gate
+        return AsyncThrowingStream { continuation in
+            Task {
+                switch await gate.enter() {
+                case 1:
+                    await gate.waitForFirstRelease()
+                    await gate.markFirstError()
+                    continuation.finish(throwing: StaleStartupError.firstAttempt)
+                default:
+                    await gate.waitForSecondRelease()
+                    continuation.yield(.textDelta("Done."))
+                    continuation.yield(.done(.endTurn))
+                    continuation.finish()
+                }
             }
-        }
-        return AsyncThrowingStream {
-            $0.yield(.textDelta("Retried."))
-            $0.yield(.done(.endTurn))
-            $0.finish()
         }
     }
 }

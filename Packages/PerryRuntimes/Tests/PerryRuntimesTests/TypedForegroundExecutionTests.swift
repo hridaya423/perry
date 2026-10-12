@@ -3,7 +3,7 @@ import PerryCore
 @testable import PerryRuntimes
 
 final class TypedForegroundExecutionTests: XCTestCase {
-    func testPlannedActionReachesTheExecutorWithExactIdentityFields() async throws {
+    func testApprovedActionReachesTheExecutorWithExactIdentityFields() async throws {
         let workspace = URL(fileURLWithPath: "/tmp/perry-typed-foreground")
         let action = try ExecutableAction(
             id: ActionID("write-report"),
@@ -22,31 +22,6 @@ final class TypedForegroundExecutionTests: XCTestCase {
             requestedScopes: [.workspaceWrite]
         )
         let executor = RecordingTypedExecutor()
-        let provider = RuntimeProvider(
-            planner: TypedPlanner(executionPlan: plan),
-            descriptor: RuntimeProviderDescriptor(
-                id: "typed-only",
-                capabilities: RuntimeCapabilities(fileIO: true),
-                operations: [.planning, .execution],
-                installation: .notApplicable(.local),
-                authentication: .notRequired,
-                confinement: .workspace
-            )
-        )
-        let registry = RuntimeProviderRegistry(providers: [provider])
-        let route = registry.route(for: RuntimeRouteRequest(
-            requiredCapabilities: [.fileIO],
-            requiredOperations: [.planning, .execution]
-        ))
-        let decision = try XCTUnwrap(route)
-
-        let request = try PlanningRequest(
-            goal: plan.goal,
-            taskID: plan.taskID,
-            workspace: workspace,
-            context: .none
-        )
-        let planned = try await decision.provider.plan(request)
 
         let grant = try ExecutionApprovalGrant(plan: plan, scope: .action(action.id))
         let approved = try ApprovedExecutableAction(plan: plan, actionID: action.id, grant: grant)
@@ -61,17 +36,6 @@ final class TypedForegroundExecutionTests: XCTestCase {
         XCTAssertEqual(received?.postcondition, action.postcondition)
         XCTAssertEqual(result.actionID, action.id)
         XCTAssertEqual(result.operation, action.operation)
-        XCTAssertEqual(planned.actions.map(\.id), [action.id])
-    }
-}
-
-private struct TypedPlanner: TaskPlanner {
-    let executionPlan: PerryRuntimes.ExecutionPlan
-    let id = "typed-only"
-    let capabilities = RuntimeCapabilities(fileIO: true)
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        executionPlan
     }
 }
 

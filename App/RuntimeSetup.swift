@@ -43,7 +43,7 @@ struct RuntimeSetupRecord: Identifiable, Equatable {
     /// model → ChatGPT sign-in) — there is no copy-a-Terminal-command flow.
     var authenticatesInApp = false
 
-    var canPlan: Bool { authentication?.isUsable == true }
+    var canRun: Bool { authentication?.isUsable == true }
 }
 
 struct RuntimeSetupSnapshot: Equatable {

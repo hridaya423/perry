@@ -3,13 +3,10 @@ import PerryCore
 
 /// Agent runtime backed by a pinned, app-bundled OpenAI codex CLI.
 ///
-/// Planning runs `codex exec --json` in the read-only sandbox and parses the
-/// JSONL event stream for the agent's final message. Execution re-runs the
-/// goal under `workspace-write` (PRD §7 sandbox default); tier enforcement
-/// stays in DoSupervisor's confirmer, which sits in front of this runtime.
-public struct CodexRuntime: TaskPlanner {
+/// Delegated coding tasks run `codex exec --json` under `workspace-write`
+/// (PRD §7 sandbox default) inside the routine-replay workspace boundary.
+public struct CodexRuntime: Sendable {
     public let id = "cli.codex"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
 
     public static let pinnedVersion = "0.158.0"
     public static let pinnedBinarySHA256 = "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8"
@@ -88,18 +85,6 @@ public struct CodexRuntime: TaskPlanner {
         }
     }
 
-    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        guard case .screen(let context) = request.context else {
-            throw PlanningError.contextRequired
-        }
-        let output = try await invoke(arguments: Self.planArguments(goal: request.goal, context: context))
-        return try TypedPlanParser.plan(
-            Self.finalMessage(from: output) ?? output,
-            request: request,
-            bindings: .init(request: request, context: context)
-        )
-    }
-
     /// Typed-path delegated task: runs the prompt inside the workspace-write
     /// sandbox. The workspace boundary comes from init, never from the prompt.
     public func runCodingTask(prompt: String) async throws -> String {
@@ -115,16 +100,6 @@ public struct CodexRuntime: TaskPlanner {
     func invoke(arguments: [String]) async throws -> String {
         let executable = try locateExecutable()
         return try await invokeCommand(executable, arguments)
-    }
-
-    /// Plan calls must never write. Read-only sandbox, user config ignored so
-    /// a local ~/.codex/config.toml can't flip permissions behind our back.
-    static func planArguments(goal: String, context: ScreenContext) -> [String] {
-        return [
-            "exec", "--json", "--skip-git-repo-check",
-            "-s", "read-only", "--ephemeral", "--ignore-user-config",
-            TypedPlanningPrompt.make(goal: goal, context: context),
-        ]
     }
 
     /// The JSONL stream mixes event kinds; the final assistant answer arrives

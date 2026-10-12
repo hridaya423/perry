@@ -45,15 +45,13 @@ final class PipeBuffer: @unchecked Sendable {
     }
 }
 
-public struct CLIRuntime: TaskPlanner {
+public struct CLIRuntime: Sendable {
     public enum ProcessProfile: Sendable, Equatable {
         case standard
         case codex(runtimeHome: URL)
-        case openCodePlanning
     }
 
     public let id = "cli.claude-code"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .medium)
 
     public static func authenticationStatus(executable: URL) async throws -> RuntimeAuthenticationStatus {
         do {
@@ -108,24 +106,6 @@ public struct CLIRuntime: TaskPlanner {
                 return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-    }
-
-    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        guard case .screen(let context) = request.context else {
-            throw PlanningError.contextRequired
-        }
-        let output = try await invoke([
-            TypedPlanningPrompt.make(goal: request.goal, context: context),
-            "-p",
-            "--permission-mode", "plan",
-            "--max-turns", "1",
-            "--tools", "",
-        ])
-        return try TypedPlanParser.plan(
-            output,
-            request: request,
-            bindings: .init(request: request, context: context)
-        )
     }
 
     func invoke(_ arguments: [String]) async throws -> String {
@@ -256,9 +236,6 @@ public struct CLIRuntime: TaskPlanner {
             break
         case .codex(let runtimeHome):
             filtered["CODEX_HOME"] = runtimeHome.path
-        case .openCodePlanning:
-            filtered["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
-            filtered["OPENCODE_CONFIG_CONTENT"] = #"{"agent":{"perry":{"description":"Perry typed-plan adapter","mode":"primary","permission":{"read":"deny","edit":"deny","glob":"deny","grep":"deny","list":"deny","bash":"deny","task":"deny","external_directory":"deny","todowrite":"deny","question":"deny","webfetch":"deny","websearch":"deny","lsp":"deny","doom_loop":"deny","skill":"deny"}}}}"#
         }
         return filtered
     }

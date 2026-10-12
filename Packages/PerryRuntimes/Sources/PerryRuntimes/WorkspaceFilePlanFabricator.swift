@@ -1,23 +1,13 @@
 import Foundation
 import PerryCore
 
-public struct LocalTaskPlannerRuntime: TaskPlanner {
+/// Fabricates the canonical workspace-file `ExecutionPlan` — used by
+/// routine/task fixtures and any surface that still seeds a durable
+/// workspace task. Not a runtime: nothing plans through it.
+public struct WorkspaceFilePlanFabricator: Sendable {
     public let id = "local.task-planner"
-    public let capabilities = RuntimeCapabilities(guiGrounding: true, fileIO: true, browser: false, remoteIntegrations: true, latencyClass: .fast)
 
     public init() {}
-
-    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        if let executionPlan = try await workspaceExecutionPlan(
-            goal: request.goal,
-            workspace: request.workspace,
-            taskID: request.taskID
-        ) {
-            return executionPlan
-        }
-        throw PlanError(message: "the local planner only handles workspace file requests")
-    }
-
 
     public func workspaceExecutionPlan(
         goal: String,
@@ -45,14 +35,6 @@ public struct LocalTaskPlannerRuntime: TaskPlanner {
             actions: [action],
             requestedScopes: [.workspaceWrite]
         )
-    }
-
-    public static func supportsWorkspaceExecutionGoal(_ goal: String) -> Bool {
-        do {
-            return try canonicalFileRequest(for: goal) != nil
-        } catch {
-            return false
-        }
     }
 
     private static func canonicalFileRequest(

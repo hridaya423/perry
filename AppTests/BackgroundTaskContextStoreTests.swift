@@ -11,7 +11,6 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
         let metadata = BackgroundTaskMetadata(
             targetAppBundleID: "com.apple.finder",
             workspacePath: "/tmp/work",
-            preferredRuntimeID: RuntimeProviderID("cli.opencode"),
             runtimeRoutingSummary: "Selected cli.opencode."
         )
         let store = BackgroundTaskContextStore(storageDirectory: directory)
@@ -24,20 +23,6 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
         let reloaded = BackgroundTaskContextStore(storageDirectory: directory)
         let saved = await reloaded.metadata(for: id)
         XCTAssertEqual(saved, metadata)
-    }
-
-    func testPersistedPlanRuntimeOverridesTheOriginalPreferenceDuringRecovery() {
-        let metadata = BackgroundTaskMetadata(preferredRuntimeID: RuntimeProviderID("cli.opencode"))
-        let plan = Plan(goal: "Rename the file", runtimeID: "cli.codex", steps: [])
-
-        XCTAssertEqual(metadata.runtimeProviderID(for: plan), RuntimeProviderID("cli.codex"))
-    }
-
-    func testLegacyPlanWithoutRuntimeUsesTheOriginalPreferenceDuringRecovery() {
-        let metadata = BackgroundTaskMetadata(preferredRuntimeID: RuntimeProviderID("cli.opencode"))
-        let plan = Plan(goal: "Rename the file", runtimeID: "", steps: [])
-
-        XCTAssertEqual(metadata.runtimeProviderID(for: plan), RuntimeProviderID("cli.opencode"))
     }
 
     func testMigratesLegacyDictionaryWithoutLosingValues() async throws {

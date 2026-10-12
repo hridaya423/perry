@@ -217,7 +217,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         addTeardownBlock { try self.removeFixture(directory) }
         let workspace = directory.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false)
-        let proposed = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
+        let proposed = try await WorkspaceFilePlanFabricator().workspaceExecutionPlan(
             goal: #"create file "report.txt" with "saved report""#,
             workspace: workspace,
             taskID: "cancelled-report"

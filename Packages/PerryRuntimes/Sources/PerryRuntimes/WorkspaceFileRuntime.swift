@@ -211,7 +211,6 @@ public struct WorkspaceFileExecutionReceipt: Codable, Equatable, Sendable {
 public struct WorkspaceFileRuntime: ExecutableActionExecutor {
     public static let maximumFileCreationBytes = 8 * 1_024 * 1_024
     public let id = "local.workspace-files"
-    public let capabilities = RuntimeCapabilities(guiGrounding: false, fileIO: true, browser: false, latencyClass: .fast)
 
     private let baseURL: URL
     private let typedRoot: (path: String, device: dev_t, inode: ino_t)?
@@ -841,25 +840,6 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
     }
 
 }
-
-public struct WorkspaceFilePlanner: TaskPlanner {
-    public let id = "local.workspace-files"
-    public let capabilities = RuntimeCapabilities(fileIO: true, latencyClass: .fast)
-
-    public init() {}
-
-    public func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        guard let plan = try await LocalTaskPlannerRuntime().workspaceExecutionPlan(
-            goal: request.goal,
-            workspace: request.workspace,
-            taskID: request.taskID
-        ) else {
-            throw PlanError(message: "the workspace file planner could not safely map that request to a file action")
-        }
-        return plan
-    }
-}
-
 public struct WorkspaceFileVerifier: TypedActionVerifier {
     private let baseURL: URL
     private let trashURL: URL

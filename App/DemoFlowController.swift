@@ -80,7 +80,7 @@ final class DemoFlowController {
         }
         do {
             let inventory = try await host.runtimes.inspect()
-            if !inventory.hasReadyCLIPlanner {
+            if !inventory.hasReadyCLI {
                 host.sessionStatus = "Using Perry's private local planner for the supported demo task."
             }
             return .ready

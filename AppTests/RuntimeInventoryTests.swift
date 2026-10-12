@@ -17,46 +17,40 @@ final class RuntimeInventoryTests: XCTestCase {
         let workspace = directory.appendingPathComponent("workspace")
         let inventory = try await fixture.inspector.inspect(workingDirectory: workspace)
 
-        XCTAssertEqual(fixture.events, ["locate", "verify", "authenticate", "construct"])
-        XCTAssertEqual(fixture.observedExecutables, Array(repeating: executable.resolvingSymlinksInPath(), count: 3))
-        XCTAssertEqual(fixture.workspace, workspace)
+        XCTAssertEqual(fixture.events, ["locate", "verify", "authenticate"])
+        XCTAssertEqual(fixture.observedExecutables, Array(repeating: executable.resolvingSymlinksInPath(), count: 2))
         let record = try XCTUnwrap(inventory.setup.records.first)
         XCTAssertEqual(record.signInCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signOutCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signInCommand?.environment, ["CODEX_HOME": "/fixture/private-home"])
-        XCTAssertEqual(inventory.registry.providers.map(\.id.rawValue), ["fixture.cli", "local.workspace-files", "local.task-planner"])
+        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli", "local.workspace-files"])
     }
 
-    func testRejectedInstallationHasNoAuthenticationCommandsOrPlanningChoice() async throws {
+    func testRejectedInstallationHasNoAuthenticationCommandsOrChoice() async throws {
         let fixture = Fixture()
         fixture.installation = .unverified(reason: "checksum mismatch")
         let inventory = try await fixture.inspector.inspect()
 
-        XCTAssertEqual(fixture.events, ["locate", "verify", "construct"])
+        XCTAssertEqual(fixture.events, ["locate", "verify"])
         let record = try XCTUnwrap(inventory.setup.records.first)
         XCTAssertNil(record.authentication)
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
-        XCTAssertFalse(record.canPlan)
-        XCTAssertFalse(inventory.hasReadyCLIPlanner)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "local.task-planner"])
-        let selection = ProductionRuntimeSelector().select(from: inventory.registry, preferredProviderID: inventory.automaticPreference)
-        XCTAssertEqual(selection?.providerID, "local.task-planner")
-        XCTAssertTrue(selection?.explanation.fallbackReason?.contains("checksum mismatch") == true)
+        XCTAssertFalse(record.canRun)
+        XCTAssertFalse(inventory.hasReadyCLI)
+        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
-    func testConfiguredCredentialsAllowPlanningWithoutClaimingReadiness() async throws {
+    func testConfiguredCredentialsAllowRunningWithoutClaimingReadiness() async throws {
         let fixture = Fixture()
         let inventory = try await fixture.inspector.inspect()
         let record = try XCTUnwrap(inventory.setup.records.first)
 
         XCTAssertEqual(record.authentication, .configured)
-        XCTAssertTrue(record.canPlan)
+        XCTAssertTrue(record.canRun)
         XCTAssertFalse(record.isReady)
-        XCTAssertFalse(inventory.hasReadyCLIPlanner)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli", "local.task-planner"])
-        XCTAssertEqual(ProductionRuntimeSelector().select(from: inventory.registry)?.providerID, "fixture.cli")
-        XCTAssertEqual(inventory.registry.provider(for: "fixture.cli")?.descriptor.operations, [.planning])
+        XCTAssertFalse(inventory.hasReadyCLI)
+        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli"])
     }
 
     func testCancellationDuringVerificationOrAuthenticationReturnsNoInventory() async {
@@ -71,7 +65,6 @@ final class RuntimeInventoryTests: XCTestCase {
             } catch {
                 XCTFail("Expected cancellation, received \(error)")
             }
-            XCTAssertFalse(fixture.events.contains("construct"))
             if stage == "verify" { XCTAssertFalse(fixture.events.contains("authenticate")) }
         }
     }
@@ -88,18 +81,18 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(fixture.observedExecutables.last, fixture.executable)
         XCTAssertEqual(inventory.setup.records.first?.authentication, .missing)
         XCTAssertEqual(inventory.setup.records.first?.signInCommand?.executable, fixture.executable)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "local.task-planner"])
+        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
-    func testOfficialAndCustomProvidersUseTheSameInventoryForRoutingAndChoices() async throws {
-        let cases: [(String, String, RuntimeProviderKind, RuntimeInstallationSource)] = [
-            ("https://api.openai.com", "direct.openai", .byok, .directAPI),
-            ("https://api.anthropic.com", "direct.anthropic", .byok, .directAPI),
-            ("https://generativelanguage.googleapis.com", "direct.gemini", .byok, .directAPI),
-            ("https://openrouter.ai/api", "direct.openrouter", .byok, .directAPI),
-            ("https://custom.example", "byok.vision", .custom, .customEndpoint),
+    func testOfficialAndCustomProvidersProduceChoicesAndSummaries() async throws {
+        let cases: [(String, String, String, String)] = [
+            ("https://api.openai.com", "direct.openai", "OpenAI", "OpenAI"),
+            ("https://api.anthropic.com", "direct.anthropic", "Anthropic", "Anthropic"),
+            ("https://generativelanguage.googleapis.com", "direct.gemini", "Gemini", "Gemini"),
+            ("https://openrouter.ai/api", "direct.openrouter", "OpenRouter", "OpenRouter"),
+            ("https://custom.example", "byok.vision", "Custom OpenAI-compatible provider", "Custom provider"),
         ]
-        for (url, id, kind, source) in cases {
+        for (url, id, name, summaryName) in cases {
             let fixture = Fixture()
             let endpoint = BYOKAgentEndpoint(baseURL: try XCTUnwrap(URL(string: url)), model: "fixture-model")
             let inspector = RuntimeInventoryInspector(
@@ -107,19 +100,13 @@ final class RuntimeInventoryTests: XCTestCase {
                 commandLineProviders: [fixture.definition]
             )
             let inventory = try await inspector.inspect()
-            let provider = try XCTUnwrap(inventory.registry.provider(for: id))
-            XCTAssertEqual(provider.descriptor.identity.kind, kind)
-            XCTAssertEqual(provider.descriptor.installation, .notApplicable(source))
-            XCTAssertEqual(provider.descriptor.authentication, .configured)
-            XCTAssertEqual(provider.descriptor.operations, [.planning])
-            XCTAssertEqual(inventory.choices.map(\.id), ["automatic", id, "fixture.cli", "local.task-planner"])
-            XCTAssertEqual(inventory.automaticPreference?.rawValue, id)
-            XCTAssertEqual(ProductionRuntimeSelector().select(from: inventory.registry, preferredProviderID: inventory.automaticPreference)?.providerID.rawValue, id)
-            XCTAssertEqual(ProductionRuntimeSelector().select(from: inventory.registry, preferredProviderID: "fixture.cli")?.providerID, "fixture.cli")
+            XCTAssertEqual(inventory.choices.map(\.id), ["automatic", id, "fixture.cli"], url)
+            XCTAssertEqual(inventory.choices.first { $0.id == id }?.name, name, url)
+            XCTAssertEqual(inventory.setup.summary, "\(summaryName) credential configured. Perry verifies it when a task starts.", url)
         }
     }
 
-    func testCredentialFailureIsSanitizedAndRetainsLocalFallback() async throws {
+    func testCredentialFailureIsSanitizedAndLeavesNoChoices() async throws {
         let inventory = try await RuntimeInventoryInspector(
             readDirectProvider: { throw FixtureError() }, commandLineProviders: []
         ).inspect()
@@ -127,45 +114,33 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(inventory.setup.summary, "Perry could not read the direct-provider credential from Keychain.")
         XCTAssertEqual(inventory.credentialFailure, inventory.setup.summary)
         XCTAssertFalse(inventory.setup.summary.contains("seeded-secret"))
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "local.task-planner"])
-        XCTAssertEqual(ProductionRuntimeSelector().select(from: inventory.registry)?.providerID, "local.task-planner")
+        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
-    func testOrdinaryProbeFailuresKeepOtherProvidersAndSanitizeErrors() async throws {
+    func testOrdinaryProbeFailuresKeepRecordsAndSanitizeErrors() async throws {
         for stage in ["verify", "authenticate"] {
             let fixture = Fixture()
             fixture.failAt = stage
             let inventory = try await fixture.inspector.inspect()
             let record = try XCTUnwrap(inventory.setup.records.first)
-            XCTAssertFalse(record.canPlan)
-            XCTAssertEqual(ProductionRuntimeSelector().select(from: inventory.registry)?.providerID, "local.task-planner")
+            XCTAssertFalse(record.canRun)
             XCTAssertFalse(record.status.contains("seeded-secret"))
-            let rejected = try XCTUnwrap(inventory.registry.provider(for: "fixture.cli"))
-            XCTAssertFalse(rejected.descriptor.installation.explanation.contains("seeded-secret"))
-            XCTAssertFalse(rejected.descriptor.authentication.explanation.contains("seeded-secret"))
             if stage == "verify" {
                 XCTAssertFalse(fixture.events.contains("authenticate"))
                 XCTAssertNil(record.signInCommand)
-                XCTAssertEqual(rejected.descriptor.installation, .unverified(reason: "Fixture CLI installation inspection failed"))
             } else {
                 XCTAssertNotNil(record.signInCommand)
                 XCTAssertEqual(record.authentication, .unknown(reason: "Fixture CLI authentication inspection failed"))
-                XCTAssertEqual(rejected.descriptor.installation, fixture.installation)
             }
         }
     }
 
-    func testProductionDefinitionsKeepCodexHomeAndPlanningOnlyInstalledAdapters() throws {
+    func testProductionDefinitionsKeepCodexHomeAndExpectedAdapters() throws {
         let home = URL(fileURLWithPath: "/fixture/perry-private-codex")
         let definitions = RuntimeCLIDefinition.production(codexRuntimeHome: home)
         XCTAssertEqual(definitions.map(\.name), ["Bundled Codex", "Claude Code", "OpenCode"])
-        XCTAssertEqual(definitions.map(\.priority), [10, 20, 30])
-        XCTAssertEqual(definitions.map(\.confinement), [.workspace, .readOnly, .readOnly])
-        XCTAssertEqual(definitions.map(\.preferredByDefault), [true, false, false])
+        XCTAssertEqual(definitions.map(\.id), ["cli.codex", "cli.claude-code", "cli.opencode"])
         XCTAssertEqual(definitions.map(\.authenticatesInApp), [true, false, false])
-        let executable = URL(fileURLWithPath: "/fixture/never-launch")
-        let planners = definitions.map { $0.makePlanner(executable, nil) }
-        XCTAssertEqual(planners.map(\.id), ["cli.codex", "cli.claude-code", "cli.opencode"])
         XCTAssertEqual(definitions[0].environment, ["CODEX_HOME": home.path])
         XCTAssertEqual(definitions[0].signInArguments, ["login", "--device-auth"])
     }
@@ -184,7 +159,7 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(record.authentication, .missing)
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
-        XCTAssertFalse(record.canPlan)
+        XCTAssertFalse(record.canRun)
     }
 
     func testMissingPrivateCodexHomeRejectsCodexAndExplainsRecovery() async throws {
@@ -192,11 +167,11 @@ final class RuntimeInventoryTests: XCTestCase {
         let status = try await definition.verify(URL(fileURLWithPath: "/must-not-launch/runtime"))
 
         XCTAssertEqual(status, .unverified(reason: "Perry's private Codex home is unavailable"))
-        let inspected = try await definition.inspect(workingDirectory: nil)
-        let entry = try XCTUnwrap(inspected)
-        XCTAssertFalse(entry.setup.canPlan)
-        XCTAssertNil(entry.setup.signInCommand)
-        XCTAssertTrue(entry.setup.status.contains("Check storage and folder permissions"))
+        let inspected = try await definition.inspect()
+        let record = try XCTUnwrap(inspected)
+        XCTAssertFalse(record.canRun)
+        XCTAssertNil(record.signInCommand)
+        XCTAssertTrue(record.status.contains("Check storage and folder permissions"))
     }
 
     /// The inventory cache key leans on `fileStamp` — it must change when the
@@ -224,7 +199,6 @@ final class RuntimeInventoryTests: XCTestCase {
         var authentication: RuntimeAuthenticationStatus = .configured
         var events: [String] = []
         var observedExecutables: [URL] = []
-        var workspace: URL?
         var cancelAt: String?
         var failAt: String?
         var authenticatesInApp = false
@@ -235,8 +209,8 @@ final class RuntimeInventoryTests: XCTestCase {
 
         var definition: RuntimeCLIDefinition {
             RuntimeCLIDefinition(
-                name: "Fixture CLI", priority: 10, confinement: .readOnly,
-                preferredByDefault: true, usesProviderAuthentication: false,
+                name: "Fixture CLI",
+                usesProviderAuthentication: false,
                 unverifiedMessage: "Fixture CLI could not be verified.",
                 locate: {
                     self.events.append("locate")
@@ -256,25 +230,11 @@ final class RuntimeInventoryTests: XCTestCase {
                     if self.failAt == "authenticate" { throw FixtureError() }
                     return self.authentication
                 },
-                makePlanner: {
-                    self.events.append("construct")
-                    self.observedExecutables.append($0)
-                    self.workspace = $1
-                    return InventoryPlanner()
-                },
+                id: "fixture.cli",
                 signInArguments: ["login"], signOutArguments: ["logout"],
                 environment: ["CODEX_HOME": "/fixture/private-home"],
                 authenticatesInApp: authenticatesInApp
             )
         }
-    }
-}
-
-private struct InventoryPlanner: TaskPlanner {
-    let id = "fixture.cli"
-    let capabilities = RuntimeCapabilities(fileIO: true)
-
-    func plan(_ request: PlanningRequest) async throws -> ExecutionPlan {
-        throw PlanError(message: "Inventory inspection must not invoke planning")
     }
 }
