@@ -37,7 +37,28 @@ struct CuaGuideTreeReader: GuideObserving {
     }
 
     private func observation(includeScreenshot: Bool) async throws -> GuideObservation {
-        let capture = try await worker.capture(target: await targetStore.current(), includeScreenshot: includeScreenshot)
+        let hint = await targetStore.current()
+        let capture: CuaCapturedWindow
+        do {
+            capture = try await worker.capture(target: hint, includeScreenshot: includeScreenshot)
+        } catch let error as CuaDriverError where error == .noTargetWindow {
+            // Re-observe is continuity, not a fresh binding: the window may
+            // have been recreated mid-guide (resize, zoom, sheet attach),
+            // leaving the stored windowID stale. Retry scoped to pid+title —
+            // the same logical window — while a bare-id miss stays fatal.
+            guard let hint,
+                  hint.windowID != nil,
+                  hint.processID != nil,
+                  let title = hint.windowTitle,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { throw error }
+            let rebound = CuaTargetHint(
+                bundleID: hint.bundleID,
+                processID: hint.processID,
+                windowTitle: hint.windowTitle
+            )
+            capture = try await worker.capture(target: rebound, includeScreenshot: includeScreenshot)
+        }
         guard let snapshot = capture.accessibilitySnapshotModel else {
             throw CuaDriverError.noTargetWindow
         }
