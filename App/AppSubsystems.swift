@@ -227,7 +227,8 @@ final class AppSubsystems {
                     return lab
                 }
 #endif
-                return self.realtimeTalkVoice()?.input ?? self.talkSpeechInput
+                let input: any TalkSpeechInput = self.realtimeTalkVoice()?.input ?? self.talkSpeechInput
+                return input
             },
             output: TalkSpeechOutputRouter(
                 realtime: { self.realtimeTalkVoice()?.output },
