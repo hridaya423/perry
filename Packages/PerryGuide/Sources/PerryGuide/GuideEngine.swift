@@ -303,7 +303,10 @@ public actor GuideEngine {
                 try Task.checkCancellation()
                 let remaining = deadline - ContinuousClock.now
                 if reads > 0, remaining <= .zero { break }
-                let window = reads == 0 ? min(remaining, Self.firstSignalWindow) : remaining
+                // An explicit user confirm is itself the signal: waiting out
+                // the first-signal window before reading just adds dead time
+                // between Done and the next mark.
+                let window = reads == 0 ? (userConfirmed ? .zero : min(remaining, Self.firstSignalWindow)) : remaining
                 let signaled = await observer.awaitUIChange(within: max(window, .zero))
                 // A deadline without a signal means the UI went quiet — the
                 // last read's verdict stands rather than paying another.

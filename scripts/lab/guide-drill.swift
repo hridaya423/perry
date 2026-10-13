@@ -6,6 +6,7 @@ import AppKit
 //   guide-drill start <goal>     begin a guide session for <goal>
 //   guide-drill click <x> <y>    inject a click at AX-space point (x, y)
 //   guide-drill stop             dismiss the active guide
+//   guide-drill done             the controls' Done button path (userActed)
 //   guide-drill frontmost        print the frontmost app's bundle id
 
 let args = CommandLine.arguments
@@ -37,6 +38,8 @@ case "click":
     post("app.perry.guide-drill-click", userInfo: ["x": NSNumber(value: x), "y": NSNumber(value: y)])
 case "stop":
     post("app.perry.guide-drill-stop")
+case "done":
+    post("app.perry.guide-drill-done")
 case "frontmost":
     print(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "")
 default:

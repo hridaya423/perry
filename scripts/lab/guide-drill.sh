@@ -43,6 +43,9 @@ sleep 1
 
 rm -f "$STATE" "$STATE.log"
 APP="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
+# Orphaned embedded drivers from earlier runs wedge the next guide's
+# worker admission (termination deadline ~700ms). Reap them up front.
+pkill -f "Perry.app/Contents/Resources/CuaDriver/bin/cua-driver" 2>/dev/null || true
 # Direct exec, not `open`: an `open`-launched Perry runs under its own
 # (ungranted) TCC bundle identity, and the embedded cua-driver's AX reads
 # fail there. Exec'ing inherits this terminal's grants so the real worker
@@ -142,9 +145,10 @@ def activate_preview(fixture, run):
         time.sleep(0.2)
     return False
 
-def read_state(min_seq, timeout):
+def read_state(min_seq, timeout, early_status=None):
     """Returns (record_or_None, last_status). Status-only records are
-    consumed but keep the poll waiting for a presentation/done record."""
+    consumed but keep the poll waiting for a presentation/done record —
+    unless `early_status` matches, which returns immediately."""
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
@@ -155,6 +159,8 @@ def read_state(min_seq, timeout):
                 min_seq = d["seq"]
                 if "status" in d:
                     last_status = d["status"]
+                    if early_status and early_status in last_status:
+                        return None, last_status
                     continue
                 return d, last_status
         except (OSError, ValueError):
@@ -201,9 +207,19 @@ for run in range(1, runs + 1):
         cy = rec["y"] + rec["h"] / 2.0
         for _ in range(MAX_CLICKS_PER_STEP):
             post("click", f"{cx:.1f}", f"{cy:.1f}")
-            nxt, st = read_state(seq, STEP_TIMEOUT)
+            # A hit on a postcondition-less step parks at .stillWaiting: the
+            # engine accepted the click but needs the user's Done. The status
+            # lands ~instantly — post Done through the same advanceGuide()
+            # path the controls button uses the moment it does, instead of
+            # burning the whole read window.
+            nxt, st = read_state(seq, STEP_TIMEOUT, early_status="Not verified")
             if st:
                 status = st
+            if nxt is None and status and "Not verified" in status:
+                post("done")
+                nxt, st = read_state(seq, STEP_TIMEOUT)
+                if st:
+                    status = st
             if nxt is None:
                 break
             seq = nxt["seq"]
@@ -227,9 +243,9 @@ for run in range(1, runs + 1):
           + (" (no-target presentation)" if no_target else "")
           + ("" if front_ok else " WARN: Preview not frontmost"), flush=True)
     # The previous guide's embedded driver is still terminating (the
-    # worker-service stop deadline is 500ms); start the next run too soon
+    # worker-service stop deadline is ~700ms); start the next run too soon
     # and its worker admission collides with the tail of this teardown.
-    time.sleep(3.0)
+    time.sleep(4.0)
 
 # Pair each guide.click with the guide.step.shown that follows it (or an
 # ignored marker = miss) to compute click→next-mark latency.
@@ -247,7 +263,9 @@ i = 0
 while i < len(rows):
     if rows[i]["name"] == "guide.click":
         j = i + 1
-        while j < len(rows) and rows[j]["name"] not in ("guide.step.shown", "guide.click.ignored", "guide.click"):
+        # A new guide.start ends the run — an unpaired click never matches a
+        # mark from a later guide (that produced the multi-minute outliers).
+        while j < len(rows) and rows[j]["name"] not in ("guide.step.shown", "guide.click.ignored", "guide.click", "guide.start"):
             j += 1
         if j < len(rows) and rows[j]["name"] == "guide.step.shown":
             pairings.append((ts(rows[j]) - ts(rows[i])) * 1000.0)

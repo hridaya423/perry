@@ -383,9 +383,15 @@ private struct CuaOwnedProcess {
     let processGroup: pid_t?
 
     var hasExited: Bool {
-        guard !process.isRunning else { return false }
-        guard let processGroup else { return false }
-        return kill(-processGroup, 0) == -1 && errno == ESRCH
+        if let processGroup {
+            // Group leader: gone only when the whole group is gone, so a
+            // lingering grandchild can't keep the slot claimed.
+            return kill(-processGroup, 0) == -1 && errno == ESRCH
+        }
+        // posix_spawn'd children inherit our group — almost every driver is
+        // not its own leader, so the pid alone defines liveness. A zombie
+        // counts as exited: it holds no driver resources.
+        return !process.isRunning || (kill(process.processIdentifier, 0) == -1 && errno == ESRCH)
     }
 
     func signal(_ signal: Int32) throws {

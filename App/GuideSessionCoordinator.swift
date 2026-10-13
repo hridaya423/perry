@@ -700,6 +700,7 @@ final class GuideSessionCoordinator {
         )
         guideScopes[scope.id] = scope
         currentGuideScopeID = scope.id
+        PerfMark.mark("guide.start")
         output?.guideShowOverlay()
         if let executionOwner {
             scope.scopeTask = executionOwner.runGuide(

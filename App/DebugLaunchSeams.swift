@@ -270,6 +270,17 @@ extension AppController {
         ) { [weak self] _ in
             self?.guideCoordinator.dismissIfActive()
         }
+        // A postcondition-less step parks at .stillWaiting after a real hit —
+        // the shipped UX resolves that with the controls' Done button, which
+        // routes to advanceGuide()/engine.userActed(). The drill drives the
+        // identical path.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.guide-drill-done"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.guideCoordinator.advanceGuide()
+        }
     }
 
     func showDebugBackgroundTasksStorageError() {
