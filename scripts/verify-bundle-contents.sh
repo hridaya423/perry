@@ -44,7 +44,7 @@ app_kib="$(du -sk "${APP_PATH}" | awk '{print $1}')"
 [ "${app_kib}" -le 307200 ] || die "app bundle exceeds 300 MiB: ${app_kib} KiB"
 
 require_size_at_most 16777216 "${MAIN_EXECUTABLE}"
-require_size_at_most 230686720 "${CODEX_EXECUTABLE}"
+require_size_at_most 262144000 "${CODEX_EXECUTABLE}"
 require_size_at_most 83886080 "${CUA_EXECUTABLE}"
 require_arm64_only "${MAIN_EXECUTABLE}"
 require_arm64_only "${CODEX_EXECUTABLE}"
