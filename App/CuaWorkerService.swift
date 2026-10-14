@@ -282,13 +282,14 @@ actor CuaWorkerService {
         }
         let retirement = beginRetirement(allocation)
         let completion = Task {
-            // Once retirement has run the entry must go either way: a thrown
-            // terminationUnconfirmed still means SIGKILL was delivered, and
-            // keeping the entry wedges its scope slot and claimed resources
-            // until relaunch — the drill watched one retirement failure kill
-            // every later capture.
             defer { self.workers[allocation] = nil }
-            try await retirement.value
+            do {
+                try await retirement.value
+            } catch CuaDriverError.terminationUnconfirmed {
+                // SIGKILL was already delivered; the slot is freed by the
+                // defer and the next worker spawns a fresh driver, so the
+                // unconfirmed tail must not fail the caller's operation.
+            }
             try await self.waitForStoppedOperation(allocation)
         }
         workers[allocation]?.completion = completion

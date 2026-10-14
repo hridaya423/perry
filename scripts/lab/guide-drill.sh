@@ -36,10 +36,9 @@ if [ ! -f "$FIXTURE" ]; then
     cp "$src" "$FIXTURE"
 fi
 # Preview remembers per-doc window state; the drill reopens a fresh copy
-# per run. Close only prior drill windows — never the user's docs.
-osascript -e 'tell application "Preview" to close (every window whose name starts with "guide-drill-fixture")' >/dev/null 2>&1 || true
+# per run. Stale drill windows are closed via cua-driver inside the loop —
+# AppleScript to Preview wedges whenever its AE queue stalls.
 rm -f "$BUILD_DIR/guide-drill-fixture-r"*.png
-sleep 1
 
 rm -f "$STATE" "$STATE.log"
 APP="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
@@ -73,7 +72,9 @@ import json, os, re, subprocess, sys, time
 helper, state_path, goal, runs, markers, app, fixture = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7]
 log_path = state_path + ".log"
 FIRST_TIMEOUT = 30.0
-STEP_TIMEOUT = 15.0
+# Must exceed the driver's 15s request deadline — a wedged verify surfaces
+# its own status at ~15s, and the drill has to still be listening for it.
+STEP_TIMEOUT = 25.0
 MAX_STEPS = 8
 MAX_CLICKS_PER_STEP = 3
 
@@ -113,17 +114,28 @@ def fixture_windows():
     return [w for w in res.get("structuredContent", {}).get("windows", [])
             if w.get("app_name") == "Preview" and w.get("title", "").startswith(FIXTURE_PREFIX)]
 
+def close_fixture_windows():
+    # Close stale drill windows through the app's own menu — Apple Events
+    # to Preview wedge when its AE queue stalls, so no osascript here.
+    for w in fixture_windows():
+        cua_call("invoke_menu", {"pid": w["pid"], "window_id": w["window_id"],
+                                 "path": ["File", "Close"]})
+
 def activate_preview(fixture, run):
+    close_fixture_windows()
     # Each run opens a fresh copy of the doc: a new file URL means Preview
     # applies no persisted zoom/frame state from prior runs' clicks.
     copy = os.path.join(os.path.dirname(fixture), f"{FIXTURE_PREFIX}-r{run}.png")
     subprocess.run(["cp", fixture, copy], check=True)
+    # `open -a` both opens the doc and activates Preview — do not add an
+    # osascript activate on top; a stalled AE queue would wedge the drill.
     subprocess.run(["open", "-a", "Preview", copy], check=False)
     deadline = time.monotonic() + 10.0
     windows = []
     while time.monotonic() < deadline and not windows:
         time.sleep(0.3)
-        windows = fixture_windows()
+        windows = [w for w in fixture_windows()
+                   if w.get("title", "").startswith(f"{FIXTURE_PREFIX}-r{run}")]
     # Normalize the window: Zoom to Fit un-poisons any persisted tiny-zoom
     # state, then the frame gets pinned to a known-good size.
     if windows:
@@ -132,8 +144,6 @@ def activate_preview(fixture, run):
                                  "path": ["View", "Zoom to Fit"]})
         cua_call("set_window_frame", {"pid": w["pid"], "window_id": w["window_id"],
                                     "x": 150, "y": 60, "width": 1000, "height": 720})
-    subprocess.run(["osascript", "-e", 'tell application "Preview" to activate'],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # Wait until Preview is actually frontmost — a `start` posted early
     # resolves the target hint to the wrong app and the worker fails to
     # identify the window.
@@ -190,13 +200,15 @@ for run in range(1, runs + 1):
     steps = misses = no_target = 0
     done = False
     status = None
+    rec = None
     while steps < MAX_STEPS:
-        rec, st = read_state(seq, FIRST_TIMEOUT if steps == 0 else STEP_TIMEOUT)
-        if st:
-            status = st
         if rec is None:
-            break
-        seq = rec["seq"]
+            rec, st = read_state(seq, FIRST_TIMEOUT if steps == 0 else STEP_TIMEOUT)
+            if st:
+                status = st
+            if rec is None:
+                break
+            seq = rec["seq"]
         if rec.get("done"):
             done = True
             break
@@ -205,6 +217,7 @@ for run in range(1, runs + 1):
             break
         cx = rec["x"] + rec["w"] / 2.0
         cy = rec["y"] + rec["h"] / 2.0
+        nxt = None
         for _ in range(MAX_CLICKS_PER_STEP):
             post("click", f"{cx:.1f}", f"{cy:.1f}")
             # A hit on a postcondition-less step parks at .stillWaiting: the
@@ -223,29 +236,30 @@ for run in range(1, runs + 1):
             if nxt is None:
                 break
             seq = nxt["seq"]
-            if nxt.get("done"):
-                done = True
-                break
             # A new presentation for the *same* instruction means the click
             # missed (ignored → represent) — count it and retry the mark.
-            if nxt.get("instruction") == rec.get("instruction"):
+            if nxt.get("instruction") == rec.get("instruction") and not nxt.get("done"):
                 misses += 1
                 continue
             break
         steps += 1
-        if done:
-            break
-    post("stop")
+        # The record the inner loop already consumed carries forward — the
+        # next step's target still needs its click (or its done flag seen).
+        rec = nxt
+    # Only dismiss a still-live guide — a `stop` posted after the guide
+    # finished can land on the main queue mid-next-run and kill the fresh
+    # session (the zero-step runs were exactly that race).
+    if not done:
+        post("stop")
     runs_summary.append({"run": run, "steps": steps, "misses": misses,
                          "no_target": no_target, "done": done, "status": status})
     print(f"run {run:2d}: steps={steps} misses={misses} done={done}"
           + (f" status=\"{status}\"" if status else "")
           + (" (no-target presentation)" if no_target else "")
           + ("" if front_ok else " WARN: Preview not frontmost"), flush=True)
-    # The previous guide's embedded driver is still terminating (the
-    # worker-service stop deadline is ~700ms); start the next run too soon
-    # and its worker admission collides with the tail of this teardown.
-    time.sleep(4.0)
+    # The previous guide's embedded driver is still terminating; start the
+    # next run too soon and its first capture races the teardown tail.
+    time.sleep(6.0)
 
 # Pair each guide.click with the guide.step.shown that follows it (or an
 # ignored marker = miss) to compute click→next-mark latency.
