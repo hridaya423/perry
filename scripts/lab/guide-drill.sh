@@ -158,7 +158,9 @@ def activate_preview(fixture, run):
 def read_state(min_seq, timeout, early_status=None):
     """Returns (record_or_None, last_status). Status-only records are
     consumed but keep the poll waiting for a presentation/done record —
-    unless `early_status` matches, which returns immediately."""
+    unless `early_status` matches (a string or tuple of needles), which
+    returns immediately."""
+    needles = (early_status,) if isinstance(early_status, str) else early_status
     deadline = time.monotonic() + timeout
     last_status = None
     while time.monotonic() < deadline:
@@ -169,7 +171,7 @@ def read_state(min_seq, timeout, early_status=None):
                 min_seq = d["seq"]
                 if "status" in d:
                     last_status = d["status"]
-                    if early_status and early_status in last_status:
+                    if needles and any(n in last_status for n in needles):
                         return None, last_status
                     continue
                 return d, last_status
@@ -220,14 +222,19 @@ for run in range(1, runs + 1):
         nxt = None
         for _ in range(MAX_CLICKS_PER_STEP):
             post("click", f"{cx:.1f}", f"{cy:.1f}")
-            # A hit on a postcondition-less step parks at .stillWaiting: the
-            # engine accepted the click but needs the user's Done. The status
-            # lands ~instantly — post Done through the same advanceGuide()
-            # path the controls button uses the moment it does, instead of
-            # burning the whole read window.
-            nxt, st = read_state(seq, STEP_TIMEOUT, early_status="Not verified")
+            # Three honest outcomes, all surfaced as status records:
+            #   "Not verified"  — hit a postcondition-less step; the engine
+            #                     parks at .stillWaiting until Done (the same
+            #                     advanceGuide() path the controls button uses).
+            #   "highlighted"   — the click was ignored; a real miss. Retry
+            #                     the same mark the way the UI asks the user to.
+            #   anything else   — capture/verify failures, surfaced verbatim.
+            nxt, st = read_state(seq, STEP_TIMEOUT, early_status=("highlighted", "Not verified"))
             if st:
                 status = st
+            if nxt is None and status and "highlighted" in status:
+                misses += 1
+                continue
             if nxt is None and status and "Not verified" in status:
                 post("done")
                 nxt, st = read_state(seq, STEP_TIMEOUT)
@@ -236,10 +243,12 @@ for run in range(1, runs + 1):
             if nxt is None:
                 break
             seq = nxt["seq"]
-            # A new presentation for the *same* instruction means the click
-            # missed (ignored → represent) — count it and retry the mark.
+            # A same-instruction record is the repoint timer re-showing a stale
+            # mark — the click was never judged, so it is not a miss; click the
+            # refreshed target instead.
             if nxt.get("instruction") == rec.get("instruction") and not nxt.get("done"):
-                misses += 1
+                cx = nxt["x"] + nxt["w"] / 2.0
+                cy = nxt["y"] + nxt["h"] / 2.0
                 continue
             break
         steps += 1
@@ -251,9 +260,20 @@ for run in range(1, runs + 1):
     # session (the zero-step runs were exactly that race).
     if not done:
         post("stop")
+    # `done` only means a teardown record was seen — dismissals emit one too.
+    # The honest outcome is the last terminal status: planner exhaustion is a
+    # natural end; cancelled / could-not-verify / worker-stopped are failures.
+    s = status or ""
+    if "cancelled" in s or "could not" in s or "stopped before" in s:
+        outcome = "failed"
+    elif steps == 0:
+        outcome = "empty-plan"
+    else:
+        outcome = "clean-end"
     runs_summary.append({"run": run, "steps": steps, "misses": misses,
-                         "no_target": no_target, "done": done, "status": status})
-    print(f"run {run:2d}: steps={steps} misses={misses} done={done}"
+                         "no_target": no_target, "done": done, "status": status,
+                         "outcome": outcome})
+    print(f"run {run:2d}: steps={steps} misses={misses} {outcome}"
           + (f" status=\"{status}\"" if status else "")
           + (" (no-target presentation)" if no_target else "")
           + ("" if front_ok else " WARN: Preview not frontmost"), flush=True)
@@ -292,12 +312,17 @@ pairings.sort()
 def pct(p):
     return pairings[min(len(pairings) - 1, int(round((p / 100) * (len(pairings) - 1))))] if pairings else 0.0
 
-completed = sum(1 for r in runs_summary if r["done"])
-total_misses = sum(r["misses"] for r in runs_summary) + miss_markers
-total_clicks = len(pairings) + miss_markers + total_misses
+completed = sum(1 for r in runs_summary if r["outcome"] == "clean-end")
+failed = sum(1 for r in runs_summary if r["outcome"] == "failed")
+empty = sum(1 for r in runs_summary if r["outcome"] == "empty-plan")
+# Markers are the ground truth: every posted click emits guide.click, every
+# real miss emits guide.click.ignored. Per-run `misses` only counts the
+# misses the drill observed — repoint re-presentations are not misses.
+click_markers = sum(1 for r in rows if r["name"] == "guide.click")
+total_misses = miss_markers
 print("\n=== guide-drill results ===")
-print(f"runs: {runs}  completed-guides: {completed}")
+print(f"runs: {runs}  clean-end: {completed}  failed: {failed}  empty-plan: {empty}")
 print(f"click→next-mark ms: n={len(pairings)} p50={pct(50):.0f} p95={pct(95):.0f} max={max(pairings) if pairings else 0:.0f}")
-print(f"clicks: {total_clicks}  misses: {total_misses}  hit rate: {100.0 * (total_clicks - total_misses) / max(total_clicks, 1):.1f}%")
+print(f"clicks: {click_markers}  misses: {total_misses}  hit rate: {100.0 * (click_markers - total_misses) / max(click_markers, 1):.1f}%")
 print(f"markers: {markers}")
 PY
