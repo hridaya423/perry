@@ -158,8 +158,6 @@ struct SettingsView: View {
                 }
                 Text("Hold the dictation shortcut from any app to type by voice. Caps Lock double-tap is available for hands-free use.")
                     .settingNote()
-                Text("If voice input is unavailable, Perry leaves the panel ready for typing.")
-                    .settingNote()
             }
             permissionsSection
         }
@@ -441,7 +439,7 @@ struct SettingsView: View {
                 Button("Erase all Perry data…", role: .destructive) {
                     NotificationCenter.default.post(name: .perryWipeDataRequested, object: nil)
                 }
-                Text("Removes tasks, history, memory, approvals, preferences, provider credentials, OAuth state, temporary media, caches, and Cua artifacts after confirmation.")
+                Text("Removes tasks, history, memory, approvals, preferences, credentials, and temporary files after you confirm.")
                     .settingNote()
             }
             Section("Activity") {
@@ -477,7 +475,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository.")
+            Text("Export diagnostics, then attach the file to a new issue on Perry’s GitHub repository.")
         }
     }
 
@@ -542,7 +540,7 @@ struct SettingsView: View {
                     }
                 }
                 if hasCopyableRuntimeCommands {
-                    Text("Perry copies the verified runtime’s exact executable path and official authentication command. Run it in Terminal, then refresh the status here.")
+                    Text("Run the copied command in Terminal, then choose Refresh runtime status.")
                         .settingNote()
                 }
             }
@@ -559,7 +557,7 @@ struct SettingsView: View {
                     controller.reloadCuaDriverConfiguration()
                     refreshRuntimeStatus()
                 }
-                Text("Perry requires Cua Driver for window screenshots, accessibility grounding, and GUI actions.")
+                Text("Cua Driver is what lets Perry see the screen and act in other apps.")
                     .settingNote()
             }
             Section("Direct AI provider") {
@@ -668,7 +666,7 @@ struct SettingsView: View {
     private var integrationsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
-                Text("Connect services with device-owned OAuth. Register dev.perry.perry:/oauth/callback with each provider; Perry keeps access tokens and client secrets in Keychain, refreshes expiring grants, and keeps remote writes disabled until you enable them per service and approve each action.")
+                Text("Connect services with OAuth. If a provider asks for a redirect URL, register dev.perry.perry:/oauth/callback. Tokens stay in Keychain, and remote writes stay off until you enable them per service — every write still asks first.")
                     .settingNote()
                 ForEach(RemoteIntegrationDefinition.catalog) { definition in
                     IntegrationRow(definition: definition, connections: controller.integrationConnections)
