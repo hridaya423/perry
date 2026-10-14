@@ -389,9 +389,16 @@ private struct CuaOwnedProcess {
             return kill(-processGroup, 0) == -1 && errno == ESRCH
         }
         // posix_spawn'd children inherit our group — almost every driver is
-        // not its own leader, so the pid alone defines liveness. A zombie
-        // counts as exited: it holds no driver resources.
-        return !process.isRunning || (kill(process.processIdentifier, 0) == -1 && errno == ESRCH)
+        // not its own leader, so the pid alone defines liveness. Foundation's
+        // isRunning lags while a zombie waits to be reaped, so reap it
+        // ourselves: waitpid returns the pid when we collect it and ECHILD
+        // once it is already gone.
+        if !process.isRunning { return true }
+        var status: Int32 = 0
+        let waited = waitpid(process.processIdentifier, &status, WNOHANG)
+        if waited == process.processIdentifier { return true }
+        if waited == -1 && errno == ECHILD { return true }
+        return kill(process.processIdentifier, 0) == -1 && errno == ESRCH
     }
 
     func signal(_ signal: Int32) throws {
