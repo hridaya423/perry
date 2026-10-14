@@ -1,0 +1,28 @@
+{
+ "schema_version": 1,
+ "feature_id": "guide.click-advance",
+ "captured_at": "2026-10-14T03:58:00Z",
+ "result": "passed",
+ "build": {
+  "configuration": "Debug",
+  "architecture": "arm64",
+  "revision": "b5265ead3e9639d5a96f38de7b68ca6021e80c4c"
+ },
+ "environment": {
+  "platform": "macOS",
+  "version": "27.0.1",
+  "host": "arm64"
+ },
+ "evidence": "docs/evidence/lab/perf-20261014T024614Z.jsonl.markers.jsonl",
+ "measurement": {
+  "runs": 20,
+  "clean_end_runs": 20,
+  "clicks": 75,
+  "click_misses": 0,
+  "click_to_next_mark_p50_ms": 1148,
+  "click_to_next_mark_p95_ms": 13800,
+  "gate_p50_ms": 1500,
+  "target_app": "Preview",
+  "notes": "p95 is the cua-driver wedge-recovery tail (~6s timeout + respawn + retry); recovered stalls, not guide deaths."
+ }
+}

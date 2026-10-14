@@ -31,7 +31,8 @@
           "status": "not-recorded"
         },
         "last_successful_run": {
-          "status": "not-recorded"
+          "status": "recorded",
+          "reference": "docs/release-readiness/runs/invocation-global-hotkey-2026-10-13.json"
         },
         "benchmark": {
           "status": "not-recorded"
@@ -47,8 +48,20 @@
           "reference": "App/HotkeyController.swift"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/lab/perf-20261001T045202Z.jsonl.markers.jsonl"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryCore/Tests/PerryCoreTests/SymbolicHotkeysTests.swift::testEntriesParsesEnabledHotkeysOnly"
+        },
+        {
+          "kind": "live-test",
+          "reference": "docs/release-readiness/runs/invocation-global-hotkey-2026-10-13.json",
+          "actual_run": {
+            "reference": "docs/release-readiness/runs/invocation-global-hotkey-2026-10-13.json",
+            "sha256": "bc3a70ec4ad51b0afb18b53e4040081d87a16cfe28d9b6ba27594117caa7d613"
+          }
         }
       ]
     },
@@ -302,7 +315,7 @@
     {
       "id": "invocation.microphone-controls",
       "name": "Microphone picker, test card, and live volume blocks",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local microphone selection and permission-aware controls",
       "limitations": [
@@ -334,8 +347,12 @@
           "reference": "App/SettingsView.swift"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-8/mic-permission-prompt.png"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "AppTests/DictationControllerTests.swift::testErrorAfterReleaseDoesNotSelectMicrophoneOrDispatchLateFinal"
         }
       ]
     },
@@ -369,7 +386,7 @@
     {
       "id": "voice.audio-prewarm",
       "name": "Pre-warmed audio output",
-      "status": "live-tested",
+      "status": "wired",
       "owner": "App",
       "support": "Local sound cues are preloaded before playback",
       "limitations": [
@@ -396,8 +413,9 @@
           "reference": "App/SoundPlayer.swift"
         },
         {
-          "kind": "marker-log",
-          "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl (sound.warmup at launch; invoke.keydown → sound.cue.wake 225 ms)"
+          "kind": "live-test",
+          "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl",
+          "notes": "sound.warmup at launch; invoke.keydown → sound.cue.wake 225 ms"
         }
       ]
     },
@@ -519,7 +537,7 @@
     {
       "id": "voice.ui-sounds",
       "name": "Spatial and crafted UI sounds",
-      "status": "live-tested",
+      "status": "wired",
       "owner": "App",
       "support": "Local wake, send, receive, done, and failure cues",
       "limitations": [
@@ -547,11 +565,11 @@
           "reference": "App/SoundPlayer.swift"
         },
         {
-          "kind": "marker-log",
+          "kind": "live-test",
           "reference": "docs/evidence/lab/perf-20261001T163730Z.jsonl.markers.jsonl"
         },
         {
-          "kind": "doc",
+          "kind": "audit",
           "reference": "docs/evidence/phase-10/audio-failure-paths.md"
         }
       ]
@@ -590,7 +608,7 @@
     {
       "id": "voice.settings",
       "name": "Voice settings page",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local voice, speed, dictation, and optional realtime settings",
       "limitations": [
@@ -635,7 +653,7 @@
           "reference": "docs/release-readiness/live-ui-audit-2026-08-28.md"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-8/voice-settings.png"
         }
       ]
@@ -667,7 +685,7 @@
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayWindow.swift"
+          "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayHost.swift"
         },
         {
           "kind": "source",
@@ -763,15 +781,15 @@
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testPlanParsesTypedActionsThroughFakeCodex()"
+          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedDoSupervisorTests.swift::testTypedProductionPathHasNoLegacyPlanBridge"
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testRunCodingTaskRunsWorkspaceWriteSandbox()"
+          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedDoSupervisorTests.swift::testTypedProductionPathHasNoLegacyPlanBridge"
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/CodexRuntimeTests.swift::func testLocatorRejectsUnverifiedOverrideAndPATH()"
+          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedDoSupervisorTests.swift::testTypedProductionPathHasNoLegacyPlanBridge"
         }
       ]
     },
@@ -827,7 +845,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/CuaDriverClientTests.swift::func testPlannerJSONReachesTypedComputerExecutionWithoutLosingParameters()"
+          "reference": "AppTests/CuaDriverClientTests.swift::testTypedComputerExecutionPreservesDriverParameters"
         },
         {
           "kind": "unit-test",
@@ -870,7 +888,7 @@
     {
       "id": "do.runtime-selection",
       "name": "Computer-use runtime selection UI",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Per-task selection across verified CLI, configured direct-provider, and local runtimes, with durable route evidence for background tasks",
       "limitations": [
@@ -908,7 +926,7 @@
         },
         {
           "kind": "source",
-          "reference": "App/ProductionRuntimeSelector.swift"
+          "reference": "App/RuntimeCatalog.swift"
         },
         {
           "kind": "source",
@@ -928,7 +946,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/RuntimeInventoryTests.swift::testOrdinaryProbeFailuresKeepOtherProvidersAndSanitizeErrors"
+          "reference": "AppTests/RuntimeInventoryTests.swift::testOrdinaryProbeFailuresKeepRecordsAndSanitizeErrors"
         },
         {
           "kind": "unit-test",
@@ -940,18 +958,14 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/ProductionRuntimeSelectorTests.swift::testFallsBackToEligibleBoundedProviderWithReason"
+          "reference": "AppTests/RuntimeInventoryTests.swift::testOfficialAndCustomProvidersProduceChoicesAndSummaries"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testPersistedPlanRuntimeOverridesTheOriginalPreferenceDuringRecovery"
+          "reference": "AppTests/RuntimeInventoryTests.swift::testCredentialFailureIsSanitizedAndLeavesNoChoices"
         },
         {
-          "kind": "unit-test",
-          "reference": "AppTests/BackgroundTaskContextStoreTests.swift::testLegacyPlanWithoutRuntimeUsesTheOriginalPreferenceDuringRecovery"
-        },
-        {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/background-tasks.md"
         }
       ]
@@ -959,7 +973,7 @@
     {
       "id": "do.local-root-executor",
       "name": "Local-root tool executor",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local workspace and accessibility execution behind Perry's trust boundary",
       "limitations": [
@@ -983,15 +997,19 @@
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/LocalTaskPlannerRuntime.swift"
+          "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/WorkspaceFileRuntime.swift"
         },
         {
           "kind": "source",
           "reference": "Packages/PerryRuntimes/Sources/PerryRuntimes/WorkspaceFileRuntime.swift"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-9a/scheduled-routine.md"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedWorkspaceFileRuntimeTests.swift::testTypedExecutorRejectsUnapprovedActionBeforeSideEffect"
         }
       ]
     },
@@ -1130,7 +1148,7 @@
     {
       "id": "do.agent-cards",
       "name": "Colorful agent cards and activity-strip labels",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local activity strip and background-task cards",
       "limitations": [
@@ -1165,7 +1183,7 @@
           "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripActivatesOnlyWhenExpanded()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/approval-card.md"
         }
       ]
@@ -1192,11 +1210,12 @@
       },
       "evidence": [
         {
-          "kind": "test",
-          "reference": "AppTests/PhaseNineControllerTests.swift (SuggestionControllerTests)"
+          "kind": "unit-test",
+          "reference": "AppTests/PhaseNineControllerTests.swift::testGeneratesRankedCardsFromConnectedServices",
+          "notes": "SuggestionControllerTests"
         },
         {
-          "kind": "code",
+          "kind": "source",
           "reference": "App/SuggestionController.swift"
         }
       ]
@@ -1235,7 +1254,7 @@
     {
       "id": "skills.bundled-workflows",
       "name": "Bundled workflow and capability skills",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Five bundled local app skills plus user-authored local Markdown",
       "limitations": [
@@ -1272,7 +1291,7 @@
           "reference": "Packages/PerryGuide/Tests/PerryGuideTests/AppSkillLibraryTests.swift::func testSkillActivationControlsPromptInjection()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-10/bundled-skills.png"
         }
       ]
@@ -1475,7 +1494,7 @@
     {
       "id": "memory.markdown",
       "name": "User memory as Markdown",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Local PROFILE.md and VOLATILE.md memory injected into voice and agent context",
       "limitations": [
@@ -1523,7 +1542,7 @@
           "reference": "Packages/PerryGuide/Tests/PerryGuideTests/MemoryAndRunnerTests.swift::func testWipeClearsEverythingIncludingDisk()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/mcp-socket.md"
         }
       ]
@@ -1531,7 +1550,7 @@
     {
       "id": "history.response-store",
       "name": "Response history store and tab",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryCore",
       "support": "Local searchable transcript history with export",
       "limitations": [
@@ -1622,7 +1641,7 @@
     {
       "id": "appearance.panel-style",
       "name": "Panel style preferences",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryOverlay",
       "support": "Local panel background, transparency, visual effect, accent, and caption preferences",
       "limitations": [
@@ -1646,7 +1665,7 @@
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayWindow.swift"
+          "reference": "Packages/PerryOverlay/Sources/PerryOverlay/OverlayHost.swift"
         },
         {
           "kind": "source",
@@ -1669,15 +1688,19 @@
           "reference": "docs/release-readiness/ui/keyboard-navigation-2026-08-30.json"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/approval-card.md"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift::canonicalAccentResolvesToProductMint"
         }
       ]
     },
     {
       "id": "appearance.notch-home",
       "name": "Notch home with tabs and pinned skills",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Notch Home shipped: hover peek, Esc latch, slim-dot fallback, full Home window",
       "limitations": [
@@ -1697,23 +1720,32 @@
       },
       "evidence": [
         {
-          "kind": "test",
-          "reference": "AppTests/HomeHoverIntentTests.swift (8 tests, 20k-iteration seeded fuzz)"
+          "kind": "unit-test",
+          "reference": "AppTests/HomeHoverIntentTests.swift::testDwellThenPeek",
+          "notes": "8 tests incl. 20k-iteration seeded fuzz"
         },
         {
-          "kind": "live-drill",
-          "reference": "docs/evidence/phase-5/README.md + docs/evidence/lab/perf-20261001T015009Z.markers.jsonl"
+          "kind": "audit",
+          "reference": "docs/evidence/phase-5/README.md"
         },
         {
-          "kind": "live-screenshot",
+          "kind": "live-test",
+          "reference": "docs/evidence/lab/perf-20261001T015009Z.jsonl.markers.jsonl"
+        },
+        {
+          "kind": "live-test",
           "reference": "docs/evidence/phase-5/home-dark-live.png"
+        },
+        {
+          "kind": "source",
+          "reference": "App/Home/HomeHoverIntent.swift"
         }
       ]
     },
     {
       "id": "appearance.menu-bar-fallback",
       "name": "Legacy menu-bar panel fallback",
-      "status": "live-tested",
+      "status": "wired",
       "owner": "App",
       "support": "Menu-bar companion panel as Perry's primary surface",
       "limitations": [
@@ -1749,7 +1781,7 @@
           "reference": "docs/release-readiness/ui/session-panel-focus-2026-08-31.json"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/approval-card.md"
         }
       ]
@@ -1842,7 +1874,7 @@
     {
       "id": "platform.keychain",
       "name": "Keychain credential store",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Local Keychain storage for provider credentials",
       "limitations": [
@@ -1875,7 +1907,7 @@
           "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testKeychainRoundTrip()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-10/keychain.md"
         }
       ]
@@ -1914,7 +1946,7 @@
     {
       "id": "platform.diagnostics",
       "name": "Diagnostics capture, report, document, and error reporting",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local redacted diagnostics export",
       "limitations": [
@@ -1946,8 +1978,9 @@
           "reference": "AppTests/DiagnosticsReporterTests.swift::func testSeededSensitiveValuesNeverEnterDiagnosticsExport()"
         },
         {
-          "kind": "live",
-          "reference": "~/Documents/perry-diagnostics.json exported live 2026-10-01"
+          "kind": "audit",
+          "reference": "docs/evidence/phase-10/diagnostics.md",
+          "notes": "records live export drill to ~/Documents/perry-diagnostics.json on 2026-10-01"
         }
       ]
     },
@@ -2164,7 +2197,7 @@
     {
       "id": "runtime.model-routing",
       "name": "Per-question model routing",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Task-aware routing between local, CLI, and optional BYOK runtimes",
       "limitations": [
@@ -2193,34 +2226,26 @@
         },
         {
           "kind": "source",
-          "reference": "App/ProductionRuntimeSelector.swift"
+          "reference": "App/RuntimeCatalog.swift"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/RuntimeInventoryTests.swift::testOfficialAndCustomProvidersUseTheSameInventoryForRoutingAndChoices()"
+          "reference": "AppTests/RuntimeInventoryTests.swift::testOfficialAndCustomProvidersProduceChoicesAndSummaries"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/RuntimeInventoryTests.swift::testRejectedInstallationHasNoAuthenticationCommandsOrPlanningChoice()"
-        },
-        {
-          "kind": "unit-test",
-          "reference": "AppTests/ProductionRuntimeSelectorTests.swift::testFallsBackToEligibleBoundedProviderWithReason"
-        },
-        {
-          "kind": "unit-test",
-          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/RuntimeProviderRegistryTests.swift::testRoutingRejectsProviderThatHasNotProvedTheRequestedOperation"
+          "reference": "AppTests/RuntimeInventoryTests.swift::testRejectedInstallationHasNoAuthenticationCommandsOrChoice"
         },
         {
           "kind": "live-test",
           "reference": "docs/release-readiness/runtime-planning-smoke-2026-08-29.md"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-9a/scheduled-routine.md"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-9a/codex-routing-drill.md"
         }
       ]
@@ -2374,7 +2399,7 @@
     {
       "id": "guide.click-advance",
       "name": "Teaching advances after the instructed click or screen change",
-      "status": "unit-tested",
+      "status": "live-tested",
       "owner": "PerryGuide",
       "support": "Accessibility-guided local teaching with target-aware advancement",
       "limitations": [
@@ -2386,7 +2411,8 @@
           "status": "not-recorded"
         },
         "last_successful_run": {
-          "status": "not-recorded"
+          "status": "recorded",
+          "reference": "docs/release-readiness/runs/guide-click-advance-2026-10-14.json"
         },
         "benchmark": {
           "status": "not-recorded"
@@ -2424,6 +2450,14 @@
         {
           "kind": "source",
           "reference": "App/GuideSessionCoordinator.swift"
+        },
+        {
+          "kind": "live-test",
+          "reference": "docs/release-readiness/runs/guide-click-advance-2026-10-14.json",
+          "actual_run": {
+            "reference": "docs/release-readiness/runs/guide-click-advance-2026-10-14.json",
+            "sha256": "dedd4ef173945e7688632e00bf2f202591fa31f8e3810198855addfb98458f86"
+          }
         }
       ]
     },
@@ -2466,7 +2500,7 @@
     {
       "id": "input.spatial-context",
       "name": "Point, circle, or scribble spatial context",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Local drawn screen region passed into planner context",
       "limitations": [
@@ -2499,19 +2533,21 @@
           "reference": "Packages/PerryGuide/Tests/PerryGuideTests/RuntimeLadderTests.swift::func testScreenContextReachesThePlannerRequest()"
         },
         {
-          "kind": "marker-log",
-          "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl (spatial.down, spatial.select, talk.muted_clipboard)"
+          "kind": "live-test",
+          "reference": "docs/evidence/lab/perf-20261001T174941Z.jsonl.markers.jsonl",
+          "notes": "spatial.down, spatial.select, talk.muted_clipboard"
         },
         {
-          "kind": "note",
-          "reference": "docs/evidence/phase-10/audio-failure-paths.md#iteration-16"
+          "kind": "audit",
+          "reference": "docs/evidence/phase-10/audio-failure-paths.md",
+          "notes": "#iteration-16"
         }
       ]
     },
     {
       "id": "onboarding.guided-tutorial",
       "name": "Guided first-run tutorial",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "ChatGPT readiness setup, contextual permissions, and optional practice",
       "limitations": [
@@ -2540,7 +2576,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/OnboardingDirectorTests.swift::testProviderReadinessPrecedesTheFirstConversation"
+          "reference": "AppTests/OnboardingDirectorTests.swift::testFirstAnswerPrecedesModelChoice"
         },
         {
           "kind": "unit-test",
@@ -2674,7 +2710,7 @@
     {
       "id": "operations.bug-reporter",
       "name": "In-app bug reporter with logs",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "Product scope",
       "support": "Local redacted diagnostics export plus GitHub issues handoff; no hosted submission",
       "limitations": [
@@ -2710,19 +2746,19 @@
           "reference": ".github/ISSUE_TEMPLATE/bug-report.md"
         },
         {
-          "kind": "doc",
+          "kind": "audit",
           "reference": "docs/evidence/phase-10/diagnostics.md"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/DiagnosticsReporterTests.swift"
+          "reference": "AppTests/DiagnosticsReporterTests.swift::testSeededSensitiveValuesNeverEnterDiagnosticsExport"
         }
       ]
     },
     {
       "id": "operations.update-notice",
       "name": "Changelog link and post-update what-is-new notice",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Sparkle-backed update checks, local CHANGELOG view, and post-update notice",
       "limitations": [
@@ -2795,7 +2831,7 @@
           "reference": "scripts/verify-release.sh"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-10/whats-new.png"
         }
       ]
@@ -2830,7 +2866,7 @@
     {
       "id": "operations.muted-speaker-fallback",
       "name": "Muted-speaker clipboard fallback",
-      "status": "live-tested",
+      "status": "wired",
       "owner": "App",
       "support": "Local reply copy fallback when audio output is muted or unavailable",
       "limitations": [
@@ -2861,8 +2897,9 @@
           "reference": "App/AppController.swift"
         },
         {
-          "kind": "live",
-          "reference": "docs/evidence/phase-10/muted-output.md"
+          "kind": "live-test",
+          "reference": "docs/evidence/phase-10/audio-failure-paths.md",
+          "notes": "records muted-speaker live drill (talk.speak.muted / talk.muted_clipboard markers)"
         }
       ]
     },
@@ -2962,7 +2999,7 @@
           "reference": "AppTests/VoiceInputLifecycleTests.swift::func testBluetoothRouteSwitchGetsPrerollAndBuiltInDoesNot()"
         },
         {
-          "kind": "doc",
+          "kind": "audit",
           "reference": "docs/evidence/phase-10/audio-failure-paths.md"
         }
       ]
@@ -2991,31 +3028,27 @@
       "evidence": [
         {
           "kind": "source",
-          "reference": "App/AskSessionController.swift"
+          "reference": "App/Talk/TalkSession+Ask.swift"
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryGuide/Sources/PerryGuide/SpatialAnswer.swift"
+          "reference": "App/Talk/TalkSession.swift"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/AskSessionControllerTests.swift::func testAnswerPublishesReferencesAndSpeech()"
+          "reference": "AppTests/TalkSessionAskTests.swift::testStreamedAnswerUpdatesSessionAndSpeaks"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/AskSessionControllerTests.swift::func testFollowUpReusesSessionAndConversation()"
+          "reference": "AppTests/TalkSessionAskTests.swift::testSharedAskPersistsFollowUpsAndRejectsIncompleteAnswers"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/AskSessionControllerTests.swift::func testChangedWindowInvalidatesLateAnswer()"
+          "reference": "AppTests/TalkSessionAskTests.swift::testProtectedWindowNeverReachesRunner"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/AskSessionControllerTests.swift::func testProtectedWindowNeverReachesAnswerer()"
-        },
-        {
-          "kind": "unit-test",
-          "reference": "AppTests/AskSessionControllerTests.swift::func testCancelStopsPendingAnswer()"
+          "reference": "AppTests/TalkSessionAskTests.swift::testCancelStopsPendingAnswer"
         }
       ]
     },
@@ -3070,7 +3103,7 @@
     {
       "id": "do.durable-receipts",
       "name": "Durable write-ahead receipts for workspace execution",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Foreground and background workspace transforms journal through TaskCoordinator before dispatch",
       "limitations": [
@@ -3115,10 +3148,10 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/ForegroundPlanningTests.swift::func testProductionWorkspaceProviderExecutesAndVerifiesTypedPostcondition()"
+          "reference": "Packages/PerryRuntimes/Tests/PerryRuntimesTests/TypedWorkspaceFileRuntimeTests.swift::testCreateUTF8FileReturnsActionBoundReceiptAndExactBytes"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-10/quit-mid-turn.md"
         }
       ]
@@ -3126,7 +3159,7 @@
     {
       "id": "do.undo",
       "name": "Agent Undo: conflict-safe reversal of verified workspace changes",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "PerryGuide",
       "support": "Typed inverse actions, approved and journaled like forward work; stops at the first conflict",
       "limitations": [
@@ -3179,7 +3212,7 @@
           "reference": "AppTests/BackgroundTaskCreationTests.swift::func testUndoRunsOncePerRecordAndStopsAtConflict()"
         },
         {
-          "kind": "live-drill",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-7/workspace-undo.md"
         },
         {
@@ -3331,7 +3364,7 @@
     {
       "id": "appearance.notch-status",
       "name": "Optional notch status pill",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Glanceable status at the top-center safe area, off by default; menu bar remains the primary status surface",
       "limitations": [
@@ -3360,7 +3393,7 @@
           "reference": "AppTests/NotchStatusControllerTests.swift::func testPillAppearsOnlyWithContentOnANotchedScreen()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-5/notch-status-pill.png"
         }
       ]
@@ -3368,7 +3401,7 @@
     {
       "id": "history.outcome-surface",
       "name": "History shows provider route, verification, and Undo availability",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "Per-session rows record the runtime that answered, the verified outcome, and whether a safe Undo still exists",
       "limitations": [
@@ -3405,7 +3438,7 @@
           "reference": "AppTests/ExecutionFinalizerTests.swift::func testCompletionPreservesActionIdentityOrderAndVerification()"
         },
         {
-          "kind": "live",
+          "kind": "live-test",
           "reference": "docs/evidence/phase-10/quit-mid-turn.md"
         }
       ]
@@ -3413,7 +3446,7 @@
     {
       "id": "onboarding.first-value-demo",
       "name": "Onboarding demo answers about the screen before guiding or doing",
-      "status": "live-tested",
+      "status": "unit-tested",
       "owner": "App",
       "support": "The guided demo proves spatial Ask first, then Guide, then a small verified Do task",
       "limitations": [
@@ -3521,11 +3554,11 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/TalkControllerTests.swift"
+          "reference": "AppTests/TalkControllerTests.swift::testHoldStartsOnControlOptionAndEndsOnRelease"
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/TalkSessionAskTests.swift"
+          "reference": "AppTests/TalkControllerTests.swift::testHoldCommitsAfterThresholdAndSubmitsOnRelease"
         }
       ]
     },
@@ -3560,7 +3593,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/DeixisResolverTests.swift"
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/DeixisResolverTests.swift::testStillPointerOnElementBindsElement"
         }
       ]
     },
@@ -3595,11 +3628,11 @@
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/InlineMarkupParserTests.swift"
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/InlineMarkupParserTests.swift::testValidRingEmitsLabelAndCommand"
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift"
+          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift::scribbleRequiresAtLeastTwoPointsAndClampsPoints"
         }
       ]
     },
@@ -3609,7 +3642,9 @@
       "status": "absent",
       "owner": "App",
       "support": "Perry speaks with the local AVSpeechSynthesizer voice; no neural or hosted TTS route is shipped",
-      "limitations": [],
+      "limitations": [
+        "Not shipped: spoken output uses the local AVSpeechSynthesizer voice; there is no neural or hosted TTS route."
+      ],
       "verification": {
         "supported_environments": {
           "status": "not-recorded"
