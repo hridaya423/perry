@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import AVFoundation
 import Speech
 import PerryCapture
@@ -858,7 +859,7 @@ final class VoiceController: NSObject, ObservableObject {
     ) {
         dictationLearnCheckTask?.cancel()
         dictationLearnCheckTask = Task { @MainActor [weak self] in
-            for delay in [8.0, 9.0] {
+            for delay in [8.0, 17.0] {
                 try? await Task.sleep(for: .seconds(delay))
                 guard let self, !Task.isCancelled else { return }
                 await self.learnDictationEdits(
@@ -872,37 +873,48 @@ final class VoiceController: NSObject, ObservableObject {
         "AXTextArea", "AXTextField", "AXWebArea", "AXScrollArea", "AXStaticText", "AXComboBox",
     ]
 
+    /// Reads the focused text element's value in the target app via one
+    /// targeted AX attribute fetch — Phase 6: learn-on-edit must not take
+    /// a screenshot or capture the window's full tree. The element the
+    /// user is editing is already the right candidate, so this replaces
+    /// the ranked full-tree scan.
+    private func focusedTextValue(target: CuaTargetHint, bundleID: String) -> String? {
+        guard AXIsProcessTrusted() else { return nil }
+        let pid = target.processID
+            ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+                .first?.processIdentifier
+        guard let pid else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            app, kAXFocusedUIElementAttribute as CFString, &focusedRef
+        ) == .success, let focused = focusedRef else { return nil }
+        let element = focused as! AXUIElement
+        var roleRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, kAXRoleAttribute as CFString, &roleRef
+        ) == .success,
+              Self.dictationTextRoles.contains(roleRef as? String ?? "") else { return nil }
+        var valueRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element, kAXValueAttribute as CFString, &valueRef
+        ) == .success else { return nil }
+        return valueRef as? String
+    }
+
     private func learnDictationEdits(
         inserted: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
     ) async {
         let insertedTokens = DictationCleanupGuard.tokens(inserted)
         guard !insertedTokens.isEmpty else { return }
-        do {
-            let captured = try await workers.withWorker(
-                scope: .dictation, resources: [.application(bundleID)]
-            ) { worker in
-                try await worker.capture(target: target)
-            }
-            let candidates = (captured.accessibilitySnapshotModel?.elements ?? [])
-                .filter { Self.dictationTextRoles.contains($0.rawRole ?? "") }
-                .compactMap(\.value)
-            // The element holding the insertion shares the most tokens with it.
-            let best = candidates.max {
-                DictationCleanupGuard.tokens($0).filter { Set(insertedTokens).contains($0) }.count
-                    < DictationCleanupGuard.tokens($1).filter { Set(insertedTokens).contains($0) }.count
-            }
-            guard let best else { return }
-            let learned = PersonalDictionaryLearner.learn(
-                inserted: inserted, observed: best, insertedAt: insertedAt, observedAt: Date()
-            )
-            guard !learned.isEmpty else { return }
-            for (spoken, replacement) in learned {
-                try? VoiceDictionaryStore(supportDirectory: supportDirectory())
-                    .set(spoken: spoken, replacement: replacement)
-            }
-        } catch {
-            // Best-effort: a new dictation holds the .dictation worker, and
-            // the target may have closed — nothing to learn either way.
+        guard let observed = focusedTextValue(target: target, bundleID: bundleID) else { return }
+        let learned = PersonalDictionaryLearner.learn(
+            inserted: inserted, observed: observed, insertedAt: insertedAt, observedAt: Date()
+        )
+        guard !learned.isEmpty else { return }
+        for (spoken, replacement) in learned {
+            try? VoiceDictionaryStore(supportDirectory: supportDirectory())
+                .set(spoken: spoken, replacement: replacement)
         }
     }
 
