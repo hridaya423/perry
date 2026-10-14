@@ -434,6 +434,12 @@ private enum CuaConfigurationSource {
 
 actor CuaDriverClient {
     private static let requestTimeout: TimeInterval = 15
+    /// Reads are bimodal: a healthy call answers in ~1.5s and a wedged one
+    /// never answers at all, so the wedge-recovery path (fail the connection,
+    /// retry on a respawned driver) should trigger long before the mutation
+    /// deadline. Six seconds sits far above the observed p99 and far below
+    /// the request timeout.
+    private static let readTimeout: TimeInterval = 6
 
     private let allowsRestart: Bool
     private var configurationSource: CuaConfigurationSource
@@ -445,6 +451,10 @@ actor CuaDriverClient {
     private var lastCleanupError: Error?
     private var startedSessions: [String: UInt64] = [:]
     private var sessionStates: [String: CuaSessionState] = [:]
+    // Session state is connection-scoped and dies with the driver; the bound
+    // window is a macOS identity that survives a respawn, so keep it
+    // separately — `refreshSessionTarget` rebinds from it after churn.
+    private var sessionTargets: [String: CuaWindowTarget] = [:]
     private var ownedProcesses: [UInt64: CuaOwnedProcess] = [:]
     private var retired = false
     private var retirementTask: Task<Void, Error>?
@@ -511,6 +521,9 @@ actor CuaDriverClient {
 
     func resolveTarget(_ hint: CuaTargetHint?, sessionID: String) async throws -> CuaWindowTarget {
         sessionStates[sessionID] = nil
+        // A retarget attempt voids the old binding immediately — a failed
+        // resolve must not leave the previous window executable.
+        sessionTargets[sessionID] = nil
         let generation = try await ensureSession(sessionID)
         let windows = try await listWindows(generation: generation, sessionID: sessionID)
         let target = selectTarget(from: windows, hint: hint)
@@ -522,6 +535,7 @@ actor CuaDriverClient {
               startedSessions[sessionID] == generation else {
             throw CuaDriverError.processExited
         }
+        sessionTargets[sessionID] = target
         return target
     }
 
@@ -538,7 +552,8 @@ actor CuaDriverClient {
                 "max_depth": 12,
                 "session": sessionID,
             ],
-            generation: generation
+            generation: generation,
+            timeout: Self.readTimeout
         )
         let screenshotData = state.images.first ?? Data()
         if includeScreenshot, screenshotData.isEmpty {
@@ -556,6 +571,7 @@ actor CuaDriverClient {
             snapshotID: snapshotID,
             elementLabels: elementLabels(from: structuredValue)
         )
+        sessionTargets[sessionID] = resolvedTarget
         return CuaCapturedWindow(
             target: resolvedTarget,
             screenshotData: screenshotData,
@@ -572,10 +588,12 @@ actor CuaDriverClient {
         let state = try await refreshSessionTarget(sessionID)
         if let expected = action.expectedWindow {
             let target = state.target
+            // Window identity is bundle+pid+CGWindowID — the connection
+            // generation is driver-liveness, not window identity, so a
+            // respawned driver reporting the same window must not mismatch.
             guard target.processID == expected.processID,
                   target.windowID == Int64(expected.windowID),
-                  target.bundleID.lowercased() == expected.bundleID.lowercased(),
-                  target.connectionGeneration == expected.connectionGeneration else {
+                  target.bundleID.lowercased() == expected.bundleID.lowercased() else {
                 throw CuaDriverError.targetMismatch
             }
         }
@@ -710,6 +728,7 @@ actor CuaDriverClient {
             snapshotID: nil,
             elementLabels: [:]
         )
+        sessionTargets[sessionID] = current
         return current
     }
 
@@ -748,6 +767,9 @@ actor CuaDriverClient {
         if sessionStates[sessionID]?.generation == generation {
             sessionStates[sessionID] = nil
         }
+        if sessionTargets[sessionID]?.connectionGeneration == generation {
+            sessionTargets[sessionID] = nil
+        }
     }
 
     func shutdown() {
@@ -759,6 +781,7 @@ actor CuaDriverClient {
         }
         startedSessions.removeAll()
         sessionStates.removeAll()
+        sessionTargets.removeAll()
     }
 
     func retire() async throws {
@@ -933,7 +956,8 @@ actor CuaDriverClient {
         let result = try await callTool(
             name: "list_windows",
             arguments: ["on_screen_only": false],
-            generation: generation
+            generation: generation,
+            timeout: Self.readTimeout
         )
         guard let rawWindows = result.structuredValue?["windows"] as? [[String: Any]] else {
             throw CuaDriverError.protocolFailure("list_windows returned no window list")
@@ -1061,18 +1085,41 @@ actor CuaDriverClient {
     }
 
     private func refreshSessionTarget(_ sessionID: String) async throws -> CuaSessionState {
-        guard let previous = sessionStates[sessionID] else {
+        if let previous = sessionStates[sessionID],
+           previous.generation == connection?.generation {
+            let currentTarget = try await refreshResolvedTarget(previous.target, sessionID: sessionID)
+            let refreshed = CuaSessionState(
+                generation: previous.generation,
+                target: currentTarget,
+                snapshotID: previous.snapshotID,
+                elementLabels: previous.elementLabels
+            )
+            sessionStates[sessionID] = refreshed
+            sessionTargets[sessionID] = currentTarget
+            return refreshed
+        }
+        // A connection failure wipes connection-scoped state, but the session's
+        // window is a system identity — a respawned driver still sees it.
+        guard let boundTarget = sessionTargets[sessionID],
+              let generation = connection?.generation,
+              startedSessions[sessionID] == generation else {
             throw CuaDriverError.targetNotFound
         }
-        let currentTarget = try await refreshResolvedTarget(previous.target, sessionID: sessionID)
-        let refreshed = CuaSessionState(
-            generation: previous.generation,
+        let currentTarget = try await listWindows(generation: generation, sessionID: sessionID)
+            .first { $0.processID == boundTarget.processID && $0.windowID == boundTarget.windowID }
+        guard let currentTarget else {
+            throw CuaDriverError.targetNotFound
+        }
+        try ensureTargetAllowed(currentTarget)
+        let state = CuaSessionState(
+            generation: generation,
             target: currentTarget,
-            snapshotID: previous.snapshotID,
-            elementLabels: previous.elementLabels
+            snapshotID: nil,
+            elementLabels: [:]
         )
-        sessionStates[sessionID] = refreshed
-        return refreshed
+        sessionStates[sessionID] = state
+        sessionTargets[sessionID] = currentTarget
+        return state
     }
 
     private func refreshResolvedTarget(_ target: CuaWindowTarget, sessionID: String) async throws -> CuaWindowTarget {
@@ -1157,7 +1204,8 @@ actor CuaDriverClient {
                 "max_elements": 300,
                 "max_depth": 12,
                 "session": sessionID,
-            ]
+            ],
+            timeout: Self.readTimeout
         )
         guard let elements = result.structuredValue?["elements"] as? [[String: Any]] else {
             throw CuaDriverError.targetNotFound
@@ -1183,7 +1231,8 @@ actor CuaDriverClient {
     private func callTool(
         name: String,
         arguments: [String: Any],
-        generation explicitGeneration: UInt64? = nil
+        generation explicitGeneration: UInt64? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> CuaToolResult {
         let sessionGeneration = (arguments["session"] as? String).flatMap { startedSessions[$0] }
         let generation = explicitGeneration ?? sessionGeneration
@@ -1193,7 +1242,8 @@ actor CuaDriverClient {
         let resultData = try await sendRequest(
             method: "tools/call",
             parameters: ["name": name, "arguments": arguments],
-            generation: generation
+            generation: generation,
+            timeout: timeout
         )
         guard let result = try JSONSerialization.jsonObject(with: resultData) as? [String: Any] else {
             throw CuaDriverError.protocolFailure("tool \(name) returned invalid JSON")
@@ -1226,7 +1276,8 @@ actor CuaDriverClient {
     private func sendRequest(
         method: String,
         parameters: [String: Any],
-        generation expectedGeneration: UInt64? = nil
+        generation expectedGeneration: UInt64? = nil,
+        timeout: TimeInterval? = nil
     ) async throws -> Data {
         try Task.checkCancellation()
         guard !retired else { throw CuaDriverError.processExited }
@@ -1245,15 +1296,15 @@ actor CuaDriverClient {
         ]
         let requestData = try JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]) + Data([0x0A])
         let inputHandle = connection.inputHandle
-        let timeout = Task { [weak self] in
+        let timeoutTask = Task { [weak self] in
             do {
-                try await Task.sleep(nanoseconds: UInt64(Self.requestTimeout * 1_000_000_000))
+                try await Task.sleep(nanoseconds: UInt64((timeout ?? Self.requestTimeout) * 1_000_000_000))
             } catch {
                 return
             }
             await self?.expire(requestID: requestID, generation: generation)
         }
-        defer { timeout.cancel() }
+        defer { timeoutTask.cancel() }
         let response: Data = try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
@@ -1285,9 +1336,11 @@ actor CuaDriverClient {
         pending.removeValue(forKey: requestID)
         let error = CuaDriverError.protocolFailure("request timed out")
         request.continuation.resume(throwing: error)
-        if !allowsRestart {
-            failConnection(generation: generation, with: error)
-        }
+        // A driver that stopped answering keeps every later call on this
+        // connection waiting out the full deadline — one wedged capture used
+        // to strand the whole guide. Tear the connection down; restartable
+        // clients respawn a fresh driver on the next request.
+        failConnection(generation: generation, with: error)
     }
 
     private func sendNotification(method: String, generation: UInt64) throws {
@@ -1370,6 +1423,7 @@ actor CuaDriverClient {
         readBuffers.removeAll()
         startedSessions.removeAll()
         sessionStates.removeAll()
+        sessionTargets.removeAll()
         for continuation in waiting {
             continuation.resume(throwing: CancellationError())
         }

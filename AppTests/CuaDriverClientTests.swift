@@ -1066,6 +1066,80 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertEqual(startCount(), 1)
     }
 
+    func testRestartableTimeoutRetiresWedgedDriverAndRespawns() async throws {
+        let client = makeClient()
+        let directory = try XCTUnwrap(testDirectory)
+        let sessionID = "timeout-respawn"
+        _ = try await client.capture(
+            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            sessionID: sessionID
+        )
+        try await waitForStartCount(1)
+        let wedgedPID = try Self.processID(forStart: 1, in: directory)
+        try createMarker("delay-action")
+        let completed = expectation(description: "timed out requester completes")
+        let requester = Task {
+            defer { completed.fulfill() }
+            try await client.execute(
+                try clickAction(id: "timed-out"),
+                sessionID: sessionID
+            )
+        }
+        addTeardownBlock {
+            do {
+                try Data([1]).write(to: directory.appendingPathComponent("release-action"))
+            } catch {
+                XCTFail("could not release the delayed action: \(error)")
+            }
+            requester.cancel()
+            for index in [1, 2] {
+                if let pid = Self.processIDIfPresent(forStart: index, in: directory) {
+                    await Self.terminateTestOwnedProcess(pid)
+                }
+            }
+            await client.shutdown()
+        }
+
+        try await waitForMarker("action-delayed")
+        guard await XCTWaiter.fulfillment(of: [completed], timeout: 17) == .completed else {
+            requester.cancel()
+            throw CuaTestError.timeout("timed out requester did not finish")
+        }
+        do {
+            _ = try await requester.value
+            XCTFail("a timed-out action completed")
+        } catch let error as CuaDriverError {
+            XCTAssertEqual(error, .protocolFailure("request timed out"))
+        } catch {
+            XCTFail("timed-out action failed with an unexpected error: \(error)")
+        }
+
+        // The delayed click would hang a fresh driver too — clear the marker
+        // so the recovery request exercises a healthy driver.
+        try FileManager.default.removeItem(
+            at: directory.appendingPathComponent("delay-action")
+        )
+        // Release the wedged fixture: it ignores SIGTERM, so termination only
+        // completes once its delay loop ends and it writes to the closed pipe.
+        try Data([1]).write(to: directory.appendingPathComponent("release-action"))
+        let recovered: StepResult
+        do {
+            recovered = try await client.execute(
+                try clickAction(id: "after-timeout"),
+                sessionID: sessionID
+            )
+        } catch {
+            XCTFail("recovery execute failed with \(type(of: error)): \(error)")
+            return
+        }
+        XCTAssertTrue(recovered.success)
+        try await waitForStartCount(2)
+        let respawnedPID = try Self.processID(forStart: 2, in: directory)
+        XCTAssertNotEqual(respawnedPID, wedgedPID)
+        let wedgedExited = try await Self.waitForProcessExit(wedgedPID, within: 2)
+        XCTAssertTrue(wedgedExited, "timed-out request left wedged driver \(wedgedPID) alive")
+    }
+
     func testPreCancelledActionDoesNotStartDriver() async throws {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }
@@ -1780,7 +1854,11 @@ final class CuaDriverClientTests: XCTestCase {
     }
 
     private static func processHasExited(_ pid: pid_t) -> Bool {
-        kill(pid, 0) == -1 && errno == ESRCH
+        var status: Int32 = 0
+        let result = waitpid(pid, &status, WNOHANG)
+        if result == pid { return true }
+        if result == -1 { return errno == ECHILD || errno == ESRCH }
+        return false
     }
 
     private static func waitForProcessExit(

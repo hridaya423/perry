@@ -33,6 +33,12 @@ struct CuaWorkerHandle: Sendable {
         try await service.insertText(text, target: target, allocation: allocation)
     }
 
+    /// Resolves the hint to a live window without reading its AX tree —
+    /// liveness/identity checks that don't need element payloads.
+    func probeTarget(_ target: CuaTargetHint?) async throws -> CuaWindowTarget {
+        try await service.probeTarget(target, allocation: allocation)
+    }
+
     func claimResources(_ resources: Set<BackgroundTaskResource>) async throws {
         try await service.claim(resources, allocation: allocation)
     }
@@ -86,8 +92,13 @@ actor CuaWorkerService {
         let allocation = UUID()
         let resources = Self.normalized(resources)
         try requireAvailable(resources, excluding: allocation)
-        let client = configuration.map { CuaDriverClient(configuration: $0, allowsRestart: false) }
-            ?? CuaDriverClient(allowsRestart: false)
+        // Restartable: a wedged or crashed driver respawns on the next call
+        // instead of killing the whole worker. Window identity survives the
+        // respawn via pid+CGWindowID, reads retry boundedly at the service
+        // seam, and actions still fail closed — a post-respawn execute has
+        // to rebind the session's window before anything can dispatch.
+        let client = configuration.map { CuaDriverClient(configuration: $0, allowsRestart: true) }
+            ?? CuaDriverClient(allowsRestart: true)
         workers[allocation] = Worker(scope: scope, client: client, resources: resources)
         let handle = CuaWorkerHandle(service: self, allocation: allocation)
         let serviceID = serviceID
@@ -183,18 +194,52 @@ actor CuaWorkerService {
         workers[allocation]?.resources.formUnion(resources)
     }
 
+    /// Wedged and dead drivers recover by respawn, and a read is idempotent —
+    /// retrying can never double-apply. Three retries bound the stall: if the
+    /// driver still cannot answer, the worker is genuinely sick and retires.
+    /// `noTargetWindow` always passes through uncounted — a gone window is a
+    /// target fact, not worker sickness, and the caller's stale-hint rescue
+    /// depends on seeing it.
+    private static let maxReadRetries = 3
+
     fileprivate func capture(target hint: CuaTargetHint?, includeScreenshot: Bool = true, allocation: UUID) async throws -> CuaCapturedWindow {
-        do {
-            let client = try client(for: allocation)
-            let sessionID = allocation.uuidString
-            let target = try await client.resolveTarget(hint, sessionID: sessionID)
-            try claim([.application(target.bundleID)], allocation: allocation)
-            return try await client.capture(resolvedTarget: target, sessionID: sessionID, includeScreenshot: includeScreenshot)
-        } catch let error as CuaDriverError where error == .noTargetWindow {
-            throw error
-        } catch {
-            beginRetirement(allocation)
-            throw error
+        var retriesLeft = Self.maxReadRetries
+        while true {
+            do {
+                let client = try client(for: allocation)
+                let sessionID = allocation.uuidString
+                PerfMark.mark("guide.resolve.begin")
+                let target = try await client.resolveTarget(hint, sessionID: sessionID)
+                PerfMark.mark("guide.resolve.end")
+                try claim([.application(target.bundleID)], allocation: allocation)
+                PerfMark.mark("guide.state.begin")
+                defer { PerfMark.mark("guide.state.end") }
+                return try await client.capture(resolvedTarget: target, sessionID: sessionID, includeScreenshot: includeScreenshot)
+            } catch let error as CuaDriverError where error == .noTargetWindow {
+                throw error
+            } catch let error as CuaDriverError where Self.isRespawnableReadFailure(error) && retriesLeft > 0 {
+                retriesLeft -= 1
+            } catch {
+                beginRetirement(allocation)
+                throw error
+            }
+        }
+    }
+
+    fileprivate func probeTarget(_ hint: CuaTargetHint?, allocation: UUID) async throws -> CuaWindowTarget {
+        var retriesLeft = Self.maxReadRetries
+        while true {
+            do {
+                let client = try client(for: allocation)
+                return try await client.resolveTarget(hint, sessionID: allocation.uuidString)
+            } catch let error as CuaDriverError where error == .noTargetWindow {
+                throw error
+            } catch let error as CuaDriverError where Self.isRespawnableReadFailure(error) && retriesLeft > 0 {
+                retriesLeft -= 1
+            } catch {
+                beginRetirement(allocation)
+                throw error
+            }
         }
     }
 
@@ -300,6 +345,20 @@ actor CuaWorkerService {
         let completions = workers.keys.map { completeRetirement($0) }
         for completion in completions {
             try await completion.value
+        }
+    }
+
+    /// Errors where the driver is already dead and the connection was already
+    /// failed — a retry lands on a respawn. Only safe for idempotent reads:
+    /// actions must never retry, since the request may have landed.
+    private static func isRespawnableReadFailure(_ error: CuaDriverError) -> Bool {
+        switch error {
+        case .processExited:
+            return true
+        case .protocolFailure(let message):
+            return message.contains("timed out")
+        default:
+            return false
         }
     }
 
