@@ -5,28 +5,32 @@ import PerryCore
 private actor StubObserver: GuideObserving {
     private let observations: [GuideObservation]
     private let failureAtRead: Int?
+    private let failureAtProbe: Int?
     private let holdSignals: Bool
     private var index = 0
     private var elementReads = 0
+    private var probeReads = 0
     private var scriptedSignals: [Bool]
     private var heldValues: [Bool] = []
     private var heldSignalWaiter: CheckedContinuation<Bool, Never>?
     private var waitingForSignal = false
     private var waitingObserver: CheckedContinuation<Void, Never>?
 
-    init(observations: [GuideObservation], failureAtRead: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
+    init(observations: [GuideObservation], failureAtRead: Int? = nil, failureAtProbe: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
         self.observations = observations
         self.failureAtRead = failureAtRead
+        self.failureAtProbe = failureAtProbe
         self.scriptedSignals = signals
         self.holdSignals = holdSignals
     }
 
-    init(snapshots: [AXSnapshot], failureAtRead: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
+    init(snapshots: [AXSnapshot], failureAtRead: Int? = nil, failureAtProbe: Int? = nil, signals: [Bool] = [], holdSignals: Bool = false) {
         self.init(
             observations: snapshots.map {
                 GuideObservation(snapshot: $0, processID: 42, windowID: 7, connectionGeneration: 1)
             },
             failureAtRead: failureAtRead,
+            failureAtProbe: failureAtProbe,
             signals: signals,
             holdSignals: holdSignals
         )
@@ -45,6 +49,18 @@ private actor StubObserver: GuideObserving {
     func observeElements() async throws -> GuideObservation {
         elementReads += 1
         return try await observe()
+    }
+
+    /// Identity probes never consume the scripted observation sequence — they
+    /// stand in for a resolve-only check that returns the bound window's
+    /// identity without paying for the element tree.
+    func probeTarget() async throws -> GuideObservation {
+        if probeReads == failureAtProbe {
+            probeReads += 1
+            throw GuideReaderTestError.captureUnavailable
+        }
+        probeReads += 1
+        return observations[min(index, observations.count - 1)]
     }
 
     /// Scripted signals return in order; `holdSignals` suspends until `emit`
@@ -83,6 +99,10 @@ private actor StubObserver: GuideObserving {
 
     func elementReadCount() -> Int {
         elementReads
+    }
+
+    func probeReadCount() -> Int {
+        probeReads
     }
 }
 
@@ -299,7 +319,9 @@ final class GuideEngineTests: XCTestCase {
 
     func testCaptureFailureBlocksInsteadOfPretendingTheStepWasUnchanged() async throws {
         let initial = snapshot([button("target", label: "Open")])
-        let observer = StubObserver(snapshots: [initial], failureAtRead: 1)
+        // The postconditionless verify reads via the identity probe — that is
+        // the capture whose failure must fail closed.
+        let observer = StubObserver(snapshots: [initial], failureAtProbe: 0)
         let planner = QueueGuidePlanner(steps: [
             GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
         ])
@@ -314,6 +336,74 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertTrue(reason.contains("could not verify"))
         let phase = await engine.phase
         XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+    }
+
+    func testPostconditionlessClickProbesIdentityInsteadOfReadingTree() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(snapshots: [initial])
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+            ]),
+            observer: observer
+        )
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+
+        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        // The verify only needs target liveness — the element walk is dead
+        // cost on a step that can never self-verify.
+        let probes = await observer.probeReadCount()
+        let elementReads = await observer.elementReadCount()
+        let reads = await observer.readCount()
+        XCTAssertEqual(probes, 1)
+        XCTAssertEqual(elementReads, 0)
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testProbeFailureBlocksPostconditionlessClick() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(snapshots: [initial], failureAtProbe: 0)
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+            ]),
+            observer: observer
+        )
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+
+        guard case .blocked(let reason) = result else {
+            return XCTFail("expected blocked, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("could not verify"))
+        let phase = await engine.phase
+        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+    }
+
+    func testUserConfirmationAfterProbeStillPaysFullRead() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(snapshots: [initial])
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+            ]),
+            observer: observer
+        )
+        _ = try await engine.start(goal: "g")
+        _ = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        let probes = await observer.probeReadCount()
+        XCTAssertEqual(probes, 1)
+
+        let result = await engine.userActed()
+
+        // Confirm needs the element tree — the next step plans from it, so
+        // the probe's identity-only payload can never stand in here.
+        XCTAssertEqual(result, .explanationEnded)
+        let elementReads = await observer.elementReadCount()
+        XCTAssertEqual(elementReads, 1)
     }
 
     func testClickCanAdvanceOnTypedPostconditionWithoutVisualChange() async throws {
@@ -762,11 +852,32 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
-    func testVerificationBlocksWhenGenerationChanges() async throws {
+    /// A driver respawn bumps the connection generation while reporting the
+    /// same pid + CGWindowID — the window never moved, so the guide survives
+    /// the reconnect. Element tokens stay safe because they only resolve
+    /// inside the observation that minted them.
+    func testVerificationToleratesGenerationBumpOnSameWindow() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
             after: observation(
                 [button("target", label: "Open"), button("done", label: "Done")],
+                generation: 2
+            )
+        )
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+    }
+
+    /// A respawned driver reporting a different windowID is a different
+    /// window — generation leniency never extends to identity.
+    func testVerificationBlocksWhenRespawnedDriverReportsDifferentWindow() async throws {
+        let engine = postconditionEngine(
+            before: observation([button("target", label: "Open")]),
+            after: observation(
+                [button("target", label: "Open"), button("done", label: "Done")],
+                windowID: 99,
                 generation: 2
             )
         )

@@ -121,6 +121,11 @@ public protocol GuideObserving: Sendable {
     /// Reads the accessibility tree without capturing the screen.
     /// Postcondition verification needs the element index, never pixels.
     func observeElements() async throws -> GuideObservation
+
+    /// Confirms the target window is still the same window without reading
+    /// its element tree — the cheap liveness check for verifies whose step
+    /// declares no postcondition. Must throw on a dead or swapped target.
+    func probeTarget() async throws -> GuideObservation
 }
 
 public extension GuideObserving {
@@ -133,6 +138,12 @@ public extension GuideObserving {
 
     func observeElements() async throws -> GuideObservation {
         try await observe()
+    }
+
+    /// Observers without an identity probe do a full element read — correct,
+    /// just slower.
+    func probeTarget() async throws -> GuideObservation {
+        try await observeElements()
     }
 }
 

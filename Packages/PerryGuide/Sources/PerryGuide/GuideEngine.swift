@@ -303,15 +303,22 @@ public actor GuideEngine {
                 try Task.checkCancellation()
                 let remaining = deadline - ContinuousClock.now
                 if reads > 0, remaining <= .zero { break }
-                // An explicit user confirm is itself the signal: waiting out
-                // the first-signal window before reading just adds dead time
-                // between Done and the next mark.
-                let window = reads == 0 ? (userConfirmed ? .zero : min(remaining, Self.firstSignalWindow)) : remaining
+                // A signal wait only pays off when a postcondition needs
+                // time to become true. Explicit confirms and postcondition-
+                // less clicks have nothing to wait for — read immediately
+                // instead of paying the first-signal window as dead time.
+                let nothingToWaitFor = userConfirmed || step.postcondition == nil
+                let window = reads == 0 ? (nothingToWaitFor ? .zero : min(remaining, Self.firstSignalWindow)) : remaining
                 let signaled = await observer.awaitUIChange(within: max(window, .zero))
                 // A deadline without a signal means the UI went quiet — the
                 // last read's verdict stands rather than paying another.
                 if reads > 0, !signaled { break }
-                observation = try await observer.observeElements()
+                // A postconditionless click can only fail-closed or wait —
+                // the element payload is never consulted, so probe identity
+                // instead of paying for the full AX walk.
+                observation = step.postcondition == nil && !userConfirmed
+                    ? try await observer.probeTarget()
+                    : try await observer.observeElements()
                 try GuideTargetValidator.requireUnprotected(observation)
                 try requireSameTarget(observation, as: baseline, allowsNewWindow: step.opensWindow)
             } catch is CancellationError {
@@ -439,13 +446,17 @@ public actor GuideEngine {
     /// Same app, same live window — unless the presented step predicted a new
     /// window (`opensWindow`), in which case a different windowID under the
     /// same pid/bundle/generation is the expected outcome, not a violation.
+    /// Window identity is carried by pid + CGWindowID + bundle — all stable
+    /// across a driver respawn. Connection generation is deliberately not
+    /// compared: element tokens are only resolved inside the observation that
+    /// produced them, so a restarted driver can never smuggle stale tokens
+    /// into a click, and blocking on generation would kill every guide the
+    /// moment the driver reconnects under a window that never moved.
     private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation, allowsNewWindow: Bool = false) throws {
         guard let processID = baseline.processID,
               let windowID = baseline.windowID,
-              let generation = baseline.connectionGeneration,
               observation.snapshot.appBundleID == baseline.snapshot.appBundleID,
               observation.processID == processID,
-              observation.connectionGeneration == generation,
               observation.windowID != nil,
               allowsNewWindow || observation.windowID == windowID else {
             throw GuidePlannerError.blocked("The target window changed or its identity is unavailable. Start a new guide.")
