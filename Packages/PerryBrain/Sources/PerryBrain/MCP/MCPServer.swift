@@ -138,6 +138,17 @@ public enum SocketAuth {
             .trimmingCharacters(in: .whitespacesAndNewlines), existing.count >= 32 {
             return existing
         }
+        return try mintToken(in: directory)
+    }
+
+    /// Always mints a fresh token, replacing any existing file. Perry calls
+    /// this at each socket admission era (start/resume): a token captured
+    /// during one era stops working in the next, matching the per-launch
+    /// contract. Connected clients are unaffected — the token is checked
+    /// once at handshake, and connected fds close when admission ends.
+    @discardableResult
+    public static func mintToken(in directory: URL) throws -> String {
+        let url = directory.appendingPathComponent(tokenFileName)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let token = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
         try token.write(to: url, atomically: true, encoding: .utf8)

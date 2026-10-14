@@ -167,4 +167,12 @@ final class SocketAuthTests: XCTestCase {
             String(repeating: "a", count: 64), in: dir.appendingPathComponent("nope")
         ))
     }
+
+    func testMintTokenRotatesAndRetiresThePreviousToken() throws {
+        let first = try SocketAuth.mintToken(in: dir)
+        let second = try SocketAuth.mintToken(in: dir)
+        XCTAssertNotEqual(first, second)
+        XCTAssertTrue(SocketAuth.authorize(second, in: dir))
+        XCTAssertFalse(SocketAuth.authorize(first, in: dir))
+    }
 }

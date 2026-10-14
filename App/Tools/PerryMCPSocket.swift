@@ -37,7 +37,7 @@ final class PerryMCPSocket: @unchecked Sendable {
         try lock.withLock {
             guard listenerFD < 0, !stopping else { throw POSIXError(.EALREADY) }
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            _ = try SocketAuth.ensureToken(in: directory)
+            _ = try SocketAuth.mintToken(in: directory)
             let path = socketPath
             unlink(path)
             let fd = socket(AF_UNIX, SOCK_STREAM, 0)
