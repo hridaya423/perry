@@ -1321,7 +1321,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let first = try await waitForRunningExecution(controller)
 
         controller.debugDispatch("speech begun before this task")
-        XCTAssertTrue(controller.sessionStatus.contains("hold the shortcut again"))
+        XCTAssertTrue(controller.sessionStatus.contains("Hold the shortcut again"))
         XCTAssertFalse(controller.sessionStatus.contains("Steering:"))
 
         controller.debugDispatch("use the other folder", voiceTaskScope: UUID())

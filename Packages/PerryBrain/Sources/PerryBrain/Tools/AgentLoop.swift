@@ -187,11 +187,11 @@ public actor AgentLoop {
             if calls.isEmpty {
                 if toolCallCount == 0 {
                     if Self.looksFabricatedToolTranscript(text, toolNames: surfaceToolNames) {
-                        finish(.failed("The answer describes actions Perry did not run — nothing was executed. Retry, or choose a different model in Settings."))
+                        finish(.failed("The answer describes actions Perry did not run, so nothing happened. Try again, or choose a different model in Settings."))
                         return
                     }
                     if context.unattended, Self.looksLikeUserQuestion(text) {
-                        finish(.failed("The Perry asked for confirmation on a scheduled turn — nobody is there to answer. Rewrite the job so it can act on its own, or pick a tools-capable model in Settings."))
+                        finish(.failed("This Perry asked for confirmation during a scheduled run, and nobody was there to answer. Rewrite its job so it can act on its own, or choose a model that can use tools in Settings."))
                         return
                     }
                 }

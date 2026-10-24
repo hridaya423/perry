@@ -623,7 +623,7 @@ final class BrainController: ObservableObject {
                     if case .textDelta(let delta) = event {
                         firstDelta = firstDelta ?? Int(Date().timeIntervalSince(started) * 1000)
                         text += delta
-                        report("\(text) — first words in \(firstDelta ?? 0) ms")
+                        report("\(text) (first words in \(firstDelta ?? 0) ms)")
                     }
                 }
             } catch {

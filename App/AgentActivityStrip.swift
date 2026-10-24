@@ -450,7 +450,7 @@ struct AgentActivityStripView: View {
                     Label("Take over", systemImage: "hand.raised")
                 }
                 .accessibilityLabel("Take over this step")
-                .help("Pause so you can do the step yourself — Perry replans the rest")
+                .help("Pause so you can do the step yourself. Perry replans the rest.")
             }
             if state.retryIsAvailable {
                 Button("Try again") { onRetry() }

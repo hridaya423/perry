@@ -44,7 +44,7 @@ final class CommandRouter {
         if let voiceTaskScope {
             guard case .executing(let execution) = host.sessionController.state,
                   execution.taskID == voiceTaskScope else {
-                host.sessionStatus = "That task already moved on — hold the shortcut again to steer the current one."
+                host.sessionStatus = "That task already moved on. Hold the shortcut again to steer the current one."
                 return
             }
             steer(text, execution: execution)
@@ -64,7 +64,7 @@ final class CommandRouter {
             return
         }
         if case .executing = host.sessionController.state {
-            host.sessionStatus = "A task started while you were speaking — hold the shortcut again to steer it."
+            host.sessionStatus = "A task started while you were speaking. Hold the shortcut again to steer it."
             return
         }
         switch GuideIntentParser.parse(text) {
@@ -88,7 +88,7 @@ final class CommandRouter {
             return
         }
         guard execution.lifecycle == .running || execution.lifecycle == .paused else {
-            host.sessionStatus = "Perry can’t take direction right now — use the task controls, or say “stop”."
+            host.sessionStatus = "Perry can’t take direction right now. Use the task controls, or say “stop”."
             return
         }
         host.foreground.steer(text)

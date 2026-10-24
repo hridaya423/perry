@@ -62,7 +62,7 @@ final class RoutineLibraryController {
         guard let routine = pendingRun else { return }
         let values = reviewState.parameterValues
         guard values.values.allSatisfy({ $0.count <= LearnedRoutine.parameterValueMaxLength }) else {
-            setStatus("A parameter is longer than \(LearnedRoutine.parameterValueMaxLength) characters — shorten it to run this routine.")
+            setStatus("A parameter is longer than \(LearnedRoutine.parameterValueMaxLength) characters. Shorten it to run this routine.")
             return
         }
         pendingRun = nil
@@ -77,7 +77,7 @@ final class RoutineLibraryController {
     func importRoutine(from url: URL) {
         do {
             let routine = try store.importRoutine(from: url)
-            setStatus("Imported routine \"\(routine.name)\" — run it from the menu.")
+            setStatus("Imported routine \"\(routine.name)\". Run it from the menu.")
         } catch {
             setStatus("The routine could not be imported.")
         }
@@ -114,11 +114,11 @@ final class RoutineLibraryController {
                 self?.reviewState.eventCount = count
             },
             onLimitWarning: { [weak self] in
-                self?.setStatus("Recording stops in 30 seconds — finish the step you're on.")
+                self?.setStatus("Recording stops in 30 seconds. Finish the step you’re on.")
                 self?.speak("Recording stops in 30 seconds.")
             },
             onTimeLimit: { [weak self] in
-                self?.setStatus("Recording reached its time limit — reviewing what was captured.")
+                self?.setStatus("Recording reached its time limit. Reviewing what was captured.")
                 Task { await self?.stopRecordingForReview() }
             }
         )
@@ -127,7 +127,7 @@ final class RoutineLibraryController {
         showReviewWindow()
         recorder.start()
         onRecordingChanged(true)
-        setStatus("Recording a demonstration — show me the workflow, then Stop & review.")
+        setStatus("Recording a demonstration. Show me the workflow, then choose Stop & review.")
         speak("Recording. Show me the workflow, then stop and review.")
     }
 
@@ -172,7 +172,7 @@ final class RoutineLibraryController {
         routine.provenance = .reviewed
         do {
             try store.save(routine)
-            setStatus("Saved routine \"\(routine.name)\" — run it from the menu.")
+            setStatus("Saved routine \"\(routine.name)\". Run it from the menu.")
         } catch {
             setStatus("The routine could not be saved: \(error.localizedDescription)")
         }

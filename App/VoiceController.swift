@@ -490,8 +490,8 @@ final class VoiceController: NSObject, ObservableObject {
                     overlayState.voiceState = .listening
                     overlayState.buddyState = .listening
                     hooks.setStatus(dictationScopedTaskID == nil
-                        ? "Listening via realtime voice — release the shortcut when you’re done."
-                        : "Listening — release to steer the task.")
+                        ? "Listening through realtime voice. Release the shortcut when you’re done."
+                        : "Listening. Release to steer the task.")
                 case .connecting:
                     hooks.setStatus("Connecting to realtime voice…")
                 case .idle, .responding, .failed:
@@ -563,8 +563,8 @@ final class VoiceController: NSObject, ObservableObject {
                 overlayState.voiceState = .listening
                 overlayState.buddyState = .listening
                 hooks.setStatus(dictationScopedTaskID == nil
-                    ? "Listening on \(dictation.activeInputDeviceName()) — \(pushToTalk.shortcut.releaseHint)."
-                    : "Listening — release to steer the task.")
+                    ? "Listening on \(dictation.activeInputDeviceName()). \(pushToTalk.shortcut.releaseHint)."
+                    : "Listening. Release to steer the task.")
             } catch {
                 dictationAttemptID = nil
                 overlayState.voiceState = .idle
@@ -680,8 +680,8 @@ final class VoiceController: NSObject, ObservableObject {
                 overlayState.voiceState = .listening
                 overlayState.buddyState = .listening
                 hooks.setStatus(dictationScopedTaskID == nil
-                    ? "Listening via realtime voice — release the shortcut when you’re done."
-                    : "Listening — release to steer the task.")
+                    ? "Listening through realtime voice. Release the shortcut when you’re done."
+                    : "Listening. Release to steer the task.")
             }
         case .speechStopped, .audio, .ignored:
             break
@@ -777,7 +777,7 @@ final class VoiceController: NSObject, ObservableObject {
         dictationScopedTaskID = nil
         if let voiceTaskScope, voiceTaskScope != hooks.executingTaskID() {
             cancelInput()
-            hooks.setStatus("The task changed while you were speaking — hold the shortcut again.")
+            hooks.setStatus("The task changed while you were speaking. Hold the shortcut again.")
             return
         }
         let frontmostApplication = dictationTargetApplication

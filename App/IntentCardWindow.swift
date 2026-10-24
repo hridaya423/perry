@@ -94,7 +94,7 @@ struct IntentCardView: View {
                 if let reversible = card.reversible {
                     labeledRow(
                         "Reversible",
-                        value: reversible ? "Yes" : "No — this cannot be undone",
+                        value: reversible ? "Yes" : "No. This cannot be undone.",
                         valueColor: reversible ? PerryTheme.Colors.textSecondary : PerryTheme.Colors.danger
                     )
                 }

@@ -1116,10 +1116,10 @@ final class GuideSessionCoordinator {
         case .ignoredClick(_, let hitLabel):
             PerfMark.mark("guide.click.ignored")
             if let hitLabel, !hitLabel.isEmpty {
-                output?.guideSetStatus("That's \(hitLabel) — we want the highlighted control.")
-                speak("That's \(hitLabel) — we want the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
+                output?.guideSetStatus("That’s \(hitLabel). We want the highlighted control.")
+                speak("That’s \(hitLabel). We want the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
             } else {
-                output?.guideSetStatus("Not quite — click the highlighted control.")
+                output?.guideSetStatus("Not quite. Click the highlighted control.")
             }
         case .notPresenting:
             break

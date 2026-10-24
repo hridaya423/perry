@@ -168,7 +168,7 @@ final class VoiceReadinessTests: XCTestCase {
 
         XCTAssertEqual(overlayState.voiceState, .listening)
         XCTAssertEqual(overlayState.buddyState, .listening)
-        XCTAssertEqual(statuses.last, "Listening via realtime voice — release the shortcut when you’re done.")
+        XCTAssertEqual(statuses.last, "Listening through realtime voice. Release the shortcut when you’re done.")
     }
 
     func testRealtimeBeginInputOnListeningSessionClaimsListening() {
@@ -192,7 +192,7 @@ final class VoiceReadinessTests: XCTestCase {
         XCTAssertEqual(audioStarts, 1)
         XCTAssertEqual(overlayState.voiceState, .listening)
         XCTAssertEqual(overlayState.buddyState, .listening)
-        XCTAssertEqual(statuses.last, "Listening via realtime voice — release the shortcut when you’re done.")
+        XCTAssertEqual(statuses.last, "Listening through realtime voice. Release the shortcut when you’re done.")
     }
 
     func testRealtimeBeginInputWhileConnectingDoesNotClaimListening() async {

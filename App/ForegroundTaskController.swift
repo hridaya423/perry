@@ -898,7 +898,7 @@ final class ForegroundTaskController: ObservableObject {
         }
         handoffToHuman = true
         activityStripState.handedToHuman = true
-        hooks.setStatus("You're in control — do the step yourself, then Continue with Perry.")
+        hooks.setStatus("You’re in control. Do the step yourself, then choose Continue with Perry.")
         voice.speak("You're in control. Choose Continue with Perry when you're done.")
         if let threadID = activeAgentThreadID {
             agentCoordinator?.pause(threadID: threadID)
@@ -918,7 +918,7 @@ final class ForegroundTaskController: ObservableObject {
             handoffGoal = nil
             activityStripState.handedToHuman = false
             guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
-            hooks.setStatus("Continuing — Perry will check what you did.")
+            hooks.setStatus("Continuing. Perry will check what you did.")
             agentCoordinator?.resume(threadID: threadID)
             agentCoordinator?.steer(
                 "The user took over and did the current step themselves. Verify the result on screen, then continue the goal.",
@@ -938,7 +938,7 @@ final class ForegroundTaskController: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             guard self.activeSupervisor == nil else {
-                hooks.setStatus("Perry is still settling the paused task — try Continue again in a moment.")
+                hooks.setStatus("Perry is still settling the paused task. Try Continue again in a moment.")
                 return
             }
             self.start(goal: goal)

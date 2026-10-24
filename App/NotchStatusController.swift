@@ -8,6 +8,7 @@ import PerryOverlay
 final class NotchStatusController {
 
     private var window: NSPanel?
+    private var fadeGeneration = 0
     private var stack: NSStackView?
     private var isRecording = false
     private var backgroundCount = 0
@@ -59,7 +60,18 @@ final class NotchStatusController {
     }
 
     func hide() {
-        window?.orderOut(nil)
+        guard let window, window.isVisible else { return }
+        fadeGeneration += 1
+        let generation = fadeGeneration
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.16
+            window.animator().alphaValue = 0
+        }, completionHandler: { [weak self, weak window] in
+            MainActor.assumeIsolated {
+                guard self?.fadeGeneration == generation else { return }
+                window?.orderOut(nil)
+            }
+        })
     }
 
     func repositionIfVisible() {
@@ -128,14 +140,23 @@ final class NotchStatusController {
         }
         stack.edgeInsets = NSEdgeInsets(top: screen.safeAreaInsets.top + 7, left: 16, bottom: 9, right: 16)
         let size = CGSize(width: max(220, stack.fittingSize.width), height: stack.fittingSize.height)
-        panel.setFrame(
-            HomeController.notchPanelFrame(size: size, screenFrame: screen.frame, centerX: midX),
-            display: true
-        )
+        let frame = HomeController.notchPanelFrame(size: size, screenFrame: screen.frame, centerX: midX)
         panel.contentView?.layer?.cornerRadius = 14
         panel.contentView?.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         window = panel
-        panel.orderFrontRegardless()
+        fadeGeneration += 1
+        let wasVisible = panel.isVisible
+        if !wasVisible {
+            panel.setFrame(frame, display: true)
+            panel.alphaValue = 0
+            panel.orderFrontRegardless()
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            if wasVisible, panel.frame != frame { panel.animator().setFrame(frame, display: true) }
+            panel.animator().alphaValue = 1
+        }
     }
 
     private static func makePanel(controller: NotchStatusController) -> NSPanel {

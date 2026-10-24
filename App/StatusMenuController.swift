@@ -337,7 +337,7 @@ extension AppController: StatusMenuHost {
 
     func setWorkspaceRoot(_ url: URL) {
         WorkspaceScope.setRoot(url)
-        sessionStatus = "Workspace folder set to \(url.lastPathComponent) — new file tasks stay inside it."
+        sessionStatus = "Workspace folder set to \(url.lastPathComponent). New file tasks stay inside it."
     }
 
     func showFullGuideForFrontmostWindow() {

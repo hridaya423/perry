@@ -29,10 +29,10 @@ enum PushToTalkShortcut: String, CaseIterable, Identifiable {
     /// How the listening status line tells the user to end the take.
     var releaseHint: String {
         switch self {
-        case .functionHold: return "release fn when you’re done"
-        case .optionCommandSpace: return "release ⌥⌘Space when you’re done"
-        case .capsLockDoubleTap: return "tap Caps Lock when you’re done"
-        case .controlOptionCommandHold: return "release ⌃⌥⌘ when you’re done"
+        case .functionHold: return "Release fn when you’re done"
+        case .optionCommandSpace: return "Release ⌥⌘Space when you’re done"
+        case .capsLockDoubleTap: return "Tap Caps Lock when you’re done"
+        case .controlOptionCommandHold: return "Release ⌃⌥⌘ when you’re done"
         }
     }
 
