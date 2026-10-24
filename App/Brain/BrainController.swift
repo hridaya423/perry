@@ -35,9 +35,14 @@ final class BrainController: ObservableObject {
     @Published private(set) var localModels: [LocalModel] = []
     @Published private(set) var localChecks: [ProviderID: LocalCheckState] = [:]
     @Published private(set) var activeExplanation = ""
+    @Published private(set) var profiles: [ModelProfile] = []
+    @Published private(set) var activeProfileID: String?
+    @Published private(set) var profileChecks: [String: ProfileCheckState] = [:]
 
     private let readCredential: (String) throws -> String?
-    private let configuredEndpoint: @MainActor () -> BYOKAgentEndpoint?
+    private let saveCredential: (String, String) throws -> Void
+    private let deleteCredential: (String) throws -> Void
+    private let profileStore: ModelProfileStore
     private let transport: any HTTPLineStreaming
     private let defaults: UserDefaults
     private let discoverLocalModels: () async -> [LocalModel]
@@ -52,6 +57,7 @@ final class BrainController: ObservableObject {
     private var loginID: String?
     private var cachedRouting: (configuration: RoutingConfiguration, router: ProviderRouter)?
     private var localCheckTasks: [ProviderID: Task<Void, Never>] = [:]
+    private var profileCheckTasks: [String: Task<Void, Never>] = [:]
 
     enum LocalCheckState: Equatable {
         case checking
@@ -59,10 +65,16 @@ final class BrainController: ObservableObject {
         case failed(String)
     }
 
+    enum ProfileCheckState: Equatable {
+        case checking
+        case checked(model: String, ModelCapabilityProbe.Result)
+        case failed(String)
+    }
+
     private struct RoutingConfiguration: Equatable {
-        let credentials: [DirectAIProvider: String]
-        let customCredential: String?
-        let endpoint: BYOKAgentEndpoint?
+        let profile: ModelProfile?
+        let profileKey: String?
+        let profileCapabilities: ModelCapabilities?
         let localModels: [LocalModel]
         let localCapabilities: [ProviderID: ModelCapabilities]
         let appleAvailable: Bool
@@ -71,7 +83,8 @@ final class BrainController: ObservableObject {
 
     init(
         readCredential: @escaping (String) throws -> String? = { try KeychainStore().readChecked(account: $0) },
-        configuredEndpoint: @escaping @MainActor () -> BYOKAgentEndpoint? = { RuntimeCatalog.currentBYOKVisionEndpoint() },
+        saveCredential: @escaping (String, String) throws -> Void = { try KeychainStore().save($0, account: $1) },
+        deleteCredential: @escaping (String) throws -> Void = { try KeychainStore().deleteChecked(account: $0) },
         transport: any HTTPLineStreaming = URLSessionLineStreaming(),
         defaults: UserDefaults = .standard,
         discoverLocalModels: @escaping () async -> [LocalModel] = { await LocalServerDiscovery().discover() },
@@ -81,15 +94,103 @@ final class BrainController: ObservableObject {
         self.openAuthenticationURL = openAuthenticationURL
         self.codexFactory = codexFactory ?? { Self.makeCodexProvider() }
         self.readCredential = readCredential
-        self.configuredEndpoint = configuredEndpoint
+        self.saveCredential = saveCredential
+        self.deleteCredential = deleteCredential
         self.transport = transport
         self.defaults = defaults
+        self.profileStore = ModelProfileStore(defaults: defaults)
         self.discoverLocalModels = discoverLocalModels
         self.selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
+        reloadProfiles()
     }
 
-    static func keychainAccount(for provider: DirectAIProvider) -> String {
-        "brain.\(provider.rawValue.lowercased())"
+    var activeProfile: ModelProfile? {
+        profiles.first { $0.id == activeProfileID } ?? profiles.first
+    }
+
+    func reloadProfiles() {
+        profiles = profileStore.load()
+        activeProfileID = profileStore.activeID
+    }
+
+    func addProfile(_ profile: ModelProfile, key: String?) throws {
+        guard acceptsSetup else { return }
+        if let key = key?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
+            try saveCredential(key, profile.keyAccount)
+        }
+        profiles.removeAll { $0.id == profile.id }
+        profiles.append(profile)
+        profileStore.save(profiles)
+        setActiveProfile(profile.id)
+    }
+
+    func removeProfile(_ profile: ModelProfile) throws {
+        guard acceptsSetup else { return }
+        if !profiles.contains(where: { $0.id != profile.id && $0.keyAccount == profile.keyAccount }) {
+            try deleteCredential(profile.keyAccount)
+        }
+        profiles.removeAll { $0.id == profile.id }
+        profileStore.save(profiles)
+        profileChecks[profile.id] = nil
+        if activeProfileID == profile.id {
+            profileStore.activeID = profiles.first?.id
+            activeProfileID = profiles.first?.id
+        }
+    }
+
+    func setActiveProfile(_ id: String) {
+        guard acceptsSetup, profiles.contains(where: { $0.id == id }) else { return }
+        profileStore.activeID = id
+        activeProfileID = id
+        modelChoice = ModelChoice.direct.rawValue
+    }
+
+    func hasCredential(_ profile: ModelProfile) -> Bool {
+        ((try? readCredential(profile.keyAccount)) ?? nil)?.isEmpty == false
+    }
+
+    func checkProfile(_ profile: ModelProfile) {
+        guard acceptsSetup, profileCheckTasks[profile.id] == nil else { return }
+        profileChecks[profile.id] = .checking
+        profileCheckTasks[profile.id] = Task { [weak self] in
+            guard let self else { return }
+            defer { self.profileCheckTasks[profile.id] = nil }
+            do {
+                let key = try self.readCredential(profile.keyAccount)
+                let provider = profile.preset.makeProvider(
+                    id: profile.providerID, displayName: profile.displayName, baseURL: profile.baseURL, key: key,
+                    models: profile.models, capabilities: [.streaming, .vision, .tools], transport: self.transport
+                )
+                let (png, digits) = try Self.probeImage()
+                let result = try await ModelCapabilityProbe(provider: provider).run(image: png, expectedImageText: digits)
+                try Task.checkCancellation()
+                guard self.profiles.contains(profile) else { self.profileChecks[profile.id] = nil; return }
+                self.profileChecks[profile.id] = .checked(model: profile.model, result)
+            } catch is CancellationError {
+                self.profileChecks[profile.id] = nil
+            } catch {
+                self.profileChecks[profile.id] = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    private static func probeImage() throws -> (png: Data, digits: String) {
+        let digits = String(Int.random(in: 100000...999999))
+        let image = NSImage(size: NSSize(width: 640, height: 180), flipped: false) { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            digits.draw(in: NSRect(x: 80, y: 30, width: 500, height: 120), withAttributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 96, weight: .bold),
+                .foregroundColor: NSColor.black
+            ])
+            return true
+        }
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return (png, digits)
     }
 
     func refresh() async {
@@ -117,21 +218,7 @@ final class BrainController: ObservableObject {
             guard let self else { return }
             defer { self.localCheckTasks[model.id] = nil }
             do {
-                let digits = String(Int.random(in: 100000...999999))
-                let image = NSImage(size: NSSize(width: 640, height: 180), flipped: false) { rect in
-                    NSColor.white.setFill()
-                    rect.fill()
-                    digits.draw(in: NSRect(x: 80, y: 30, width: 500, height: 120), withAttributes: [
-                        .font: NSFont.monospacedDigitSystemFont(ofSize: 96, weight: .bold),
-                        .foregroundColor: NSColor.black
-                    ])
-                    return true
-                }
-                guard let tiff = image.tiffRepresentation,
-                      let bitmap = NSBitmapImageRep(data: tiff),
-                      let png = bitmap.representation(using: .png, properties: [:]) else {
-                    throw CocoaError(.fileWriteUnknown)
-                }
+                let (png, digits) = try Self.probeImage()
                 let provider = self.localProvider(model, capabilities: [.streaming, .vision, .tools])
                 let result = try await ModelCapabilityProbe(provider: provider).run(image: png, expectedImageText: digits)
                 try Task.checkCancellation()
@@ -154,10 +241,12 @@ final class BrainController: ObservableObject {
         setupGeneration = UUID()
         cancelSignIn()
         for task in localCheckTasks.values { task.cancel() }
+        for task in profileCheckTasks.values { task.cancel() }
     }
 
     func reloadPreferences() {
         selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
+        reloadProfiles()
     }
 
     /// True when an on-device provider can answer — Apple Foundation Models
@@ -188,7 +277,7 @@ final class BrainController: ObservableObject {
 
     func stopSetup() async {
         closeAdmission()
-        let tasks = Array(localCheckTasks.values)
+        let tasks = Array(localCheckTasks.values) + Array(profileCheckTasks.values)
         await codex?.shutdown()
         await loginCleanupTask?.value
         loginCleanupTask = nil
@@ -198,31 +287,29 @@ final class BrainController: ObservableObject {
         account = .unknown
         localModels = []
         localChecks = [:]
+        profileChecks = [:]
         signInError = nil
         activeExplanation = ""
     }
 
     func router(preference: [ProviderID] = [], scope: ModelChoice? = nil) throws -> ProviderRouter {
         guard acceptsSetup else { throw CancellationError() }
-        let endpoint = configuredEndpoint()
         let usesDirect = scope == nil || scope == .direct
-        let credentials = try Dictionary(uniqueKeysWithValues: (usesDirect ? DirectAIProvider.allCases : []).compactMap { provider in
-            try apiKey(for: provider, endpoint: endpoint).map { (provider, $0) }
-        })
-        let customCredential: String?
-        if usesDirect, let endpoint, endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) == nil {
-            customCredential = try readCredential(RuntimeCatalog.byokVisionKeychainAccount)
-        } else {
-            customCredential = nil
-        }
+        let profile = usesDirect ? activeProfile : nil
+        let profileKey = try profile.flatMap { try readCredential($0.keyAccount) }
         let appleAvailable: Bool
         if #available(macOS 26, *) {
             appleAvailable = AppleFoundationModelProvider.isAvailable
         } else {
             appleAvailable = false
         }
+        let profileCapabilities = profile.flatMap { profile -> ModelCapabilities? in
+            guard case .checked(let model, let result) = profileChecks[profile.id], model == profile.model,
+                  result.text == .passed else { return nil }
+            return result.capabilities
+        }
         let configuration = RoutingConfiguration(
-            credentials: credentials, customCredential: customCredential, endpoint: endpoint, localModels: localModels,
+            profile: profile, profileKey: profileKey, profileCapabilities: profileCapabilities, localModels: localModels,
             localCapabilities: localChecks.compactMapValues { state in
                 if case .checked(_, let result) = state, result.text == .passed { return result.capabilities }
                 return nil
@@ -244,11 +331,10 @@ final class BrainController: ObservableObject {
         case .chatGPT:
             requirement.providerID = .codex
         case .direct:
-            guard let endpoint = configuredEndpoint() else {
+            guard let profile = activeProfile else {
                 throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Add your API provider, model, and credential in Settings.")
             }
-            requirement.providerID = endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:))
-                .map { ProviderID(rawValue: $0.rawValue.lowercased()) } ?? "custom"
+            requirement.providerID = profile.providerID
         case .local:
             requirement.providerID = nil
             requirement.capabilities.insert(.local)
@@ -435,35 +521,15 @@ final class BrainController: ObservableObject {
     private func providers(_ configuration: RoutingConfiguration) -> [any ModelProvider] {
         var result: [any ModelProvider] = []
         if let codex { result.append(codex) }
-        for provider in DirectAIProvider.allCases {
-            guard let key = configuration.credentials[provider] else { continue }
-            let keyProvider: @Sendable () -> String? = { key }
-            let endpoint = configuration.endpoint.flatMap {
-                $0.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) == provider ? $0 : nil
-            }
-            let models = endpoint.map { BrainModelDefaults(fast: $0.model, deep: $0.model) }
-            let baseURL = endpoint?.baseURL ?? provider.defaultBaseURL
-            switch provider {
-            case .openAI:
-                result.append(OpenAIResponsesProvider(baseURL: baseURL, apiKeyProvider: keyProvider, models: models ?? BrainModelCatalog.openAI, transport: transport))
-            case .anthropic:
-                result.append(AnthropicMessagesProvider(baseURL: baseURL, apiKeyProvider: keyProvider, models: models ?? BrainModelCatalog.anthropic, transport: transport))
-            case .gemini:
-                result.append(GeminiProvider(baseURL: baseURL, apiKeyProvider: keyProvider, models: models ?? BrainModelCatalog.gemini, transport: transport))
-            case .openRouter:
-                result.append(OpenAIChatCompatibleProvider(
-                    id: .openRouter, displayName: "OpenRouter", baseURL: baseURL,
-                    apiKeyProvider: keyProvider, models: models ?? BrainModelCatalog.openRouter,
-                    capabilities: [.vision, .tools, .streaming], transport: transport
+        if let profile = configuration.profile {
+            let key = configuration.profileKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !profile.preset.keyRequired || key?.isEmpty == false {
+                result.append(profile.preset.makeProvider(
+                    id: profile.providerID, displayName: profile.displayName, baseURL: profile.baseURL, key: key,
+                    models: profile.models, capabilities: configuration.profileCapabilities ?? [.vision, .tools, .streaming],
+                    transport: transport
                 ))
             }
-        }
-        if let endpoint = configuration.endpoint, let key = configuration.customCredential, !key.isEmpty {
-            result.append(OpenAIChatCompatibleProvider(
-                id: "custom", displayName: "My API provider", baseURL: endpoint.baseURL,
-                apiKeyProvider: { key }, models: BrainModelDefaults(fast: endpoint.model, deep: endpoint.model),
-                capabilities: [.vision, .tools, .streaming], transport: transport
-            ))
         }
         for model in configuration.localModels {
             guard let capabilities = configuration.localCapabilities[model.id] else { continue }
@@ -482,17 +548,6 @@ final class BrainController: ObservableObject {
             capabilities: capabilities, transport: transport,
             contextWindow: { _ in try await LocalServerDiscovery(timeout: 2).loadedContextWindow(for: model) }
         )
-    }
-
-    private func apiKey(for provider: DirectAIProvider, endpoint: BYOKAgentEndpoint?) throws -> String? {
-        if let key = try readCredential(Self.keychainAccount(for: provider)), !key.isEmpty {
-            return key
-        }
-        guard let endpoint,
-              endpoint.baseURL.host.flatMap(DirectAIProvider.init(officialHost:)) == provider,
-              let legacy = try readCredential(RuntimeCatalog.byokVisionKeychainAccount),
-              !legacy.isEmpty else { return nil }
-        return legacy
     }
 
     private static func makeCodexProvider() -> CodexAppServerProvider? {

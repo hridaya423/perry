@@ -42,9 +42,6 @@ struct SettingsView: View {
     @AppStorage(PerryPreferences.$speechVoiceIdentifier.key) private var speechVoiceIdentifier = ""
     @AppStorage(PerryPreferences.$dictationLanguage.key) private var dictationLanguageRaw = "automatic"
     @AppStorage(PerryPreferences.$dictationInputDeviceID.key) private var dictationInputDeviceRaw = 0
-    @AppStorage(PerryPreferences.$byokVisionProvider.key) private var byokVisionProviderRaw = RuntimeProviderSetupChoice.openAI.rawValue
-    @AppStorage(PerryPreferences.$byokVisionEndpoint.key) private var byokVisionEndpoint = ""
-    @AppStorage(PerryPreferences.$byokVisionModel.key) private var byokVisionModel = ""
     @AppStorage(PerryPreferences.$cuaDriverPath.key) private var cuaDriverPath = ""
     @AppStorage(PerryPreferences.$realtimeVoiceEndpoint.key) private var realtimeVoiceEndpoint = ""
     @AppStorage(PerryPreferences.$realtimeVoiceModel.key) private var realtimeVoiceModel = ""
@@ -65,12 +62,9 @@ struct SettingsView: View {
     @State private var skillEnabled: [String: Bool] = [:]
     @State private var newSpokenWord = ""
     @State private var newReplacement = ""
-    @State private var byokVisionKey = ""
-    @State private var byokVisionKeyIsSaved = false
     @State private var copiedRuntimeCommand: String?
     @State private var realtimeVoiceKey = ""
     @State private var settingsError: String?
-    @State private var showRemoveVisionCredentialConfirmation = false
     @State private var showReportProblem = false
     @State private var permissions: PerryPermissionSnapshot?
 
@@ -540,12 +534,12 @@ struct SettingsView: View {
             Section("Conversation model") {
                 BrainModelSettingsView(brain: controller.brain)
             }
-            Section("Agent runtime") {
+            Section("Agents") {
                 Text(runtimeSettings.status.setup.summary)
                     .font(PerryTheme.Typography.settingsStatus)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Agent runtime status")
+                    .accessibilityLabel("Agent status")
                     .accessibilityValue(runtimeSettings.status.setup.summary)
                 ForEach(runtimeSettings.status.setup.records) { runtime in
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
@@ -606,62 +600,7 @@ struct SettingsView: View {
                         refreshRuntimeStatus()
                     }
                 }
-                Text("Cua Driver is what lets Perry see the screen and act in other apps.")
-                    .settingNote()
-            }
-            Section("Direct AI provider") {
-                DisclosureGroup("Configure direct provider") {
-                    Picker("Provider", selection: $byokVisionProviderRaw) {
-                        ForEach(RuntimeProviderSetupChoice.allCases) { provider in
-                            Text(provider.displayName).tag(provider.rawValue)
-                        }
-                    }
-                    .onChange(of: byokVisionProviderRaw) { _, _ in
-                        applySelectedVisionProvider()
-                    }
-                    if selectedVisionProvider == .custom {
-                        TextField("HTTPS base URL", text: $byokVisionEndpoint)
-                            .textFieldStyle(.roundedBorder)
-                    } else {
-                        LabeledContent("Endpoint") {
-                            Text(selectedVisionProvider.endpoint.absoluteString)
-                                .font(PerryTheme.Typography.monoSmall)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    TextField("Model ID", text: $byokVisionModel)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("API key", text: $byokVisionKey)
-                        .textFieldStyle(.roundedBorder)
-                    HStack(spacing: PerryTheme.Spacing.inline) {
-                        Button("Save credential") {
-                            saveSecret(byokVisionKey, account: RuntimeCatalog.byokVisionKeychainAccount) {
-                                byokVisionKey = ""
-                                byokVisionKeyIsSaved = true
-                                refreshRuntimeStatus()
-                            }
-                        }
-                        .disabled(!canSaveVisionCredential)
-                        if byokVisionKeyIsSaved {
-                            Button("Remove credential…", role: .destructive) {
-                                showRemoveVisionCredentialConfirmation = true
-                            }
-                        }
-                    }
-                    .notchDialog(
-                        "Remove the \(selectedVisionProvider.displayName) credential?",
-                        isPresented: $showRemoveVisionCredentialConfirmation,
-                        message: "Perry removes this API key from Keychain. You’ll need to enter it again before using this provider."
-                    ) {
-                        [NotchDialog.Action("Remove credential", role: .destructive) {
-                            removeVisionCredential()
-                        }]
-                    }
-                }
-                Text(visionCredentialStatus)
-                    .settingNote()
-                Text("Perry sends a screenshot only after you start a grounded task. Choose Custom only for an OpenAI-compatible HTTPS endpoint.")
+                Text("The screen helper (Cua Driver) lets Perry see the screen and act in other apps.")
                     .settingNote()
             }
             Section("Local skills") {
@@ -706,7 +645,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            prepareVisionProviderSettings()
             refreshRuntimeStatus()
             refreshSkills()
         }
@@ -813,51 +751,6 @@ struct SettingsView: View {
         }
     }
 
-    private var selectedVisionProvider: RuntimeProviderSetupChoice {
-        RuntimeProviderSetupChoice(rawValue: byokVisionProviderRaw) ?? .openAI
-    }
-
-    private var canSaveVisionCredential: Bool {
-        !byokVisionKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !byokVisionModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && selectedVisionProvider.accepts(endpoint: byokVisionEndpoint)
-    }
-
-    private var visionCredentialStatus: String {
-        byokVisionKeyIsSaved
-            ? "Credential saved in Keychain. Perry verifies it when the next planning request starts."
-            : "No credential is saved for direct planning."
-    }
-
-    private func prepareVisionProviderSettings() {
-        if let inferred = RuntimeProviderSetupChoice.infer(from: byokVisionEndpoint) {
-            byokVisionProviderRaw = inferred.rawValue
-        }
-        applySelectedVisionProvider()
-        do {
-            byokVisionKeyIsSaved = try !(KeychainStore().readChecked(account: RuntimeCatalog.byokVisionKeychainAccount) ?? "").isEmpty
-        } catch {
-            byokVisionKeyIsSaved = false
-            settingsError = error.localizedDescription
-        }
-    }
-
-    private func applySelectedVisionProvider() {
-        guard selectedVisionProvider != .custom else { return }
-        byokVisionEndpoint = selectedVisionProvider.endpoint.absoluteString
-    }
-
-    private func removeVisionCredential() {
-        do {
-            try KeychainStore().deleteChecked(account: RuntimeCatalog.byokVisionKeychainAccount)
-            byokVisionKey = ""
-            byokVisionKeyIsSaved = false
-            refreshRuntimeStatus()
-        } catch {
-            settingsError = error.localizedDescription
-        }
-    }
-
     private func actionRow(_ title: String, detail: String? = nil, action: String, role: ButtonRole? = nil, perform: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -953,51 +846,6 @@ private enum SettingsError: LocalizedError {
             return "Perry could not open the local skills folder."
         case .couldNotCopyRuntimeCommand:
             return "Perry could not copy the authentication command. Open Terminal and run the runtime’s official sign-in command manually."
-        }
-    }
-}
-
-enum RuntimeProviderSetupChoice: String, CaseIterable, Identifiable {
-    case openAI
-    case anthropic
-    case gemini
-    case openRouter
-    case custom
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        directProvider?.displayName ?? "Custom OpenAI-compatible"
-    }
-
-    var endpoint: URL {
-        directProvider?.defaultBaseURL ?? URL(string: "https://provider.example")!
-    }
-
-    func accepts(endpoint rawValue: String) -> Bool {
-        guard let url = URL(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.host != nil else { return false }
-        do {
-            try NetworkEndpointPolicy.requireSafe(url)
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    static func infer(from rawValue: String) -> RuntimeProviderSetupChoice? {
-        guard let url = URL(string: rawValue.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.host != nil else { return nil }
-        return allCases.first { $0.directProvider?.defaultBaseURL.host == url.host } ?? .custom
-    }
-
-    private var directProvider: DirectAIProvider? {
-        switch self {
-        case .openAI: return .openAI
-        case .anthropic: return .anthropic
-        case .gemini: return .gemini
-        case .openRouter: return .openRouter
-        case .custom: return nil
         }
     }
 }

@@ -54,7 +54,8 @@ enum PerryPreferences {
     // MARK: Brain & providers
 
     @Preference("perry.brain.modelChoice") static var modelChoice = "chatGPT"
-    @Preference("perry.byok.vision.provider") static var byokVisionProvider = "openAI"
+    @Preference("perry.brain.profiles") static var modelProfiles: Data? = nil
+    @Preference("perry.brain.activeProfile") static var activeModelProfile: String? = nil
     @Preference("perry.byok.vision.endpoint") static var byokVisionEndpoint: String? = nil
     @Preference("perry.byok.vision.model") static var byokVisionModel: String? = nil
     @Preference("perry.cua.driver.path") static var cuaDriverPath = ""

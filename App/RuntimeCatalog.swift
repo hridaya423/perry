@@ -36,10 +36,10 @@ final class RuntimeCatalog: ObservableObject {
     private var inspector: RuntimeInventoryInspector {
         RuntimeInventoryInspector(
             readDirectProvider: {
-                guard let endpoint = Self.currentBYOKVisionEndpoint(),
-                      let key = try KeychainStore().readChecked(account: Self.byokVisionKeychainAccount),
+                guard let profile = ModelProfileStore(defaults: .standard).active(),
+                      let key = try KeychainStore().readChecked(account: profile.keyAccount),
                       !key.isEmpty else { return nil }
-                return ConfiguredDirectRuntime(endpoint: endpoint, credential: key)
+                return ConfiguredDirectRuntime(endpoint: BYOKAgentEndpoint(baseURL: profile.baseURL, model: profile.model), credential: key)
             },
             commandLineProviders: RuntimeCLIDefinition.production(codexRuntimeHome: Self.codexRuntimeHome)
         )
@@ -98,8 +98,8 @@ final class RuntimeCatalog: ObservableObject {
             }.joined(separator: ",")
             parts.append("codexHome:\(stamp)")
         }
-        if let endpoint = Self.currentBYOKVisionEndpoint() {
-            parts.append("byok:\(endpoint.baseURL.absoluteString)/\(endpoint.model)")
+        if let profile = ModelProfileStore(defaults: .standard).active() {
+            parts.append("byok:\(profile.baseURL.absoluteString)/\(profile.model)")
         }
         return parts.joined(separator: "|")
     }
@@ -179,16 +179,5 @@ final class RuntimeCatalog: ObservableObject {
         case DirectAIProvider.openRouter.runtimeID: return DirectAIProvider.openRouter.displayName
         default: return id
         }
-    }
-
-    static func currentBYOKVisionEndpoint() -> BYOKAgentEndpoint? {
-        guard let rawURL = PerryPreferences.byokVisionEndpoint,
-              let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              ["https", "http"].contains(scheme),
-              url.host != nil,
-              let model = PerryPreferences.byokVisionModel,
-              !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        return BYOKAgentEndpoint(baseURL: url, model: model.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

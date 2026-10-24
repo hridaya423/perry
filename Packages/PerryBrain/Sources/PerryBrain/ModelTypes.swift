@@ -31,6 +31,15 @@ extension ProviderID {
     public static let openRouter: ProviderID = "openrouter"
     public static let local: ProviderID = "local"
     public static let apple: ProviderID = "apple"
+
+    public var displayName: String {
+        switch self {
+        case .codex: "ChatGPT"
+        case .local: "Your local model"
+        case .apple: "Apple Intelligence"
+        default: ProviderPreset.preset(id: rawValue)?.name ?? rawValue
+        }
+    }
 }
 
 public enum ModelContentPart: Sendable, Equatable {

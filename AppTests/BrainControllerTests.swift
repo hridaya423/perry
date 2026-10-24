@@ -14,6 +14,16 @@ final class BrainControllerTests: XCTestCase {
         return defaults
     }
 
+    private func defaults(with profile: ModelProfile) throws -> UserDefaults {
+        let defaults = try isolatedDefaults()
+        let store = ModelProfileStore(defaults: defaults)
+        store.save([profile])
+        store.activeID = profile.id
+        return defaults
+    }
+
+    private let customProfile = ModelProfile(id: "fixture", presetID: "custom", baseURL: URL(string: "https://models.example.invalid/v1")!, model: "fixture")
+
     func testErasedModelPreferenceReloadsWithoutRecreatingStoredData() async throws {
         let defaults = try isolatedDefaults()
         let brain = BrainController(defaults: defaults, codexFactory: { nil })
@@ -153,11 +163,11 @@ final class BrainControllerTests: XCTestCase {
             (#"{"step":{"instruction":"Click Save","target":"save"}}"#, "stop"),
             (#"{"steps":[{"instruction":"Click Save","target":"save"}]}"#, "stop")
         ])
-        var model = "first-model"
+        var profile = customProfile
+        profile.model = "first-model"
         let brain = BrainController(
-            readCredential: { $0 == RuntimeCatalog.byokVisionKeychainAccount ? "fixture-key" : nil },
-            configuredEndpoint: { .init(baseURL: URL(string: "https://models.example.invalid/v1")!, model: model) },
-            transport: transport, defaults: try isolatedDefaults()
+            readCredential: { $0 == profile.keyAccount ? "fixture-key" : nil },
+            transport: transport, defaults: try defaults(with: profile)
         )
         brain.modelChoice = BrainController.ModelChoice.direct.rawValue
         let planner = brain.makeGuidePlanner(storageDirectory: nil) { _, request in
@@ -170,7 +180,8 @@ final class BrainControllerTests: XCTestCase {
         let decision = try await planner.nextStep(goal: "Save this document", observation: observation, context: .empty)
         guard case .step(let step) = decision else { return XCTFail("Expected grounded step") }
         XCTAssertEqual(step.target, .axElement(stableID: "save"))
-        model = "second-model"
+        profile.model = "second-model"
+        try brain.addProfile(profile, key: nil)
         let path = try await planner.visiblePath(goal: "Save this document", observation: observation, context: .empty)
         XCTAssertEqual(path.map(\.target), [.axElement(stableID: "save")])
         let requests = await transport.requests
@@ -192,9 +203,8 @@ final class BrainControllerTests: XCTestCase {
             (String(repeating: "x", count: 65_537), "stop")
         ] {
             let brain = BrainController(
-                readCredential: { $0 == RuntimeCatalog.byokVisionKeychainAccount ? "fixture-key" : nil },
-                configuredEndpoint: { .init(baseURL: URL(string: "https://models.example.invalid/v1")!, model: "fixture") },
-                transport: GuideBrainTransport(responses: [response]), defaults: try isolatedDefaults()
+                readCredential: { [account = customProfile.keyAccount] in $0 == account ? "fixture-key" : nil },
+                transport: GuideBrainTransport(responses: [response]), defaults: try defaults(with: customProfile)
             )
             brain.modelChoice = BrainController.ModelChoice.direct.rawValue
             do {
@@ -323,10 +333,11 @@ final class BrainControllerTests: XCTestCase {
 
     func testCustomProviderReceivesOnlyItsConfiguredEndpointAndModel() async throws {
         let transport = CapturingBrainTransport()
+        var profile = customProfile
+        profile.model = "custom-test-model"
         let brain = BrainController(
-            readCredential: { $0 == RuntimeCatalog.byokVisionKeychainAccount ? "custom-test-key" : nil },
-            configuredEndpoint: { .init(baseURL: URL(string: "https://models.example.invalid/v1")!, model: "custom-test-model") },
-            transport: transport, defaults: try isolatedDefaults()
+            readCredential: { [profile] in $0 == profile.keyAccount ? "custom-test-key" : nil },
+            transport: transport, defaults: try defaults(with: profile)
         )
         brain.modelChoice = BrainController.ModelChoice.direct.rawValue
         let decision = try await brain.route(RouteRequirement(capabilities: [.vision, .tools]))
@@ -346,9 +357,10 @@ final class BrainControllerTests: XCTestCase {
 
     func testRepeatedRoutingRetainsHealthUntilCredentialsChange() async throws {
         var credential: String? = "test-key-one"
+        let profile = ModelProfile(id: "openai", presetID: "openai", baseURL: URL(string: "https://api.openai.com")!, model: "gpt-5-mini")
         let brain = BrainController(readCredential: { account in
-            account == BrainController.keychainAccount(for: .openAI) ? credential : nil
-        }, configuredEndpoint: { nil })
+            account == profile.keyAccount ? credential : nil
+        }, defaults: try defaults(with: profile))
         let first = try brain.router()
         await first.reportFailure(.openAI)
         await first.reportFailure(.openAI)
@@ -374,11 +386,10 @@ final class BrainControllerTests: XCTestCase {
 
     func testConfiguredModelChangesReachTheNextRequest() async throws {
         let transport = CapturingBrainTransport()
-        var model = "configured-model-one"
+        var profile = ModelProfile(id: "openai", presetID: "openai", baseURL: URL(string: "https://api.openai.com")!, model: "configured-model-one")
         let brain = BrainController(
-            readCredential: { $0 == RuntimeCatalog.byokVisionKeychainAccount ? "test-legacy-key" : nil },
-            configuredEndpoint: { .init(baseURL: URL(string: "https://api.openai.com")!, model: model) },
-            transport: transport
+            readCredential: { [profile] in $0 == profile.keyAccount ? "test-legacy-key" : nil },
+            transport: transport, defaults: try defaults(with: profile)
         )
         let first = try brain.router(preference: [.openAI])
         let firstProvider = try await first.route(RouteRequirement(tier: .deep)).provider
@@ -386,7 +397,8 @@ final class BrainControllerTests: XCTestCase {
             for try await _ in firstProvider.stream(ModelRequest(messages: [.user([.text("Test")])], tier: .deep)) {}
             XCTFail("Expected the recording transport to stop the request")
         } catch CapturingBrainTransport.Recorded.request {}
-        model = "configured-model-two"
+        profile.model = "configured-model-two"
+        try brain.addProfile(profile, key: nil)
         let second = try brain.router(preference: [.openAI])
         XCTAssertFalse(first === second)
         let secondProvider = try await second.route(RouteRequirement(tier: .fast)).provider
@@ -401,9 +413,28 @@ final class BrainControllerTests: XCTestCase {
         XCTAssertEqual(requests.map { $0.value(forHTTPHeaderField: "Authorization") }, ["Bearer test-legacy-key", "Bearer test-legacy-key"])
     }
 
-    func testUnreadableCredentialDoesNotSilentlySelectAnotherProvider() {
-        let brain = BrainController(readCredential: { _ in throw CocoaError(.fileReadNoPermission) })
+    func testUnreadableCredentialDoesNotSilentlySelectAnotherProvider() throws {
+        let brain = BrainController(readCredential: { _ in throw CocoaError(.fileReadNoPermission) }, defaults: try defaults(with: customProfile))
         XCTAssertThrowsError(try brain.router())
+    }
+
+    func testLegacySingleEndpointMigratesIntoTheActiveProfile() throws {
+        let defaults = try isolatedDefaults()
+        defaults.set("https://api.groq.com/openai/v1", forKey: PerryPreferences.$byokVisionEndpoint.key)
+        defaults.set("llama-fixture", forKey: PerryPreferences.$byokVisionModel.key)
+        let brain = BrainController(defaults: defaults)
+        let profile = try XCTUnwrap(brain.activeProfile)
+        XCTAssertEqual(profile.presetID, "groq")
+        XCTAssertEqual(profile.model, "llama-fixture")
+        XCTAssertEqual(profile.keyAccount, RuntimeCatalog.byokVisionKeychainAccount)
+        XCTAssertEqual(ModelProfileStore(defaults: defaults).load(), [profile])
+    }
+
+    func testTalkTierUsesTheProfileFastModel() throws {
+        let profile = ModelProfile(presetID: "groq", baseURL: URL(string: "https://api.groq.com/openai")!, model: "big", fastModel: "small")
+        XCTAssertEqual(profile.models.model(for: .fast), "small")
+        XCTAssertEqual(profile.models.model(for: .deep), "big")
+        XCTAssertEqual(ModelProfile(presetID: "groq", baseURL: profile.baseURL, model: "big").models.model(for: .fast), "big")
     }
 }
 

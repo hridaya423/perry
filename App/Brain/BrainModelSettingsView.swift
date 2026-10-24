@@ -19,9 +19,7 @@ struct BrainModelSettingsView: View {
                 brain.modelChoice = BrainController.ModelChoice.direct.rawValue
             })
         case .direct:
-            Text("Open Configure direct provider below to choose a provider, model, and credential. Perry stops if it cannot handle the request.")
-                .font(.callout)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
+            ModelProfilesSection(brain: brain)
         case .local:
             Text("Conversations stay on this Mac. If the model cannot handle an image or tool, Perry stops rather than sending the request elsewhere.")
                 .font(.callout)

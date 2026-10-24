@@ -1,6 +1,6 @@
 import Foundation
 
-public struct BrainModelDefaults: Sendable {
+public struct BrainModelDefaults: Sendable, Equatable {
     public var fast: String
     public var deep: String
 
