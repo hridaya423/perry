@@ -253,10 +253,16 @@ model-profiles, task-failed.
   token for the turn's Perry tools, and every other permission request rejected. Settings states that the agent
   can still read files. Evidence: 4 provider tests (one against a fake agent), a live test (`PERRY_LIVE_ACP=1`)
   where real Cursor called a Perry tool in "ask" mode (14 s), and the `acp-agent` render.
-- Deferred: the ACP registry fetch. The four presets plus a custom command cover installed agents.
+- Done (`b820a6c`): the ACP registry. Fetched only on request; npx and uvx agents need Node or uv; binaries
+  download only with a registry SHA-256. Evidence: 3 unit tests (one installs through a stubbed download and
+  rejects a bad checksum and a path escape), a live test (`PERRY_LIVE_ACP_REGISTRY=1`) that fetched the real
+  registry and installed Goose (11 s), and the `acp-registry` render.
 
 ### Not started
 
-- UX items: the panel on the screen under the pointer, the resize animation, a "Read more" chip, and the
-  follower render cost.
+- UX items done (`7197927`): panel on the display under the pointer, hover zones and a top tab on every display,
+  animated resize and collapse, a "Read the full answer" notice when an answer was not heard, and pointer
+  tracking that re-renders only the bubble and character. Evidence: build, OverlayPointer test, app suite 636/0.
+  Not visually verified: the external-display tab (no external display attached) and the animations (Core
+  Animation does not show in offscreen renders; a live capture would include the user's windows).
 - A live computer-use drill, a live Talk latency measurement, and a cross-model review of the diff.
