@@ -396,7 +396,7 @@ struct SettingsView: View {
     private var dictationSettings: some View {
         Section("Dictation") {
                 Picker("Language", selection: $dictationLanguageRaw) {
-                    Text("Automatic (detect each utterance)").tag("automatic")
+                    Text("Automatic").tag("automatic")
                     ForEach(DictationController.supportedLanguageIdentifiers(), id: \.self) { identifier in
                         Text(DictationController.languageName(for: identifier)).tag(identifier)
                     }
@@ -420,7 +420,7 @@ struct SettingsView: View {
                     Text(inputDeviceStatus)
                         .settingNote()
                 }
-                Text("Custom words are sent as local speech context and applied to the final transcript.")
+                Text("Teach dictation your words. When you say the first phrase, Perry types the second.")
                     .settingNote()
                 ForEach(dictionaryEntries.keys.sorted(), id: \.self) { spoken in
                     HStack(spacing: PerryTheme.Spacing.inline) {
@@ -444,9 +444,13 @@ struct SettingsView: View {
                     }
                 }
                 HStack(spacing: PerryTheme.Spacing.inline) {
-                    TextField("Spoken phrase", text: $newSpokenWord)
-                    TextField("Replacement phrase", text: $newReplacement)
-                    Button("Add replacement") {
+                    TextField("Spoken phrase", text: $newSpokenWord, prompt: Text("When I say"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Replacement phrase", text: $newReplacement, prompt: Text("Type"))
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                    Button("Add") {
                         let spoken = newSpokenWord.trimmingCharacters(in: .whitespacesAndNewlines)
                         let replacement = newReplacement.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !spoken.isEmpty, !replacement.isEmpty else { return }
@@ -630,7 +634,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("Skills are local Markdown notes injected only for the matching foreground app.")
+                Text("Skills are notes Perry reads when you use the matching app.")
                     .settingNote()
                 Button("Open local skills folder") {
                     guard let directory = AppController.supportDirectory?.appendingPathComponent("AppSkills", isDirectory: true) else { return }
