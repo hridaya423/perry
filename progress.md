@@ -294,3 +294,31 @@ model-profiles, task-failed.
   Perry's composer (see memory).
 - Next, code-only: em dashes in user-facing copy, the remaining stock buttons, InkButton under Reduce Motion, the
   status pill's hard cut, and the second-pass height jump for approvals.
+
+### Overnight pass (2026-10-24 night into 2026-10-25)
+
+Rules for this pass are in `docs/pleasant.md`. The user is away, so the lab drives the real Perry.
+
+Done, each with build plus targeted tests, and a screenshot where it is visual:
+- `73c3886`, `b53dd4b`, `cbb73b9`, `2031a2f`: plain status copy, fading status pill, optimistic new threads,
+  instant keyboard open/close, plain sign-in errors, lab data isolation (`PERRY_DATA_DIRECTORY`), talk drill
+  reads structured elements (deixis.element 5/5).
+- `c990fa4`: Files lists Perry's workspace (it pointed at folders Perry never writes). Undo of an undo repeats
+  the goal. Models tab: dead "Continue" replaced by Sign out; agent status line no longer repeated. Suite 637/0.
+- `ff61967`: paused agent tasks offer Resume (they only offered Delete); one `canResume` rule for row and
+  Resume all. New test.
+- `46eadd9`: one close button (Minimize ran the same action); empty Perrys section has a hint.
+- `b75722a`: onboarding no longer celebrates a failed first answer; Type instead focuses the field; caret at the
+  left; one thinking mascot; "Connect it in Settings › Models" copy.
+- `bdff454`: finale card states whether answers still need a model.
+- `f9caaa8`: practice window opens below the onboarding panel instead of under it.
+- `119afa0`: fenced code renders as a block with Copy (clipboard verified); inline code monospaced; titles end
+  at a word with an ellipsis.
+
+How to drive the lab tonight: `/tmp/audit/click.sh <label>` clicks an AX element at its centre with a CGEvent
+(cua-driver element tokens do not survive between CLI calls). Onboarding runs with
+`PERRY_DATA_DIRECTORY=/tmp/audit/fresh` and `--args -perry.onboarding.completed NO -perry.onboarding.beat <beat>`;
+restore defaults afterwards from `/tmp/audit/defaults-backup.plist` (copy in the Perry-lab-backup folder).
+
+Remaining: History page, approvals and computer use, guide drill, voice first-audio p95, cleanup of tonight's
+test threads in the user's history, final report.
