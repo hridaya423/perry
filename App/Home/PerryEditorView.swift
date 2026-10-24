@@ -29,14 +29,17 @@ struct PerryEditorView: View {
     @State private var memory = ""
     @State private var errorMessage: String?
     @State private var confirmDelete = false
+    @FocusState private var jobFocused: Bool
 
     var body: some View {
+        VStack(spacing: 0) {
         Form {
             Section {
                 TextField("Job", text: $job, prompt: Text("What should this Perry do?"), axis: .vertical)
                     .lineLimit(2...5)
                     .labelsHidden()
-                TextField("Name", text: $name, prompt: Text(job.isEmpty ? "Name" : PerryNameGenerator.twoWordName(for: job)))
+                    .focused($jobFocused)
+                TextField("Name", text: $name, prompt: Text(job.isEmpty ? "Optional" : PerryNameGenerator.twoWordName(for: job)))
             }
             Section("When it runs") {
                 Picker("Runs", selection: $cadence) {
@@ -70,6 +73,9 @@ struct PerryEditorView: View {
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle").settingNote()
             }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
             HStack(spacing: PerryTheme.Spacing.inline) {
                 if let perry {
                     Button("Delete…", role: .destructive) { confirmDelete = true }
@@ -84,10 +90,17 @@ struct PerryEditorView: View {
                     .buttonStyle(InkButtonStyle())
                     .disabled(job.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
-        .formStyle(.grouped)
         .controlSize(.small)
-        .task(id: perry?.id) { await load() }
+        .task(id: perry?.id) {
+            await load()
+            if perry == nil {
+                await Task.yield()
+                jobFocused = true
+            }
+        }
     }
 
     private func load() async {
