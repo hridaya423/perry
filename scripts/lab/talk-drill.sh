@@ -31,6 +31,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export PERRY_DATA_DIRECTORY="${PERRY_DATA_DIRECTORY:-$REPO_ROOT/build/lab/data}"
 DRIVE="$REPO_ROOT/scripts/lab/perry-drive.sh"
 REPORT="$REPO_ROOT/scripts/lab/latency-report.py"
 HOLD_BIN="${TALK_HOLD_BIN:-/tmp/perry-talk-hold}"
@@ -86,6 +87,7 @@ fi
 # what the latency measurement is about. TCC-grant UX is a separate audit.
 for stale in $(pgrep -x Perry); do kill "$stale" 2>/dev/null || true; done
 sleep 0.5
+"$DRIVE" seed-lab-data
 EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
 mkdir -p "$EVIDENCE_DIR"
 LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"

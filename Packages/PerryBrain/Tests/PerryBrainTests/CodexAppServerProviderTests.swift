@@ -47,6 +47,16 @@ final class CodexAppServerProviderTests: XCTestCase {
 
     /// §6.2: a crash mid-turn leaves `perry-brain-images-<pid>-*` behind; the
     /// launch sweep must remove only the directories whose owner is dead.
+    func testTurnFailuresBecomePlainErrorKinds() {
+        let raw = "unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses"
+        XCTAssertEqual(CodexAppServerProvider.kind(of: raw.lowercased()), .unauthenticated)
+        XCTAssertEqual(CodexAppServerProvider.kind(of: "unexpected status 400 bad request: model not found"), .http(400))
+        XCTAssertEqual(CodexAppServerProvider.kind(of: "error sending request for url"), .network)
+        XCTAssertEqual(CodexAppServerProvider.kind(of: "something else"), .unavailable)
+        let error = ModelProviderError(kind: .unauthenticated, provider: .codex, message: raw)
+        XCTAssertEqual(AgentLoop.describe(error), "ChatGPT isn’t signed in. Sign in again in Settings › Models.")
+    }
+
     func testLaunchSweepRemovesOnlyDeadOwnersImageDirectories() throws {
         let temp = FileManager.default.temporaryDirectory
         func imageDir(_ name: String) throws -> URL {

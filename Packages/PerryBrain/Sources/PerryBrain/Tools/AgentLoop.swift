@@ -311,12 +311,16 @@ public actor AgentLoop {
         case .rateLimited(let resetAt):
             let reset = resetAt.map { " until \(Self.timeFormatter.string(from: $0))" } ?? ""
             return "\(name) is rate limited\(reset). Try again later, or choose another model in Settings."
+        case .unauthenticated where error.provider == .codex:
+            return "\(name) isn’t signed in. Sign in again in Settings › Models."
         case .unauthenticated:
             return "\(name) didn’t accept your key. Check it in Settings › Models."
         case .network:
             return "Perry can’t reach \(name). Check your internet connection."
         case .http(let status) where status >= 500:
             return "\(name) had a server problem (error \(status)). Try again in a moment."
+        case .http(let status):
+            return "\(name) turned this request down (error \(status)). Try again, or choose another model in Settings › Models."
         default:
             return error.localizedDescription
         }

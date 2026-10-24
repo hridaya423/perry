@@ -400,9 +400,7 @@ final class AgentCoordinator: ObservableObject {
     }
 
     static var workspacePath: String? {
-        try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
-        ).appendingPathComponent("Perry/workspace", isDirectory: true).path
+        AppController.supportDirectory?.appendingPathComponent("workspace", isDirectory: true).path
     }
 }
 

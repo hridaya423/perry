@@ -27,8 +27,7 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
     private var dictatedFired = false
 
     static var sandboxDirectory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Perry", isDirectory: true)
+        (AppController.supportDirectory ?? FileManager.default.temporaryDirectory)
             .appendingPathComponent("PracticeSandbox", isDirectory: true)
     }
 

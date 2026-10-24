@@ -4,6 +4,7 @@
 #   hotkey <combo>    send a chord like cmd+option+p (via cua-driver hotkey, desktop-scoped)
 #   windows           list Perry's windows (cua-driver list_windows)
 #   quit              cooperative quit, then cua-driver kill_app fallback
+#   seed-lab-data     copy the ChatGPT sign-in into $PERRY_DATA_DIRECTORY
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -15,6 +16,13 @@ perry_pid() { pgrep -x Perry | head -1 || true; }
 
 cmd="${1:-}"
 case "$cmd" in
+    seed-lab-data)
+        REAL_AUTH="$HOME/Library/Application Support/Perry/CodexRuntime/auth.json"
+        if [ -n "${PERRY_DATA_DIRECTORY:-}" ] && [ ! -f "$PERRY_DATA_DIRECTORY/CodexRuntime/auth.json" ] && [ -f "$REAL_AUTH" ]; then
+            mkdir -p "$PERRY_DATA_DIRECTORY/CodexRuntime"
+            cp "$REAL_AUTH" "$PERRY_DATA_DIRECTORY/CodexRuntime/auth.json"
+        fi
+        ;;
     launch)
         shift
         mkdir -p "$EVIDENCE_DIR"
@@ -22,6 +30,7 @@ case "$cmd" in
             "$0" quit
         fi
         LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
+        "$0" seed-lab-data
         # Adhoc+runtime Release builds cannot load adhoc frameworks (each "-"
         # signature is its own team); strip the runtime flag for lab launches.
         if codesign -dv "$APP" 2>&1 | grep -q "adhoc,runtime"; then
@@ -32,9 +41,9 @@ case "$cmd" in
         # by default (PerryWindowChrome.applyChrome) and evidence tooling
         # must be able to record it.
         if [ "$#" -gt 0 ]; then
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --args "$@"
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}" --args "$@"
         else
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1"
+            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}"
         fi
         for _ in $(seq 1 30); do
             pid="$(perry_pid)"

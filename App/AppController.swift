@@ -256,7 +256,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     nonisolated static var supportDirectory: URL? {
-        try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        if let override = ProcessInfo.processInfo.environment["PERRY_DATA_DIRECTORY"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("Perry", isDirectory: true)
     }
 

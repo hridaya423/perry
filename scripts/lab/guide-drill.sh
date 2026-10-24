@@ -9,6 +9,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export PERRY_DATA_DIRECTORY="${PERRY_DATA_DIRECTORY:-$REPO_ROOT/build/lab/data}"
 RUNS=20
 GOAL="export as pdf"
 while [ $# -gt 0 ]; do

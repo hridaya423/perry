@@ -421,10 +421,24 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
     private func classify(_ message: String) async -> ModelProviderError {
         let lower = message.lowercased()
         guard lower.contains("rate limit") || lower.contains("rate_limit") || lower.contains("429") else {
-            return ModelProviderError(kind: .unavailable, provider: id, message: message)
+            return ModelProviderError(kind: Self.kind(of: lower), provider: id, message: message)
         }
         let resetAt = try? await CodexAccount(process: process).rateLimits()?.primaryResetsAt
         return ModelProviderError(kind: .rateLimited(resetAt: resetAt), provider: id, message: message)
+    }
+
+    static func kind(of lowercasedMessage: String) -> ModelProviderError.Kind {
+        if lowercasedMessage.contains("401") || lowercasedMessage.contains("unauthorized") || lowercasedMessage.contains("not logged in") {
+            return .unauthenticated
+        }
+        if let match = lowercasedMessage.range(of: #"status (\d{3})"#, options: .regularExpression),
+           let status = Int(lowercasedMessage[match].suffix(3)) {
+            return .http(status)
+        }
+        if lowercasedMessage.contains("error sending request") || lowercasedMessage.contains("connection") || lowercasedMessage.contains("timed out") {
+            return .network
+        }
+        return .unavailable
     }
 
     private func handleNotification(_ note: JSONRPCNotification) async {
