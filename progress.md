@@ -320,5 +320,23 @@ How to drive the lab tonight: `/tmp/audit/click.sh <label>` clicks an AX element
 `PERRY_DATA_DIRECTORY=/tmp/audit/fresh` and `--args -perry.onboarding.completed NO -perry.onboarding.beat <beat>`;
 restore defaults afterwards from `/tmp/audit/defaults-backup.plist` (copy in the Perry-lab-backup folder).
 
-Remaining: History page, approvals and computer use, guide drill, voice first-audio p95, cleanup of tonight's
-test threads in the user's history, final report.
+- `4b08891`: guide stop and failure messages in plain words (History showed "Goal completion has not been
+  verified").
+- `18a1fcd`: approval cards ask "Open Calculator?" with Don't allow / Always allow / Allow; computer-use
+  failures say when Accessibility or Screen Recording is off (live run: the model now tells the user); text
+  after a tool call starts a new paragraph. Tests: headline test, AgentLoop paragraph test.
+- `c7ec346`: New Perry editor focuses the job field, one background, no doubled Name. Create and delete
+  verified live.
+- `2971475`: menu shows the chosen wake shortcut.
+- `87e7e9d`: dictation word list has real fields; plain notes.
+
+Evidence at the end of the pass: app suite 640/0 (8 skipped), PerryBrain 329/0, PerryGuide 270/0,
+PerryRuntimes 114/0, PerryCore 86/0, PerryOverlay 28/0, PerryCapture 6/0. Idle probe 0.0% CPU, 101 MB.
+Talk drill 3/3 answered, first text p50 1.1 s, deixis.element 3/3.
+
+Cleanup: tonight's 8 test threads moved to `~/Library/Application Support/Perry-lab-backup/2026-10-24/
+threads-tonight/`. Defaults restored from the backup plist.
+
+Left for the user: re-grant Accessibility and Screen Recording to the Debug Perry once (new signature);
+whether to shorten the status menu (about 20 items); whether opening an app should still ask (orange tier);
+`cursor-agent` is broken outside Perry; `workspace/drill-proof-2.txt` (1 October) is an old drill file.
