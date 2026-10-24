@@ -154,6 +154,21 @@ struct NotchWorkspaceView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.bottom, 2)
+                        if model.perrys.isEmpty {
+                            Button {
+                                searchFocused = false
+                                model.sidebarSelection = .perryEditor(nil)
+                            } label: {
+                                Text("Make a helper for a job you repeat")
+                                    .font(.caption)
+                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(RailRowStyle(cornerRadius: 8))
+                        }
                         ForEach(model.perrys) { perry in
                             Button {
                                 model.onPerrySelected?(perry)
@@ -349,9 +364,6 @@ struct NotchWorkspaceView: View {
                 NotchCommandsMenu(controller: controller)
                     .frame(width: 28, height: 28)
                     .help("More")
-            }
-            WindowControlButton(systemImage: "minus", label: "Minimize") {
-                model.deps.controller?.homeController.closeHome()
             }
             WindowControlButton(systemImage: "xmark", label: "Close") {
                 model.deps.controller?.collapseNotch()
