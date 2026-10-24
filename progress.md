@@ -243,11 +243,18 @@ PerryCapture 6, PerryRuntimes 114, all 0 failures. App tests 632, 0 failures, 6 
 Renders inspected (`build/notch-rebuild-evidence/`): perry-editor-new, perry-editor-existing, failure-notice,
 model-profiles, task-failed.
 
+### Agent backends
+
+- Done (`8109a55`, `8a3b5d1`): Claude Code is a conversation model. It is a `ToolExecutingModelProvider`, the
+  seam Codex already uses, so no new `AgentBackend` layer was needed. Each turn opens a scoped token on
+  `PerryMCPSocket`; `perry-mcp` is embedded in `Contents/MacOS`. Evidence: 5 provider tests, a scoped-socket
+  test, and a live test (`PERRY_LIVE_CLAUDE=1`) where real Claude Code called a Perry tool (3.75 s).
+- Blocked on a user decision: ACP. `cursor-agent acp` works (probe on 2026-10-24), but ACP cannot turn off an
+  agent's own tools. Perry can deny permission requests, but auto-approved agent tools (file reads) never ask.
+  This conflicts with the "Perry tools only" choice.
+
 ### Not started
 
-- Agent backends: a `StdioAgentProcess`, an `AgentBackend` seam around `AgentLoop`, ACP (Perry tools only,
-  user-started registry fetch), Codex, Claude Code (stream-json), and an Agents settings pane. Then fix
-  `docs/capabilities.md:54-55` and `PRD.md:57-67`.
 - UX items: the panel on the screen under the pointer, the resize animation, a "Read more" chip, and the
   follower render cost.
 - A live computer-use drill, a live Talk latency measurement, and a cross-model review of the diff.
