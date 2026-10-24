@@ -3,11 +3,12 @@ import PerryBrain
 
 struct PerryEditorView: View {
     enum Cadence: String, CaseIterable, Identifiable {
-        case onRequest, daily, interval
+        case onRequest, once, daily, interval
         var id: String { rawValue }
         var title: String {
             switch self {
             case .onRequest: "Only when I ask"
+            case .once: "Once"
             case .daily: "Every day"
             case .interval: "Every few hours"
             }
@@ -23,6 +24,7 @@ struct PerryEditorView: View {
     @State private var cadence = Cadence.onRequest
     @State private var dailyTime = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
     @State private var hours = 4
+    @State private var onceDate = Date().addingTimeInterval(3600)
     @State private var paused = false
     @State private var memory = ""
     @State private var errorMessage: String?
@@ -43,6 +45,8 @@ struct PerryEditorView: View {
                 switch cadence {
                 case .onRequest:
                     Text("Open this Perry and ask it anything. It keeps its own conversation and memory.").settingNote()
+                case .once:
+                    DatePicker("On", selection: $onceDate, displayedComponents: [.date, .hourAndMinute])
                 case .daily:
                     DatePicker("At", selection: $dailyTime, displayedComponents: .hourAndMinute)
                 case .interval:
@@ -97,7 +101,10 @@ struct PerryEditorView: View {
         case .interval(let seconds)?:
             cadence = .interval
             hours = max(1, min(24, Int(seconds / 3600)))
-        case .once?, nil:
+        case .once(let date)?:
+            cadence = .once
+            onceDate = date
+        case nil:
             cadence = .onRequest
         }
         paused = perry.schedule?.paused ?? false
@@ -109,13 +116,19 @@ struct PerryEditorView: View {
         switch cadence {
         case .onRequest:
             return nil
+        case .once:
+            kind = .once(onceDate)
         case .daily:
             let parts = Calendar.current.dateComponents([.hour, .minute], from: dailyTime)
             kind = .daily(hour: parts.hour ?? 9, minute: parts.minute ?? 0)
         case .interval:
             kind = .interval(TimeInterval(hours) * 3600)
         }
-        guard var schedule = perry?.schedule, schedule.kind == kind else { return RoutineSchedule(kind: kind) }
+        guard var schedule = perry?.schedule, schedule.kind == kind else {
+            var fresh = RoutineSchedule(kind: kind)
+            fresh.paused = paused
+            return fresh
+        }
         if schedule.paused && !paused { schedule.consecutiveFailures = 0 }
         schedule.paused = paused
         return schedule

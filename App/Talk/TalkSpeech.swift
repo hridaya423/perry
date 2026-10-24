@@ -112,16 +112,24 @@ final class SFSpeechInput: TalkSpeechInput {
         dictation.finish()
         let stablePartial = Task { @MainActor [weak self] in
             var previous = self?.latestTranscript ?? ""
+            var updatedSinceRelease = false
+            var unchanged = Duration.zero
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.partialStability)
                 guard let self, !self.settled, !Task.isCancelled else { return }
                 let current = self.latestTranscript
-                if !current.isEmpty, current == previous {
+                if current != previous {
+                    updatedSinceRelease = true
+                    unchanged = .zero
+                    previous = current
+                    continue
+                }
+                unchanged += Self.partialStability
+                if !current.isEmpty, updatedSinceRelease || unchanged >= Self.unchangedSinceRelease {
                     self.dictation.cancel()
                     self.finish(transcript: current)
                     return
                 }
-                previous = current
             }
         }
         await withCheckedContinuation { continuation in
@@ -136,6 +144,7 @@ final class SFSpeechInput: TalkSpeechInput {
     }
 
     private static let partialStability = Duration.milliseconds(200)
+    private static let unchangedSinceRelease = Duration.milliseconds(600)
 
     func cancel() {
         abandoned = true

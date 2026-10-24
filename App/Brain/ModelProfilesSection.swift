@@ -153,6 +153,7 @@ struct ModelProfilesSection: View {
     }
 
     private func applyPreset() {
+        key = ""
         baseURL = preset.baseURL?.absoluteString ?? ""
         model = preset.suggested?.deep ?? ""
         fastModel = preset.suggested?.fast ?? ""
