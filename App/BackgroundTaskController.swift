@@ -432,14 +432,13 @@ final class BackgroundTaskController: ObservableObject {
         }
     }
 
+    func canResume(_ record: TaskRecord) -> Bool {
+        (record.canResumeWorkspaceTask || record.canResumeAgentTask)
+            && !record.checkpoint.isAwaitingApproval && !isRunning(record.id)
+    }
+
     func resumeAll() {
-        let ids = records
-            .filter {
-                ($0.canResumeWorkspaceTask || $0.canResumeAgentTask)
-                    && !$0.checkpoint.isAwaitingApproval && !isRunning($0.id)
-            }
-            .map(\.id)
-        ids.forEach(resume)
+        records.filter(canResume).map(\.id).forEach(resume)
     }
 
     func cancel(_ id: TaskID, expectedRevision: UUID? = nil) {

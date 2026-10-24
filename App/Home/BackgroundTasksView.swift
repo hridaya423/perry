@@ -40,9 +40,7 @@ struct BackgroundTasksView: View {
                     Button("Resume all") {
                         backgroundTasks.resumeAll()
                     }
-                    .disabled(!hasLoaded || backgroundTasks.persistenceError != nil || backgroundTasks.records.allSatisfy {
-                        !($0.canResumeWorkspaceTask && !$0.checkpoint.isAwaitingApproval && !backgroundTasks.isRunning($0.id))
-                    })
+                    .disabled(!hasLoaded || backgroundTasks.persistenceError != nil || !backgroundTasks.records.contains(where: backgroundTasks.canResume))
                 }
 
                 if !hasLoaded {
@@ -227,7 +225,7 @@ private struct BackgroundTaskRow: View {
                 Button("Stop", role: .destructive) { backgroundTasks.cancel(record.id) }
                     .controlSize(.small)
                     .accessibilityLabel("Stop task \(record.goal)")
-            } else if record.canResumeWorkspaceTask {
+            } else if backgroundTasks.canResume(record) {
                 Button("Resume") { backgroundTasks.resume(record.id) }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.small)

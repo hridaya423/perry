@@ -8,14 +8,30 @@ import PerryRuntimes
 
 @MainActor
 final class BackgroundTaskCreationTests: XCTestCase {
-    /// The canonical workspace task: an executable plan enqueued against a
-    /// BackgroundWorkspaces slot approves, executes, reports, and notifies —
-    /// all without touching desktop permissions or captures.
     func testUndoingAnUndoRepeatsTheOriginalGoal() {
         XCTAssertEqual(BackgroundTaskController.undoGoal(for: "create file a.txt"), "Undo “create file a.txt”")
         XCTAssertEqual(BackgroundTaskController.undoGoal(for: "Undo “create file a.txt”"), "create file a.txt")
     }
 
+    func testStoppedAgentTaskOffersResume() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let controller = makeController(directory: directory, probe: BackgroundCreationProbe())
+
+        _ = try await controller.backgroundTaskCoordinator.enqueue(
+            agentPlan: AgentTaskPlan(goal: "tidy the downloads folder", threadID: UUID()), taskID: TaskID()
+        )
+        await controller.backgroundTasks.reloadRecords()
+
+        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
+        XCTAssertTrue(controller.backgroundTasks.canResume(record))
+    }
+
+    /// The canonical workspace task: an executable plan enqueued against a
+    /// BackgroundWorkspaces slot approves, executes, reports, and notifies —
+    /// all without touching desktop permissions or captures.
     func testCanonicalFileTaskApprovesExecutesAndReportsWithoutDesktopCapture() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
