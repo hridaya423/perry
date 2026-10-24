@@ -42,11 +42,15 @@ protocol GuideSessionOutput: AnyObject {
     /// True while Perry's synthesizer is talking — voice commands gate on
     /// it so Perry's own instruction can't echo in as a command.
     func guideIsSpeaking() -> Bool
+    func guideReportFailure(_ message: String, recovery: FailureRecovery?)
+    func guideClearFailure()
 }
 
 extension GuideSessionOutput {
     func guideRequestTakeOver(_ handoff: GuideHandoff) {}
     func guideIsSpeaking() -> Bool { false }
+    func guideReportFailure(_ message: String, recovery: FailureRecovery?) { guideSetStatus(message) }
+    func guideClearFailure() {}
 }
 
 @MainActor

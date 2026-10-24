@@ -20,12 +20,14 @@ final class NotchDialog {
     private let message: String?
     private let cancelTitle: String
     private let actions: [Action]
+    private let priority: NotchPresentation.Priority
     private let presentation: NotchPresentation
     private let clearSource: () -> Void
     private var resolved = false
 
     init(title: String, message: String? = nil, cancelTitle: String = "Cancel",
          actions: [Action], id: UUID = UUID(),
+         priority: NotchPresentation.Priority = .approval,
          presentation: NotchPresentation = .shared,
          onClearSource: @escaping () -> Void = {}) {
         self.title = title
@@ -33,6 +35,7 @@ final class NotchDialog {
         self.cancelTitle = cancelTitle
         self.actions = actions
         self.id = id
+        self.priority = priority
         self.presentation = presentation
         self.clearSource = onClearSource
     }
@@ -50,7 +53,7 @@ final class NotchDialog {
         guard !resolved else { return }
         presentation.present(
             id: id,
-            priority: .approval,
+            priority: priority,
             content: NotchDialogView(
                 title: title,
                 message: message,

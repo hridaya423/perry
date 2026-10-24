@@ -37,6 +37,7 @@ final class TalkSession {
     private let tracer: PointerTraceRecorder
 
     private(set) var phase: Phase = .idle
+    private static var screenAccessNoticeShown = false
     private var input: (any TalkSpeechInput)?
     private var warmTask: Task<Void, Never>?
     private var captureTask: Task<GuideObservation, Error>?
@@ -88,6 +89,7 @@ final class TalkSession {
     /// mic, trace, capture and warm-up start. A stray ⌃⌥ shortcut never gets
     /// this far.
     func keyDown() {
+        output?.guideClearFailure()
         if phase != .idle {
             bargeIn()
         }
@@ -99,18 +101,22 @@ final class TalkSession {
                 var talk = TalkSessionState(id: UUID(), startedAt: Date(), transcript: "")
                 talk.isListening = true
                 try sessionController.startTalk(talk, attemptID: invocation.id)
+            case .reporting, .failed:
+                _ = sessionController.requestDismissal()
+                fallthrough
             case .idle:
                 let attemptID = UUID()
                 try sessionController.wake(at: Date(), attemptID: attemptID)
                 var talk = TalkSessionState(id: UUID(), startedAt: Date(), transcript: "")
                 talk.isListening = true
                 try sessionController.startTalk(talk, attemptID: attemptID)
-            case .asking, .guiding, .executing, .reporting, .failed:
-                output?.guideSetStatus("Finish or dismiss the current session before talking.")
+            case .asking, .guiding, .executing:
+                output?.guidePlay(.fail)
+                output?.guideReportFailure("Perry is still on your last request. Finish or stop it, then hold ⌃⌥ again.", recovery: nil)
                 return
             }
         } catch {
-            output?.guideSetStatus("Perry couldn't start listening.")
+            output?.guideReportFailure("Perry couldn’t start listening. Hold ⌃⌥ to try again.", recovery: nil)
             return
         }
 
@@ -221,8 +227,9 @@ final class TalkSession {
         input?.cancel()
         input = nil
         guard phase == .listening else { return }
-        output?.guideSetStatus(
-            (error as? LocalizedError)?.errorDescription ?? "Perry couldn't hear that."
+        output?.guideReportFailure(
+            (error as? LocalizedError)?.errorDescription ?? "Perry couldn’t hear that.",
+            recovery: Self.recovery(forInput: error)
         )
         sessionController.updateTalk { $0.isListening = false }
         overlayState.voiceState = .idle
@@ -237,13 +244,14 @@ final class TalkSession {
             try Task.checkCancellation()
             guard let speech = input else { throw CancellationError() }
             let (transcript, words) = await speech.finalize()
+            PerfMark.mark("talk.stt.final")
             // The utterance's job ends at finalize — clear so the next hold
             // builds a fresh input instead of re-finalizing this one.
             input = nil
             try Task.checkCancellation()
             sessionController.updateTalk { $0.transcript = transcript }
             guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                output?.guideSetStatus("I didn't catch that — hold ⌃⌥ and try again.")
+                output?.guideReportFailure("I didn’t catch that. Hold ⌃⌥ and try again.", recovery: nil)
                 overlayState.voiceState = .idle
                 overlayState.buddyState = .idle
                 sessionController.updateTalk { $0.isWorking = false }
@@ -275,6 +283,13 @@ final class TalkSession {
             }
             try Task.checkCancellation()
             try GuideTargetValidator.requireUnprotected(observation)
+            if observation.screenshotData == nil, !Self.screenAccessNoticeShown, !CGPreflightScreenCaptureAccess() {
+                Self.screenAccessNoticeShown = true
+                output?.guideReportFailure(
+                    "Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.",
+                    recovery: .privacy("Privacy_ScreenCapture")
+                )
+            }
 
             let elements = observation.observedElements
             PerfMark.markDynamic("deixis.index.\(elements.count)")
@@ -331,12 +346,21 @@ final class TalkSession {
             sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle
             overlayState.buddyState = .blocked
-            output?.guideSetStatus(
+            output?.guideReportFailure(
                 (error as? ModelProviderError).map { AgentLoop.describe($0) }
                     ?? (error as? LocalizedError)?.errorDescription
-                    ?? "Perry couldn't answer that."
+                    ?? "Perry couldn’t answer that.",
+                recovery: error is ResponseError || error is ModelProviderError ? .settings(.runtimes) : nil
             )
             phase = .idle
+        }
+    }
+
+    private static func recovery(forInput error: Error) -> FailureRecovery? {
+        switch error as? DictationController.DictationError {
+        case .permissionDenied?: .privacy("Privacy_Microphone")
+        case .deviceUnavailable?: .settings(.voice)
+        default: nil
         }
     }
 

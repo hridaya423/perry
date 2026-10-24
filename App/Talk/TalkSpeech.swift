@@ -88,7 +88,7 @@ final class SFSpeechInput: TalkSpeechInput {
         settled = false
         abandoned = false
         guard await DictationController.ensurePermission() else {
-            throw DictationController.DictationError.unavailable
+            throw DictationController.DictationError.permissionDenied
         }
         guard !abandoned else { return }
         try begin()
@@ -110,6 +110,20 @@ final class SFSpeechInput: TalkSpeechInput {
             return (latestTranscript, latestWords)
         }
         dictation.finish()
+        let stablePartial = Task { @MainActor [weak self] in
+            var previous = self?.latestTranscript ?? ""
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.partialStability)
+                guard let self, !self.settled, !Task.isCancelled else { return }
+                let current = self.latestTranscript
+                if !current.isEmpty, current == previous {
+                    self.dictation.cancel()
+                    self.finish(transcript: current)
+                    return
+                }
+                previous = current
+            }
+        }
         await withCheckedContinuation { continuation in
             if settled {
                 continuation.resume()
@@ -117,8 +131,11 @@ final class SFSpeechInput: TalkSpeechInput {
                 finalization = continuation
             }
         }
+        stablePartial.cancel()
         return (latestTranscript, latestWords)
     }
+
+    private static let partialStability = Duration.milliseconds(200)
 
     func cancel() {
         abandoned = true
@@ -215,7 +232,7 @@ final class WAVSpeechInput: TalkSpeechInput {
 
     func start() async throws {
         guard await DictationController.ensurePermission() else {
-            throw DictationController.DictationError.unavailable
+            throw DictationController.DictationError.permissionDenied
         }
         guard let recognizer = SFSpeechRecognizer() else {
             throw DictationController.DictationError.unavailable

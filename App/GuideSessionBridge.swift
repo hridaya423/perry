@@ -18,6 +18,8 @@ protocol GuideBridgeHost: AnyObject {
     var intentCardFrame: CGRect? { get }
     var sessionStatus: String { get set }
     func clearSessionSurfaces()
+    func presentFailure(_ message: String, recovery: FailureRecovery?)
+    func clearFailure()
 }
 
 /// GuideSessionCoordinator and TalkSession see the app only through
@@ -51,6 +53,15 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
         #if DEBUG
         GuideDrillRecorder.status(status)
         #endif
+    }
+
+    func guideReportFailure(_ message: String, recovery: FailureRecovery?) {
+        guideSetStatus(message)
+        host?.presentFailure(message, recovery: recovery)
+    }
+
+    func guideClearFailure() {
+        host?.clearFailure()
     }
 
     func guideSpeak(_ text: String, identity: GuideSpeechIdentity) {

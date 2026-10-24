@@ -573,11 +573,14 @@ final class DictationController {
 
     enum DictationError: LocalizedError {
         case unavailable
+        case permissionDenied
         case deviceUnavailable
         case onDeviceUnavailable
 
         var errorDescription: String? {
             switch self {
+            case .permissionDenied:
+                "Perry needs microphone and speech recognition access to hear you."
             case .unavailable:
                 "Speech recognition is unavailable. Type your request instead."
             case .deviceUnavailable:
