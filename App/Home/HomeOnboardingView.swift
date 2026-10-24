@@ -399,7 +399,7 @@ private struct BrainChoiceBeat: View {
                 HStack(spacing: 10) {
                     option(.local, title: "On this Mac", detail: brain.onDeviceRouteAvailable ? "Private and offline" : "Not on this Mac", icon: "laptopcomputer")
                         .disabled(!brain.onDeviceRouteAvailable)
-                    option(.chatGPT, title: "ChatGPT", detail: signedIn ? "Signed in and ready" : "Your ChatGPT account", icon: "cloud")
+                    option(.chatGPT, title: "ChatGPT", detail: signedIn ? "Signed in" : "Uses your account", icon: "cloud")
                 }
                 if let error = brain.signInError {
                     Text(error)
@@ -525,10 +525,18 @@ private struct FinaleBeat: View {
     }
 
     private var items: [FinaleCard.Item] {
-        let local = brain?.modelChoice == BrainController.ModelChoice.local.rawValue
+        let choice = brain.flatMap { BrainController.ModelChoice(rawValue: $0.modelChoice) }
+        var signedIn = false
+        if case .signedIn = brain?.account { signedIn = true }
+        let answers: FinaleCard.Item = switch choice {
+        case .chatGPT where !signedIn: .init(text: "Answers wait for ChatGPT in Settings.", on: false)
+        case .local: .init(text: "Answers on this Mac", on: true)
+        case let choice?: .init(text: "Answers with \(choice.title)", on: true)
+        case nil: .init(text: "Answers wait for a model in Settings.", on: false)
+        }
         let seesScreen = permissions?.requiredPermissionsGranted == true
         return [
-            .init(text: local ? "Answers on this Mac" : "Answers with ChatGPT", on: true),
+            answers,
             .init(text: seesScreen ? "Sees the window you point at" : "Typing works now. Screen access waits in Settings.", on: seesScreen),
             .init(text: "Opens at login. Change it in Settings.", on: true)
         ]
