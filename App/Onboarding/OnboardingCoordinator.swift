@@ -81,7 +81,10 @@ final class OnboardingCoordinator {
                 NSWorkspace.shared.open(url)
             }
         }
-        effects.beginPractice = { [weak self] in self?.practiceWindow.show() }
+        effects.beginPractice = { [weak self] in
+            guard let self else { return }
+            self.practiceWindow.show(below: self.overlayState.panelScreenFrame)
+        }
         effects.endPractice = { [weak self] in self?.practiceWindow.close() }
         effects.preferOnDeviceBrain = { [weak self] in self?.preferOnDeviceBrain() }
         effects.finish = { [weak self] in self?.finish() }

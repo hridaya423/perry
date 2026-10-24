@@ -31,10 +31,11 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
             .appendingPathComponent("PracticeSandbox", isDirectory: true)
     }
 
-    func show() {
+    func show(below anchor: NSRect? = nil) {
         seedSandbox()
         if window == nil {
             window = makeWindow()
+            if let anchor, let window { place(window, below: anchor) }
         }
         refreshFileList()
         window?.makeKeyAndOrderFront(nil)
@@ -126,6 +127,14 @@ final class PracticeWindow: NSObject, NSWindowDelegate {
         return window
     }
 
+    private func place(_ window: NSWindow, below anchor: NSRect) {
+        guard let visible = (NSScreen.screens.first { $0.frame.intersects(anchor) } ?? window.screen)?.visibleFrame else { return }
+        var frame = window.frame
+        frame.origin.x = min(max(anchor.midX - frame.width / 2, visible.minX), visible.maxX - frame.width)
+        frame.origin.y = max(anchor.minY - 16 - frame.height, visible.minY)
+        window.setFrame(frame, display: false)
+    }
+
     func windowWillClose(_ notification: Notification) {
         window = nil
         onClose?()
@@ -155,7 +164,7 @@ private struct PracticeWindowView: View {
                 }
                 Spacer()
                 HStack {
-                    Button("Rename these three files") { window.performRename() }
+                    Button("Rename files") { window.performRename() }
                     Button("Undo rename") { window.performUndo() }
                 }
                 .controlSize(.small)
