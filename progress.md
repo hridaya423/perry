@@ -249,9 +249,11 @@ model-profiles, task-failed.
   seam Codex already uses, so no new `AgentBackend` layer was needed. Each turn opens a scoped token on
   `PerryMCPSocket`; `perry-mcp` is embedded in `Contents/MacOS`. Evidence: 5 provider tests, a scoped-socket
   test, and a live test (`PERRY_LIVE_CLAUDE=1`) where real Claude Code called a Perry tool (3.75 s).
-- Blocked on a user decision: ACP. `cursor-agent acp` works (probe on 2026-10-24), but ACP cannot turn off an
-  agent's own tools. Perry can deny permission requests, but auto-approved agent tools (file reads) never ask.
-  This conflicts with the "Perry tools only" choice.
+- Done (`6c7902f`): ACP agents, with the user's "ship with guards" choice. Read-only mode when offered, a scoped
+  token for the turn's Perry tools, and every other permission request rejected. Settings states that the agent
+  can still read files. Evidence: 4 provider tests (one against a fake agent), a live test (`PERRY_LIVE_ACP=1`)
+  where real Cursor called a Perry tool in "ask" mode (14 s), and the `acp-agent` render.
+- Deferred: the ACP registry fetch. The four presets plus a custom command cover installed agents.
 
 ### Not started
 

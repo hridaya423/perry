@@ -54,8 +54,10 @@ per-item evidence, see `docs/release-readiness/features.json`.
   set only. Open-ended work requires a conversation model: bundled Codex
   (ChatGPT sign-in), Claude Code (your Claude sign-in), your own API provider,
   or a local model. Claude Code runs with its built-in tools turned off and can
-  use only the Perry tools of the current turn. OpenCode can plan, but it does
-  not run tasks.
+  use only the Perry tools of the current turn. ACP agents (Cursor, Gemini CLI,
+  OpenCode, Goose, or any command) start in a read-only mode when they offer one,
+  and Perry rejects their own requests to run commands or edit files. An ACP
+  agent can still read files without asking.
 
 ## Undo
 
