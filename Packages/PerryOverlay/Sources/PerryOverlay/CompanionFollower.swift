@@ -193,17 +193,26 @@ private struct PointerRiders: View {
             state: cursorState,
             screenFrame: screenFrame,
             anchor: pointer.position,
-            isVisible: followerIsVisibleOnThisScreen,
+            isVisible: followerIsVisibleOnThisScreen && !pointerIsOverPanel,
             opacity: opacity
         )
+        .animation(PerryOverlayTheme.Motion.feedback, value: pointerIsOverPanel)
 
         CompanionFollower(
             cursorState: cursorState,
             screenFrame: screenFrame,
             position: followerPosition,
-            isVisible: followerIsVisibleOnThisScreen,
+            isVisible: followerIsVisibleOnThisScreen && (isParked || !pointerIsOverPanel),
             opacity: opacity
         )
+    }
+
+    private var pointerIsOverPanel: Bool {
+        cursorState.panelScreenFrame?.contains(NSEvent.mouseLocation) == true
+    }
+
+    private var isParked: Bool {
+        cursorState.detectedElementScreenLocation != nil
     }
 
     /// Where the companion sits: parked at the detected element while one

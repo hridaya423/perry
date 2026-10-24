@@ -122,6 +122,7 @@ public final class PerryCursorState: ObservableObject {
     /// this flag — not view appear/disappear — drives cursor tracking. A
     /// hidden host must hold zero monitors and timers (idle CPU budget).
     @Published public var overlayVisible: Bool = false
+    @Published public var panelScreenFrame: CGRect?
 
     public init() {}
 

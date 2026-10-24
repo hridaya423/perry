@@ -134,7 +134,7 @@ struct NotchWorkspaceView: View {
             .padding(.top, 12)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text("Perrys")
@@ -182,7 +182,7 @@ struct NotchWorkspaceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: 2) {
                         Text("Recent")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(PerryTheme.Colors.textSecondary)

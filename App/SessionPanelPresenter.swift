@@ -29,6 +29,7 @@ final class SessionPanelPresenter {
         if hiding {
             hiding = false
             panel.contentView?.layer?.mask = nil
+            panel.contentView?.layer?.removeAnimation(forKey: "collapseFade")
         }
         place(frame)
         if activate {
@@ -70,14 +71,25 @@ final class SessionPanelPresenter {
         let animation = CABasicAnimation(keyPath: "path")
         animation.fromValue = growing ? notchPath : fullPath
         animation.toValue = growing ? fullPath : notchPath
-        animation.duration = growing ? 0.34 : 0.2
-        animation.timingFunction = growing ? Self.curve : CAMediaTimingFunction(name: .easeIn)
+        animation.duration = growing ? 0.34 : 0.22
+        animation.timingFunction = growing ? Self.curve : CAMediaTimingFunction(controlPoints: 0.4, 0, 0.6, 1)
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak layer, weak mask] in
             if growing, layer?.mask === mask { layer?.mask = nil }
             completion?()
+            layer?.removeAnimation(forKey: "collapseFade")
         }
         mask.add(animation, forKey: growing ? "grow" : "collapse")
+        if !growing {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            fade.duration = animation.duration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            fade.fillMode = .forwards
+            fade.isRemovedOnCompletion = false
+            layer.add(fade, forKey: "collapseFade")
+        }
         CATransaction.commit()
     }
 
@@ -162,6 +174,7 @@ extension AppController {
         notchStatus.setConversationVisible(true)
         if !sessionPanel.isVisible { sessionPanel.screen = HomeController.screenUnderPointer() }
         sessionPanel.show(frame: notchPanelFrame(), activate: activate)
+        overlayState.panelScreenFrame = sessionPanel.frame
     }
 
     /// Size follows what the notch is showing: a focused stage (onboarding,
@@ -224,6 +237,7 @@ extension AppController {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.sessionPanel.isVisible else { return }
             self.sessionPanel.place(self.notchPanelFrame())
+            self.overlayState.panelScreenFrame = self.sessionPanel.frame
         }
     }
 
@@ -243,6 +257,7 @@ extension AppController {
     func handleScreenLayoutChanged() {
         guard !isUnderMaintenance else { return }
         if sessionPanel.isVisible { sessionPanel.place(notchPanelFrame()) }
+        overlayState.panelScreenFrame = sessionPanel.frame
         homeController.screenLayoutChanged()
         notchStatus.repositionIfVisible()
     }
@@ -261,6 +276,7 @@ extension AppController {
 
     private func hideSurfaces() {
         sessionPanel.hide()
+        overlayState.panelScreenFrame = nil
         homeController.setConversationVisible(false)
         notchStatus.setConversationVisible(false)
     }
