@@ -3,6 +3,11 @@ import PerryCore
 
 public protocol HTTPLineStreaming: Sendable {
     func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>)
+    func preconnect(to url: URL) async
+}
+
+extension HTTPLineStreaming {
+    public func preconnect(to url: URL) async {}
 }
 
 public struct URLSessionLineStreaming: HTTPLineStreaming {
@@ -10,6 +15,12 @@ public struct URLSessionLineStreaming: HTTPLineStreaming {
 
     public init(session: URLSession = .shared) {
         self.session = session
+    }
+
+    public func preconnect(to url: URL) async {
+        var request = URLRequest(url: url, timeoutInterval: 5)
+        request.httpMethod = "HEAD"
+        _ = try? await session.data(for: request)
     }
 
     public func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>) {

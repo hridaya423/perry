@@ -27,7 +27,9 @@ public struct GeminiProvider: ModelProvider {
         self.transport = transport
     }
 
-    public func warm() async {}
+    public func warm() async {
+        await transport.preconnect(to: baseURL)
+    }
 
     public func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         let provider = self

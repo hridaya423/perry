@@ -40,6 +40,7 @@ final class VoiceConversationController: ObservableObject {
         var speechDrain: (() async -> Void)?
         var finalizeDelay: TimeInterval = 1.5
         var silenceTimeout: TimeInterval = 20
+        var finalTranscriptTimeout: TimeInterval = 2
     }
 
     @Published private(set) var state = State.idle
@@ -111,7 +112,7 @@ final class VoiceConversationController: ObservableObject {
         silenceTask = nil
         input?.finish()
         let generation = self.generation
-        let timeout = services.silenceTimeout
+        let timeout = services.finalTranscriptTimeout
         finalizeTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             guard let self, !Task.isCancelled, self.generation == generation, self.state == .thinking, !self.submitted else { return }
@@ -174,7 +175,7 @@ final class VoiceConversationController: ObservableObject {
             fail(message)
         case .thinking where !submitted:
             if transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                fail("I didn’t catch that — try again.")
+                fail("I didn’t catch that. Try again.")
             } else {
                 submit(transcript, generation: generation)
             }
@@ -187,7 +188,7 @@ final class VoiceConversationController: ObservableObject {
         guard self.generation == generation, !submitted else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            fail("I didn’t catch that — try again.")
+            fail("I didn’t catch that. Try again.")
             return
         }
         submitted = true

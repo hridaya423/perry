@@ -3,17 +3,23 @@ import Foundation
 /// Splits streamed text into speakable sentences. A boundary is a terminator
 /// (.?!…。！？) followed by whitespace, or a newline itself. Only text up to
 /// the last boundary in the buffer is emitted, so "3." isn't cut before a
-/// "3.5" continuation arrives; finish() flushes the remainder.
+/// "3.5" continuation arrives; finish() flushes the remainder. The first
+/// chunk of a reply may also end at a clause boundary once it is long enough,
+/// so speech starts before the first full sentence arrives.
 public struct SentenceChunker: Sendable {
     private var buffer = ""
+    private var started = false
 
     public init() {}
 
     private static let terminators: Set<Character> = [".", "?", "!", "…", "。", "！", "？"]
+    private static let clauseMarks: Set<Character> = [",", ";", ":", "—", "，", "；", "："]
+    private static let firstClauseMinimum = 28
 
     public mutating func feed(_ text: String) -> [String] {
         buffer += text
-        guard let cut = lastBoundary(in: buffer) else { return [] }
+        guard let cut = lastBoundary(in: buffer) ?? firstClauseCut() else { return [] }
+        started = true
         var sentences: [String] = []
         var start = buffer.startIndex
         var index = buffer.startIndex
@@ -34,6 +40,22 @@ public struct SentenceChunker: Sendable {
         defer { buffer = "" }
         let rest = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
         return rest.isEmpty ? nil : rest
+    }
+
+    private func firstClauseCut() -> String.Index? {
+        guard !started else { return nil }
+        var count = 0
+        var index = buffer.startIndex
+        while index < buffer.endIndex {
+            let next = buffer.index(after: index)
+            count += 1
+            if count >= Self.firstClauseMinimum, Self.clauseMarks.contains(buffer[index]),
+               next < buffer.endIndex, buffer[next].isWhitespace {
+                return next
+            }
+            index = next
+        }
+        return nil
     }
 
     /// Index just past the last commit boundary, if any.

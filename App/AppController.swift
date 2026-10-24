@@ -333,6 +333,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         DictationController.warmPermissionCache()
         subsystems.talkSpeechInput.warmUp()
         subsystems.realtimeTalkVoice()?.warmUp()
+        Task { [brain] in
+            guard let decision = try? await brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)) else { return }
+            await decision.provider.warm()
+        }
         voice.refreshWakeWordListener()
         notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled)
         Task { @MainActor [weak self] in

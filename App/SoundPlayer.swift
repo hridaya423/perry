@@ -22,6 +22,7 @@ enum SoundPlayer {
                 players[cue] = sound
             }
         }
+        _ = QuietHours.isActive
         PerfMark.mark("sound.warmup")
     }
 
@@ -62,7 +63,13 @@ enum SoundPlayer {
 }
 
 enum QuietHours {
+    private static var cached: (value: Bool, readAt: TimeInterval)?
+
     static var isActive: Bool {
-        INFocusStatusCenter.default.focusStatus.isFocused == true
+        let now = ProcessInfo.processInfo.systemUptime
+        if let cached, now - cached.readAt < 30 { return cached.value }
+        let value = INFocusStatusCenter.default.focusStatus.isFocused == true
+        cached = (value, now)
+        return value
     }
 }

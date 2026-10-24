@@ -22,6 +22,9 @@ DEFAULT_PAIRS = [
     ("talk.keyup", "answer.first_text"),
     ("talk.keyup", "ink.first_draw"),
     ("capture.done", "answer.first_text"),
+    ("talk.keyup", "talk.stt.final"),
+    ("talk.stt.final", "answer.first_text"),
+    ("talk.keyup", "talk.speak.audible"),
 ]
 
 

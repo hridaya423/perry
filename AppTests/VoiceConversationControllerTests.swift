@@ -78,7 +78,8 @@ final class VoiceConversationControllerTests: XCTestCase {
             output: FakeOutput(probe: probe),
             speechDrain: {},
             finalizeDelay: 0.05,
-            silenceTimeout: 0.2
+            silenceTimeout: 0.2,
+            finalTranscriptTimeout: 0.2
         ))
     }
 

@@ -37,7 +37,9 @@ public struct OpenAIChatCompatibleProvider: ModelProvider {
         self.readContextWindow = contextWindow
     }
 
-    public func warm() async {}
+    public func warm() async {
+        await transport.preconnect(to: baseURL)
+    }
 
     public func contextWindow(for tier: ModelTier) async throws -> Int? {
         try await readContextWindow(tier)

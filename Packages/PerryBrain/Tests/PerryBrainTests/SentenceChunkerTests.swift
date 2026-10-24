@@ -52,4 +52,17 @@ final class SentenceChunkerTests: XCTestCase {
         XCTAssertEqual(c.feed("Done. "), ["Done."])
         XCTAssertNil(c.finish())
     }
+
+    func testFirstChunkFlushesAtALongClause() {
+        var c = SentenceChunker()
+        XCTAssertEqual(c.feed("Open the File menu at the top left, then choose"), ["Open the File menu at the top left,"])
+        XCTAssertEqual(c.feed(" Export, and pick PDF. Done"), ["then choose Export, and pick PDF."])
+        XCTAssertEqual(c.finish(), "Done")
+    }
+
+    func testShortFirstClauseWaitsForTheSentence() {
+        var c = SentenceChunker()
+        XCTAssertEqual(c.feed("Yes, that is"), [])
+        XCTAssertEqual(c.feed(" right. Next"), ["Yes, that is right."])
+    }
 }
