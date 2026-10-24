@@ -120,7 +120,7 @@ ws=[w for w in json.load(sys.stdin)["windows"] if w.get("is_on_screen")]
 w=max(ws,key=lambda w:w["bounds"]["width"]*w["bounds"]["height"]) if ws else None
 print(w["window_id"] if w else "")')"
     [ -n "$win" ] || return 1
-    state="$("$CUA" call get_window_state "{\"pid\":$TARGET_PID,\"window_id\":$win,\"include_screenshot\":false}")"
+    state="$("$CUA" call get_window_state "{\"pid\":$TARGET_PID,\"window_id\":$win,\"include_screenshot\":false,\"tree_format\":\"elements\"}")"
     printf '%s' "$state" | python3 -c 'import json,sys
 els=json.load(sys.stdin).get("elements",[])
 buttons=[e for e in els if e.get("role")=="AXButton" and e.get("enabled",True)]
@@ -137,7 +137,7 @@ sys.exit(1)'
 
 TARGET="$(pick_target || true)"
 if [ -z "$TARGET" ]; then
-    echo "talk-drill: could not resolve a Calculator button — aiming at window centre" >&2
+    echo "talk-drill: could not resolve a target button — aiming at window centre" >&2
     CX=860; CY=550
 else
     read -r CX CY <<<"$TARGET"
