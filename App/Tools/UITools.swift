@@ -1,6 +1,7 @@
 import Foundation
 import PerryBrain
 import PerryCore
+import PerryRuntimes
 
 /// Actuation tools (`ui.click`, `ui.type`, `ui.scroll`, …) — agent surface
 /// only. All input goes through the background Cua worker: the real pointer
@@ -97,6 +98,19 @@ private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource>
     bundleID.map { [.application($0.lowercased())] } ?? []
 }
 
+private func verifiedResult(
+    _ call: ToolCall, _ result: StepResult, worker: CuaWorkerHandle,
+    observations: AgentObservationStore, runID: UUID
+) async -> ToolResult {
+    guard result.success,
+          let hint = try? observations.prepareCapture(runID: runID),
+          let after = try? await observeWindow(worker: worker, hint: hint, observations: observations, runID: runID) else {
+        return .text(call.id, result.message, isError: !result.success)
+    }
+    let note = "\(result.message)\nThe window after this action is below. Element ids are refreshed, so use these ids from now on."
+    return ToolResult(callID: call.id, content: [.text(note)] + after)
+}
+
 private struct UIActionExecutor: ToolExecutor {
     let kind: UIClickKind
     let workers: CuaWorkerService
@@ -134,7 +148,7 @@ private struct UIActionExecutor: ToolExecutor {
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
-            return .text(call.id, result.message, isError: !result.success)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
         }
     }
 }
@@ -176,7 +190,7 @@ private struct UITypeExecutor: ToolExecutor {
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
-            return .text(call.id, result.message, isError: !result.success)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
         }
     }
 }
@@ -223,7 +237,7 @@ private struct UIScrollExecutor: ToolExecutor {
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
             }
-            return .text(call.id, result.message, isError: !result.success)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
         }
     }
 }
@@ -268,7 +282,7 @@ private struct UIKeyExecutor: ToolExecutor {
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
             }
-            return .text(call.id, result.message, isError: !result.success)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
         }
     }
 }

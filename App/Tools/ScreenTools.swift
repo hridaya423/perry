@@ -50,66 +50,9 @@ private struct ScreenObserveExecutor: ToolExecutor {
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
-            let captured = try await worker.capture(target: hint)
-            let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
-                .filter { $0.sensitivity != .secure }
-                .map { element in
-                    ObservedElement(
-                        id: element.stableID,
-                        role: element.rawRole ?? "AX\(element.role.rawValue)",
-                        label: element.label ?? "",
-                        frame: CGRect(
-                            x: element.frame.x, y: element.frame.y,
-                            width: element.frame.width, height: element.frame.height
-                        ),
-                        windowID: Int(captured.target.windowID)
-                    )
-                }
-            let index = ElementIndex(elements: elements)
-            observations.store(
-                AgentObservationStore.Snapshot(
-                    index: index,
-                    window: captured.target,
-                    screenshotData: captured.screenshotData,
-                    windowBoundsAX: CGRect(
-                        x: captured.target.x, y: captured.target.y,
-                        width: captured.target.width, height: captured.target.height
-                    )
-                ),
-                runID: context.runID
-            )
-            let summary: JSONValue = .object([
-                "app": .string(captured.target.bundleID),
-                "window": .string(captured.target.title),
-                "onScreen": .bool(captured.target.isOnScreen),
-                "elements": .array(index.entries.map { entry in
-                    .object([
-                        "id": .string(entry.compactID),
-                        "role": .string(entry.element.role),
-                        "label": .string(entry.element.label),
-                        "x": .number(entry.element.frame.origin.x),
-                        "y": .number(entry.element.frame.origin.y),
-                        "w": .number(entry.element.frame.width),
-                        "h": .number(entry.element.frame.height),
-                    ])
-                }),
-            ])
-            return ToolResult(
-                callID: call.id,
-                content: [
-                    .text(Self.render(summary)),
-                    .image(data: captured.screenshotData, mimeType: captured.screenshotMIMEType)
-                ]
-            )
+            let content = try await observeWindow(worker: worker, hint: hint, observations: observations, runID: context.runID)
+            return ToolResult(callID: call.id, content: content)
         }
-    }
-
-    private static func render(_ value: JSONValue) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(value),
-              let string = String(data: data, encoding: .utf8) else { return "{}" }
-        return string
     }
 }
 
@@ -250,4 +193,63 @@ private struct ClipboardReadExecutor: ToolExecutor {
         let text = await MainActor.run { NSPasteboard.general.string(forType: .string) }
         return .text(call.id, text ?? "(clipboard has no text)")
     }
+}
+
+func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: AgentObservationStore, runID: UUID) async throws -> [ModelContentPart] {
+    let captured = try await worker.capture(target: hint)
+    let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
+        .filter { $0.sensitivity != .secure }
+        .map { element in
+            ObservedElement(
+                id: element.stableID,
+                role: element.rawRole ?? "AX\(element.role.rawValue)",
+                label: element.label ?? "",
+                frame: CGRect(
+                    x: element.frame.x, y: element.frame.y,
+                    width: element.frame.width, height: element.frame.height
+                ),
+                windowID: Int(captured.target.windowID)
+            )
+        }
+    let index = ElementIndex(elements: elements)
+    observations.store(
+        AgentObservationStore.Snapshot(
+            index: index,
+            window: captured.target,
+            screenshotData: captured.screenshotData,
+            windowBoundsAX: CGRect(
+                x: captured.target.x, y: captured.target.y,
+                width: captured.target.width, height: captured.target.height
+            )
+        ),
+        runID: runID
+    )
+    let summary: JSONValue = .object([
+        "app": .string(captured.target.bundleID),
+        "window": .string(captured.target.title),
+        "onScreen": .bool(captured.target.isOnScreen),
+        "elements": .array(index.entries.map { entry in
+            .object([
+                "id": .string(entry.compactID),
+                "role": .string(entry.element.role),
+                "label": .string(entry.element.label),
+                "x": .number(entry.element.frame.origin.x),
+                "y": .number(entry.element.frame.origin.y),
+                "w": .number(entry.element.frame.width),
+                "h": .number(entry.element.frame.height),
+            ])
+        }),
+    ])
+    return [
+        .text(renderObservation(summary)),
+        .image(data: captured.screenshotData, mimeType: captured.screenshotMIMEType)
+    ]
+}
+
+private func renderObservation(_ value: JSONValue) -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    guard let data = try? encoder.encode(value),
+          let string = String(data: data, encoding: .utf8) else { return "{}" }
+    return string
 }
