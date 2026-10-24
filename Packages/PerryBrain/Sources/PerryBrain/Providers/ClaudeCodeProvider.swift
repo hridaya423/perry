@@ -77,9 +77,16 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         errors.fileHandleForReading.readabilityHandler = { handle in stderr.append(handle.availableData) }
         stop.onStop = { [weak process] in process?.terminate() }
 
-        try process.run()
+        _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         let message = try Self.inputLine(for: request.messages)
-        input.fileHandleForWriting.write(message)
+        try process.run()
+        do {
+            try input.fileHandleForWriting.write(contentsOf: message)
+        } catch {
+            process.terminate()
+            process.waitUntilExit()
+            throw ModelProviderError(kind: .unavailable, provider: id, message: Self.failureMessage(stderr: stderr.text, status: process.terminationStatus))
+        }
         try? input.fileHandleForWriting.close()
 
         var finished = false

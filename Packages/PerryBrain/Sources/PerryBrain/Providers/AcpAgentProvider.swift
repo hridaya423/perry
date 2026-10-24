@@ -126,6 +126,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
+        _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         try process.run()
         defer { if process.isRunning { process.terminate() } }
 
@@ -157,6 +158,9 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
                 ]),
             ]))
             let acceptsImages = initialized["agentCapabilities"]?["promptCapabilities"]?["image"]?.boolValue == true
+            if !acceptsImages, Self.hasImages(request.messages) {
+                throw ModelProviderError(kind: .unavailable, provider: id, message: "\(displayName) can’t read screenshots. Choose a model that can see your screen in Settings, Models.")
+            }
             let session = try await connection.request("session/new", params: .object([
                 "cwd": .string(workspace.path),
                 "mcpServers": .array(mcpServers),
@@ -172,12 +176,14 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             let result = try await withTaskCancellationHandler {
                 try await connection.request("session/prompt", params: .object([
                     "sessionId": .string(sessionID),
-                    "prompt": .array(Self.prompt(request.messages, images: acceptsImages)),
+                    "prompt": .array(Self.prompt(request.messages, system: request.system, images: acceptsImages)),
                 ]))
             } onCancel: {
                 Task { try? await connection.notify("session/cancel", params: .object(["sessionId": .string(sessionID)])) }
             }
             if let reason = stop.reason { throw reason }
+            await connection.close()
+            await listener.value
             continuation.yield(.done(result["stopReason"]?.stringValue == "max_tokens" ? .maxTokens : .endTurn))
         } catch {
             if let reason = stop.reason { throw reason }
@@ -188,7 +194,13 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             }
             throw error
         }
-        await connection.close()
+    }
+
+    static func hasImages(_ messages: [ModelMessage]) -> Bool {
+        messages.contains { message in
+            guard case .user(let parts) = message else { return false }
+            return parts.contains { if case .image = $0 { true } else { false } }
+        }
     }
 
     static func environment(adding extra: [String: String], base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
@@ -222,14 +234,21 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
     }
 
     static func permissionOutcome(_ params: JSONValue, perryTools: Set<String>) -> JSONValue {
-        let title = (params["toolCall"]?["title"]?.stringValue ?? "").lowercased()
-        let isPerry = title.contains("perry") && perryTools.contains { title.contains($0.lowercased()) }
         let options = params["options"]?.arrayValue ?? []
-        let wanted = isPerry ? "allow_once" : "reject_once"
+        let wanted = isPerryTool(params["toolCall"], perryTools: perryTools) ? "allow_once" : "reject_once"
         guard let option = options.first(where: { $0["kind"]?.stringValue == wanted })?["optionId"] else {
             return .object(["outcome": .object(["outcome": .string("cancelled")])])
         }
         return .object(["outcome": .object(["outcome": .string("selected"), "optionId": option])])
+    }
+
+    static func isPerryTool(_ toolCall: JSONValue?, perryTools: Set<String>) -> Bool {
+        if let kind = toolCall?["kind"]?.stringValue, kind != "other" { return false }
+        let title = (toolCall?["title"]?.stringValue ?? "").lowercased()
+        let words = title.split { !($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }.map(String.init)
+        let names = Set(perryTools.map { $0.lowercased() })
+        let namesPerry = words.contains { $0 == "perry" || ($0.hasPrefix("perry-") && names.contains(String($0.dropFirst(6)))) }
+        return namesPerry && words.contains { names.contains($0) }
     }
 
     private static func answer(_ incoming: JSONRPCIncomingRequest, on connection: JSONRPCConnection, perryTools: Set<String>) async {
@@ -240,7 +259,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         }
     }
 
-    static func prompt(_ messages: [ModelMessage], images: Bool) -> [JSONValue] {
+    static func prompt(_ messages: [ModelMessage], system: String = "", images: Bool) -> [JSONValue] {
         let turn = AgentTurnPrompt(messages)
         var blocks: [JSONValue] = turn.latest.compactMap { part in
             switch part {
@@ -252,6 +271,9 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         }
         if let earlier = turn.earlier {
             blocks.insert(.object(["type": .string("text"), "text": .string(earlier)]), at: 0)
+        }
+        if !system.isEmpty {
+            blocks.insert(.object(["type": .string("text"), "text": .string("Instructions from Perry, the app you are working inside:\n" + system)]), at: 0)
         }
         return blocks
     }

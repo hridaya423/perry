@@ -15,6 +15,12 @@ final class AcpAgentProviderTests: XCTestCase {
         XCTAssertEqual(AcpAgentProvider.permissionOutcome(perry, perryTools: ["probe_echo"])["outcome"]?["optionId"]?.stringValue, "allow-once")
         XCTAssertEqual(AcpAgentProvider.permissionOutcome(shell, perryTools: ["probe_echo"])["outcome"]?["optionId"]?.stringValue, "reject-once")
         XCTAssertEqual(AcpAgentProvider.permissionOutcome(otherPerryTool, perryTools: ["probe_echo"])["outcome"]?["optionId"]?.stringValue, "reject-once")
+        let disguised: JSONValue = .object(["toolCall": .object(["title": .string("Run shell: touch /tmp/perry_probe_echo"), "kind": .string("execute")]), "options": options])
+        XCTAssertEqual(AcpAgentProvider.permissionOutcome(disguised, perryTools: ["probe_echo"])["outcome"]?["optionId"]?.stringValue, "reject-once")
+        let worded: JSONValue = .object(["toolCall": .object(["title": .string("echo perry probe_echo; rm -rf ~"), "kind": .string("execute")]), "options": options])
+        XCTAssertEqual(AcpAgentProvider.permissionOutcome(worded, perryTools: ["probe_echo"])["outcome"]?["optionId"]?.stringValue, "reject-once")
+        let substring: JSONValue = .object(["toolCall": .object(["title": .string("Read /tmp/perry_screen_observe")]), "options": options])
+        XCTAssertEqual(AcpAgentProvider.permissionOutcome(substring, perryTools: ["screen_observe"])["outcome"]?["optionId"]?.stringValue, "reject-once")
         let noReject: JSONValue = .object(["toolCall": .object(["title": .string("Edit file")]), "options": .array([])])
         XCTAssertEqual(AcpAgentProvider.permissionOutcome(noReject, perryTools: [])["outcome"]?["outcome"]?.stringValue, "cancelled")
     }
@@ -27,6 +33,12 @@ final class AcpAgentProviderTests: XCTestCase {
         XCTAssertEqual(AcpAgentProvider.readOnlyMode(modes(["agent", "plan"])), "plan")
         XCTAssertNil(AcpAgentProvider.readOnlyMode(modes(["agent"])))
         XCTAssertNil(AcpAgentProvider.readOnlyMode(.object([:])))
+    }
+
+    func testPromptCarriesPerrysInstructionsFirst() {
+        let blocks = AcpAgentProvider.prompt([.user([.text("hi")])], system: "Be brief.", images: true)
+        XCTAssertEqual(blocks.first?["text"]?.stringValue, "Instructions from Perry, the app you are working inside:\nBe brief.")
+        XCTAssertEqual(blocks.last?["text"]?.stringValue, "hi")
     }
 
     func testPromptDropsImagesTheAgentCannotRead() {
