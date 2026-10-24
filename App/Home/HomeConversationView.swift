@@ -80,7 +80,7 @@ struct HomeConversationView: View {
                         Button("Latest", systemImage: "arrow.down") {
                             model.conversationPositions[thread.id] = .init()
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(InkButtonStyle(.secondary))
                     }
                 }
                 if isWorking {

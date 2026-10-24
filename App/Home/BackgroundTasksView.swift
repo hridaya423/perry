@@ -128,7 +128,7 @@ private struct BackgroundTaskRow: View {
                 .monospacedDigit()
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 if case .legacy(let plan) = record.plan {
-                    Text("Runtime: \(runtimes.name(for: plan.runtimeID))")
+                    Text("Agent: \(runtimes.name(for: plan.runtimeID))")
                         .font(PerryTheme.Typography.note)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -174,7 +174,7 @@ private struct BackgroundTaskRow: View {
         .notchDialog(
             "Undo Perry’s changes?",
             isPresented: $showUndoConfirmation,
-            message: "Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched — Undo stops at the first conflict."
+            message: "Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched. Undo stops at the first conflict."
         ) {
             [NotchDialog.Action("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
                 backgroundTasks.undoWorkspaceChanges(record)
@@ -193,7 +193,7 @@ private struct BackgroundTaskRow: View {
                 } else {
                     if recoveryNotice == .legacyPlan {
                         Button("Replan") { backgroundTasks.replan(record.id) }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(InkButtonStyle())
                             .controlSize(.small)
                             .accessibilityLabel("Replan task \(record.goal)")
                     }
@@ -203,7 +203,7 @@ private struct BackgroundTaskRow: View {
                 }
             } else if record.workspaceActionToApprove != nil {
                 Button("Review file") { workspaceApproval = record }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
                     .accessibilityLabel("Review file creation for \(record.goal)")
                 Button("Deny", role: .destructive) { backgroundTasks.cancel(record.id) }
@@ -221,7 +221,7 @@ private struct BackgroundTaskRow: View {
                     .accessibilityLabel("Stop task \(record.goal)")
             } else if backgroundTasks.isRunning(record.id), record.state == .paused {
                 Button("Resume") { backgroundTasks.resume(record.id) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
                     .accessibilityLabel("Resume task \(record.goal)")
                 Button("Stop", role: .destructive) { backgroundTasks.cancel(record.id) }
@@ -229,7 +229,7 @@ private struct BackgroundTaskRow: View {
                     .accessibilityLabel("Stop task \(record.goal)")
             } else if record.canResumeWorkspaceTask {
                 Button("Resume") { backgroundTasks.resume(record.id) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
                     .accessibilityLabel("Resume task \(record.goal)")
                 Button("Stop", role: .destructive) { backgroundTasks.cancel(record.id) }
@@ -315,7 +315,7 @@ private struct WorkspaceTaskApprovalView: View {
                         approve()
                         dismiss()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(InkButtonStyle())
                 }
             } else {
                 Text("This approval is no longer available. Go back and review the current task.")

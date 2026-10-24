@@ -301,6 +301,7 @@ struct RoutinesView: View {
 struct FilesPage: View {
     let roots: [URL]
     var perrys: [Perry] = []
+    @State private var listed: [(pile: Pile, files: [URL])]?
 
     private struct Pile {
         let label: String
@@ -318,21 +319,33 @@ struct FilesPage: View {
         return all.filter { seen.insert($0.root.standardizedFileURL.path).inserted }
     }
 
-    private func files(in root: URL) -> [URL] {
-        (try? FileManager.default.contentsOfDirectory(
+    private static func files(in root: URL) -> [URL] {
+        let urls = (try? FileManager.default.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: [.contentModificationDateKey],
             options: [.skipsHiddenFiles]
-        ))?
-        .filter { !$0.hasDirectoryPath }
-        .sorted {
-            ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-        } ?? []
+        )) ?? []
+        return urls
+            .filter { !$0.hasDirectoryPath }
+            .map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
     }
 
     var body: some View {
-        let listed = piles.map { (pile: $0, files: files(in: $0.root)) }
+        content
+            .task(id: piles.map(\.root)) {
+                listed = piles.map { (pile: $0, files: Self.files(in: $0.root)) }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let listed { page(listed) } else { Color.clear }
+    }
+
+    @ViewBuilder
+    private func page(_ listed: [(pile: Pile, files: [URL])]) -> some View {
         if listed.allSatisfy(\.files.isEmpty) {
             WorkspaceEmptyState(title: "No files yet", message: "Files Perry makes for you show up here. Drag one into any app.", actionTitle: piles.isEmpty ? nil : "Open in Finder") {
                 if let root = piles.first?.root {

@@ -35,6 +35,7 @@ final class HomeController {
     private var monitors: [Any] = []
     private var deadlineTimer: Timer?
     private var insideZone = false
+    private var previewing = false
     private var cachedZone: CGRect?
     private var screenObserver: (any NSObjectProtocol)?
     private var defaultsObserver: (any NSObjectProtocol)?
@@ -54,6 +55,8 @@ final class HomeController {
     var onStop: ((UUID) -> Void)?
     var onOpenConversation: (() -> Void)?
     var onPreviewConversation: (() -> Void)?
+    var previewFrame: (() -> CGRect?)?
+    var onEndPreview: (() -> Bool)?
     var onDismissConversation: (() -> Bool)?
 
     /// Owner binds the coordinator's running set → composer's working row.
@@ -227,6 +230,14 @@ final class HomeController {
         return CGRect(x: screen.frame.midX - 20, y: top - menuBar - 14, width: 40, height: 14)
     }
 
+    nonisolated static func clickRect(for screen: NSScreen) -> CGRect {
+        guard screen.safeAreaInsets.top > 0,
+              let left = screen.auxiliaryTopLeftArea?.maxX,
+              let right = screen.auxiliaryTopRightArea?.minX else { return zoneRect(for: screen) }
+        return CGRect(x: left, y: screen.frame.maxY - screen.safeAreaInsets.top,
+                      width: right - left, height: screen.safeAreaInsets.top)
+    }
+
     nonisolated static func notchPanelFrame(size: CGSize, screenFrame: CGRect, centerX: CGFloat) -> CGRect {
         let width = min(size.width, screenFrame.width)
         let height = min(size.height, screenFrame.height)
@@ -249,7 +260,8 @@ final class HomeController {
             if insideZone { insideZone = false; apply(intent.exited(at: now)) }
             return
         }
-        let inside = zone.contains(NSEvent.mouseLocation)
+        let point = NSEvent.mouseLocation
+        let inside = zone.contains(point) || (previewing && previewFrame?()?.contains(point) == true)
         if inside && !insideZone {
             insideZone = true
             PerfMark.mark("home.hover_start")
@@ -261,16 +273,24 @@ final class HomeController {
     }
 
     private func mouseDown() {
-        guard let zone = currentZone() else { return }
-        guard zone.contains(NSEvent.mouseLocation) else { return }
-        if conversationVisible { return }
+        guard currentZone() != nil,
+              let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main,
+              Self.clickRect(for: screen).contains(NSEvent.mouseLocation) else { return }
+        if conversationVisible && !previewing { return }
         openConversation()
     }
 
     private func openConversation() {
         guard acceptsInput else { return }
+        previewing = false
         apply(intent.escape())
         onOpenConversation?()
+    }
+
+    private func endPreview() {
+        guard previewing else { return }
+        previewing = false
+        _ = onEndPreview?()
     }
 
     private func keyDown(_ event: NSEvent) {
@@ -296,7 +316,7 @@ final class HomeController {
     private func apply(_ action: HomeHoverIntent.Action) {
         switch action {
         case .showPeek: showPeek()
-        case .hidePeek: break
+        case .hidePeek: endPreview()
         case .none: break
         }
         rescheduleDeadline()
@@ -346,13 +366,15 @@ final class HomeController {
 
     private func showPeek() {
         guard acceptsInput, !conversationVisible else { return }
+        previewing = true
         onPreviewConversation?()
     }
 
     func setConversationVisible(_ visible: Bool) {
         conversationVisible = visible
+        if !visible { previewing = false }
         if visible {
-            apply(intent.escape())
+            if !previewing { apply(intent.escape()) }
             dotPanel?.orderOut(nil)
         } else if isEnabled {
             showRestingDotIfNeeded()
@@ -417,7 +439,7 @@ final class HomeController {
             self.welcomeDraftSaveTask?.cancel()
             self.welcomeDraftSaveTask = self.performWork {
                 do {
-                    try Task.checkCancellation()
+                    try await Task.sleep(for: .milliseconds(400))
                     try await self.threadStore?.setWelcomeDraft(text)
                 } catch is CancellationError {
                 } catch {

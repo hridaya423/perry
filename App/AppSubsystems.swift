@@ -520,6 +520,13 @@ final class AppSubsystems {
         controller.onStop = { [weak app = app] id in app?.agentCoordinator.stop(threadID: id) }
         controller.onOpenConversation = { [weak app = app] in app?.showPanel() }
         controller.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
+        controller.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
+        controller.onEndPreview = { [weak app = app] in
+            guard let app, app.sessionPanel.isVisible, !app.sessionPanel.isKey,
+                  NotchPresentation.shared.current == nil else { return false }
+            app.hidePanel()
+            return true
+        }
         controller.onDismissConversation = { [weak app = app] in
             guard let app, app.sessionPanel.isVisible else { return false }
             app.collapseNotch()

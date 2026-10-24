@@ -343,6 +343,49 @@ final class NotchSurfaceRenderTests: XCTestCase {
         print("onboarding.reel.frames=\(index)")
     }
 
+    func testRenderPerfectPassSurfaces() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        let controller = AppController(debugStorageDirectory: directory)
+        let model = controller.homeController.homeModel
+        defer {
+            controller.clearFailure()
+            controller.homeController.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let size = NSSize(width: 892, height: 552)
+        model.sidebarSelection = .perryEditor(nil)
+        try await render(CompactConversationView(controller: controller), name: "perry-editor-new", size: size)
+        let store = try XCTUnwrap(controller.perryStore)
+        let perry = try await store.create(job: "Summarize my unread newsletters every morning", schedule: RoutineSchedule(kind: .daily(hour: 8, minute: 30)))
+        model.perrys = await store.list()
+        model.sidebarSelection = .perryEditor(perry.id)
+        try await render(CompactConversationView(controller: controller), name: "perry-editor-existing", size: NSSize(width: 892, height: 720), wait: 0.5)
+
+        model.sidebarSelection = nil
+        controller.presentFailure("Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.", recovery: .privacy("Privacy_ScreenCapture"))
+        presentation.showsInteraction = true
+        try await render(CompactConversationView(controller: controller), name: "failure-notice", size: NSSize(width: 592, height: 420))
+        controller.clearFailure()
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "perry.render.\(UUID().uuidString)"))
+        let profileStore = ModelProfileStore(defaults: defaults)
+        let profiles = [
+            ModelProfile(id: "a", presetID: "anthropic", baseURL: URL(string: "https://api.anthropic.com")!, model: "claude-sonnet-5-5", fastModel: "claude-haiku-5-5"),
+            ModelProfile(id: "b", presetID: "ollama", baseURL: URL(string: "http://127.0.0.1:11434")!, model: "qwen3:14b")
+        ]
+        profileStore.save(profiles)
+        profileStore.activeID = "a"
+        let brain = BrainController(readCredential: { _ in "key" }, defaults: defaults, discoverLocalModels: { [] }, codexFactory: { nil })
+        let settings = Form { Section("Your providers") { ModelProfilesSection(brain: brain) } }
+            .formStyle(.grouped)
+            .controlSize(.small)
+            .preferredColorScheme(.dark)
+        try await render(settings, name: "model-profiles", size: NSSize(width: 640, height: 420))
+    }
+
     private func render<Content: View>(_ content: Content, name: String, size: NSSize, wait: Double = 0.2, folder: String = "notch-rebuild-evidence") async throws {
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build").appendingPathComponent(folder)

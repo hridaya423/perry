@@ -162,15 +162,15 @@ struct SessionPanelView: View {
                     HStack(spacing: PerryTheme.Spacing.control) {
                         Image(systemName: "exclamationmark.triangle")
                             .foregroundStyle(PerryTheme.Colors.caution)
-                        Text("No runtime installed — Perry needs one to take over tasks.")
+                        Text("Perry needs an AI agent to take over tasks. Set one up in Models settings.")
                             .font(PerryTheme.Typography.panelMetadata)
                             .foregroundStyle(PerryTheme.Colors.text)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        Button("Open Runtimes settings") {
+                        Button("Open Models settings") {
                             controller.openSettings(tab: .runtimes)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(InkButtonStyle(.secondary))
                         .controlSize(.small)
                     }
                 }
@@ -224,7 +224,7 @@ struct SessionPanelView: View {
                 if case .failed = controller.sessionState {
                     HStack(spacing: PerryTheme.Spacing.control) {
                         Button("Retry task") { controller.foreground.retry() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(InkButtonStyle(.secondary))
                             .controlSize(.small)
                         Spacer()
                     }

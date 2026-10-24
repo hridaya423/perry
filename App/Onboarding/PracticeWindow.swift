@@ -179,7 +179,7 @@ private struct PracticeWindowView: View {
                     .onChange(of: state.draftText) { _, newValue in
                         if !newValue.isEmpty { window.noteDictation() }
                     }
-                Text("A safe practice space — the files are real, the rest is fake.")
+                Text("A safe practice space. The files are real; the rest is fake.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

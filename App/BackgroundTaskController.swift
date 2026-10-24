@@ -163,11 +163,11 @@ final class BackgroundTaskController: ObservableObject {
                 await journal.settle()
                 self.messages[record.id] = stopped.map { stopped in
                     undone == 0
-                        ? "Nothing was undone — \(stopped)"
+                        ? "Nothing was undone. \(stopped)"
                         : "Undid \(undone) change\(undone == 1 ? "" : "s"), then stopped: \(stopped)"
                 } ?? "Undid \(undone) change\(undone == 1 ? "" : "s")."
             } catch {
-                self.messages[record.id] = "Nothing was undone — \(error.localizedDescription)"
+                self.messages[record.id] = "Nothing was undone. \(error.localizedDescription)"
             }
             await self.reloadRecords()
         }
@@ -762,7 +762,7 @@ final class BackgroundTaskController: ObservableObject {
             // A paused record stays queued: the user asked to stop the run,
             // and resume continues the goal on the same thread.
             if await self.coordinator.record(id: record.id)?.state == .paused {
-                self.messages[record.id] = "Paused — resume continues the task on the same thread."
+                self.messages[record.id] = "Paused. Resume continues the task on the same thread."
                 self.runTasks[record.id] = nil
                 self.runningCount = self.runTasks.count
                 if let launchLease { self.launchGate.release(launchLease) }

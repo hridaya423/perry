@@ -16,6 +16,7 @@ final class SessionPanelPresenter {
 
     var frame: CGRect? { panel?.isVisible == true ? panel?.frame : nil }
     var isVisible: Bool { panel?.isVisible == true }
+    var isKey: Bool { panel?.isKeyWindow == true }
 
     func show(frame: NSRect, activate: Bool) {
         let panel = ensurePanel()
@@ -83,7 +84,7 @@ final class SessionPanelPresenter {
            NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
            let previous = previousFrontmostApplication,
            previous.processIdentifier != ownPID {
-            previous.activate(options: [.activateAllWindows])
+            previous.activate()
         }
         previousFrontmostApplication = nil
     }
@@ -183,7 +184,7 @@ extension AppController {
             overlayState.buddyState = .blocked
             overlayState.voiceState = .idle
             overlayState.taskBubbleText = nil
-            showPanel()
+            showPanel(activate: false)
         }
     }
 

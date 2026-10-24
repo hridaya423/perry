@@ -325,27 +325,27 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "Cua Driver is not installed or could not be started."
+            return "Perry’s screen helper couldn’t start. Open Settings, then Models, to repair it."
         case .processExited:
-            return "Cua Driver exited before completing the request."
+            return "Perry’s screen helper stopped before it finished. Try again."
         case .protocolFailure(let detail):
-            return "Cua Driver protocol failure: \(detail)"
+            return "Perry’s screen helper sent an answer Perry couldn’t read: \(detail)"
         case .toolRejected(let detail):
-            return detail.isEmpty ? "Cua Driver refused the action." : detail
+            return detail.isEmpty ? "Perry’s screen helper refused that action." : detail
         case .noTargetWindow:
-            return "Cua Driver could not identify the target window."
+            return "Perry couldn’t tell which window to use. Click the window, then try again."
         case .noScreenshot:
-            return "Cua Driver returned no target-window screenshot."
+            return "Perry couldn’t capture that window. Check that Screen Recording is on for Perry."
         case .targetNotFound:
-            return "Cua Driver could not find the requested UI target."
+            return "Perry couldn’t find that control in the window anymore."
         case .targetSessionMismatch:
-            return "Cua Driver target belongs to a different session."
+            return "That control belongs to an older look at the screen. Perry needs to look again."
         case .protectedTarget:
             return "Perry refused to inspect or operate a sensitive window."
         case .unsupportedAction:
-            return "Cua Driver does not support this Perry action."
+            return "Perry can’t do that action in this window."
         case .terminationUnconfirmed:
-            return "Cua Driver could not confirm worker termination."
+            return "Perry couldn’t confirm that its screen helper stopped."
         case .targetMismatch:
             return "The target window changed since the plan was made, so Perry stopped instead of acting on the wrong window."
         }
