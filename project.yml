@@ -3,6 +3,8 @@ options:
   bundleIdPrefix: dev.perry
   deploymentTarget:
     macOS: "14.0"
+configFiles:
+  Debug: Config/Debug.xcconfig
 settings:
   base:
     ARCHS: arm64

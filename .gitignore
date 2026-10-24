@@ -11,3 +11,4 @@ App/Resources/CuaDriver/*
 !App/Resources/CuaDriver/capabilities.yaml
 .swiftpm/
 __pycache__/
+Config/*.local.xcconfig
