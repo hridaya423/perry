@@ -228,3 +228,26 @@ Each item is done only with a screenshot that was inspected, a green build, and 
     - onboarding enables the login item by default (disclosed in the finale; a product call).
 - Remaining (mine):
   - live-verify drag-drop attach (needs a real cross-app drag);
+
+## Perfect pass (2026-10-24)
+
+Source plan: `docs/audits/2026-10-24/` (voice-latency, providers, parity, ux). Decision log: `.audit/perry-perfect.tsv`.
+
+### Committed and verified (2026-10-24, after the hackathon pause lifted)
+
+Commits `c82e7f2`, `b03e882`, `69924d6`, `cd5af97`, `9be18f9`, `08b5163`, `9f52f1f`: fast-tier Talk, BYOK
+profiles, Talk latency, failure notices, the Perrys editor, post-action observation, notch UX and copy.
+
+Evidence: Debug build green. Package tests: PerryBrain 312, PerryCore 86, PerryGuide 270, PerryOverlay 27,
+PerryCapture 6, PerryRuntimes 114, all 0 failures. App tests 632, 0 failures, 6 skipped.
+Renders inspected (`build/notch-rebuild-evidence/`): perry-editor-new, perry-editor-existing, failure-notice,
+model-profiles, task-failed.
+
+### Not started
+
+- Agent backends: a `StdioAgentProcess`, an `AgentBackend` seam around `AgentLoop`, ACP (Perry tools only,
+  user-started registry fetch), Codex, Claude Code (stream-json), and an Agents settings pane. Then fix
+  `docs/capabilities.md:54-55` and `PRD.md:57-67`.
+- UX items: the panel on the screen under the pointer, the resize animation, a "Read more" chip, and the
+  follower render cost.
+- A live computer-use drill, a live Talk latency measurement, and a cross-model review of the diff.
