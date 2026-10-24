@@ -18,7 +18,9 @@ final class SessionPanelPresenter {
     var isVisible: Bool { panel?.isVisible == true && !hiding }
     var isKey: Bool { panel?.isKeyWindow == true }
     var screen: NSScreen?
+    var keyboardInitiated = false
     private var hiding = false
+    private var instant: Bool { keyboardInitiated || NSApp.currentEvent?.type == .keyDown }
 
     private static let curve = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
@@ -43,7 +45,7 @@ final class SessionPanelPresenter {
         } else {
             panel.orderFrontRegardless()
         }
-        if !wasVisible { morph(panel, growing: true) }
+        if !wasVisible, !instant { morph(panel, growing: true) }
         PerfMark.mark("panel.visible")
     }
 
@@ -115,12 +117,16 @@ final class SessionPanelPresenter {
 
     func hide() {
         guard let panel, isVisible else { return }
-        hiding = true
-        morph(panel, growing: false) { [weak self, weak panel] in
-            guard let self, self.hiding, let panel else { return }
-            self.hiding = false
+        if instant {
             panel.orderOut(nil)
-            panel.contentView?.layer?.mask = nil
+        } else {
+            hiding = true
+            morph(panel, growing: false) { [weak self, weak panel] in
+                guard let self, self.hiding, let panel else { return }
+                self.hiding = false
+                panel.orderOut(nil)
+                panel.contentView?.layer?.mask = nil
+            }
         }
         let ownPID = ProcessInfo.processInfo.processIdentifier
         if NSApp.isActive,

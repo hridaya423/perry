@@ -399,6 +399,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func toggleSession() {
         PerfMark.mark("invoke.keydown")
+        sessionPanel.keyboardInitiated = true
+        defer { sessionPanel.keyboardInitiated = false }
         if isIdle {
             wake()
         } else {
@@ -415,7 +417,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         probe.pinInvocationTarget()
         PerfMark.mark("wake.pinned")
         overlayState.voiceState = .idle
-        overlayState.taskBubbleText = "Circle a window with ⌥⌘ and drag, or type a request."
+        overlayState.taskBubbleText = nil
         overlayState.circleSelectSnappedRect = nil
         overlayState.circleSelectSnapLabel = nil
         overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)

@@ -658,6 +658,11 @@ final class HomeController {
         let request = PerryThread.WaitingInput(text: text)
         PerfMark.mark("home.question.sent")
         let saved = saveInput(request, to: threadID)
+        if !homeModel.threads.contains(where: { $0.id == threadID }) {
+            var thread = PerryThread(id: threadID)
+            thread.title = ThreadStore.derivedTitle(from: text)
+            homeModel.threads.insert(thread, at: 0)
+        }
         homeModel.sidebarSelection = .thread(threadID)
         return AcceptedInput(threadID: threadID, request: request, saved: saved)
     }

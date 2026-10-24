@@ -353,7 +353,7 @@ public actor ThreadStore {
     // MARK: - Internals
 
     /// First line of the question, trimmed to a sidebar-friendly length.
-    static func derivedTitle(from question: String) -> String {
+    public static func derivedTitle(from question: String) -> String {
         let line = question
             .components(separatedBy: .newlines).first?
             .trimmingCharacters(in: .whitespaces) ?? ""

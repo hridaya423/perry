@@ -133,6 +133,7 @@ struct NotchWorkspaceView: View {
             .padding(.horizontal, 8)
             .padding(.top, 12)
 
+            ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -231,6 +232,16 @@ struct NotchWorkspaceView: View {
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 10)
+            }
+            .mask {
+                VStack(spacing: 0) {
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 20)
+                }
+            }
+            .onChange(of: model.sidebarSelection) { _, selection in
+                if case .thread(let id) = selection { proxy.scrollTo(id) }
+            }
             }
             .background {
                 Button("Search conversations") { searchFocused = true }
@@ -477,7 +488,7 @@ struct NotchWorkspaceView: View {
         switch model.sidebarSelection {
         case .thread(let id):
             if let thread = model.threads.first(where: { $0.id == id }) {
-                HomeConversationView(thread: thread, model: model, composerAccessory: AnyView(targetButton))
+                HomeConversationView(thread: thread, model: model, focusComposer: true, composerAccessory: AnyView(targetButton))
                     .id(thread.id)
             } else {
                 pagePlaceholder("Pick a thread")
