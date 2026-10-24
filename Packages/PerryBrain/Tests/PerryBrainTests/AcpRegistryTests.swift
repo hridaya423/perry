@@ -73,6 +73,15 @@ final class AcpRegistryTests: XCTestCase {
         } catch let error as AcpInstallError {
             XCTAssertEqual(error, .missingCommand)
         }
+        for unsafe in ["../victim", "..", "a/b", ""] {
+            let bad = AcpRegistryEntry(id: unsafe, name: "Bad", version: "1", summary: "", distributions: [])
+            do {
+                _ = try await AcpRegistry.install(bad, archive: remote, sha256: sum, command: "./agent", arguments: [], environment: [:], into: root, session: session)
+                XCTFail("expected \(unsafe) to be refused")
+            } catch let error as AcpInstallError {
+                XCTAssertEqual(error, .unsafeName)
+            }
+        }
     }
 }
 

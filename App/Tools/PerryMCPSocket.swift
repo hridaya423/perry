@@ -16,6 +16,7 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
     private var stopping = false
     private var clients: [UUID: (fd: Int32, task: Task<Void, Never>)] = [:]
     private var scopes: [String: any MCPBridge] = [:]
+    private var scopeClients: [String: [Int32]] = [:]
 
     init(
         host: PerryToolHost, directory: URL,
@@ -100,7 +101,26 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
             scopes[token] = bridge
         }
         return MCPScope(socketPath: socketPath, token: token) { [weak self] in
-            self?.lock.withLock { self?.scopes[token] = nil }
+            guard let self else { return }
+            let clients = self.lock.withLock {
+                self.scopes[token] = nil
+                return self.scopeClients.removeValue(forKey: token) ?? []
+            }
+            for fd in clients { shutdown(fd, SHUT_RDWR) }
+        }
+    }
+
+    private func detach(_ fd: Int32) {
+        lock.withLock {
+            for key in scopeClients.keys { scopeClients[key]?.removeAll { $0 == fd } }
+        }
+    }
+
+    private func attach(_ fd: Int32, to token: String) -> Bool {
+        lock.withLock {
+            guard let key = scopes.keys.first(where: { SocketAuth.constantTimeEqual($0, token) }) else { return false }
+            scopeClients[key, default: []].append(fd)
+            return true
         }
     }
 
@@ -159,10 +179,12 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
                 var iterator = incoming.stream.makeAsyncIterator()
                 guard let hello = await iterator.next(),
                       let token = (try? JSONValue(parsing: Data(hello.utf8)))?["token"]?.stringValue else { return }
-                if let scoped = scopeBridge(for: token) {
+                if let scoped = scopeBridge(for: token), attach(fd, to: token) {
+                    defer { detach(fd) }
                     let server = MCPServer(bridge: scoped, version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
                     while let line = await iterator.next() {
-                        guard !Task.isCancelled, let response = await server.handle(line) else { continue }
+                        guard !Task.isCancelled, scopeBridge(for: token) != nil else { return }
+                        guard let response = await server.handle(line) else { continue }
                         do { try await Self.write(response, to: fd) } catch { return }
                     }
                     return

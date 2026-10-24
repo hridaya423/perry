@@ -375,7 +375,8 @@ final class CuaWorkerProcessTests: XCTestCase {
             XCTAssertTrue(retry.isError)
             let recovered = await host.handle(ToolCall(id: "recover", name: "screen.observe", arguments: .object(["windowTitle": .string("Fixture")])), context: context)
             XCTAssertFalse(recovered.isError)
-            XCTAssertNotNil(observations.resolveElement("e1", runID: context.runID))
+            XCTAssertNotNil(observations.resolveElement("v2e1", runID: context.runID))
+            XCTAssertNil(observations.resolveElement("e1", runID: context.runID), "an id from an earlier observation must not resolve against a newer one")
         }
     }
 
@@ -554,6 +555,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let called = try client.request(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"probe_echo","arguments":{}}}"#)
         XCTAssertEqual(called["result"]?["content"]?.arrayValue?.first?["text"]?.stringValue, "The secret word is pelican.")
         scope.close()
+        XCTAssertThrowsError(try client.request(#"{"jsonrpc":"2.0","id":4,"method":"tools/list"}"#), "an open connection must lose access when its turn ends")
         let refused = try MCPFixtureClient(directory: socketDirectory, token: scope.token)
         defer { refused.close() }
         XCTAssertThrowsError(try refused.request(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))

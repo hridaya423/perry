@@ -80,6 +80,9 @@ public enum AcpRegistry {
         _ entry: AcpRegistryEntry, archive: URL, sha256: String, command: String, arguments: [String],
         environment: [String: String], into root: URL, session: URLSession = .shared
     ) async throws -> AcpAgent {
+        guard isSafeComponent(entry.id), isSafeComponent(entry.version.isEmpty ? "current" : entry.version) else {
+            throw AcpInstallError.unsafeName
+        }
         let (downloaded, response) = try await session.download(for: URLRequest(url: archive, timeoutInterval: 120))
         defer { try? FileManager.default.removeItem(at: downloaded) }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -88,7 +91,8 @@ public enum AcpRegistry {
         let digest = SHA256.hash(data: try Data(contentsOf: downloaded, options: .mappedIfSafe)).map { String(format: "%02x", $0) }.joined()
         guard digest == sha256.lowercased() else { throw AcpInstallError.checksumMismatch }
 
-        let directory = root.appendingPathComponent(entry.id, isDirectory: true).appendingPathComponent(entry.version, isDirectory: true)
+        let directory = root.appendingPathComponent(entry.id, isDirectory: true)
+            .appendingPathComponent(entry.version.isEmpty ? "current" : entry.version, isDirectory: true)
         try? FileManager.default.removeItem(at: directory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let tar = Process()
@@ -98,10 +102,15 @@ public enum AcpRegistry {
         tar.waitUntilExit()
         guard tar.terminationStatus == 0 else { throw AcpInstallError.unpackFailed }
 
-        let executable = directory.appendingPathComponent(command).standardizedFileURL
-        guard executable.path.hasPrefix(directory.standardizedFileURL.path + "/"),
+        let executable = directory.appendingPathComponent(command).resolvingSymlinksInPath()
+        guard executable.path.hasPrefix(directory.resolvingSymlinksInPath().path + "/"),
               FileManager.default.isExecutableFile(atPath: executable.path) else { throw AcpInstallError.missingCommand }
         return AcpAgent(id: "registry.\(entry.id)", name: entry.name, command: executable.path, arguments: arguments, environment: environment)
+    }
+
+    static func isSafeComponent(_ value: String) -> Bool {
+        value != "." && value != ".." && !value.isEmpty
+            && value.range(of: "^[A-Za-z0-9._+-]+$", options: .regularExpression) != nil
     }
 
     private static func strings(_ value: JSONValue?) -> [String] {
@@ -114,13 +123,14 @@ public enum AcpRegistry {
 }
 
 public enum AcpInstallError: LocalizedError, Equatable {
-    case checksumMismatch, unpackFailed, missingCommand
+    case checksumMismatch, unpackFailed, missingCommand, unsafeName
 
     public var errorDescription: String? {
         switch self {
         case .checksumMismatch: "The download didn’t match the registry’s checksum, so Perry deleted it."
         case .unpackFailed: "Perry couldn’t unpack the agent."
         case .missingCommand: "The agent’s program wasn’t where the registry said."
+        case .unsafeName: "The registry entry has a name Perry can’t use as a folder."
         }
     }
 }
