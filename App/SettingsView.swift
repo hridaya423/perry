@@ -535,12 +535,14 @@ struct SettingsView: View {
                 BrainModelSettingsView(brain: controller.brain)
             }
             Section("Agents") {
-                Text(runtimeSettings.status.setup.summary)
-                    .font(PerryTheme.Typography.settingsStatus)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Agent status")
-                    .accessibilityValue(runtimeSettings.status.setup.summary)
+                if !runtimeSettings.status.setup.records.contains(where: { $0.status == runtimeSettings.status.setup.summary }) {
+                    Text(runtimeSettings.status.setup.summary)
+                        .font(PerryTheme.Typography.settingsStatus)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Agent status")
+                        .accessibilityValue(runtimeSettings.status.setup.summary)
+                }
                 ForEach(runtimeSettings.status.setup.records) { runtime in
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
                         HStack(spacing: PerryTheme.Spacing.inline) {

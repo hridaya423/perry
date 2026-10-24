@@ -16,6 +16,11 @@ import PerryRuntimes
 /// it.
 @MainActor
 final class BackgroundTaskController: ObservableObject {
+    static func undoGoal(for goal: String) -> String {
+        if goal.hasPrefix("Undo “"), goal.hasSuffix("”") { return String(goal.dropFirst(6).dropLast()) }
+        return "Undo “\(goal)”"
+    }
+
     struct Hooks {
         var setStatus: (String) -> Void = { _ in }
         var isErasureInProgress: () -> Bool = { false }
@@ -137,7 +142,7 @@ final class BackgroundTaskController: ObservableObject {
 #endif
                 let plan = try engine.inversePlan(
                     receipts: receipts,
-                    goal: "Undo “\(record.goal)”"
+                    goal: Self.undoGoal(for: record.goal)
                 )
 #if DEBUG
                 let journal = WorkspaceRunJournal(

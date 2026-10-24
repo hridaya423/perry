@@ -166,7 +166,6 @@ struct WaitingInputRecoveryView: View {
 
 struct HomeConnectionView: View {
     @ObservedObject var brain: BrainController
-    var onConnected: () -> Void = {}
     let openSettings: () -> Void
 
     var body: some View {
@@ -178,12 +177,16 @@ struct HomeConnectionView: View {
                     .font(.callout)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Button("Model settings", action: openSettings).buttonStyle(.borderless)
-            } else if case .signedIn = brain.account {
-                Label("Connected to ChatGPT", systemImage: "checkmark.circle")
-                    .font(.callout)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                Button("Continue", action: onConnected)
-                    .buttonStyle(InkButtonStyle())
+            } else if case .signedIn(let email, _) = brain.account {
+                HStack {
+                    Label(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", systemImage: "checkmark.circle")
+                        .font(.callout)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    Spacer()
+                    Button("Sign out") { Task { await brain.signOut() } }
+                        .buttonStyle(InkButtonStyle(.secondary))
+                        .controlSize(.small)
+                }
             } else {
                 Text("Connect your ChatGPT account")
                     .font(.headline)
@@ -192,9 +195,7 @@ struct HomeConnectionView: View {
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 HStack {
                     Button(brain.isSigningIn ? "Waiting for sign-in…" : "Connect ChatGPT") {
-                        brain.signInWithChatGPT { connected in
-                            if connected { onConnected() }
-                        }
+                        brain.signInWithChatGPT()
                     }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
@@ -215,9 +216,6 @@ struct HomeConnectionView: View {
                     .font(.callout)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
-        }
-        .onChange(of: brain.account) { _, account in
-            if brain.modelChoice == BrainController.ModelChoice.chatGPT.rawValue, case .signedIn = account { onConnected() }
         }
         .task {
             await brain.refresh()

@@ -309,7 +309,7 @@ struct FilesPage: View {
     }
 
     private var piles: [Pile] {
-        let all = roots.map { Pile(label: $0.lastPathComponent, root: $0) }
+        let all = roots.map { Pile(label: "Made by Perry", root: $0) }
             + perrys.compactMap { perry in
                 perry.folderPath.map {
                     Pile(label: perry.name, root: URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath))

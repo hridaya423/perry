@@ -565,10 +565,7 @@ final class AppSubsystems {
             },
             backgroundTasks: self.backgroundTasks,
             runtimes: self.runtimes,
-            fileRoots: (self.storageDirectory.map {
-                [$0.appendingPathComponent("PracticeSandbox", isDirectory: true),
-                 $0.appendingPathComponent("Files", isDirectory: true)]
-            } ?? [])
+            fileRoots: (self.storageDirectory.map { [$0.appendingPathComponent("workspace", isDirectory: true)] } ?? [])
         ))
         return controller
     }()
