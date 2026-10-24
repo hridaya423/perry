@@ -239,6 +239,13 @@ final class NotchSurfaceRenderTests: XCTestCase {
         XCTAssertFalse(text.contains("```"))
     }
 
+    func testAnswerSplitsFencedCodeIntoCopyableBlocks() {
+        let parts = ConversationAnswer.parts("Run this:\n\n```sh\nfind . -size +100M\n```\n\nThen check.")
+        XCTAssertEqual(parts.count, 3)
+        XCTAssertEqual(parts[1], .code("find . -size +100M"))
+        XCTAssertEqual(ConversationAnswer.parts("Streaming:\n```\nls -la").last, .code("ls -la"))
+    }
+
     func testAnswerLinksOnlyOpenTheWeb() {
         let answer = ConversationAnswer.format("[Invoice](file:///etc/hosts) and [Docs](https://example.com) and [App](x-apple.systempreferences:com.apple.preference)")
         XCTAssertEqual(answer.runs.compactMap(\.link), [URL(string: "https://example.com")!])

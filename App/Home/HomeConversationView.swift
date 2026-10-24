@@ -304,12 +304,53 @@ private struct ConversationScrollObservation: NSViewRepresentable {
 }
 
 struct ConversationAnswer: View {
+    enum Part: Equatable {
+        case text(AttributedString)
+        case code(String)
+    }
+
     let text: String
-    @State private var formatted = AttributedString()
+    @State private var parts: [Part] = []
 
     var body: some View {
-        Text(formatted)
-            .task(id: text) { formatted = Self.format(text) }
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(parts.indices, id: \.self) { index in
+                switch parts[index] {
+                case .text(let formatted): Text(formatted)
+                case .code(let code): CodeBlock(code: code)
+                }
+            }
+        }
+        .task(id: text) { parts = Self.parts(text) }
+    }
+
+    static func parts(_ source: String) -> [Part] {
+        var parts: [Part] = []
+        var prose: [Substring] = []
+        var code: [Substring]?
+        func flushProse() {
+            let joined = prose.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !joined.isEmpty { parts.append(.text(format(joined))) }
+            prose = []
+        }
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                if let open = code {
+                    parts.append(.code(open.joined(separator: "\n")))
+                    code = nil
+                } else {
+                    flushProse()
+                    code = []
+                }
+            } else if code != nil {
+                code?.append(line)
+            } else {
+                prose.append(line)
+            }
+        }
+        if let open = code { parts.append(.code(open.joined(separator: "\n"))) }
+        flushProse()
+        return parts
     }
 
     static func format(_ source: String) -> AttributedString {
@@ -353,6 +394,10 @@ struct ConversationAnswer: View {
                 }
                 previousBlock = block
             }
+            if run.inlinePresentationIntent?.contains(.code) == true {
+                fragment.font = .system(.body, design: .monospaced)
+                fragment.backgroundColor = Color.white.opacity(0.08)
+            }
             if let kind = components.first?.kind {
                 switch kind {
                 case .header(let level):
@@ -366,5 +411,42 @@ struct ConversationAnswer: View {
             output += fragment
         }
         return output
+    }
+}
+
+private struct CodeBlock: View {
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(code)
+                .font(.system(size: 13, design: .monospaced))
+                .lineSpacing(2)
+                .fixedSize()
+                .padding(.vertical, 12)
+                .padding(.leading, 14)
+                .padding(.trailing, 72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(code, forType: .string)
+                copied = true
+            } label: {
+                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    .font(.caption)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+            .task(id: copied) {
+                guard copied else { return }
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+        }
     }
 }

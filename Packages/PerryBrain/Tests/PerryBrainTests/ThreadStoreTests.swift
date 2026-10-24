@@ -276,7 +276,11 @@ final class ThreadStoreTests: XCTestCase {
         let q = "  what does this do?\nsecond line  "
         XCTAssertEqual(ThreadStore.derivedTitle(from: q), "what does this do?")
         let long = String(repeating: "x", count: 100)
-        XCTAssertEqual(ThreadStore.derivedTitle(from: long).count, 60)
+        XCTAssertEqual(ThreadStore.derivedTitle(from: long), String(repeating: "x", count: 60) + "…")
+        XCTAssertEqual(
+            ThreadStore.derivedTitle(from: "Give me three short tips for naming files, as a list, and one line of shell"),
+            "Give me three short tips for naming files, as a list, and…"
+        )
     }
 
     func testFailedWriteDoesNotPublishAnUnsavedTurn() async throws {

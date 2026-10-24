@@ -357,7 +357,10 @@ public actor ThreadStore {
         let line = question
             .components(separatedBy: .newlines).first?
             .trimmingCharacters(in: .whitespaces) ?? ""
-        return String(line.prefix(60))
+        guard line.count > 60 else { return line }
+        let cut = line.prefix(60)
+        let words = cut.lastIndex(of: " ").map { cut[..<$0] } ?? cut
+        return words.trimmingCharacters(in: .punctuationCharacters.union(.whitespaces)) + "…"
     }
 
     private func loadAll() {
