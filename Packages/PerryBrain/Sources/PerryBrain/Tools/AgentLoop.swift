@@ -34,6 +34,8 @@ public actor AgentLoop {
     private var pauseRequested = false
     private var loopTask: Task<Void, Never>?
     private var toolCallCount = 0
+    private var answerTail: Character?
+    private var toolCallsAtLastText = 0
 
     public init(provider: any ModelProvider, host: PerryToolHost, budgets: Budgets = .init()) {
         self.provider = provider
@@ -99,6 +101,8 @@ public actor AgentLoop {
         var messages = messages
         let deadline = Date().addingTimeInterval(budgets.wallClock)
         toolCallCount = 0
+        answerTail = nil
+        toolCallsAtLastText = 0
         let base = request(system: system, messages: messages, context: context, tier: tier)
         let tools = base.tools
         let system = base.system
@@ -156,7 +160,9 @@ public actor AgentLoop {
                 for try await event in stream {
                     if Task.isCancelled { finish(.interrupted); return }
                     switch event {
-                    case .textDelta(let delta): text += delta; sink.yield(.textDelta(delta))
+                    case .textDelta(let delta):
+                        text += delta
+                        sink.yield(.textDelta(separated(delta)))
                     case .toolCall(let call):
                         if !(provider is any ToolExecutingModelProvider) { calls.append(call) }
                     case .done(.cancelled): finish(.interrupted); return
@@ -305,6 +311,14 @@ public actor AgentLoop {
 
     /// User-facing failure text — a rate limit names its reset time so the
     /// voice line and status card both carry it, not a bare "429".
+    private func separated(_ delta: String) -> String {
+        guard let first = delta.first, let last = delta.last else { return delta }
+        let afterTool = toolCallCount > toolCallsAtLastText && answerTail.map { !$0.isNewline } == true && !first.isNewline
+        toolCallsAtLastText = toolCallCount
+        answerTail = last
+        return afterTool ? "\n\n" + delta : delta
+    }
+
     public static func describe(_ error: ModelProviderError) -> String {
         let name = error.provider.displayName
         switch error.kind {

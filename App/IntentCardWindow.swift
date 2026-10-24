@@ -89,8 +89,11 @@ struct IntentCardView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if !card.targetSummary.isEmpty || card.reversible != nil {
             VStack(alignment: .leading, spacing: 4) {
-                labeledRow("Target", value: card.targetSummary)
+                if !card.targetSummary.isEmpty {
+                    labeledRow("Target", value: card.targetSummary)
+                }
                 if let reversible = card.reversible {
                     labeledRow(
                         "Reversible",
@@ -100,6 +103,7 @@ struct IntentCardView: View {
                 }
             }
             .accessibilityElement(children: .contain)
+            }
 
             if let detail = card.detail, !detail.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {

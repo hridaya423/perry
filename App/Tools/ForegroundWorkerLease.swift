@@ -1,3 +1,5 @@
+import ApplicationServices
+import CoreGraphics
 import Foundation
 import PerryRuntimes
 
@@ -39,9 +41,34 @@ func withCuaWorker<Value: Sendable>(
     _ body: @escaping @Sendable (CuaWorkerHandle) async throws -> Value
 ) async throws -> Value {
     try Task.checkCancellation()
+    let explained: @Sendable (CuaWorkerHandle) async throws -> Value = { worker in
+        do {
+            return try await body(worker)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw ComputerUseAccessError.missing() ?? error
+        }
+    }
     if let lent = lease?.worker(for: runID) {
         try await lent.claimResources(resources)
-        return try await body(lent)
+        return try await explained(lent)
     }
-    return try await workers.withWorker(scope: .background, resources: resources, operation: body)
+    return try await workers.withWorker(scope: .background, resources: resources, operation: explained)
+}
+
+struct ComputerUseAccessError: LocalizedError {
+    let missing: [String]
+
+    static func missing() -> ComputerUseAccessError? {
+        var missing: [String] = []
+        if !AXIsProcessTrusted() { missing.append("Accessibility") }
+        if !CGPreflightScreenCaptureAccess() { missing.append("Screen Recording") }
+        return missing.isEmpty ? nil : ComputerUseAccessError(missing: missing)
+    }
+
+    var errorDescription: String? {
+        "Perry can’t see or use other apps because \(missing.joined(separator: " and ")) is off for Perry. "
+            + "Tell the user to turn it on in Settings › General › Permissions, then try again."
+    }
 }

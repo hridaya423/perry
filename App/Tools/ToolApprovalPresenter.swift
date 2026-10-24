@@ -37,13 +37,13 @@ enum ToolApprovalPresenter {
         return await withTaskCancellationHandler {
             guard !Task.isCancelled else { return .denied }
             return await withCheckedContinuation { continuation in
-                let summary = targetSummary(call)
+                let target = targetValue(call)
                 let card = IntentCard(
-                    title: "Perry wants to run \(spec.name)",
-                    detail: spec.description,
+                    title: headline(call, target: target),
                     tier: spec.tier,
-                    targetSummary: summary,
-                    requiredPhrase: spec.tier >= .red ? summary : nil
+                    targetSummary: "",
+                    requiredPhrase: spec.tier >= .red ? (target ?? call.name) : nil,
+                    approveLabel: "Allow"
                 )
                 let window = IntentCardWindow(
                     card: card,
@@ -69,16 +69,42 @@ enum ToolApprovalPresenter {
         }
     }
 
-    /// Short, non-secret target text for the card — only well-known locator
-    /// keys, never raw free-text arguments (those may carry typed content).
-    private static func targetSummary(_ call: ToolCall) -> String {
-        let args = call.arguments.objectValue ?? [:]
-        for key in ["elementID", "label", "bundleID", "path", "direction", "key", "name", "accountID"] {
-            if let value = args[key]?.stringValue, !value.isEmpty {
-                return "\(call.name): \(value)"
-            }
+    static func headline(_ call: ToolCall, target: String?) -> String {
+        let file = target.map { URL(fileURLWithPath: $0).lastPathComponent }
+        switch call.name {
+        case "app.launch": return "Open \(target ?? "this app")?"
+        case "ui.click": return target.map { "Click “\($0)”?" } ?? "Click here?"
+        case "ui.doubleclick": return target.map { "Double-click “\($0)”?" } ?? "Double-click here?"
+        case "ui.rightclick": return target.map { "Right-click “\($0)”?" } ?? "Right-click here?"
+        case "ui.type": return "Type into this field?"
+        case "ui.key": return target.map { "Press \($0)?" } ?? "Press a key?"
+        case "ui.hotkey": return "Press a keyboard shortcut?"
+        case "ui.drag": return "Drag here?"
+        case "ui.scroll": return "Scroll this window?"
+        case "files.write": return "Create \(file ?? "a file")?"
+        case "files.overwrite": return "Replace \(file ?? "this file")?"
+        case "files.move": return "Move \(file ?? "this file")?"
+        case "files.trash": return "Move \(file ?? "this file") to the Trash?"
+        case "files.mkdir": return file.map { "Create the folder \($0)?" } ?? "Create a folder?"
+        case "memory.write": return "Remember this?"
+        case "perry.createPerry": return "Make a new Perry?"
+        case "perry.schedule": return "Schedule this?"
+        case "integrations.write": return "Make a change in a connected app?"
+        default:
+            let parts = call.name.split(separator: ".")
+            if parts.first == "mcp", parts.count >= 3 { return "Use \(parts[1])’s \(parts[2...].joined(separator: "."))?" }
+            return "Allow \(call.name)?"
         }
-        return call.name
+    }
+
+    /// Short, non-secret target text — only well-known locator keys, never
+    /// raw free-text arguments (those may carry typed content).
+    private static func targetValue(_ call: ToolCall) -> String? {
+        let args = call.arguments.objectValue ?? [:]
+        for key in ["label", "name", "bundleID", "path", "key", "direction", "accountID"] {
+            if let value = args[key]?.stringValue, !value.isEmpty { return value }
+        }
+        return nil
     }
 }
 

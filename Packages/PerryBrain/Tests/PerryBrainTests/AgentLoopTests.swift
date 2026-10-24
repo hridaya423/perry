@@ -131,6 +131,17 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertTrue(second.contains(.toolResult(callID: "t1", content: [.text("ok")], isError: false)))
     }
 
+    func testTextAfterAToolCallStartsANewParagraph() async {
+        let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
+        let (loop, _, _, _) = makeLoop([
+            [.textDelta("Clicking."), .toolCall(call), .done(.toolUse)],
+            [.textDelta("Done."), .done(.endTurn)],
+        ])
+        let events = await collect(loop.run(system: "s", messages: [.user([.text("go")])], context: context))
+        let shown = events.compactMap { if case .textDelta(let d) = $0 { return d }; return nil }.joined()
+        XCTAssertEqual(shown, "Clicking.\n\nDone.")
+    }
+
     func testSteerInjectedAtBoundary() async {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
         let provider = ScriptedProvider(responses: [
