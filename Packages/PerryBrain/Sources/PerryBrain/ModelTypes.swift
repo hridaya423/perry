@@ -31,12 +31,14 @@ extension ProviderID {
     public static let openRouter: ProviderID = "openrouter"
     public static let local: ProviderID = "local"
     public static let apple: ProviderID = "apple"
+    public static let claudeCode: ProviderID = "claude-code"
 
     public var displayName: String {
         switch self {
         case .codex: "ChatGPT"
         case .local: "Your local model"
         case .apple: "Apple Intelligence"
+        case .claudeCode: "Claude Code"
         default: ProviderPreset.preset(id: rawValue)?.name ?? rawValue
         }
     }

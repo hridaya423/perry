@@ -9,11 +9,12 @@ import PerryRuntimes
 @MainActor
 final class BrainController: ObservableObject {
     enum ModelChoice: String, CaseIterable {
-        case chatGPT, direct, local
+        case chatGPT, claudeCode, direct, local
 
         var title: String {
             switch self {
             case .chatGPT: "ChatGPT"
+            case .claudeCode: "Claude Code"
             case .direct: "My API provider"
             case .local: "On this Mac"
             }
@@ -49,6 +50,8 @@ final class BrainController: ObservableObject {
     private let openAuthenticationURL: (URL) -> Bool
     private let codexFactory: () -> CodexAppServerProvider?
     private lazy var codex: CodexAppServerProvider? = codexFactory()
+    var toolScopes: (any MCPScopeHost)?
+    private lazy var claudeCode: ClaudeCodeProvider? = Self.makeClaudeCodeProvider(scopes: toolScopes)
     private var acceptsSetup = true
     private var setupGeneration = UUID()
     private var loginCleanupTask: Task<Void, Never>?
@@ -103,6 +106,8 @@ final class BrainController: ObservableObject {
         self.selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
         reloadProfiles()
     }
+
+    var claudeCodeAvailable: Bool { claudeCode != nil }
 
     var activeProfile: ModelProfile? {
         profiles.first { $0.id == activeProfileID } ?? profiles.first
@@ -330,6 +335,11 @@ final class BrainController: ObservableObject {
         switch choice {
         case .chatGPT:
             requirement.providerID = .codex
+        case .claudeCode:
+            guard claudeCode != nil else {
+                throw ModelProviderError(kind: .notConfigured, provider: .claudeCode, message: "Install Claude Code and sign in with `claude`, then choose it again in Settings.")
+            }
+            requirement.providerID = .claudeCode
         case .direct:
             guard let profile = activeProfile else {
                 throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Add your API provider, model, and credential in Settings.")
@@ -521,6 +531,7 @@ final class BrainController: ObservableObject {
     private func providers(_ configuration: RoutingConfiguration) -> [any ModelProvider] {
         var result: [any ModelProvider] = []
         if let codex { result.append(codex) }
+        if let claudeCode { result.append(claudeCode) }
         if let profile = configuration.profile {
             let key = configuration.profileKey?.trimmingCharacters(in: .whitespacesAndNewlines)
             if !profile.preset.keyRequired || key?.isEmpty == false {
@@ -547,6 +558,15 @@ final class BrainController: ObservableObject {
             models: BrainModelDefaults(fast: model.name, deep: model.name),
             capabilities: capabilities, transport: transport,
             contextWindow: { _ in try await LocalServerDiscovery(timeout: 2).loadedContextWindow(for: model) }
+        )
+    }
+
+    private static func makeClaudeCodeProvider(scopes: (any MCPScopeHost)?) -> ClaudeCodeProvider? {
+        guard let executable = try? CLIRuntime.locateExecutable() else { return nil }
+        return ClaudeCodeProvider(
+            executable: executable,
+            helper: Bundle.main.url(forAuxiliaryExecutable: "perry-mcp"),
+            scopes: scopes
         )
     }
 

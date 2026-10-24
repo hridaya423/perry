@@ -9,6 +9,7 @@ SIGNER = Path(__file__).with_name("sign-distribution.sh")
 CAPABILITIES_PATH = "Contents/Resources/CuaDriver/capabilities.yaml"
 REQUIRED_CODE_PATHS = (
     "Contents/MacOS/Perry",
+    "Contents/MacOS/perry-mcp",
     "Contents/Resources/CodexRuntime/bin/codex",
     "Contents/Resources/CuaDriver/bin/cua-driver",
     "Contents/Frameworks/Sparkle.framework",
@@ -24,6 +25,7 @@ REQUIRED_CODE_PATHS = (
 SIGN_ORDER = (
     "Contents/Resources/CodexRuntime/bin/codex",
     "Contents/Resources/CuaDriver/bin/cua-driver",
+    "Contents/MacOS/perry-mcp",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Installer.xpc",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate",
@@ -108,8 +110,8 @@ class DistributionSigningTests(unittest.TestCase):
             sign_index = call.index("--sign")
             self.assertEqual(call[sign_index + 1], "TEST IDENTITY")
             self.assertNotIn("--deep", call)
-        self.assertIn("--preserve-metadata=entitlements", calls[3])
-        self.assertTrue(all("--preserve-metadata=entitlements" not in call for call in calls[:3] + calls[4:-1]))
+        self.assertIn("--preserve-metadata=entitlements", calls[4])
+        self.assertTrue(all("--preserve-metadata=entitlements" not in call for call in calls[:4] + calls[5:-1]))
         self.assertIn("--entitlements", calls[-1])
         self.assertEqual(calls[-1][calls[-1].index("--entitlements") + 1], str(self.entitlements))
         self.assertTrue(all("--entitlements" not in call for call in calls[:-1]))

@@ -18,6 +18,7 @@ xcrun --sdk macosx clang -arch x86_64 "${TMP}/main.c" -o "${TMP}/x86_64"
 cp "${TMP}/arm64" "${APP}/Contents/MacOS/Perry"
 cp "${TMP}/arm64" "${RESOURCES}/CodexRuntime/bin/codex"
 cp "${TMP}/arm64" "${RESOURCES}/CuaDriver/bin/cua-driver"
+cp "${TMP}/arm64" "${APP}/Contents/MacOS/perry-mcp"
 for cue in wake send receive done fail
 do
   : > "${RESOURCES}/Sounds/${cue}.caf"

@@ -1,4 +1,20 @@
 import Foundation
+import PerryBrain
+
+final class MCPScopeRelay: MCPScopeHost, @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var current: PerryMCPSocket?
+
+    var socket: PerryMCPSocket? {
+        get { lock.withLock { current } }
+        set { lock.withLock { current = newValue } }
+    }
+
+    func openScope(_ bridge: any MCPBridge) throws -> MCPScope {
+        guard let socket else { throw POSIXError(.ENOTCONN) }
+        return try socket.openScope(bridge)
+    }
+}
 
 /// Perry's MCP socket across the app's lifetime: a delayed start after
 /// launch, closed admission while maintenance owns the app, a restart when
@@ -8,14 +24,17 @@ final class MCPSocketLifecycle {
     private let makeSocket: (URL) -> PerryMCPSocket
     private let mayStart: () -> Bool
     private let reportFailure: (String) -> Void
+    private let scopes: MCPScopeRelay
     private var socket: PerryMCPSocket?
     private var startup: Task<Void, Never>?
 
     init(
         makeSocket: @escaping (URL) -> PerryMCPSocket,
         mayStart: @escaping () -> Bool,
-        reportFailure: @escaping (String) -> Void
+        reportFailure: @escaping (String) -> Void,
+        scopes: MCPScopeRelay = MCPScopeRelay()
     ) {
+        self.scopes = scopes
         self.makeSocket = makeSocket
         self.mayStart = mayStart
         self.reportFailure = reportFailure
@@ -30,6 +49,7 @@ final class MCPSocketLifecycle {
                 let socket = self.makeSocket(directory)
                 try socket.start()
                 self.socket = socket
+                self.scopes.socket = socket
             } catch is CancellationError {
             } catch {
                 self?.reportFailure("Perry could not start its tool connection: \(error.localizedDescription)")
@@ -72,5 +92,6 @@ final class MCPSocketLifecycle {
         startup = nil
         await socket?.stop()
         socket = nil
+        scopes.socket = nil
     }
 }

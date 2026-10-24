@@ -160,6 +160,10 @@ public enum SocketAuth {
         guard let stored = try? String(contentsOf: directory.appendingPathComponent(tokenFileName),
                                      encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
               !stored.isEmpty else { return false }
+        return constantTimeEqual(presented, stored)
+    }
+
+    public static func constantTimeEqual(_ presented: String, _ stored: String) -> Bool {
         let a = Array(presented.utf8), b = Array(stored.utf8)
         guard a.count == b.count else { return false }
         return zip(a, b).reduce(0) { $0 | ($1.0 ^ $1.1) } == 0

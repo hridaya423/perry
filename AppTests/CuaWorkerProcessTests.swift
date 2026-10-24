@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import XCTest
 import PerryBrain
+import PerryRuntimes
 @testable import Perry
 
 final class CuaWorkerProcessTests: XCTestCase {
@@ -534,6 +535,63 @@ final class CuaWorkerProcessTests: XCTestCase {
         let stoppedResult = await XCTWaiter.fulfillment(of: [stopped], timeout: 2)
         XCTAssertEqual(stoppedResult, .completed)
     }
+
+    func testScopedTokenServesOnlyItsTurnToolsUntilClosed() async throws {
+        let (service, _) = try makeFixture(sharedTarget: true)
+        let socketDirectory = URL(fileURLWithPath: "/tmp/perry-mcp-\(UUID())")
+        let lease = ForegroundWorkerLease()
+        let server = PerryMCPSocket(host: PerryToolHost(executors: []), directory: socketDirectory, workers: service, workerLease: lease)
+        try server.start()
+        addTeardownBlock {
+            await server.stop()
+            try TestTempDirectory.remove(socketDirectory)
+        }
+        let scope = try server.openScope(EchoBridge())
+        let client = try MCPFixtureClient(directory: socketDirectory, token: scope.token)
+        defer { client.close() }
+        let listed = try client.request(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+        XCTAssertEqual(listed["result"]?["tools"]?.arrayValue?.compactMap { $0["name"]?.stringValue }, ["probe_echo"])
+        let called = try client.request(#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"probe_echo","arguments":{}}}"#)
+        XCTAssertEqual(called["result"]?["content"]?.arrayValue?.first?["text"]?.stringValue, "The secret word is pelican.")
+        scope.close()
+        let refused = try MCPFixtureClient(directory: socketDirectory, token: scope.token)
+        defer { refused.close() }
+        XCTAssertThrowsError(try refused.request(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))
+    }
+
+    func testClaudeCodeCallsAPerryToolThroughTheEmbeddedHelper() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PERRY_LIVE_CLAUDE"] == "1", "Set PERRY_LIVE_CLAUDE=1 to run against the installed Claude Code.")
+        let (service, _) = try makeFixture(sharedTarget: true)
+        let socketDirectory = URL(fileURLWithPath: "/tmp/perry-mcp-\(UUID())")
+        let server = PerryMCPSocket(host: PerryToolHost(executors: []), directory: socketDirectory, workers: service, workerLease: ForegroundWorkerLease())
+        try server.start()
+        addTeardownBlock {
+            await server.stop()
+            try TestTempDirectory.remove(socketDirectory)
+        }
+        let provider = ClaudeCodeProvider(
+            executable: try CLIRuntime.locateExecutable(),
+            helper: try XCTUnwrap(Bundle.main.url(forAuxiliaryExecutable: "perry-mcp")),
+            scopes: server,
+            models: BrainModelDefaults(fast: "claude-haiku-5-5", deep: "claude-haiku-5-5")
+        )
+        let calls = ToolNames()
+        let request = ModelRequest(
+            system: "Use tools when asked.",
+            messages: [.user([.text("Call the probe.echo tool, then reply with only the secret word it gives you.")])],
+            tools: [EchoBridge.spec]
+        )
+        var text = ""
+        for try await event in provider.stream(request, executeTool: { call in
+            await calls.record(call.name)
+            return ToolResult(callID: call.id, content: [.text("The secret word is pelican.")])
+        }) {
+            if case .textDelta(let delta) = event { text += delta }
+        }
+        let names = await calls.values
+        XCTAssertEqual(names, ["probe.echo"])
+        XCTAssertTrue(text.lowercased().contains("pelican"), text)
+    }
 }
 
 private actor WorkerCaptures {
@@ -684,4 +742,21 @@ private struct MCPImageExecutor: ToolExecutor {
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         ToolResult(callID: call.id, content: [.image(data: payload, mimeType: "image/png")])
     }
+}
+
+private struct EchoBridge: MCPBridge {
+    static let spec = ToolSpec(name: "probe.echo", description: "Returns a secret word.", inputSchema: .object(["type": .string("object"), "properties": .object([:])]), readOnly: true)
+
+    func tools() async throws -> [ToolSpec] {
+        [ToolSpec(name: "probe_echo", description: Self.spec.description, inputSchema: Self.spec.inputSchema, readOnly: true)]
+    }
+
+    func call(name: String, arguments: JSONValue) async throws -> ToolResult {
+        ToolResult(callID: UUID().uuidString, content: [.text("The secret word is pelican.")])
+    }
+}
+
+private actor ToolNames {
+    var values: [String] = []
+    func record(_ name: String) { values.append(name) }
 }

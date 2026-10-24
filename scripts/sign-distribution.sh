@@ -37,6 +37,7 @@ APP_BUNDLE_PATH="$(CDPATH= cd -- "${APP_PATH}" && pwd -P)" || die "Perry.app pat
 MAIN_EXECUTABLE="${APP_PATH}/Contents/MacOS/Perry"
 CODEX_EXECUTABLE="${APP_PATH}/Contents/Resources/CodexRuntime/bin/codex"
 CUA_EXECUTABLE="${APP_PATH}/Contents/Resources/CuaDriver/bin/cua-driver"
+MCP_EXECUTABLE="${APP_PATH}/Contents/MacOS/perry-mcp"
 CUA_CAPABILITIES="${APP_BUNDLE_PATH}/Contents/Resources/CuaDriver/capabilities.yaml"
 SPARKLE_FRAMEWORK="${APP_PATH}/Contents/Frameworks/Sparkle.framework"
 SPARKLE_EXECUTABLE="${SPARKLE_FRAMEWORK}/Versions/Current/Sparkle"
@@ -63,6 +64,7 @@ for target in \
   "${MAIN_EXECUTABLE}" \
   "${CODEX_EXECUTABLE}" \
   "${CUA_EXECUTABLE}" \
+  "${MCP_EXECUTABLE}" \
   "${SPARKLE_FRAMEWORK}" \
   "${SPARKLE_EXECUTABLE}" \
   "${AUTOUPDATE}" \
@@ -84,6 +86,7 @@ sign_code() {
 
 sign_code "${CODEX_EXECUTABLE}"
 sign_code "${CUA_EXECUTABLE}"
+sign_code "${MCP_EXECUTABLE}"
 sign_code "${INSTALLER_XPC}"
 sign_code "${DOWNLOADER_XPC}" --preserve-metadata=entitlements
 sign_code "${AUTOUPDATE}"

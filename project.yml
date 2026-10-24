@@ -53,6 +53,10 @@ targets:
       - package: PerryGuide
       - package: PerryBrain
         product: PerryBrain
+      - target: perry-mcp
+        embed: true
+        copy:
+          destination: executables
     preBuildScripts:
       - path: scripts/fetch-codex-runtime.sh
         name: FetchCodexRuntime
@@ -76,6 +80,19 @@ targets:
           - CFBundleURLName: "dev.perry.oauth"
             CFBundleURLSchemes:
               - dev.perry.perry
+  perry-mcp:
+    type: tool
+    platform: macOS
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: ""
+        PRODUCT_NAME: perry-mcp
+        PRODUCT_BUNDLE_IDENTIFIER: dev.perry.perry-mcp
+    sources:
+      - path: Packages/PerryBrain/Sources/perry-mcp
+    dependencies:
+      - package: PerryBrain
+        product: PerryBrain
   PerryTests:
     type: bundle.unit-test
     platform: macOS

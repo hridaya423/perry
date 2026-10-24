@@ -18,6 +18,15 @@ struct BrainModelSettingsView: View {
             HomeConnectionView(brain: brain, openSettings: {
                 brain.modelChoice = BrainController.ModelChoice.direct.rawValue
             })
+        case .claudeCode:
+            if brain.claudeCodeAvailable {
+                Text("Perry runs Claude Code with your Claude sign-in. Claude Code can use only Perry’s tools, under the same approval rules as every other model.")
+                    .font(.callout)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            } else {
+                Label("Claude Code is not installed. Install it, sign in with `claude`, then reopen Settings.", systemImage: "exclamationmark.circle")
+                    .font(.callout)
+            }
         case .direct:
             ModelProfilesSection(brain: brain)
         case .local:

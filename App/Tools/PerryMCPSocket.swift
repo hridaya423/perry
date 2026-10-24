@@ -2,7 +2,7 @@ import Foundation
 import PerryBrain
 import Security
 
-final class PerryMCPSocket: @unchecked Sendable {
+final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
     private let host: PerryToolHost
     private let directory: URL
     private let toolConsent: ToolConsentStore
@@ -15,6 +15,7 @@ final class PerryMCPSocket: @unchecked Sendable {
     private var listenerSource: DispatchSourceRead?
     private var stopping = false
     private var clients: [UUID: (fd: Int32, task: Task<Void, Never>)] = [:]
+    private var scopes: [String: any MCPBridge] = [:]
 
     init(
         host: PerryToolHost, directory: URL,
@@ -92,6 +93,23 @@ final class PerryMCPSocket: @unchecked Sendable {
         }
     }
 
+    func openScope(_ bridge: any MCPBridge) throws -> MCPScope {
+        let token = (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+        try lock.withLock {
+            guard listenerFD >= 0, !stopping else { throw POSIXError(.ENOTCONN) }
+            scopes[token] = bridge
+        }
+        return MCPScope(socketPath: socketPath, token: token) { [weak self] in
+            self?.lock.withLock { self?.scopes[token] = nil }
+        }
+    }
+
+    private func scopeBridge(for token: String) -> (any MCPBridge)? {
+        lock.withLock {
+            scopes.first { SocketAuth.constantTimeEqual($0.key, token) }?.value
+        }
+    }
+
     func closeAdmission() {
         lock.withLock {
             stopping = true
@@ -140,8 +158,16 @@ final class PerryMCPSocket: @unchecked Sendable {
                 }
                 var iterator = incoming.stream.makeAsyncIterator()
                 guard let hello = await iterator.next(),
-                      let token = (try? JSONValue(parsing: Data(hello.utf8)))?["token"]?.stringValue,
-                      SocketAuth.authorize(token, in: directory) else { return }
+                      let token = (try? JSONValue(parsing: Data(hello.utf8)))?["token"]?.stringValue else { return }
+                if let scoped = scopeBridge(for: token) {
+                    let server = MCPServer(bridge: scoped, version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
+                    while let line = await iterator.next() {
+                        guard !Task.isCancelled, let response = await server.handle(line) else { continue }
+                        do { try await Self.write(response, to: fd) } catch { return }
+                    }
+                    return
+                }
+                guard SocketAuth.authorize(token, in: directory) else { return }
                 let bridge = AppMCPBridge(runID: id, host: host, approve: { [toolConsent] call, spec in
                     await ToolApprovalPresenter.present(call: call, spec: spec, consentStore: toolConsent)
                 })

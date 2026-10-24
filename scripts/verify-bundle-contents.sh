@@ -30,6 +30,7 @@ RESOURCES="${APP_PATH}/Contents/Resources"
 MAIN_EXECUTABLE="${APP_PATH}/Contents/MacOS/Perry"
 CODEX_EXECUTABLE="${RESOURCES}/CodexRuntime/bin/codex"
 CUA_EXECUTABLE="${RESOURCES}/CuaDriver/bin/cua-driver"
+MCP_EXECUTABLE="${APP_PATH}/Contents/MacOS/perry-mcp"
 
 for cue in wake send receive done fail
 do
@@ -46,8 +47,10 @@ app_kib="$(du -sk "${APP_PATH}" | awk '{print $1}')"
 require_size_at_most 16777216 "${MAIN_EXECUTABLE}"
 require_size_at_most 262144000 "${CODEX_EXECUTABLE}"
 require_size_at_most 83886080 "${CUA_EXECUTABLE}"
+require_size_at_most 16777216 "${MCP_EXECUTABLE}"
 require_arm64_only "${MAIN_EXECUTABLE}"
 require_arm64_only "${CODEX_EXECUTABLE}"
 require_arm64_only "${CUA_EXECUTABLE}"
+require_arm64_only "${MCP_EXECUTABLE}"
 
 echo "verified Perry bundle contents and size budgets"

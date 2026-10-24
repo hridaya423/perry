@@ -20,7 +20,10 @@ final class AppSubsystems {
 
     init(app: AppController) {
         self.app = app
+        brain.toolScopes = toolScopes
     }
+
+    let toolScopes = MCPScopeRelay()
 
     let overlayState = PerryCursorState()
 
@@ -92,7 +95,8 @@ final class AppSubsystems {
             PerryMCPSocket(host: self.toolHost, directory: directory, workers: self.workers, workerLease: self.foregroundWorkerLease)
         },
         mayStart: { [unowned app = app] in app.maintenance.isIdle },
-        reportFailure: { [unowned app = app] in app.sessionStatus = $0 }
+        reportFailure: { [unowned app = app] in app.sessionStatus = $0 },
+        scopes: self.toolScopes
     )
 
     lazy var overlaySampleLog: PerformanceSampleLog? = {
