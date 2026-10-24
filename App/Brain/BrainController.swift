@@ -9,12 +9,13 @@ import PerryRuntimes
 @MainActor
 final class BrainController: ObservableObject {
     enum ModelChoice: String, CaseIterable {
-        case chatGPT, claudeCode, direct, local
+        case chatGPT, claudeCode, acp, direct, local
 
         var title: String {
             switch self {
             case .chatGPT: "ChatGPT"
             case .claudeCode: "Claude Code"
+            case .acp: "Another agent (ACP)"
             case .direct: "My API provider"
             case .local: "On this Mac"
             }
@@ -39,6 +40,7 @@ final class BrainController: ObservableObject {
     @Published private(set) var profiles: [ModelProfile] = []
     @Published private(set) var activeProfileID: String?
     @Published private(set) var profileChecks: [String: ProfileCheckState] = [:]
+    @Published private(set) var acpAgent: AcpAgent?
 
     private let readCredential: (String) throws -> String?
     private let saveCredential: (String, String) throws -> Void
@@ -78,6 +80,7 @@ final class BrainController: ObservableObject {
         let profile: ModelProfile?
         let profileKey: String?
         let profileCapabilities: ModelCapabilities?
+        let acpAgent: AcpAgent?
         let localModels: [LocalModel]
         let localCapabilities: [ProviderID: ModelCapabilities]
         let appleAvailable: Bool
@@ -105,7 +108,17 @@ final class BrainController: ObservableObject {
         self.discoverLocalModels = discoverLocalModels
         self.selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
         reloadProfiles()
+        acpAgent = defaults.data(forKey: PerryPreferences.$acpAgent.key).flatMap { try? JSONDecoder().decode(AcpAgent.self, from: $0) }
     }
+
+    func setAcpAgent(_ agent: AcpAgent) {
+        guard acceptsSetup, let data = try? JSONEncoder().encode(agent) else { return }
+        defaults.set(data, forKey: PerryPreferences.$acpAgent.key)
+        acpAgent = agent
+        modelChoice = ModelChoice.acp.rawValue
+    }
+
+    var acpAgentAvailable: Bool { acpAgent?.executable() != nil }
 
     var claudeCodeAvailable: Bool { claudeCode != nil }
 
@@ -314,7 +327,8 @@ final class BrainController: ObservableObject {
             return result.capabilities
         }
         let configuration = RoutingConfiguration(
-            profile: profile, profileKey: profileKey, profileCapabilities: profileCapabilities, localModels: localModels,
+            profile: profile, profileKey: profileKey, profileCapabilities: profileCapabilities,
+            acpAgent: scope == nil || scope == .acp ? acpAgent : nil, localModels: localModels,
             localCapabilities: localChecks.compactMapValues { state in
                 if case .checked(_, let result) = state, result.text == .passed { return result.capabilities }
                 return nil
@@ -335,6 +349,11 @@ final class BrainController: ObservableObject {
         switch choice {
         case .chatGPT:
             requirement.providerID = .codex
+        case .acp:
+            guard let acpAgent, acpAgentAvailable else {
+                throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Choose an installed agent in Settings, Models.")
+            }
+            requirement.providerID = ProviderID(rawValue: "acp.\(acpAgent.id)")
         case .claudeCode:
             guard claudeCode != nil else {
                 throw ModelProviderError(kind: .notConfigured, provider: .claudeCode, message: "Install Claude Code and sign in with `claude`, then choose it again in Settings.")
@@ -532,6 +551,9 @@ final class BrainController: ObservableObject {
         var result: [any ModelProvider] = []
         if let codex { result.append(codex) }
         if let claudeCode { result.append(claudeCode) }
+        if let agent = configuration.acpAgent, let executable = agent.executable() {
+            result.append(AcpAgentProvider(agent: agent, executable: executable, helper: Bundle.main.url(forAuxiliaryExecutable: "perry-mcp"), scopes: toolScopes))
+        }
         if let profile = configuration.profile {
             let key = configuration.profileKey?.trimmingCharacters(in: .whitespacesAndNewlines)
             if !profile.preset.keyRequired || key?.isEmpty == false {

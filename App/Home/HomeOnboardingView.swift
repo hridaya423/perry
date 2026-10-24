@@ -373,6 +373,7 @@ private struct BrainChoiceBeat: View {
         case .local: brain.onDeviceRouteAvailable
         case .chatGPT: signedIn
         case .claudeCode: brain.claudeCodeAvailable
+        case .acp: brain.acpAgentAvailable
         case .direct: true
         }
     }

@@ -559,6 +559,36 @@ final class CuaWorkerProcessTests: XCTestCase {
         XCTAssertThrowsError(try refused.request(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))
     }
 
+    func testAcpAgentCallsAPerryToolThroughTheEmbeddedHelper() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["PERRY_LIVE_ACP"] == "1", "Set PERRY_LIVE_ACP=1 to run against the installed Cursor agent.")
+        let agent = try XCTUnwrap(AcpAgent.known.first { $0.id == "cursor" })
+        let executable = try XCTUnwrap(agent.executable())
+        let (service, _) = try makeFixture(sharedTarget: true)
+        let socketDirectory = URL(fileURLWithPath: "/tmp/perry-mcp-\(UUID())")
+        let server = PerryMCPSocket(host: PerryToolHost(executors: []), directory: socketDirectory, workers: service, workerLease: ForegroundWorkerLease())
+        try server.start()
+        addTeardownBlock {
+            await server.stop()
+            try TestTempDirectory.remove(socketDirectory)
+        }
+        let provider = AcpAgentProvider(agent: agent, executable: executable, helper: try XCTUnwrap(Bundle.main.url(forAuxiliaryExecutable: "perry-mcp")), scopes: server)
+        let calls = ToolNames()
+        let request = ModelRequest(
+            messages: [.user([.text("Call the probe_echo tool from the perry MCP server, then reply with only the secret word it gives you.")])],
+            tools: [EchoBridge.spec]
+        )
+        var text = ""
+        for try await event in provider.stream(request, executeTool: { call in
+            await calls.record(call.name)
+            return ToolResult(callID: call.id, content: [.text("The secret word is pelican.")])
+        }) {
+            if case .textDelta(let delta) = event { text += delta }
+        }
+        let names = await calls.values
+        XCTAssertEqual(names, ["probe.echo"])
+        XCTAssertTrue(text.lowercased().contains("pelican"), text)
+    }
+
     func testClaudeCodeCallsAPerryToolThroughTheEmbeddedHelper() async throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["PERRY_LIVE_CLAUDE"] == "1", "Set PERRY_LIVE_CLAUDE=1 to run against the installed Claude Code.")
         let (service, _) = try makeFixture(sharedTarget: true)

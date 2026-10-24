@@ -55,9 +55,12 @@ public actor JSONRPCConnection {
         }
     }
 
-    public init(readHandle: FileHandle, writeHandle: FileHandle) {
+    private let stampsVersion: Bool
+
+    public init(readHandle: FileHandle, writeHandle: FileHandle, stampsVersion: Bool = false) {
         self.readHandle = readHandle
         self.writeHandle = writeHandle
+        self.stampsVersion = stampsVersion
     }
 
     public var events: AsyncStream<JSONRPCEvent> {
@@ -193,6 +196,11 @@ public actor JSONRPCConnection {
     }
 
     private func write(_ message: JSONValue) throws {
+        var message = message
+        if stampsVersion, case .object(var fields) = message {
+            fields["jsonrpc"] = .string("2.0")
+            message = .object(fields)
+        }
         var data = try message.data()
         data.append(0x0A)
         try writeHandle.write(contentsOf: data)

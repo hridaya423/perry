@@ -27,6 +27,8 @@ struct BrainModelSettingsView: View {
                 Label("Claude Code is not installed. Install it, sign in with `claude`, then reopen Settings.", systemImage: "exclamationmark.circle")
                     .font(.callout)
             }
+        case .acp:
+            AcpAgentSection(brain: brain)
         case .direct:
             ModelProfilesSection(brain: brain)
         case .local:

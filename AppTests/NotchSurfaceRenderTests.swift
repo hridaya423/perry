@@ -384,6 +384,11 @@ final class NotchSurfaceRenderTests: XCTestCase {
             .controlSize(.small)
             .preferredColorScheme(.dark)
         try await render(settings, name: "model-profiles", size: NSSize(width: 640, height: 420))
+        let agents = Form { Section("Agent") { AcpAgentSection(brain: brain) } }
+            .formStyle(.grouped)
+            .controlSize(.small)
+            .preferredColorScheme(.dark)
+        try await render(agents, name: "acp-agent", size: NSSize(width: 640, height: 300))
     }
 
     private func render<Content: View>(_ content: Content, name: String, size: NSSize, wait: Double = 0.2, folder: String = "notch-rebuild-evidence") async throws {

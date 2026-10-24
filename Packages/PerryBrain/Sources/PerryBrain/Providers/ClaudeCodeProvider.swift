@@ -51,7 +51,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: workspace) }
 
-        let stop = StopBox()
+        let stop = AgentTurnStop()
         var arguments = Self.baseArguments(system: request.system, model: models?.model(for: request.tier))
         var scope: MCPScope?
         defer { scope?.close() }
@@ -59,7 +59,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
             guard let helper, let scopes else {
                 throw ModelProviderError(kind: .notConfigured, provider: id, message: "Perry’s tool helper is missing from this build, so Claude Code can’t use Perry’s tools.")
             }
-            let bridge = TurnBridge(tools: request.tools, execute: executeTool, stop: stop)
+            let bridge = AgentTurnBridge(tools: request.tools, execute: executeTool, stop: stop)
             let opened = try scopes.openScope(bridge)
             scope = opened
             arguments += Self.toolArguments(helper: helper, scope: opened, wireNames: bridge.wireNames)
@@ -140,24 +140,10 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
     }
 
     static func inputLine(for messages: [ModelMessage]) throws -> Data {
-        let lastUser = messages.lastIndex { if case .user = $0 { return true } else { return false } }
-        var transcript: [String] = []
-        var blocks: [JSONValue] = []
-        for (index, message) in messages.enumerated() {
-            switch message {
-            case .user(let parts) where index == lastUser:
-                blocks = parts.map(block)
-            case .user(let parts):
-                let text = parts.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: "\n")
-                if !text.isEmpty { transcript.append("User: \(text)") }
-            case .assistant(let text, _):
-                if !text.isEmpty { transcript.append("You: \(text)") }
-            case .toolResult:
-                break
-            }
-        }
-        if !transcript.isEmpty {
-            blocks.insert(.object(["type": .string("text"), "text": .string("Earlier in this conversation:\n" + transcript.joined(separator: "\n"))]), at: 0)
+        let turn = AgentTurnPrompt(messages)
+        var blocks = turn.latest.map(block)
+        if let earlier = turn.earlier {
+            blocks.insert(.object(["type": .string("text"), "text": .string(earlier)]), at: 0)
         }
         let line: JSONValue = .object([
             "type": .string("user"),
@@ -212,23 +198,6 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         return "Claude Code exited (\(status)): \(detail.suffix(400))"
     }
 
-    private final class StopBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var stored: Error?
-        var onStop: (@Sendable () -> Void)?
-
-        var reason: Error? { lock.withLock { stored } }
-
-        func stop(_ error: Error) {
-            let first = lock.withLock {
-                guard stored == nil else { return false }
-                stored = error
-                return true
-            }
-            if first { onStop?() }
-        }
-    }
-
     private final class StderrTail: @unchecked Sendable {
         private let lock = NSLock()
         private var data = Data()
@@ -243,42 +212,4 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         var text: String { lock.withLock { String(decoding: data, as: UTF8.self) } }
     }
 
-    private struct TurnBridge: MCPBridge {
-        let specs: [ToolSpec]
-        let wireNames: [String: String]
-        let execute: ToolExecutionHandler
-        let stop: StopBox
-
-        init(tools: [ToolSpec], execute: @escaping ToolExecutionHandler, stop: StopBox) {
-            var names: [String: String] = [:]
-            var specs: [ToolSpec] = []
-            for tool in tools {
-                let wire = tool.name.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
-                guard names[wire] == nil else { continue }
-                names[wire] = tool.name
-                specs.append(ToolSpec(
-                    name: wire, description: tool.description, inputSchema: tool.inputSchema, tier: tool.tier,
-                    surfaces: tool.surfaces, readOnly: tool.readOnly, requiredCapabilities: tool.requiredCapabilities
-                ))
-            }
-            self.specs = specs
-            self.wireNames = names
-            self.execute = execute
-            self.stop = stop
-        }
-
-        func tools() async throws -> [ToolSpec] { specs }
-
-        func call(name: String, arguments: JSONValue) async throws -> ToolResult {
-            guard let original = wireNames[name] else {
-                return ToolResult(callID: UUID().uuidString, content: [.text("Unknown tool \(name).")], isError: true)
-            }
-            do {
-                return try await execute(ToolCall(id: UUID().uuidString, name: original, arguments: arguments))
-            } catch {
-                stop.stop(error)
-                throw error
-            }
-        }
-    }
 }
