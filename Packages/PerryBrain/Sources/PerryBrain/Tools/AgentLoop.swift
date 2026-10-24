@@ -312,7 +312,7 @@ public actor AgentLoop {
             let reset = resetAt.map { " until \(Self.timeFormatter.string(from: $0))" } ?? ""
             return "\(name) is rate limited\(reset). Try again later, or choose another model in Settings."
         case .unauthenticated where error.provider == .codex:
-            return "\(name) isn’t signed in. Sign in again in Settings › Models."
+            return "\(name) isn’t signed in. Connect it in Settings › Models."
         case .unauthenticated:
             return "\(name) didn’t accept your key. Check it in Settings › Models."
         case .network:

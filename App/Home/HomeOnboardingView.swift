@@ -100,8 +100,16 @@ private struct FirstTalkBeat: View {
         let text = threadID.flatMap { model.streamingAnswers[$0] } ?? (pendingQuestion == nil ? thread?.turns.last?.answer : nil)
         return text?.isEmpty == false ? text : nil
     }
-    private var failure: String? { threadID.flatMap { model.threadErrors[$0] } ?? voice.error }
-    private var answeredTurns: Int { pendingQuestion == nil ? (thread?.turns.count ?? 0) : 0 }
+    private var failedTurn: PerryThread.Turn? {
+        guard pendingQuestion == nil, let last = thread?.turns.last, last.outcome == .failed else { return nil }
+        return last
+    }
+    private var failure: String? {
+        threadID.flatMap { model.threadErrors[$0] } ?? voice.error ?? failedTurn.map { $0.failureReason ?? "Perry couldn’t answer that." }
+    }
+    private var answeredTurns: Int {
+        pendingQuestion == nil ? (thread?.turns.filter { $0.outcome != .failed && !$0.answer.isEmpty }.count ?? 0) : 0
+    }
     private var working: Bool { pendingQuestion != nil || voice.state == .thinking || model.isCreatingConversation }
 
     private var mood: PerryMood {
@@ -190,9 +198,6 @@ private struct FirstTalkBeat: View {
                     .lineSpacing(3)
                     .foregroundStyle(PerryTheme.Colors.text)
                     .textSelection(.enabled)
-            } else if working {
-                PerryCharacter(mood: .thinking, size: 30)
-                    .frame(width: 36, height: 36)
             }
         }
         .multilineTextAlignment(.leading)
@@ -236,6 +241,7 @@ private struct FirstTalkBeat: View {
             TextField("Ask Perry…", text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 15))
+                .multilineTextAlignment(.leading)
                 .focused($composerFocused)
                 .onSubmit(send)
             Button(action: send) {
@@ -254,7 +260,10 @@ private struct FirstTalkBeat: View {
         .frame(width: 260, height: 46)
         .background(OnboardingStyle.carbon, in: Capsule())
         .overlay { Capsule().strokeBorder(composerFocused ? PerryTheme.Colors.accent.opacity(0.6) : OnboardingStyle.hairline) }
-        .onAppear { composerFocused = true }
+        .task {
+            await Task.yield()
+            composerFocused = true
+        }
     }
 
     private var canSend: Bool {

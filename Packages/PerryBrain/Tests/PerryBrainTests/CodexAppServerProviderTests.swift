@@ -54,7 +54,7 @@ final class CodexAppServerProviderTests: XCTestCase {
         XCTAssertEqual(CodexAppServerProvider.kind(of: "error sending request for url"), .network)
         XCTAssertEqual(CodexAppServerProvider.kind(of: "something else"), .unavailable)
         let error = ModelProviderError(kind: .unauthenticated, provider: .codex, message: raw)
-        XCTAssertEqual(AgentLoop.describe(error), "ChatGPT isn’t signed in. Sign in again in Settings › Models.")
+        XCTAssertEqual(AgentLoop.describe(error), "ChatGPT isn’t signed in. Connect it in Settings › Models.")
     }
 
     func testLaunchSweepRemovesOnlyDeadOwnersImageDirectories() throws {
