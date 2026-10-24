@@ -135,31 +135,49 @@ struct NotchWorkspaceView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if !model.perrys.isEmpty {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(model.perrys) { perry in
-                                Button {
-                                    model.onPerrySelected?(perry)
-                                } label: {
-                                    HStack(spacing: 10) {
-                                        PerryCharacterView(pose: PerryCharacterPose(), size: 22)
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(perry.name)
-                                                .font(.callout.weight(.medium))
-                                                .lineLimit(1)
-                                            Text(perry.job)
-                                                .font(.caption)
-                                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                                .lineLimit(1)
-                                        }
-                                        Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text("Perrys")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                            Spacer()
+                            Button {
+                                searchFocused = false
+                                model.sidebarSelection = .perryEditor(nil)
+                            } label: {
+                                Image(systemName: "plus").font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("New Perry")
+                            .help("Make a Perry: a named helper with its own job, schedule, and memory")
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 2)
+                        ForEach(model.perrys) { perry in
+                            Button {
+                                model.onPerrySelected?(perry)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    PerryCharacterView(pose: PerryCharacterPose(), size: 22)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(perry.name)
+                                            .font(.callout.weight(.medium))
+                                            .lineLimit(1)
+                                        Text(perry.job)
+                                            .font(.caption)
+                                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                            .lineLimit(1)
                                     }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 6)
-                                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    Spacer(minLength: 0)
                                 }
-                                .buttonStyle(RailRowStyle(cornerRadius: 8))
-                                .help("\(perry.name)\n\(perry.job)")
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(RailRowStyle(cornerRadius: 8))
+                            .help("\(perry.name)\n\(perry.job)")
+                            .contextMenu {
+                                Button("Edit \(perry.name)…") { model.sidebarSelection = .perryEditor(perry.id) }
                             }
                         }
                     }
@@ -448,6 +466,8 @@ struct NotchWorkspaceView: View {
         case .suggestions: "Suggestions"
         case .settings: "Settings"
         case .whatsNew: "What’s New"
+        case .perryEditor(let id):
+            id.flatMap { id in model.perrys.first { $0.id == id }?.name } ?? "New Perry"
         case nil: "Perry"
         }
     }
@@ -488,6 +508,13 @@ struct NotchWorkspaceView: View {
             }
         case .whatsNew:
             WhatsNewView(onDone: { model.sidebarSelection = nil })
+        case .perryEditor(let id):
+            if let store = model.deps.controller?.perryStore {
+                PerryEditorView(perry: id.flatMap { id in model.perrys.first { $0.id == id } }, model: model, store: store)
+                    .id(id)
+            } else {
+                pagePlaceholder("Perrys unavailable")
+            }
         case nil:
             EmptyView()
         }

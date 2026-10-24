@@ -3662,6 +3662,55 @@
           "reference": "App/VoiceController.swift"
         }
       ]
+    },
+    {
+      "id": "perrys.named-agents",
+      "name": "Perrys: named helpers with their own job, schedule, conversation, and memory",
+      "status": "unit-tested",
+      "owner": "PerryBrain",
+      "support": "Local macOS app",
+      "limitations": [
+        "Created by the agent or from the workspace rail; the editor (App/Home/PerryEditorView.swift) has no live or render evidence yet.",
+        "A Perry's memory file is used only when global memory is on, which is off by default.",
+        "The registry does not record a last successful run for this capability."
+      ],
+      "verification": {
+        "supported_environments": {
+          "status": "not-recorded"
+        },
+        "last_successful_run": {
+          "status": "not-recorded"
+        },
+        "benchmark": {
+          "status": "not-recorded"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "source",
+          "reference": "Packages/PerryBrain/Sources/PerryBrain/Perrys/PerryStore.swift"
+        },
+        {
+          "kind": "source",
+          "reference": "App/PerrySchedulerController.swift"
+        },
+        {
+          "kind": "source",
+          "reference": "App/Home/PerryEditorView.swift"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/PerrysCoreTests.swift::func testCreateListUpdateRemove()"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/PerrysCoreTests.swift::func testPerryMemoryFile()"
+        },
+        {
+          "kind": "unit-test",
+          "reference": "Packages/PerryBrain/Tests/PerryBrainTests/PerrysCoreTests.swift::func testThreeFailuresPause()"
+        }
+      ]
     }
   ]
 }

@@ -14,6 +14,7 @@ final class HomeModel: ObservableObject {
         case suggestions
         case settings
         case whatsNew
+        case perryEditor(UUID?)
     }
 
     struct Deps {
