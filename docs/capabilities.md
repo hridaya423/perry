@@ -51,8 +51,11 @@ per-item evidence, see `docs/release-readiness/features.json`.
 - Perry verifies the end state and reports what it actually did — including
   partial results and the exact step that couldn't be done.
 - Limit: the bundled local planner handles a disclosed, deterministic task
-  set only. Open-ended work requires a signed-in agent runtime (Claude Code /
-  OpenCode / bundled Codex), which uses your own provider account and keys.
+  set only. Open-ended work requires a conversation model: bundled Codex
+  (ChatGPT sign-in), Claude Code (your Claude sign-in), your own API provider,
+  or a local model. Claude Code runs with its built-in tools turned off and can
+  use only the Perry tools of the current turn. OpenCode can plan, but it does
+  not run tasks.
 
 ## Undo
 

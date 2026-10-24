@@ -59,8 +59,8 @@ The global hotkey wakes Perry near your cursor. Optional ambient wake is off by 
 Perry separates planning, execution, and verification capabilities. One typed registry records each provider's installation identity, authentication, confinement, supported operations, health, and measured latency.
 
 1. **Bundled Codex (default):** pinned by version and checksum, with planning confined to read-only mode and execution confined to a selected workspace.
-2. **Installed CLIs:** Claude and OpenCode use official login flows. Planning is available only after Perry verifies the exact executable; delegated execution stays disabled until its isolation and receipt gates pass.
-3. **Direct providers:** OpenAI, Anthropic, Gemini, and OpenRouter credentials live in Keychain. These providers plan screenshot-grounded actions; Perry's supervised local executor performs them.
+2. **Installed CLIs:** Claude Code and OpenCode use official login flows. Claude Code is also a conversation model: Perry runs it with its built-in tools turned off, and it reaches only the current turn's Perry tools through a scoped MCP token. OpenCode plans only; delegated execution stays disabled until its isolation and receipt gates pass.
+3. **Direct providers:** eleven cloud presets (OpenAI, Anthropic, Gemini, OpenRouter, xAI, Groq, Cerebras, Mistral, DeepSeek, Together, Fireworks), five local servers, and any OpenAI-compatible endpoint. Keys live in Keychain. These providers plan screenshot-grounded actions; Perry's supervised local executor performs them.
 4. **Custom endpoints:** OpenAI-compatible HTTPS endpoints, with plaintext allowed only on explicit loopback addresses.
 5. **Local experimental:** shown only when a model has an implemented adapter and the current Mac passes its disclosed hardware floor. An unavailable model is never presented as ready.
 
