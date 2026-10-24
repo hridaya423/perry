@@ -221,9 +221,7 @@ final class AgentCoordinator: ObservableObject {
                         windowBoundsAX: observation.windowBounds.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
                     ), runID: runID)
                 }
-                let tier = spatialContext.map {
-                    TierClassifier.tier(question: goal, bindingCount: $0.bindings.count, elementCount: $0.observation.observedElements.count)
-                } ?? .deep
+                let tier: ModelTier = spatialContext != nil ? .fast : .deep
                 let capabilities: ModelCapabilities = spatialContext != nil ? [.vision, .streaming] : (surface == .suggestions || unattended ? [.tools] : [.streaming])
                 let selected = try await provider(RouteRequirement(capabilities: capabilities, tier: tier))
                 try Task.checkCancellation()
