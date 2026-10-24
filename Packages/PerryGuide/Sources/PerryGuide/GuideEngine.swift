@@ -386,7 +386,7 @@ public actor GuideEngine {
             try requireSameTarget(observation, as: baseline, allowsNewWindow: allowsNewWindow)
         }
         if let maximumSteps, progress.presentedCount >= maximumSteps {
-            throw GuidePlannerError.blocked("The guide reached its step limit. Goal completion has not been verified.")
+            throw GuidePlannerError.blocked("The guide stopped at its step limit. Perry didn’t check that the task is done.")
         }
         try Task.checkCancellation()
         // The input answer is consumed once: it answers the question it was
@@ -426,7 +426,7 @@ public actor GuideEngine {
         case .complete(evidence: .explanationOnly): throw GuidePlannerError.explanationEnded
         case .complete(evidence: .observedGoal(let condition)):
             guard context.goalPostcondition == condition, condition.isSatisfied(in: observation.snapshot) else {
-                throw GuidePlannerError.blocked("Goal completion could not be verified against the requested outcome.")
+                throw GuidePlannerError.blocked("Perry couldn’t confirm the task finished the way you asked.")
             }
             return nil
         case .blocked(let reason): throw GuidePlannerError.blocked(reason)

@@ -1153,7 +1153,7 @@ final class GuideEngineTests: XCTestCase {
         guard case .blocked(let reason) = decision else {
             return XCTFail("expected blocked, got \(decision)")
         }
-        XCTAssertTrue(reason.contains("No matching control"))
+        XCTAssertTrue(reason.contains("couldn’t find the control"))
     }
 
     func testStartThrowsExplanationEndedForUnverifiedCompletion() async throws {

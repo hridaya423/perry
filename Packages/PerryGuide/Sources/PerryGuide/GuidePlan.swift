@@ -215,11 +215,11 @@ public enum GuidePlannerError: Error, Equatable, Sendable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidTarget(let detail): return "Guide target failed validation: \(detail)"
+        case .invalidTarget: return "Perry couldn’t point at that control safely, so it stopped."
         case .protectedWindow: return "That window is protected, so Perry will not guide inside it."
-        case .malformedResponse(let detail): return "Guide planner returned an unreadable step: \(detail)"
+        case .malformedResponse: return "Perry got a step it couldn’t use, so it stopped. Try again."
         case .blocked(let reason): return reason
-        case .explanationEnded: return "Explanation ended. Goal completion has not been verified."
+        case .explanationEnded: return "Perry finished explaining. It didn’t check that the task is done."
         case .needsInput(let prompt, _): return prompt
         }
     }
@@ -358,7 +358,7 @@ public struct AXGuidePlanner: GuidePlanner {
                 waitForUserAction: false
             ))
         }
-        return .blocked(reason: "No matching control is visible. Goal completion has not been verified.")
+        return .blocked(reason: "Perry couldn’t find the control for the next step, so it stopped.")
     }
 
     public func visiblePath(

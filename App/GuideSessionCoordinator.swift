@@ -784,7 +784,7 @@ final class GuideSessionCoordinator {
                     case GuidePlannerError.protectedWindow:
                         self.finishGuide(guideID: guide.id, outcome: .failed, summary: "That window is protected, so Perry won't guide inside it.")
                     case GuidePlannerError.explanationEnded:
-                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
+                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
                     case GuidePlannerError.needsInput(let prompt, let choices):
                         self.presentGuideInput(guideID: guide.id, prompt: prompt, choices: choices)
                         for await _ in scope.finishStream { break }
@@ -1106,7 +1106,7 @@ final class GuideSessionCoordinator {
         case .finished:
             finishGuide(guideID: guideID, outcome: .completed)
         case .explanationEnded:
-            finishGuide(guideID: guideID, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
+            finishGuide(guideID: guideID, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
         case .needsInput(let prompt, let choices):
             presentGuideInput(guideID: guideID, prompt: prompt, choices: choices)
         case .stillWaiting:
@@ -1225,7 +1225,7 @@ final class GuideSessionCoordinator {
             defer { scope?.removeCallback(callbackID) }
             do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
             guard let self, self.activeGuideID == guideID else { return }
-            self.finishGuide(guideID: guideID, outcome: .stopped, summary: "Explanation ended. Goal completion has not been verified.")
+            self.finishGuide(guideID: guideID, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
         }
         scope.finishTask = task
         scope.addCallback(task, id: callbackID)
