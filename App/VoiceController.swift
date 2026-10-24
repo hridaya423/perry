@@ -242,6 +242,12 @@ final class VoiceController: NSObject, ObservableObject {
         return Array(ranked.filter { seenNames.insert($0.name).inserted }.prefix(limit))
     }
 
+    static func speechIsAudible() -> Bool {
+        currentSpeechPreferences().outputEnabled
+            && AudioRouteMonitor.defaultOutputAvailable()
+            && !AudioRouteMonitor.defaultOutputMuted()
+    }
+
     static func currentSpeechPreferences(defaults: UserDefaults = .standard) -> SpeechPreferences {
         let enabled = defaults.object(forKey: PerryPreferences.$speechOutputEnabled.key) as? Bool ?? true
         let rate = defaults.object(forKey: PerryPreferences.$speechRate.key) as? Double ?? 1

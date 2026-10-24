@@ -8,17 +8,12 @@ struct PerryOverlaySurface: View {
     let screenFrame: CGRect
     @ObservedObject var cursorState: PerryCursorState
 
-    @State private var cursorPosition: CGPoint
-    @State private var isCursorOnThisScreen: Bool
+    @StateObject private var pointer: OverlayPointer
 
     init(screenFrame: CGRect, cursorState: PerryCursorState) {
         self.screenFrame = screenFrame
         self.cursorState = cursorState
-
-        let mouseLocation = NSEvent.mouseLocation
-        let local = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        _cursorPosition = State(initialValue: PerryOverlaySpace.besideCursor(local))
-        _isCursorOnThisScreen = State(initialValue: screenFrame.contains(mouseLocation))
+        _pointer = StateObject(wrappedValue: OverlayPointer(screenFrame: screenFrame))
     }
     /// Event-driven cursor follow (§5): mouse-moved/dragged monitors write
     /// the position in the same turn the event arrives — no polling timer,
@@ -45,23 +40,9 @@ struct PerryOverlaySurface: View {
 
             GhostCursorLayer(state: cursorState, screenFrame: screenFrame)
 
-            InkLayer(state: cursorState, screenFrame: screenFrame, pointerAnchor: cursorPosition)
+            InkLayer(state: cursorState, screenFrame: screenFrame, pointer: pointer)
 
-            TaskBubbleLayer(
-                state: cursorState,
-                screenFrame: screenFrame,
-                anchor: cursorPosition,
-                isVisible: followerIsVisibleOnThisScreen,
-                opacity: cursorOpacity
-            )
-
-            CompanionFollower(
-                cursorState: cursorState,
-                screenFrame: screenFrame,
-                position: followerPosition,
-                isVisible: followerIsVisibleOnThisScreen,
-                opacity: cursorOpacity
-            )
+            PointerRiders(cursorState: cursorState, pointer: pointer, screenFrame: screenFrame, opacity: cursorOpacity)
         }
         .frame(width: screenFrame.width, height: screenFrame.height)
         .ignoresSafeArea()
@@ -87,36 +68,9 @@ struct PerryOverlaySurface: View {
     /// pointer, start tracking, and reveal. A published element target is
     /// picked up automatically through `followerPosition`.
     private func beginVisibleSession() {
-        let mouseLocation = NSEvent.mouseLocation
-        isCursorOnThisScreen = screenFrame.contains(mouseLocation)
-        let swiftUIPosition = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        cursorPosition = PerryOverlaySpace.besideCursor(swiftUIPosition)
-
+        pointer.snap()
         startTrackingCursor()
         cursorOpacity = 1.0
-    }
-
-    /// Where the companion sits: parked at the detected element while one
-    /// is published on this screen, otherwise riding the pointer offset.
-    private var followerPosition: CGPoint {
-        if let screenLocation = cursorState.detectedElementScreenLocation,
-           (cursorState.detectedElementDisplayFrame?.intersects(screenFrame) == true
-            || screenFrame.contains(screenLocation)) {
-            let local = PerryOverlaySpace.localPoint(screenLocation, in: screenFrame)
-            return CGPoint(
-                x: max(20, min(local.x + 8, screenFrame.width - 20)),
-                y: max(20, min(local.y + 12, screenFrame.height - 20))
-            )
-        }
-        return cursorPosition
-    }
-
-    private var followerIsVisibleOnThisScreen: Bool {
-        if let screenLocation = cursorState.detectedElementScreenLocation {
-            return cursorState.detectedElementDisplayFrame?.intersects(screenFrame) == true
-                || screenFrame.contains(screenLocation)
-        }
-        return isCursorOnThisScreen
     }
 
     // MARK: - Cursor Tracking
@@ -194,12 +148,86 @@ struct PerryOverlaySurface: View {
 
     private func updateCursorTracking() {
         OverlayPerfProbe.shared.tick()
-        let mouseLocation = NSEvent.mouseLocation
-        isCursorOnThisScreen = screenFrame.contains(mouseLocation)
-        let swiftUIPosition = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        cursorPosition = PerryOverlaySpace.besideCursor(swiftUIPosition)
+        pointer.follow(NSEvent.mouseLocation)
     }
 
+}
+
+@MainActor
+final class OverlayPointer: ObservableObject {
+    let screenFrame: CGRect
+    @Published private(set) var position: CGPoint
+    @Published private(set) var onScreen: Bool
+
+    init(screenFrame: CGRect) {
+        self.screenFrame = screenFrame
+        let location = NSEvent.mouseLocation
+        position = PerryOverlaySpace.besideCursor(PerryOverlaySpace.localPoint(location, in: screenFrame))
+        onScreen = screenFrame.contains(location)
+    }
+
+    func snap() {
+        let location = NSEvent.mouseLocation
+        onScreen = screenFrame.contains(location)
+        position = PerryOverlaySpace.besideCursor(PerryOverlaySpace.localPoint(location, in: screenFrame))
+    }
+
+    func follow(_ location: CGPoint) {
+        let inside = screenFrame.contains(location)
+        if inside != onScreen { onScreen = inside }
+        guard inside else { return }
+        let next = PerryOverlaySpace.besideCursor(PerryOverlaySpace.localPoint(location, in: screenFrame))
+        guard abs(next.x - position.x) >= 0.5 || abs(next.y - position.y) >= 0.5 else { return }
+        position = next
+    }
+}
+
+private struct PointerRiders: View {
+    @ObservedObject var cursorState: PerryCursorState
+    @ObservedObject var pointer: OverlayPointer
+    let screenFrame: CGRect
+    let opacity: Double
+
+    var body: some View {
+        TaskBubbleLayer(
+            state: cursorState,
+            screenFrame: screenFrame,
+            anchor: pointer.position,
+            isVisible: followerIsVisibleOnThisScreen,
+            opacity: opacity
+        )
+
+        CompanionFollower(
+            cursorState: cursorState,
+            screenFrame: screenFrame,
+            position: followerPosition,
+            isVisible: followerIsVisibleOnThisScreen,
+            opacity: opacity
+        )
+    }
+
+    /// Where the companion sits: parked at the detected element while one
+    /// is published on this screen, otherwise riding the pointer offset.
+    private var followerPosition: CGPoint {
+        if let screenLocation = cursorState.detectedElementScreenLocation,
+           (cursorState.detectedElementDisplayFrame?.intersects(screenFrame) == true
+            || screenFrame.contains(screenLocation)) {
+            let local = PerryOverlaySpace.localPoint(screenLocation, in: screenFrame)
+            return CGPoint(
+                x: max(20, min(local.x + 8, screenFrame.width - 20)),
+                y: max(20, min(local.y + 12, screenFrame.height - 20))
+            )
+        }
+        return pointer.position
+    }
+
+    private var followerIsVisibleOnThisScreen: Bool {
+        if let screenLocation = cursorState.detectedElementScreenLocation {
+            return cursorState.detectedElementDisplayFrame?.intersects(screenFrame) == true
+                || screenFrame.contains(screenLocation)
+        }
+        return pointer.onScreen
+    }
 }
 
 struct CompanionFollower: View {

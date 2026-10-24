@@ -3,11 +3,13 @@ import AppKit
 enum FailureRecovery: Equatable {
     case settings(SettingsTab)
     case privacy(String)
+    case thread(UUID)
 
     var title: String {
         switch self {
         case .settings(let tab): "Open \(tab.tabTitle) settings"
         case .privacy: "Open Privacy settings"
+        case .thread: "Read the full answer"
         }
     }
 }
@@ -45,6 +47,9 @@ extension AppController {
         case .privacy(let anchor):
             guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
             NSWorkspace.shared.open(url)
+        case .thread(let id):
+            homeController.homeModel.sidebarSelection = .thread(id)
+            showPanel(activate: true)
         }
     }
 }

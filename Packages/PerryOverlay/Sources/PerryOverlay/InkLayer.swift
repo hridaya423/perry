@@ -41,9 +41,9 @@ struct ControlGlowLayer: View {
 struct InkLayer: View {
     let state: PerryCursorState
     let screenFrame: CGRect
-    /// Live pointer position in local coordinates — the caption anchor
-    /// falls back to it when an overlay has no screen bounds.
-    let pointerAnchor: CGPoint
+    /// Read at draw time, not observed: a caption without screen bounds
+    /// anchors where the pointer was when the overlay appeared.
+    let pointer: OverlayPointer
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     private var overlaysOnThisScreen: [PerryGuidanceOverlay] {
@@ -221,7 +221,7 @@ struct InkLayer: View {
 
     private func captionAnchor(for overlay: PerryGuidanceOverlay) -> CGPoint {
         let bounds = overlay.screenBounds
-        guard !bounds.isNull else { return pointerAnchor }
+        guard !bounds.isNull else { return pointer.position }
         return PerryOverlaySpace.localPoint(CGPoint(x: bounds.midX, y: bounds.maxY), in: screenFrame)
     }
 }

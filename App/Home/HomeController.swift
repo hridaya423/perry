@@ -36,11 +36,11 @@ final class HomeController {
     private var deadlineTimer: Timer?
     private var insideZone = false
     private var previewing = false
-    private var cachedZone: CGRect?
+    private var cachedZones: [CGRect]?
     private var screenObserver: (any NSObjectProtocol)?
     private var defaultsObserver: (any NSObjectProtocol)?
     private var conversationVisible = false
-    private var dotPanel: NSPanel?
+    private var dotPanels: [NSPanel] = []
     let homeModel = HomeModel()
     private var welcomeDraftEdited = false
     private var welcomeDraftLoaded = false
@@ -75,7 +75,7 @@ final class HomeController {
     func start() {
         guard monitors.isEmpty else { return }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cachedZone = nil }
+            MainActor.assumeIsolated { self?.cachedZones = nil }
         }
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.cachedEnabled = nil }
@@ -118,10 +118,10 @@ final class HomeController {
         screenObserver = nil
         defaultsObserver = nil
         cachedEnabled = nil
-        cachedZone = nil
+        cachedZones = nil
         deadlineTimer?.invalidate()
         deadlineTimer = nil
-        dotPanel?.orderOut(nil)
+        dotPanels.forEach { $0.orderOut(nil) }
         insideZone = false
         intent = HomeHoverIntent()
     }
@@ -211,8 +211,8 @@ final class HomeController {
     // MARK: - Zone geometry
 
     /// The hover strip: on a notched screen, the dead space beside/under the
-    /// camera (auxiliary areas bracket the notch); otherwise a small zone
-    /// around the resting dot below the menu bar.
+    /// camera (auxiliary areas bracket the notch); otherwise the centre of
+    /// the menu bar, under the resting tab.
     nonisolated static func zoneRect(for screen: NSScreen) -> CGRect {
         let top = screen.frame.maxY
         if screen.safeAreaInsets.top > 0 {
@@ -225,9 +225,15 @@ final class HomeController {
                           width: width,
                           height: screen.safeAreaInsets.top + 8)
         }
-        // Pill fallback: slim dot just below the menu bar, top-center.
-        let menuBar = max(0, screen.frame.maxY - screen.visibleFrame.maxY)
-        return CGRect(x: screen.frame.midX - 20, y: top - menuBar - 14, width: 40, height: 14)
+        let menuBar = max(24, screen.frame.maxY - screen.visibleFrame.maxY)
+        return CGRect(x: screen.frame.midX - 60, y: top - menuBar, width: 120, height: menuBar)
+    }
+
+    static func screenUnderPointer() -> NSScreen? {
+        let point = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(point) }
+            ?? NSScreen.screens.first { $0.safeAreaInsets.top > 0 }
+            ?? NSScreen.main
     }
 
     nonisolated static func clickRect(for screen: NSScreen) -> CGRect {
@@ -245,23 +251,21 @@ final class HomeController {
         return CGRect(x: x, y: screenFrame.maxY - height, width: width, height: height)
     }
 
-    private func currentZone() -> CGRect? {
+    private func currentZones() -> [CGRect]? {
         guard acceptsInput, isEnabled else { return nil }
-        if let cachedZone { return cachedZone }
-        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
-        guard let screen else { return nil }
-        let zone = Self.zoneRect(for: screen)
-        cachedZone = zone
-        return zone
+        if let cachedZones { return cachedZones }
+        let zones = NSScreen.screens.map(Self.zoneRect(for:))
+        cachedZones = zones
+        return zones
     }
 
     private func pointerMoved() {
-        guard let zone = currentZone() else {
+        guard let zones = currentZones() else {
             if insideZone { insideZone = false; apply(intent.exited(at: now)) }
             return
         }
         let point = NSEvent.mouseLocation
-        let inside = zone.contains(point) || (previewing && previewFrame?()?.contains(point) == true)
+        let inside = zones.contains { $0.contains(point) } || (previewing && previewFrame?()?.contains(point) == true)
         if inside && !insideZone {
             insideZone = true
             PerfMark.mark("home.hover_start")
@@ -273,9 +277,10 @@ final class HomeController {
     }
 
     private func mouseDown() {
-        guard currentZone() != nil,
-              let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main,
-              Self.clickRect(for: screen).contains(NSEvent.mouseLocation) else { return }
+        let point = NSEvent.mouseLocation
+        guard currentZones() != nil,
+              let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }),
+              Self.clickRect(for: screen).contains(point) else { return }
         if conversationVisible && !previewing { return }
         openConversation()
     }
@@ -340,28 +345,31 @@ final class HomeController {
     // MARK: - Panels
 
     private func showRestingDotIfNeeded() {
-        guard isEnabled else { return }
-        let notched = NSScreen.screens.contains { $0.safeAreaInsets.top > 0 }
-        guard !notched else { return }
-        guard dotPanel == nil, let screen = NSScreen.main else { return }
-        let zone = Self.zoneRect(for: screen)
-        let dot = NSPanel(
-            contentRect: CGRect(x: zone.midX - 3, y: zone.midY - 3, width: 6, height: 6),
+        guard isEnabled, dotPanels.isEmpty else { return }
+        dotPanels = NSScreen.screens.filter { $0.safeAreaInsets.top == 0 }.map(Self.makeRestingTab(on:))
+        dotPanels.forEach { $0.orderFrontRegardless() }
+    }
+
+    private static func makeRestingTab(on screen: NSScreen) -> NSPanel {
+        let size = CGSize(width: 64, height: 7)
+        let tab = NSPanel(
+            contentRect: CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
-        dot.level = .statusBar
-        dot.isOpaque = false
-        dot.backgroundColor = .clear
-        dot.hasShadow = false
-        PerryWindowChrome.applyChrome(to: dot)
+        tab.level = .statusBar
+        tab.isOpaque = false
+        tab.backgroundColor = .clear
+        tab.hasShadow = false
+        tab.ignoresMouseEvents = true
+        PerryWindowChrome.applyChrome(to: tab)
         let view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.6).cgColor
-        view.layer?.cornerRadius = 3
-        dot.contentView = view
-        dot.orderFrontRegardless()
-        dotPanel = dot
+        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.cornerRadius = size.height / 2
+        view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        tab.contentView = view
+        return tab
     }
 
     private func showPeek() {
@@ -375,10 +383,10 @@ final class HomeController {
         if !visible { previewing = false }
         if visible {
             if !previewing { apply(intent.escape()) }
-            dotPanel?.orderOut(nil)
+            dotPanels.forEach { $0.orderOut(nil) }
         } else if isEnabled {
             showRestingDotIfNeeded()
-            dotPanel?.orderFrontRegardless()
+            dotPanels.forEach { $0.orderFrontRegardless() }
         }
     }
 
@@ -386,8 +394,8 @@ final class HomeController {
         guard acceptsInput, !monitors.isEmpty else { return }
         apply(intent.escape())
         insideZone = false
-        dotPanel?.orderOut(nil)
-        dotPanel = nil
+        dotPanels.forEach { $0.orderOut(nil) }
+        dotPanels = []
         if !conversationVisible {
             showRestingDotIfNeeded()
         }

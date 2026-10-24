@@ -38,6 +38,7 @@ final class TalkSession {
 
     private(set) var phase: Phase = .idle
     private static var screenAccessNoticeShown = false
+    private static let bubbleCapacity = 150
     private var input: (any TalkSpeechInput)?
     private var warmTask: Task<Void, Never>?
     private var captureTask: Task<GuideObservation, Error>?
@@ -331,6 +332,9 @@ final class TalkSession {
             presentationTask = run.completion
             sessionController.updateTalk { $0.threadID = run.threadID }
             try await stream(events: run.events, observation: observation)
+            if answerText.count > Self.bubbleCapacity, !VoiceController.speechIsAudible() {
+                output?.guideReportFailure("Perry’s full answer is in your conversation.", recovery: .thread(run.threadID))
+            }
         } catch is CancellationError {
             guard !Task.isCancelled else { return }
             PerfMark.markDynamic("talk.turn_cancelled")

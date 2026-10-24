@@ -57,6 +57,7 @@ struct CompactConversationView: View {
         .environment(\.colorScheme, .dark)
         .onAppear { updateCameraInset(); consumePrompt() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in updateCameraInset() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { _ in updateCameraInset() }
         .onChange(of: controller.pendingPromptText) { _, _ in consumePrompt() }
         .onChange(of: model.sidebarSelection) { _, _ in
             showsGuide = false
@@ -91,7 +92,7 @@ struct CompactConversationView: View {
     }
 
     private func updateCameraInset() {
-        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
+        let screen = controller.sessionPanel.screen ?? HomeController.screenUnderPointer()
         cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
     }
 

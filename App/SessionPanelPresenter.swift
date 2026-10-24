@@ -14,13 +14,22 @@ final class SessionPanelPresenter {
         self.makeContent = makeContent
     }
 
-    var frame: CGRect? { panel?.isVisible == true ? panel?.frame : nil }
-    var isVisible: Bool { panel?.isVisible == true }
+    var frame: CGRect? { isVisible ? panel?.frame : nil }
+    var isVisible: Bool { panel?.isVisible == true && !hiding }
     var isKey: Bool { panel?.isKeyWindow == true }
+    var screen: NSScreen?
+    private var hiding = false
+
+    private static let curve = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     func show(frame: NSRect, activate: Bool) {
         let panel = ensurePanel()
-        let wasVisible = panel.isVisible
+        let wasVisible = isVisible
+        if hiding {
+            hiding = false
+            panel.contentView?.layer?.mask = nil
+        }
         place(frame)
         if activate {
             let ownPID = ProcessInfo.processInfo.processIdentifier
@@ -33,41 +42,57 @@ final class SessionPanelPresenter {
         } else {
             panel.orderFrontRegardless()
         }
-        if !wasVisible { growFromNotch(panel) }
+        if !wasVisible { morph(panel, growing: true) }
         PerfMark.mark("panel.visible")
     }
 
-    private func growFromNotch(_ panel: NSPanel) {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              let content = panel.contentView,
-              let screen = panel.screen else { return }
+    private func morph(_ panel: NSPanel, growing: Bool, completion: (() -> Void)? = nil) {
+        guard !reduceMotion, let content = panel.contentView, let screen = panel.screen else {
+            completion?()
+            return
+        }
         content.wantsLayer = true
-        guard let layer = content.layer else { return }
+        guard let layer = content.layer else {
+            completion?()
+            return
+        }
         let bounds = content.bounds
         let notchWidth = screen.frame.width - (screen.auxiliaryTopLeftArea?.width ?? 0) - (screen.auxiliaryTopRightArea?.width ?? 0)
         let notchHeight = max(screen.safeAreaInsets.top, 24)
         let width = min(max(notchWidth, 160), bounds.width)
-        let start = CGRect(x: bounds.midX - width / 2, y: layer.isGeometryFlipped || content.isFlipped ? 0 : bounds.maxY - notchHeight, width: width, height: notchHeight)
+        let notch = CGRect(x: bounds.midX - width / 2, y: layer.isGeometryFlipped || content.isFlipped ? 0 : bounds.maxY - notchHeight, width: width, height: notchHeight)
+        let notchPath = CGPath(roundedRect: notch, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        let fullPath = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
         let mask = CAShapeLayer()
         mask.frame = bounds
-        mask.path = CGPath(rect: bounds, transform: nil)
+        mask.path = growing ? CGPath(rect: bounds, transform: nil) : notchPath
         layer.mask = mask
         let animation = CABasicAnimation(keyPath: "path")
-        animation.fromValue = CGPath(roundedRect: start, cornerWidth: 10, cornerHeight: 10, transform: nil)
-        animation.toValue = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
-        animation.duration = 0.34
-        animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+        animation.fromValue = growing ? notchPath : fullPath
+        animation.toValue = growing ? fullPath : notchPath
+        animation.duration = growing ? 0.34 : 0.2
+        animation.timingFunction = growing ? Self.curve : CAMediaTimingFunction(name: .easeIn)
         CATransaction.begin()
         CATransaction.setCompletionBlock { [weak layer, weak mask] in
-            if layer?.mask === mask { layer?.mask = nil }
+            if growing, layer?.mask === mask { layer?.mask = nil }
+            completion?()
         }
-        mask.add(animation, forKey: "grow")
+        mask.add(animation, forKey: growing ? "grow" : "collapse")
         CATransaction.commit()
     }
 
     func place(_ frame: NSRect) {
         guard let panel, panel.frame != frame else { return }
-        panel.setFrame(frame, display: true)
+        let sameScreen = panel.screen.map { $0.frame.intersects(frame) } ?? false
+        guard isVisible, sameScreen, !reduceMotion else {
+            panel.setFrame(frame, display: true)
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = Self.curve
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 
     /// Pays the one-time render cost so a first invocation only orders an
@@ -77,8 +102,14 @@ final class SessionPanelPresenter {
     }
 
     func hide() {
-        guard let panel, panel.isVisible else { return }
-        panel.orderOut(nil)
+        guard let panel, isVisible else { return }
+        hiding = true
+        morph(panel, growing: false) { [weak self, weak panel] in
+            guard let self, self.hiding, let panel else { return }
+            self.hiding = false
+            panel.orderOut(nil)
+            panel.contentView?.layer?.mask = nil
+        }
         let ownPID = ProcessInfo.processInfo.processIdentifier
         if NSApp.isActive,
            NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
@@ -129,13 +160,14 @@ extension AppController {
         homeController.prepareConversation(target: probe.presentationTarget())
         homeController.setConversationVisible(true)
         notchStatus.setConversationVisible(true)
+        if !sessionPanel.isVisible { sessionPanel.screen = HomeController.screenUnderPointer() }
         sessionPanel.show(frame: notchPanelFrame(), activate: activate)
     }
 
     /// Size follows what the notch is showing: a focused stage (onboarding,
     /// an approval, a guide step) stays narrow; the workspace opens wide.
     private func notchPanelFrame() -> NSRect {
-        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else { return .zero }
+        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? HomeController.screenUnderPointer() else { return .zero }
         let presentation = NotchPresentation.shared
         let model = homeController.homeModel
         let focused = (model.onboarding != nil && model.sidebarSelection != .settings)
