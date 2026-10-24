@@ -278,3 +278,19 @@ model-profiles, task-failed.
   Animation does not show in offscreen renders; a live capture would include the user's windows).
 - The user runs these: a live computer-use drill (needs Accessibility and Screen Recording grants for the Debug
   build), a live Talk latency measurement, and a visual check of the animations and the external-display tab.
+
+### Smoothness pass (2026-10-24, evening)
+
+- `96bb1a0`: Debug builds sign with a local team identity, so Accessibility and Screen Recording grants survive
+  rebuilds. The user re-grants the Debug Perry once. App suite 636/0 with the signed host.
+- `ba971d7`: lazy rail (299 eagerly built thread rows were the main Perry cost at panel open), a collapse that
+  fades instead of popping an empty box, and no cursor hint over the open panel. Build, PerryOverlay 28/0,
+  app suite 636/0. Before the fix, a 60 fps recording showed the collapse ending on a dark box under the menu bar.
+  The fixed collapse is not yet confirmed in a recording.
+- Measured and rejected: a display-link frame probe (identical runs gave 45 to 112 "hitches"; the profiler showed
+  no matching main-thread stall). Instruments' Animation Hitches trace was 10 GB and failed to export.
+- Already met, so skipped: key-down to listening 11.5 ms p50; draft-save debounce; Files listing off the body.
+- Do not drive the panel while the user is at the machine: it takes keyboard focus, and their typing landed in
+  Perry's composer (see memory).
+- Next, code-only: em dashes in user-facing copy, the remaining stock buttons, InkButton under Reduce Motion, the
+  status pill's hard cut, and the second-pass height jump for approvals.
