@@ -18,6 +18,7 @@ final class AgentObservationStore: @unchecked Sendable {
     }
 
     private var contexts: [UUID: Context] = [:]
+    private var generations: [UUID: Int] = [:]
     private let lock = NSLock()
 
     func setTarget(_ target: CuaTargetHint, runID: UUID) {
@@ -78,6 +79,15 @@ final class AgentObservationStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         contexts[runID] = nil
+        generations[runID] = nil
+    }
+
+    func nextIDPrefix(runID: UUID) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        let generation = (generations[runID] ?? 0) + 1
+        generations[runID] = generation
+        return generation == 1 ? "e" : "v\(generation)e"
     }
 
     func resolveElement(_ elementID: String, runID: UUID) -> ObservedElement? {

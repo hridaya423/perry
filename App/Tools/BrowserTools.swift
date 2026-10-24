@@ -72,7 +72,7 @@ private struct BrowserReadExecutor: ToolExecutor {
                         windowID: Int(captured.target.windowID)
                     )
                 }
-            let index = ElementIndex(elements: elements)
+            let index = ElementIndex(elements: elements, prefix: observations.nextIDPrefix(runID: context.runID))
             observations.store(
                 AgentObservationStore.Snapshot(
                     index: index,

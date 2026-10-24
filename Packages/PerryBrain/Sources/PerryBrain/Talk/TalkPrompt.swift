@@ -12,8 +12,8 @@ public struct ElementIndex: Sendable, Equatable {
 
     public let entries: [Entry]
 
-    public init(elements: [ObservedElement]) {
-        entries = elements.enumerated().map { Entry(compactID: "e\($0.offset + 1)", element: $0.element) }
+    public init(elements: [ObservedElement], prefix: String = "e") {
+        entries = elements.enumerated().map { Entry(compactID: "\(prefix)\($0.offset + 1)", element: $0.element) }
     }
 
     public var validIDs: Set<String> { Set(entries.map(\.compactID)) }

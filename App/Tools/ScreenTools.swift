@@ -211,7 +211,7 @@ func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: A
                 windowID: Int(captured.target.windowID)
             )
         }
-    let index = ElementIndex(elements: elements)
+    let index = ElementIndex(elements: elements, prefix: observations.nextIDPrefix(runID: runID))
     observations.store(
         AgentObservationStore.Snapshot(
             index: index,
