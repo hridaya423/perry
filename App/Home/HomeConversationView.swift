@@ -1,71 +1,13 @@
 import AppKit
 import SwiftUI
 import PerryBrain
-
-struct HomeWelcomeView: View {
-    @ObservedObject var model: HomeModel
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                if model.onboarding == nil {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "cursorarrow.rays")
-                            .font(.system(size: 32, weight: .light))
-                            .foregroundStyle(PerryTheme.Colors.accent)
-                            .accessibilityHidden(true)
-                        Text("A hand with whatever’s next.")
-                            .font(.system(.title, design: .rounded, weight: .semibold))
-                        Text("Ask a question, work through something together, or give Perry a task.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if model.onboarding == nil, let brain = model.deps.brain {
-                    HomeConnectionView(brain: brain) { model.sidebarSelection = .settings }
-                }
-                HomeComposer(text: Binding(get: { model.newConversationDraft }, set: { model.updateNewDraft($0) }), placeholder: "What would you like help with?", canSend: !model.isCreatingConversation) {
-                    model.onStartConversation?(model.newConversationDraft)
-                }
-                Label("Hold ⌃⌥ to talk while you point", systemImage: "mic")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                if model.onboarding == nil, !model.threads.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Pick up where you left off")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        ForEach(model.threads.prefix(3)) { thread in
-                            Button {
-                                model.sidebarSelection = .thread(thread.id)
-                            } label: {
-                                HStack {
-                                    Text(thread.title.isEmpty ? "New conversation" : thread.title)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 6)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.top, 8)
-                }
-            }
-            .frame(maxWidth: 540, alignment: .leading)
-            .padding(model.onboarding == nil ? 32 : 20)
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
+import PerryOverlay
 
 struct HomeConversationView: View {
     let thread: PerryThread
     @ObservedObject var model: HomeModel
     var focusComposer = false
+    var composerAccessory: AnyView?
 
     private var isWorking: Bool {
         model.workingThreads.contains(thread.id) || model.pendingQuestions[thread.id] != nil
@@ -78,12 +20,16 @@ struct HomeConversationView: View {
                     let turns = model.displayedTurns(for: thread)
                     ForEach(turns.indices, id: \.self) { index in
                         let turn = turns[index]
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 14) {
                             Text(turn.question)
-                                .font(.headline)
+                                .font(.body)
                                 .textSelection(.enabled)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                             if !turn.answer.isEmpty {
-                                Text(turn.answer)
+                                ConversationAnswer(text: turn.answer)
                                     .textSelection(.enabled)
                                     .lineSpacing(4)
                             }
@@ -113,7 +59,7 @@ struct HomeConversationView: View {
                 }
                 .frame(maxWidth: 680, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(24)
+                .padding(20)
                 .background(ConversationScrollObservation(
                     position: model.conversationPositions[thread.id] ?? .init(),
                     onScroll: { model.conversationPositions[thread.id] = $0 }
@@ -154,16 +100,26 @@ struct HomeConversationView: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                HomeComposer(
+                WorkspaceComposer(
                     text: Binding(
                         get: { model.draft(for: thread) },
                         set: { model.draftChanged(threadID: thread.id, draft: $0) }
                     ),
-                    placeholder: "Ask a follow-up…",
+                    placeholder: "Ask a follow-up",
                     canSend: !isWorking && thread.pendingTurn == nil,
-                    focusOnAppear: focusComposer
+                    focusOnAppear: focusComposer,
+                    onVoice: isWorking || thread.pendingTurn != nil ? nil : model.deps.controller.map { controller in
+                        {
+                            model.sidebarSelection = .thread(thread.id)
+                            controller.conversationVoice.start()
+                        }
+                    }
                 ) {
                     model.send(threadID: thread.id, text: model.draft(for: thread))
+                }
+                if let composerAccessory {
+                    composerAccessory
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: 680)
@@ -200,62 +156,10 @@ struct WaitingInputRecoveryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .confirmationDialog("Discard this saved request?", isPresented: Binding(
-            get: { discarding != nil }, set: { if !$0 { discarding = nil } }
-        ), titleVisibility: .visible) {
-            Button("Discard request", role: .destructive) {
-                if let input = discarding { remove(input.id) }
-                discarding = nil
-            }
-            Button("Cancel", role: .cancel) { discarding = nil }
-        }
-    }
-}
-
-struct HomeComposer: View {
-    @Binding var text: String
-    let placeholder: String
-    var canSend = true
-    var focusOnAppear = false
-    @FocusState private var focused: Bool
-    let send: () -> Void
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField(placeholder, text: $text, axis: .vertical)
-                .focused($focused)
-                .task { if focusOnAppear { focused = true } }
-                .textFieldStyle(.plain)
-                .lineLimit(2...6)
-                .font(.body)
-                .accessibilityLabel(placeholder)
-            HStack {
-                Spacer()
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .keyboardShortcut(.return, modifiers: .command)
-                .accessibilityLabel("Send message")
-                .help("Send message (⌘Return)")
-                .disabled(!canSend || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(16)
-        .background {
-            if reduceTransparency {
-                RoundedRectangle(cornerRadius: 20).fill(Color(nsColor: .controlBackgroundColor))
-            } else if #available(macOS 26, *) {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.clear)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 20))
-            } else {
-                RoundedRectangle(cornerRadius: 20).fill(.regularMaterial)
-            }
+        .notchDialog("Discard this saved request?", item: $discarding) { input in
+            [NotchDialog.Action("Discard request", role: .destructive) {
+                remove(input.id)
+            }]
         }
     }
 }
@@ -270,38 +174,46 @@ struct HomeConnectionView: View {
             if brain.modelChoice != BrainController.ModelChoice.chatGPT.rawValue {
                 Text(BrainController.ModelChoice(rawValue: brain.modelChoice).map { "\($0.title) selected" } ?? "Saved model unavailable")
                     .font(.headline)
-                Text("Perry uses this choice for new Home and Talk requests. Change it or complete setup in model settings.")
+                Text("You can change this choice in model settings.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
-                Button("Model settings", action: openSettings)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                Button("Model settings", action: openSettings).buttonStyle(.borderless)
             } else if case .signedIn = brain.account {
                 Label("Connected to ChatGPT", systemImage: "checkmark.circle")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                Button("Continue", action: onConnected)
+                    .buttonStyle(InkButtonStyle())
             } else {
                 Text("Connect your ChatGPT account")
                     .font(.headline)
-                Text("Use your existing account to talk with Perry. Other models are available in Settings.")
+                Text("Use your existing account to talk with Perry. You can switch models any time.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                 HStack {
                     Button(brain.isSigningIn ? "Waiting for sign-in…" : "Connect ChatGPT") {
                         brain.signInWithChatGPT { connected in
                             if connected { onConnected() }
                         }
                     }
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.small)
                     .disabled(brain.isSigningIn)
-                    if brain.isSigningIn {
-                        Button("Cancel") { brain.cancelSignIn() }
-                    } else {
-                        Button("Other models", action: openSettings)
+                    Group {
+                        if brain.isSigningIn {
+                            Button("Cancel") { brain.cancelSignIn() }
+                        } else {
+                            Button("Other models", action: openSettings)
+                        }
                     }
+                    .buttonStyle(InkButtonStyle(.secondary))
+                    .controlSize(.small)
                 }
             }
             if let error = brain.signInError {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
         .onChange(of: brain.account) { _, account in
@@ -309,8 +221,25 @@ struct HomeConnectionView: View {
         }
         .task {
             await brain.refresh()
-            if brain.modelChoice == BrainController.ModelChoice.chatGPT.rawValue, case .signedIn = brain.account { onConnected() }
         }
+    }
+}
+
+struct ModelSettingsButton: View {
+    @ObservedObject var brain: BrainController
+    let openSettings: () -> Void
+
+    private var title: String {
+        guard let choice = BrainController.ModelChoice(rawValue: brain.modelChoice) else { return "Choose a model" }
+        if choice == .chatGPT, case .signedOut = brain.account { return "Connect ChatGPT" }
+        return "Model: \(choice.title)"
+    }
+
+    var body: some View {
+        Button(action: openSettings) {
+            Label(title, systemImage: "cpu")
+        }
+        .accessibilityHint("Open model settings")
     }
 }
 
@@ -373,5 +302,71 @@ private struct ConversationScrollObservation: NSViewRepresentable {
         }
 
         deinit { NotificationCenter.default.removeObserver(self) }
+    }
+}
+
+struct ConversationAnswer: View {
+    let text: String
+    @State private var formatted = AttributedString()
+
+    var body: some View {
+        Text(formatted)
+            .task(id: text) { formatted = Self.format(text) }
+    }
+
+    static func format(_ source: String) -> AttributedString {
+        guard let parsed = try? AttributedString(markdown: source, options: .init(interpretedSyntax: .full)) else {
+            return AttributedString(source)
+        }
+        if parsed.runs.contains(where: { run in
+            run.presentationIntent?.components.contains(where: {
+                if case .table = $0.kind { return true }
+                return false
+            }) == true
+        }) { return AttributedString(source) }
+        var output = AttributedString()
+        var previousBlock: Int?
+        var previousWasListItem = false
+        var previousWasHeader = false
+        for run in parsed.runs {
+            let components = run.presentationIntent?.components ?? []
+            let block = components.first?.identity
+            var fragment = AttributedString(parsed[run.range])
+            fragment.presentationIntent = nil
+            if let scheme = fragment.link?.scheme?.lowercased(), scheme != "https", scheme != "http" {
+                fragment.link = nil
+            }
+            if block != previousBlock {
+                let item = components.first(where: {
+                    if case .listItem = $0.kind { return true }
+                    return false
+                })
+                if !output.characters.isEmpty {
+                    output += AttributedString((item != nil && previousWasListItem) || previousWasHeader ? "\n" : "\n\n")
+                }
+                if let item, case .listItem(let ordinal) = item.kind {
+                    let ordered = components.contains { $0.kind == .orderedList }
+                    output += AttributedString(ordered ? "\(ordinal). " : "• ")
+                }
+                previousWasListItem = item != nil
+                previousWasHeader = components.contains {
+                    if case .header = $0.kind { return true }
+                    return false
+                }
+                previousBlock = block
+            }
+            if let kind = components.first?.kind {
+                switch kind {
+                case .header(let level):
+                    fragment.font = level == 1 ? .title2.bold() : .headline
+                case .codeBlock:
+                    fragment.font = .system(.body, design: .monospaced)
+                default:
+                    break
+                }
+            }
+            output += fragment
+        }
+        return output
     }
 }

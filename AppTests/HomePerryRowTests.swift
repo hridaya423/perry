@@ -20,7 +20,7 @@ final class HomePerryRowTests: XCTestCase {
         let home = HomeController()
         home.threadStore = store
         home.openHome()
-        defer { home.homeWindow?.close() }
+        defer { home.stop() }
 
         let threadUUID = UUID()
         let perry = Perry(name: "Tidy Desk", job: "tidy", threadID: threadUUID.uuidString)
@@ -38,7 +38,7 @@ final class HomePerryRowTests: XCTestCase {
         let home = HomeController()
         home.threadStore = store
         home.openHome()
-        defer { home.homeWindow?.close() }
+        defer { home.stop() }
 
         let threadUUID = UUID()
         var existing = try await store.upsert(PerryThread(id: threadUUID, title: "Original title"))
@@ -61,7 +61,7 @@ final class HomePerryRowTests: XCTestCase {
         let home = HomeController()
         home.threadStore = store
         home.openHome()
-        defer { home.homeWindow?.close() }
+        defer { home.stop() }
 
         home.closeAdmission()
         let threadUUID = UUID()

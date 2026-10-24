@@ -232,7 +232,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/DictationControllerTests.swift::func testRecordedFinalThenCancellationCallbacksDispatchOnce()"
+          "reference": "AppTests/DictationControllerTests.swift::func testReleaseClosesInputButAllowsOneFinalTranscript()"
         },
         {
           "kind": "unit-test",
@@ -1180,7 +1180,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/InteractivePanelTests.swift::func testActivityStripActivatesOnlyWhenExpanded()"
+          "reference": "AppTests/InteractivePanelTests.swift::func testActivityRemainsAvailableWhileAnApprovalIsPresented()"
         },
         {
           "kind": "live-test",
@@ -1693,7 +1693,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift::canonicalAccentResolvesToProductMint"
+          "reference": "Packages/PerryOverlay/Tests/PerryOverlayTests/GuidanceModelTests.swift::semanticThemeColorsResolveInLightAndDarkAppearances"
         }
       ]
     },
@@ -2671,7 +2671,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/InteractivePanelTests.swift::func testCompleteErasureRequiresTheDestructiveButtonResponse()"
+          "reference": "AppTests/InteractivePanelTests.swift::func testCompleteErasureCancellationDoesNotConfirm()"
         },
         {
           "kind": "unit-test",
@@ -3390,7 +3390,7 @@
         },
         {
           "kind": "unit-test",
-          "reference": "AppTests/NotchStatusControllerTests.swift::func testPillAppearsOnlyWithContentOnANotchedScreen()"
+          "reference": "AppTests/NotchStatusControllerTests.swift::func testPillPresentsOnlyWhenEnabledWithMeaningfulContent()"
         },
         {
           "kind": "live-test",

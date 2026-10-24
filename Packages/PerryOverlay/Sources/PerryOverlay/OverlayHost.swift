@@ -4,6 +4,14 @@ import SwiftUI
 /// AppKit screen point (bottom-left origin) ↔ SwiftUI overlay-local
 /// point (top-left origin) for the overlay covering a screen's frame.
 enum PerryOverlaySpace {
+    static func besideCursor(_ local: CGPoint) -> CGPoint {
+        CGPoint(x: local.x + 20, y: local.y + 24)
+    }
+
+    static func characterCenter(pointingAt local: CGPoint, size: CGFloat) -> CGPoint {
+        CGPoint(x: local.x - PerryBodyShape.tip.x * size, y: local.y - PerryBodyShape.tip.y * size)
+    }
+
     static func localPoint(_ screenPoint: CGPoint, in screenFrame: CGRect) -> CGPoint {
         CGPoint(
             x: screenPoint.x - screenFrame.origin.x,

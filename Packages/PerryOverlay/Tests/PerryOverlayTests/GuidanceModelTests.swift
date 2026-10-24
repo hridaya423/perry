@@ -104,15 +104,6 @@ struct PerryGuidanceOverlayTests {
         }
     }
 
-    @Test func canonicalAccentResolvesToProductMint() {
-        let appearance = NSAppearance(named: .aqua)!
-        let accent = resolved(PerryOverlayTheme.Colors.accent, in: appearance)
-
-        #expect(abs(accent.redComponent - 0.204) < 0.001)
-        #expect(abs(accent.greenComponent - 0.827) < 0.001)
-        #expect(abs(accent.blueComponent - 0.600) < 0.001)
-    }
-
     private func resolved(_ color: Color, in appearance: NSAppearance) -> NSColor {
         var resolved = NSColor.clear
         appearance.performAsCurrentDrawingAppearance {

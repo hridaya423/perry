@@ -297,7 +297,7 @@ private struct PerryGuidanceScribbleView: View {
             if !reduceMotion,
                let cursorPoint = InkStroke.point(on: samples, progress: clampedProgress),
                clampedProgress < 0.995 {
-                PerryGlassCursorView(size: 24, morph: .pen)
+                PerryCharacter(mood: .working, size: 24)
                     .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                     .position(cursorPoint)
             }
@@ -484,7 +484,7 @@ private struct PerryGuidanceRectangleView: View {
 
                 if !reduceMotion && clampedProgress < 0.995,
                    let tip = InkStroke.point(on: samples, progress: clampedProgress) {
-                    PerryGlassCursorView(size: 24, morph: .pen)
+                    PerryCharacter(mood: .working, size: 24)
                         .shadow(color: color.opacity(0.65), radius: 6, x: 0, y: 0)
                         .position(tip)
                 }

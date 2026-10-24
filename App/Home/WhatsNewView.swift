@@ -1,62 +1,63 @@
 import AppKit
+import PerryOverlay
 import SwiftUI
 
 struct WhatsNewView: View {
     let onDone: () -> Void
 
-    private let changes = [
-        "Live sessions now move from a real screen circle to click-advanced teaching, sandboxed work, verification, and history.",
-        "Push-to-talk, partial transcripts, barge-in, audio-route recovery, and clipboard fallback keep voice usable when hardware changes.",
-        "The agent strip exposes every step, trust tier, pause, steer, retry, and read-back result while Perry works."
+    private let changes: [(symbol: String, title: String, detail: String)] = [
+        ("rectangle.topthird.inset.filled", "Perry lives in your notch", "Click it for conversations, tasks, routines and files."),
+        ("cursorarrow.rays", "A companion by your cursor", "It listens, points and works beside you in any app."),
+        ("puzzlepiece.extension", "Bring your own tools", "Connect any MCP server in Settings → Apps."),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(PerryTheme.Colors.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Perry got sharper.")
-                        .font(.title3.weight(.semibold))
-                    Text("A local-first live session you can see and stop.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 22) {
+            HStack(spacing: 12) {
+                PerryCharacterView(pose: { var pose = PerryCharacterPose(); pose.face = .happy; return pose }(), size: 32)
+                    .accessibilityHidden(true)
+                Text("What’s new in Perry")
+                    .font(.system(.title2, design: .serif, weight: .semibold))
             }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(changes, id: \.self) { change in
-                        Label(change, systemImage: "checkmark.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.primary)
-                            .labelStyle(WhatsNewLabelStyle())
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(changes, id: \.title) { change in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: change.symbol)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(PerryTheme.Colors.accent)
+                            .frame(width: 30, height: 30)
+                            .background(PerryTheme.Colors.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(change.title)
+                                .font(.body.weight(.semibold))
+                            Text(change.detail)
+                                .font(.callout)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
+                    .accessibilityElement(children: .combine)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack {
-                Button("Open CHANGELOG.md") {
+            HStack(spacing: 16) {
+                Button("Done", action: onDone)
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+                Button("Release notes") {
                     guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md") else { return }
                     NSWorkspace.shared.open(url)
                 }
-                Spacer()
-                Button("Close What’s New", action: onDone)
-                    .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .font(.callout)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
-        .padding(22)
-        .frame(minWidth: 396, maxWidth: .infinity, minHeight: 316, maxHeight: .infinity)
-    }
-}
-
-private struct WhatsNewLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            configuration.icon
-                .foregroundStyle(PerryTheme.Colors.accent)
-            configuration.title
-        }
+        .padding(28)
+        .frame(maxWidth: 520, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

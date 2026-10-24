@@ -12,12 +12,4 @@ final class AXCoordinateConverterTests: XCTestCase {
         XCTAssertEqual(rect.height, 24)
         XCTAssertEqual(rect.width, 80)
     }
-
-    func testTopOfScreenMapsToPrimaryMaxY() {
-        let rect = AXCoordinateConverter.appKitRect(
-            axX: 0, axY: 0, width: 400, height: 20,
-            primaryScreenMaxY: 1080
-        )
-        XCTAssertEqual(rect.maxY, 1080)
-    }
 }

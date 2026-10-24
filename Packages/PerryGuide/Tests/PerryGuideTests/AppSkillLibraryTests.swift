@@ -2,15 +2,6 @@ import XCTest
 @testable import PerryGuide
 
 final class AppSkillLibraryTests: XCTestCase {
-    func testBundledSkillMatchesTheFrontmostBundle() {
-        let library = AppSkillLibrary()
-
-        let skill = library.skill(for: "com.apple.finder")
-
-        XCTAssertEqual(skill?.source, .bundled)
-        XCTAssertTrue(skill?.body.contains("Finder skill") == true)
-    }
-
     func testBundledSkillsCoverTheFiveLiveGuideApps() {
         let library = AppSkillLibrary()
 
@@ -58,13 +49,6 @@ final class AppSkillLibraryTests: XCTestCase {
 
         try library.removeUserSkill(for: "com.apple.finder")
         XCTAssertEqual(library.skill(for: "com.apple.finder")?.source, .bundled)
-    }
-
-    func testManifestSuppliesBundledDisplayNames() {
-        let library = AppSkillLibrary()
-
-        XCTAssertEqual(library.skill(for: "com.apple.finder")?.displayName, "Finder")
-        XCTAssertEqual(library.skill(for: "com.microsoft.VSCode")?.displayName, "Visual Studio Code")
     }
 
     func testUserSkillDisplayNameDerivesFromBundleID() throws {

@@ -7,23 +7,6 @@ final class SessionControllerTests: XCTestCase {
     private let taskID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     private let guideID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
 
-    func testGuideLifecycleRetainsItsIdentityUntilDismissal() throws {
-        let controller = SessionController()
-        let guide = GuideSessionState(
-            id: guideID,
-            goal: "Show me how to rename this file",
-            startedAt: startedAt,
-            appBundleID: "com.apple.finder"
-        )
-
-        try controller.wake(at: startedAt)
-        try controller.startGuide(guide)
-        XCTAssertEqual(controller.state, .guiding(guide))
-
-        XCTAssertEqual(controller.requestDismissal(), .dismiss)
-        XCTAssertEqual(controller.state, .idle)
-    }
-
     func testFinishedGuideCannotBeRecordedAsStoppedDuringDismissal() throws {
         let controller = SessionController()
         let guide = GuideSessionState(

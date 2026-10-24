@@ -8,8 +8,8 @@ final class RuntimeSettingsState: ObservableObject {
     }
 
     @Published private(set) var status = Status(
-        setup: RuntimeSetupSnapshot(summary: "checking…", records: []),
-        cuaStatus: "checking…"
+        setup: RuntimeSetupSnapshot(summary: "Looking for agent runtimes…", records: []),
+        cuaStatus: "Checking…"
     )
 
     private let load: @MainActor () async -> Status

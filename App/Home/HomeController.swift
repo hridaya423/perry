@@ -5,12 +5,6 @@ import PerryBrain
 import PerryGuide
 import PerryOverlay
 
-/// Notch Home (Phase 5 §4.7): a resting strip in the notch, a hover peek,
-/// and the full Home window. Event-driven only — pointer position arrives
-/// through NSEvent monitors, and dwell/tuck run on a single deadline timer
-/// owned by `HomeHoverIntent`. The strip stays invisible on notched Macs
-/// (dead space beside the camera) and renders as a slim dot below the menu
-/// bar on Macs without a notch.
 @MainActor
 final class HomeController {
     struct AcceptedInput {
@@ -30,32 +24,37 @@ final class HomeController {
     }
 
     var isEnabled: Bool {
-        get { PerryPreferences.notchStatusEnabled }
+        if let cachedEnabled { return cachedEnabled }
+        let enabled = PerryPreferences.notchStatusEnabled
+        cachedEnabled = enabled
+        return enabled
     }
+    private var cachedEnabled: Bool?
 
     private var intent = HomeHoverIntent()
     private var monitors: [Any] = []
     private var deadlineTimer: Timer?
     private var insideZone = false
-    private var peekPanel: NSPanel?
-    private let peekView = HomePeekView()
+    private var cachedZone: CGRect?
+    private var screenObserver: (any NSObjectProtocol)?
+    private var defaultsObserver: (any NSObjectProtocol)?
+    private var conversationVisible = false
     private var dotPanel: NSPanel?
-    /// Internal (not private) so tests can assert the window is key-capable
-    /// and resizable — the properties the deleted panels were tested for.
-    var homeWindow: NSWindow?
     let homeModel = HomeModel()
     private var welcomeDraftEdited = false
     private var welcomeDraftLoaded = false
     private var welcomeDraftSaveTask: Task<Void, Never>?
     private var recoveryWriteTask: Task<Void, Never>?
 
-    private var peekContent = HomePeekContent()
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     var threadStore: ThreadStore?
     var captureTarget: (() -> CuaTargetHint?)?
     var answerProvider: ((AcceptedInput, CuaTargetHint?, @MainActor @Sendable (String) -> Void) async -> AgentFinish)?
     var onStop: ((UUID) -> Void)?
+    var onOpenConversation: (() -> Void)?
+    var onPreviewConversation: (() -> Void)?
+    var onDismissConversation: (() -> Bool)?
 
     /// Owner binds the coordinator's running set → composer's working row.
     func bindWorkingThreads(_ publisher: some Publisher<Set<UUID>, Never>) -> AnyCancellable {
@@ -72,24 +71,33 @@ final class HomeController {
 
     func start() {
         guard monitors.isEmpty else { return }
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cachedZone = nil }
+        }
+        defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.cachedEnabled = nil }
+        }
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            Task { @MainActor in self?.pointerMoved() }
+            MainActor.assumeIsolated { self?.pointerMoved() }
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             self?.pointerMoved()
             return event
         } as Any)
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-            Task { @MainActor in self?.mouseDown() }
+            MainActor.assumeIsolated { self?.mouseDown() }
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.mouseDown()
             return event
         } as Any)
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            Task { @MainActor in self?.keyDown(event) }
+            MainActor.assumeIsolated { self?.keyDown(event) }
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53, event.window?.performKeyEquivalent(with: event) == true {
+                return nil
+            }
             self?.keyDown(event)
             return event
         } as Any)
@@ -101,11 +109,16 @@ final class HomeController {
             NSEvent.removeMonitor(monitor)
         }
         monitors = []
+        for observer in [screenObserver, defaultsObserver].compactMap({ $0 }) {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        screenObserver = nil
+        defaultsObserver = nil
+        cachedEnabled = nil
+        cachedZone = nil
         deadlineTimer?.invalidate()
         deadlineTimer = nil
-        hidePeek()
         dotPanel?.orderOut(nil)
-        homeWindow?.close()
         insideZone = false
         intent = HomeHoverIntent()
     }
@@ -146,8 +159,6 @@ final class HomeController {
         homeModel.sidebarSelection = nil
         welcomeDraftLoaded = false
         welcomeDraftEdited = false
-        peekContent = HomePeekContent()
-        peekView.update(peekContent)
         await restoreWelcomeDraft()
         await refreshThreads()
         homeModel.perrys = await perryListProvider?() ?? []
@@ -169,19 +180,9 @@ final class HomeController {
 
     // MARK: - Content
 
-    /// Status pill contents feed the peek's agent/unread rows.
-    func updateStatus(isRecording: Bool, agentLines: [String], unreadCount: Int) {
-        var lines = agentLines
-        if isRecording { lines.insert("Recording a demonstration", at: 0) }
-        peekContent.agentLines = lines
-        peekContent.unreadCount = unreadCount
-        peekView.update(peekContent)
-    }
-
     func updatePerrys(_ perrys: [Perry]) {
-        peekContent.pinnedPerryNames = perrys.map(\.name)
+        guard homeModel.perrys != perrys else { return }
         homeModel.perrys = perrys
-        peekView.update(peekContent)
     }
 
     /// Refreshes the sidebar's Perry list — injected by AppController so the
@@ -204,11 +205,6 @@ final class HomeController {
         homeModel.routines = routineListProvider?() ?? []
     }
 
-    func noteAnswer(_ text: String) {
-        peekContent.lastAnswer = text
-        peekView.update(peekContent)
-    }
-
     // MARK: - Zone geometry
 
     /// The hover strip: on a notched screen, the dead space beside/under the
@@ -227,24 +223,29 @@ final class HomeController {
                           height: screen.safeAreaInsets.top + 8)
         }
         // Pill fallback: slim dot just below the menu bar, top-center.
-        return CGRect(x: screen.frame.midX - 20, y: top - 24 - 14, width: 40, height: 14)
+        let menuBar = max(0, screen.frame.maxY - screen.visibleFrame.maxY)
+        return CGRect(x: screen.frame.midX - 20, y: top - menuBar - 14, width: 40, height: 14)
+    }
+
+    nonisolated static func notchPanelFrame(size: CGSize, screenFrame: CGRect, centerX: CGFloat) -> CGRect {
+        let width = min(size.width, screenFrame.width)
+        let height = min(size.height, screenFrame.height)
+        let x = min(max(centerX - width / 2, screenFrame.minX), screenFrame.maxX - width)
+        return CGRect(x: x, y: screenFrame.maxY - height, width: width, height: height)
     }
 
     private func currentZone() -> CGRect? {
         guard acceptsInput, isEnabled else { return nil }
+        if let cachedZone { return cachedZone }
         let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
         guard let screen else { return nil }
-        var zone = Self.zoneRect(for: screen)
-        // While the peek is open the zone grows to include it, so sliding
-        // the pointer down into the peek keeps it open.
-        if let peek = peekPanel, peek.isVisible {
-            zone = zone.union(peek.frame)
-        }
+        let zone = Self.zoneRect(for: screen)
+        cachedZone = zone
         return zone
     }
 
     private func pointerMoved() {
-        guard isEnabled, let zone = currentZone() else {
+        guard let zone = currentZone() else {
             if insideZone { insideZone = false; apply(intent.exited(at: now)) }
             return
         }
@@ -260,15 +261,22 @@ final class HomeController {
     }
 
     private func mouseDown() {
-        guard isEnabled, let zone = currentZone() else { return }
-        if zone.contains(NSEvent.mouseLocation) {
-            openHome()
-        }
+        guard let zone = currentZone() else { return }
+        guard zone.contains(NSEvent.mouseLocation) else { return }
+        if conversationVisible { return }
+        openConversation()
+    }
+
+    private func openConversation() {
+        guard acceptsInput else { return }
+        apply(intent.escape())
+        onOpenConversation?()
     }
 
     private func keyDown(_ event: NSEvent) {
         if event.keyCode == 53 {
-            if homeWindow?.isVisible == true {
+            if onDismissConversation?() == true { return }
+            if conversationVisible {
                 closeHome()
             } else {
                 apply(intent.escape())
@@ -280,7 +288,7 @@ final class HomeController {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if flags.contains(.command) && flags.contains(.control)
                 && !flags.contains(.option) && !flags.contains(.shift) {
-                if homeWindow?.isVisible == true { closeHome() } else { openHome() }
+                if conversationVisible { closeHome() } else { openHome() }
             }
         }
     }
@@ -288,7 +296,7 @@ final class HomeController {
     private func apply(_ action: HomeHoverIntent.Action) {
         switch action {
         case .showPeek: showPeek()
-        case .hidePeek: hidePeek()
+        case .hidePeek: break
         case .none: break
         }
         rescheduleDeadline()
@@ -337,56 +345,30 @@ final class HomeController {
     }
 
     private func showPeek() {
-        guard acceptsInput else { return }
-        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
-        guard let screen else { return }
-        let zone = Self.zoneRect(for: screen)
-        let panel = peekPanel ?? Self.makePeekPanel(content: peekView)
-        peekView.onOpenHome = { [weak self] in self?.openHome() }
-        let size = peekView.fittingSize
-        panel.setFrame(
-            CGRect(x: zone.midX - size.width / 2,
-                   y: zone.minY - 4 - size.height,
-                   width: size.width, height: size.height),
-            display: true
-        )
-        panel.contentView?.layer?.cornerRadius = 12
-        peekPanel = panel
-        panel.orderFrontRegardless()
-        PerfMark.mark("home.peek_shown")
+        guard acceptsInput, !conversationVisible else { return }
+        onPreviewConversation?()
     }
 
-    private func hidePeek() {
-        peekPanel?.orderOut(nil)
+    func setConversationVisible(_ visible: Bool) {
+        conversationVisible = visible
+        if visible {
+            apply(intent.escape())
+            dotPanel?.orderOut(nil)
+        } else if isEnabled {
+            showRestingDotIfNeeded()
+            dotPanel?.orderFrontRegardless()
+        }
     }
 
-    private static func makePeekPanel(content: NSView) -> NSPanel {
-        let panel = NSPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        panel.level = .statusBar
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        PerryWindowChrome.applyChrome(to: panel)
-        let capsule = NSVisualEffectView()
-        capsule.material = .popover
-        capsule.state = .active
-        capsule.blendingMode = .behindWindow
-        capsule.wantsLayer = true
-        capsule.layer?.masksToBounds = true
-        capsule.addSubview(content)
-        content.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: capsule.topAnchor),
-            content.bottomAnchor.constraint(equalTo: capsule.bottomAnchor),
-            content.leadingAnchor.constraint(equalTo: capsule.leadingAnchor),
-            content.trailingAnchor.constraint(equalTo: capsule.trailingAnchor)
-        ])
-        panel.contentView = capsule
-        return panel
+    func screenLayoutChanged() {
+        guard acceptsInput, !monitors.isEmpty else { return }
+        apply(intent.escape())
+        insideZone = false
+        dotPanel?.orderOut(nil)
+        dotPanel = nil
+        if !conversationVisible {
+            showRestingDotIfNeeded()
+        }
     }
 
     /// Services the embedded pages need — set once by AppController.
@@ -401,11 +383,7 @@ final class HomeController {
         if homeModel.newConversationDraft.isEmpty || homeModel.newConversationTarget == nil {
             homeModel.newConversationTarget = captureTarget?()
         }
-        if let selection {
-            homeModel.sidebarSelection = selection
-        }
-        let window = homeWindow ?? makeHomeWindow()
-        homeWindow = window
+        if let selection { homeModel.sidebarSelection = selection }
         refreshRoutines()
         performWork {
             await self.restoreWelcomeDraft()
@@ -414,45 +392,13 @@ final class HomeController {
                 self.homeModel.perrys = await perryListProvider()
             }
         }
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            window.orderFront(nil)
-        }
-        apply(intent.setHomeOpen(true))
-        PerfMark.mark("home.opened")
+        NotchPresentation.shared.showsInteraction = false
+        onOpenConversation?()
+        PerfMark.mark("notch.workspace.opened")
     }
 
     func closeHome() {
-        homeWindow?.close()
-    }
-
-    private func makeHomeWindow() -> NSWindow {
-        let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 720, height: 480),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered, defer: false
-        )
-        window.title = "Perry Home"
-        window.isReleasedWhenClosed = false
-        PerryWindowChrome.applyChrome(to: window)
-        window.contentView = NSHostingView(rootView: HomeView(model: homeModel))
-        if let saved = PerryPreferences.homeFrame {
-            window.setFrame(from: saved)
-        } else {
-            window.center()
-        }
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: window, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, self.acceptsInput, let window = self.homeWindow else { return }
-                PerryPreferences.homeFrame = window.frameDescriptor
-                _ = self.intent.setHomeOpen(false)
-            }
-        }
-        return window
+        homeModel.deps.controller?.collapseNotch()
     }
 
     init() {
@@ -717,7 +663,7 @@ final class HomeController {
         }
     }
 
-    func runSpokenTurn(_ input: AcceptedInput, spatial: AgentCoordinator.SpatialContext, coordinator: AgentCoordinator) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?) {
+    func runSpokenTurn(_ input: AcceptedInput, spatial: AgentCoordinator.SpatialContext?, coordinator: AgentCoordinator) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?) {
         let threadID = input.threadID
         let text = input.request.text
         guard acceptsInput else {
@@ -732,7 +678,7 @@ final class HomeController {
         homeModel.pendingQuestions[threadID] = .init(
             text: text, turnIndex: homeModel.threads.first { $0.id == threadID }?.turns.count ?? 0
         )
-        let target = spatial.target
+        let target = spatial?.target ?? homeModel.conversationTargets[threadID] ?? homeModel.newConversationTarget
         homeModel.sidebarSelection = .thread(threadID)
         homeModel.conversationTargets[threadID] = target
         let (events, continuation) = AsyncStream<AgentLoopEvent>.makeStream()

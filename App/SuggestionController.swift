@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import Intents
 import PerryBrain
 
 /// Phase 9 morning suggestions: once per calendar day (after 6am), runs one
@@ -108,7 +107,7 @@ final class SuggestionController {
         guard cal.component(.hour, from: now) >= 6 else { return }
         let day = cal.startOfDay(for: now).timeIntervalSince1970
         guard defaults.double(forKey: PerryPreferences.$suggestionsLastRunDay.key) != day else { return }
-        guard !quietNow(), !isBusy() else { return }
+        guard !QuietHours.isActive, !isBusy() else { return }
         defaults.set(day, forKey: PerryPreferences.$suggestionsLastRunDay.key)
 
         let connected = (try? await backend.services().filter { $0.connected }) ?? []
@@ -180,16 +179,6 @@ final class SuggestionController {
         let title: String
         let body: String
         let score: Double
-    }
-
-    // MARK: - Quiet hours
-
-    /// Plan §4.6 quiet hours. Focus covers most call/share scenarios.
-    /// ponytail: explicit call and screen-share detection (CoreAudio device
-    /// polling, ScreenCaptureKit session state) is out of scope — upgrade
-    /// path is a SCStream share-state observer.
-    private func quietNow() -> Bool {
-        INFocusStatusCenter.default.focusStatus.isFocused == true
     }
 
     // MARK: - Persistence

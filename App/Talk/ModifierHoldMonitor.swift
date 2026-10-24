@@ -8,6 +8,13 @@ import AppKit
 /// the listening cue is instant, but nothing heavy starts for a stray chord.
 /// A listen-only event tap — same shape as PushToTalkController, which stays
 /// for the ⌥⌘Space dictation path.
+enum TalkGesture {
+    static let keys = "⌃⌥"
+    static let talk = "Hold ⌃⌥ to talk"
+    static let steer = "Hold ⌃⌥ to steer"
+    static let type = "Double-tap ⌃ to type"
+}
+
 @MainActor
 final class ModifierHoldMonitor {
     static let eventTapMask =

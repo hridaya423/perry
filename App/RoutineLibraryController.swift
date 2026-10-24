@@ -206,7 +206,7 @@ final class RoutineLibraryController {
                 onRun: { [weak self] in self?.runPendingRoutine() }
             )
         }
-        reviewWindow?.show(on: NSScreen.main)
+        reviewWindow?.show()
     }
 
     /// Read-only window observation for click correlation — the same worker

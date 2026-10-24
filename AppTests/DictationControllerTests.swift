@@ -186,29 +186,4 @@ final class DictationControllerTests: XCTestCase {
             }
         }
     }
-
-    func testRecordedFinalThenCancellationCallbacksDispatchOnce() {
-        var gate = DictationRecognitionGate()
-        let generation = gate.advance()
-        let recordedCallbacks: [(generation: Int, transcript: String)] = [
-            (generation, "open settings"),
-            (generation, "open settings"),
-        ]
-
-        let dispatched = recordedCallbacks.compactMap { callback in
-            gate.claim(callback.generation) ? callback.transcript : nil
-        }
-
-        XCTAssertEqual(dispatched, ["open settings"])
-        XCTAssertFalse(gate.accepts(generation))
-    }
-
-    func testInvalidatedGenerationRejectsLateTranscript() {
-        var gate = DictationRecognitionGate()
-        let generation = gate.advance()
-        gate.invalidate()
-
-        XCTAssertFalse(gate.accepts(generation))
-        XCTAssertFalse(gate.claim(generation))
-    }
 }

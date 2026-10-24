@@ -17,7 +17,7 @@ struct PerryOverlaySurface: View {
 
         let mouseLocation = NSEvent.mouseLocation
         let local = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        _cursorPosition = State(initialValue: CGPoint(x: local.x + 35, y: local.y + 25))
+        _cursorPosition = State(initialValue: PerryOverlaySpace.besideCursor(local))
         _isCursorOnThisScreen = State(initialValue: screenFrame.contains(mouseLocation))
     }
     /// Event-driven cursor follow (§5): mouse-moved/dragged monitors write
@@ -90,7 +90,7 @@ struct PerryOverlaySurface: View {
         let mouseLocation = NSEvent.mouseLocation
         isCursorOnThisScreen = screenFrame.contains(mouseLocation)
         let swiftUIPosition = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        cursorPosition = CGPoint(x: swiftUIPosition.x + 35, y: swiftUIPosition.y + 25)
+        cursorPosition = PerryOverlaySpace.besideCursor(swiftUIPosition)
 
         startTrackingCursor()
         cursorOpacity = 1.0
@@ -197,14 +197,11 @@ struct PerryOverlaySurface: View {
         let mouseLocation = NSEvent.mouseLocation
         isCursorOnThisScreen = screenFrame.contains(mouseLocation)
         let swiftUIPosition = PerryOverlaySpace.localPoint(mouseLocation, in: screenFrame)
-        cursorPosition = CGPoint(x: swiftUIPosition.x + 35, y: swiftUIPosition.y + 25)
+        cursorPosition = PerryOverlaySpace.besideCursor(swiftUIPosition)
     }
 
 }
 
-/// The companion's own visuals: a calibration box while a calibration
-/// scribble is up, otherwise the living glass pointer and the listening
-/// waveform riding the same position.
 struct CompanionFollower: View {
     let cursorState: PerryCursorState
     let screenFrame: CGRect
@@ -212,23 +209,6 @@ struct CompanionFollower: View {
     let isVisible: Bool
     let opacity: Double
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-
-    /// §5 morph grammar for the main cursor: voice state wins (listening ring,
-    /// thinking orbit), then semantic buddy state (amber hold, settle tick),
-    /// else the resting pointer that breathes only while a session is active.
-    private var cursorMorph: PerryCursorMorph {
-        switch cursorState.voiceState {
-        case .listening: return .listening
-        case .processing: return .thinking
-        case .idle, .responding: break
-        }
-        switch cursorState.buddyState {
-        case .blocked, .awaitingApproval: return .blocked
-        case .success: return .settle
-        case .acting: return .ghost
-        default: return .pointer
-        }
-    }
 
     private var isCalibrationCursorBoxActive: Bool {
         cursorState.visualGuidanceOverlays.contains { overlay in
@@ -244,42 +224,25 @@ struct CompanionFollower: View {
     }
 
     var body: some View {
-        // Group is layout-transparent: both pieces keep their screen-space
-        // .position inside the surface's ZStack, as they did before the split.
-        Group {
-            ZStack {
-                if isCalibrationCursorBoxActive {
-                    PerryCalibrationBoxView(
-                        color: PerryOverlayTheme.Colors.accent,
-                        reduceMotion: accessibilityReduceMotion
-                    )
-                } else {
-                    PerryGlassCursorView(
-                        size: 52,
-                        morph: cursorMorph,
-                        micLevel: cursorState.currentAudioPowerLevel,
-                        sessionActive: cursorState.voiceState != .idle || cursorState.buddyState != .idle
-                    )
-                }
+        ZStack {
+            if isCalibrationCursorBoxActive {
+                PerryCalibrationBoxView(
+                    color: PerryOverlayTheme.Colors.accent,
+                    reduceMotion: accessibilityReduceMotion
+                )
+                .frame(width: 38, height: 38)
+            } else if cursorState.overlayVisible && isVisible {
+                PerryCharacter(
+                    mood: PerryMood(voice: cursorState.voiceState, buddy: cursorState.buddyState),
+                    position: position,
+                    micLevel: Double(cursorState.currentAudioPowerLevel),
+                    size: 24
+                )
             }
-            .frame(
-                width: isCalibrationCursorBoxActive ? 38 : 48,
-                height: isCalibrationCursorBoxActive ? 38 : 52
-            )
-            .opacity(isVisible && (cursorState.voiceState == .idle || cursorState.voiceState == .responding) ? opacity : 0)
-            .position(position)
-            .animation(PerryOverlayTheme.Motion.travel, value: position)
-            .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
-
-            PerryWaveformView(
-                audioPowerLevel: cursorState.currentAudioPowerLevel,
-                cursorColor: PerryOverlayTheme.Colors.accent,
-                isActive: isVisible && cursorState.voiceState == .listening
-            )
-            .opacity(isVisible && cursorState.voiceState == .listening ? opacity : 0)
-            .position(position)
-            .animation(PerryOverlayTheme.Motion.feedback, value: cursorState.voiceState)
         }
+        .opacity(isVisible ? opacity : 0)
+        .position(position)
+        .animation(PerryOverlayTheme.Motion.travel, value: position)
     }
 }
 
@@ -311,52 +274,5 @@ private struct PerryCalibrationBoxView: View {
                     pulse = true
                 }
             }
-    }
-}
-
-private struct PerryWaveformView: View {
-    let audioPowerLevel: CGFloat
-    let cursorColor: Color
-    let isActive: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let barCount = 5
-    private let listeningBarProfile: [CGFloat] = [0.4, 0.7, 1.0, 0.7, 0.4]
-
-    @ViewBuilder
-    var body: some View {
-        if isActive && !reduceMotion {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timelineContext in
-                bars(timelineDate: timelineContext.date)
-            }
-        } else {
-            bars(timelineDate: .distantPast)
-        }
-    }
-
-    private func bars(timelineDate: Date) -> some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { barIndex in
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(cursorColor)
-                    .frame(
-                        width: 2,
-                        height: barHeight(
-                            for: barIndex,
-                            timelineDate: timelineDate
-                        )
-                    )
-            }
-        }
-        .shadow(color: cursorColor.opacity(0.6), radius: 6, x: 0, y: 0)
-    }
-
-    private func barHeight(for barIndex: Int, timelineDate: Date) -> CGFloat {
-        let animationPhase = CGFloat(timelineDate.timeIntervalSinceReferenceDate * 3.6) + CGFloat(barIndex) * 0.35
-        let normalizedAudioPowerLevel = max(audioPowerLevel - 0.008, 0)
-        let easedAudioPowerLevel = pow(min(normalizedAudioPowerLevel * 2.85, 1), 0.76)
-        let reactiveHeight = easedAudioPowerLevel * 10 * listeningBarProfile[barIndex]
-        let idlePulse = (sin(animationPhase) + 1) / 2 * 1.5
-        return 3 + reactiveHeight + idlePulse
     }
 }

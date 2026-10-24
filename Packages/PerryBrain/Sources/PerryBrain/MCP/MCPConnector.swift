@@ -161,7 +161,7 @@ public actor MCPConnector {
         }
     }
 
-    private static func sanitize(_ raw: String) -> String {
+    public static func sanitize(_ raw: String) -> String {
         let cleaned = raw.lowercased().map { $0.isLetter || $0.isNumber ? $0 : "-" }
         let collapsed = String(cleaned).split(separator: "-").joined(separator: "-")
         return collapsed.isEmpty ? "mcp" : collapsed
@@ -352,7 +352,8 @@ public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {
     /// the caller chooses the command; keep that in mind for user-added
     /// connectors. Perry sets this transport up only for explicitly added
     /// connector commands.
-    public init(command: String, arguments: [String] = [], environment: [String: String]? = nil) throws {
+    public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, onExit: (@Sendable () -> Void)? = nil) throws {
+        signal(SIGPIPE, SIG_IGN)
         let process = Process()
         if command.hasPrefix("/") {
             process.executableURL = URL(fileURLWithPath: command)
@@ -374,7 +375,12 @@ public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             self?.consume(handle.availableData)
         }
-        process.terminationHandler = { [weak self] _ in self?.failAll() }
+        process.terminationHandler = { [weak self] _ in
+            guard let self else { return }
+            lock.withLock { self.finished = true }
+            failAll()
+            onExit?()
+        }
         try process.run()
     }
 
@@ -394,6 +400,7 @@ public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {
         ]
         if let params { fields["params"] = params }
         let message = try JSONValue.object(fields).data()
+        guard !lock.withLock({ finished }) else { throw MCPError(code: -32000, message: "MCP server exited") }
         return try await withCheckedThrowingContinuation { continuation in
             lock.withLock { pending[id] = continuation }
             do {

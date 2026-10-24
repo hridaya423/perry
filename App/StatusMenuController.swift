@@ -2,7 +2,7 @@ import AppKit
 import PerryGuide
 import UniformTypeIdentifiers
 
-/// What the status-item menu asks of the app. Every menu action is a call
+/// What Perry's command menu asks of the app. Every menu action is a call
 /// through here; the menu itself owns only items, titles, and file panels.
 @MainActor
 protocol StatusMenuHost: AnyObject {
@@ -39,11 +39,11 @@ protocol StatusMenuHost: AnyObject {
 #endif
 }
 
-/// Perry's menu-bar item: the indicator glyph and the menu behind it.
+/// Perry's command menu, opened from the notch's More button. Perry has no
+/// menu-bar item; the notch owns every first-party entry point.
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
     private weak var host: (any StatusMenuHost)?
-    private var statusItem: NSStatusItem?
     private var memoryMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
     private var recordDemoMenuItem: NSMenuItem?
@@ -54,23 +54,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         self.host = host
     }
 
-    func install() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.menu = buildMenu()
-        item.menu?.delegate = self
-        statusItem = item
-        refreshIndicator()
-    }
-
-    func refreshIndicator() {
-        let ambientWakeEnabled = PerryPreferences.wakeWordEnabled
-        let symbolName = ambientWakeEnabled ? "waveform.circle.fill" : "scope"
-        let description = ambientWakeEnabled ? "Perry is listening for hey Perry" : "Perry"
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: description)
-        image?.isTemplate = true
-        statusItem?.button?.image = image
-        statusItem?.button?.title = image == nil ? (ambientWakeEnabled ? "Mic" : "Perry") : ""
-        statusItem?.button?.toolTip = description
+    func makeMenu() -> NSMenu {
+        let menu = buildMenu()
+        menu.delegate = self
+        return menu
     }
 
     func setBackgroundTaskCount(_ total: Int) {
@@ -391,28 +378,5 @@ extension AppController {
     func startDemonstrationRecording() {
         guard !routineLibrary.isRecording else { return }
         routineLibrary.toggleRecording()
-    }
-
-    /// Mirrors notch-pill status into the Home peek (Phase 5): the pill says
-    /// *that* something is running; the peek says *what* — a live step line
-    /// per active agent.
-    func updateHomePeek(isRecording: Bool) {
-        var lines: [String] = []
-        for record in backgroundTasks.records where !record.isTerminal {
-            if case .executable(let plan) = record.plan, !plan.actions.isEmpty {
-                let step = min(record.checkpoint.nextStepIndex + 1, plan.actions.count)
-                lines.append("\(record.goal) — step \(step) of \(plan.actions.count)")
-            } else {
-                lines.append(record.goal)
-            }
-        }
-        if lines.isEmpty && lastBackgroundCount > 0 {
-            lines.append(lastBackgroundCount == 1 ? "1 background task" : "\(lastBackgroundCount) background tasks")
-        }
-        homeController.updateStatus(
-            isRecording: isRecording,
-            agentLines: lines,
-            unreadCount: lastAwaitingApprovalCount
-        )
     }
 }

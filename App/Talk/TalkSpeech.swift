@@ -65,6 +65,8 @@ final class SFSpeechInput: TalkSpeechInput {
     private var latestWords: [SpokenWord] = []
     private var latestTranscript = ""
     private var settled = false
+    private var recording = false
+    private var abandoned = false
     private var finalization: CheckedContinuation<Void, Never>?
 
     /// Constructs the engine + recognizer at launch so the first hold only
@@ -81,9 +83,14 @@ final class SFSpeechInput: TalkSpeechInput {
 
     func start() async throws {
         if try startIfReady() { return }
+        latestWords = []
+        latestTranscript = ""
+        settled = false
+        abandoned = false
         guard await DictationController.ensurePermission() else {
             throw DictationController.DictationError.unavailable
         }
+        guard !abandoned else { return }
         try begin()
     }
 
@@ -92,10 +99,16 @@ final class SFSpeechInput: TalkSpeechInput {
         latestTranscript = ""
         settled = false
         try dictation.start()
+        recording = true
     }
 
     func finalize() async -> (transcript: String, words: [SpokenWord]) {
         guard !settled else { return (latestTranscript, latestWords) }
+        guard recording else {
+            abandoned = true
+            finish(transcript: nil)
+            return (latestTranscript, latestWords)
+        }
         dictation.finish()
         await withCheckedContinuation { continuation in
             if settled {
@@ -108,6 +121,7 @@ final class SFSpeechInput: TalkSpeechInput {
     }
 
     func cancel() {
+        abandoned = true
         dictation.cancel()
         finish(transcript: nil)
     }
@@ -115,6 +129,7 @@ final class SFSpeechInput: TalkSpeechInput {
     private func finish(transcript: String?) {
         guard !settled else { return }
         settled = true
+        recording = false
         if let transcript, !transcript.isEmpty {
             latestTranscript = transcript
         }

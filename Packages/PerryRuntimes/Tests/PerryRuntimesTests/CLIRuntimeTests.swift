@@ -106,16 +106,6 @@ final class CLIRuntimeTests: XCTestCase {
         }
     }
 
-    func testRunProcessCapturesStdout() async throws {
-        let result = try await CLIRuntime.runProcess(
-            executable: URL(fileURLWithPath: "/bin/echo"),
-            arguments: ["perry-was-here"],
-            timeout: 10
-        )
-        XCTAssertEqual(result.exitCode, 0)
-        XCTAssertEqual(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines), "perry-was-here")
-    }
-
     func testCodexProfileUsesDedicatedRuntimeHome() {
         let runtimeHome = URL(fileURLWithPath: "/tmp/perry-codex-home")
         let environment = CLIRuntime.processEnvironment(

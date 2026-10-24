@@ -25,6 +25,8 @@ protocol MaintenanceHost: AnyObject {
     var oauthCoordinator: OAuthCoordinator { get }
     var runtimes: RuntimeCatalog { get }
     var completeErasure: CompleteErasureCoordinator { get }
+    var customConnectors: CustomConnectors { get }
+    var conversationVoice: VoiceConversationController { get }
     var hasUnsavedHomeRequests: Bool { get }
     var sessionStatus: String { get set }
     func hidePanel()
@@ -42,6 +44,7 @@ final class MaintenanceCoordinator {
     private var owner: Operation?
     private(set) var terminationPrepared = false
     private(set) var isErasureInProgress = false
+    private var pendingConfirmation: NotchConfirmation?
 
     /// Nothing held and no quit underway — safe to accept new work.
     var isIdle: Bool { owner == nil && !terminationPrepared }
@@ -91,7 +94,7 @@ final class MaintenanceCoordinator {
                 try await host.workers.shutdown()
                 await host.mcp.stop()
                 await self.joinAfterWorkerShutdown()
-                guard self.confirmQuitDiscardingUnsavedRequests() else {
+                guard await self.confirmQuitDiscardingUnsavedRequests() else {
                     host.backgroundTasks.reopenControls()
                     host.sessionStatus = "Perry stayed open. Recover your requests before quitting."
                     showRecovery = true
@@ -110,20 +113,34 @@ final class MaintenanceCoordinator {
     }
 
     func requestCompleteErasure() {
-#if DEBUG
-        guard debugSkipEraseConfirmation || CompleteErasurePrompt.confirm() else { return }
-#else
-        guard CompleteErasurePrompt.confirm() else { return }
-#endif
-        guard acquire(.erasure) else {
+        guard pendingConfirmation == nil else { return }
+        guard owner == nil else {
             host?.sessionStatus = conflictMessage()
             return
         }
-        host?.backgroundTasks.closeControls()
-        host?.guideCoordinator.stopClickObservation()
+        let confirmation = CompleteErasurePrompt.makeConfirmation()
+        pendingConfirmation = confirmation
         Task { @MainActor [self] in
-            await self.performCompleteErasure(operation: .erasure)
+            defer { if pendingConfirmation === confirmation { pendingConfirmation = nil } }
+#if DEBUG
+            let confirmed = debugSkipEraseConfirmation ? true : await confirmation.confirm()
+#else
+            let confirmed = await confirmation.confirm()
+#endif
+            guard confirmed else { return }
+            guard acquire(.erasure) else {
+                host?.sessionStatus = conflictMessage()
+                return
+            }
+            host?.backgroundTasks.closeControls()
+            host?.guideCoordinator.stopClickObservation()
+            await performCompleteErasure(operation: .erasure)
         }
+    }
+
+    /// Collapsing the notch answers an open quit or erase question with No.
+    func cancelConfirmation() {
+        pendingConfirmation?.cancel()
     }
 
     private func acquire(_ operation: Operation) -> Bool {
@@ -145,6 +162,7 @@ final class MaintenanceCoordinator {
         host.brain.reopenAdmission()
         host.homeController.reopenAdmission()
         host.mcp.resume()
+        host.customConnectors.connectAll()
     }
 
     private func conflictMessage() -> String {
@@ -158,22 +176,24 @@ final class MaintenanceCoordinator {
         }
     }
 
-    static func unsavedRequestQuitAlert() -> NSAlert {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Quit with unsaved requests?"
-        alert.informativeText = "Some requests haven’t been saved. Keep Perry open to copy them or try saving again. Quitting will discard this text."
-        alert.addButton(withTitle: "Keep Perry open")
-        alert.addButton(withTitle: "Quit without saving").hasDestructiveAction = true
-        return alert
+    static func unsavedRequestQuitConfirmation() -> NotchConfirmation {
+        NotchConfirmation(
+            title: "Quit with unsaved requests?",
+            detail: "Some requests haven’t been saved. Keep Perry open to copy them or try saving again. Quitting will discard this text.",
+            destructiveTitle: "Quit without saving",
+            cancelTitle: "Keep Perry open"
+        )
     }
 
-    private func confirmQuitDiscardingUnsavedRequests() -> Bool {
+    private func confirmQuitDiscardingUnsavedRequests() async -> Bool {
         guard let host, host.hasUnsavedHomeRequests else { return true }
 #if DEBUG
         if let debugUnsavedQuitDecision { return debugUnsavedQuitDecision() }
 #endif
-        return Self.unsavedRequestQuitAlert().runModal() == .alertSecondButtonReturn
+        let confirmation = Self.unsavedRequestQuitConfirmation()
+        pendingConfirmation = confirmation
+        defer { if pendingConfirmation === confirmation { pendingConfirmation = nil } }
+        return await confirmation.confirm()
     }
 
     private func performCompleteErasure(operation: Operation) async {
@@ -228,6 +248,7 @@ final class MaintenanceCoordinator {
         host.homeController.stop()
         host.perryScheduler?.stop()
         host.suggestionController.stop()
+        host.customConnectors.disconnectAll()
         host.routineLibrary.stop()
         host.guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
@@ -255,6 +276,7 @@ final class MaintenanceCoordinator {
         await host.mcp.discard()
         await host.brain.stopSetup()
         host.demoDirector.cancel()
+        host.conversationVoice.resetConversation()
         host.talkSession.cancelAsk()
         host.talkSession.cancel()
         await host.talkSession.joinInputSaves()
@@ -262,6 +284,7 @@ final class MaintenanceCoordinator {
         host.homeController.stop()
         host.perryScheduler?.stop()
         host.suggestionController.stop()
+        host.customConnectors.forgetAll()
         host.routineLibrary.stop()
         await host.guideCoordinator.stopForErasure()
         await host.agentCoordinator.joinAll()
@@ -299,8 +322,12 @@ extension AppController {
         maintenance.requestTermination(sender)
     }
 
-    func unsavedRequestQuitAlert() -> NSAlert {
-        MaintenanceCoordinator.unsavedRequestQuitAlert()
+    func unsavedRequestQuitConfirmation() -> NotchConfirmation {
+        MaintenanceCoordinator.unsavedRequestQuitConfirmation()
+    }
+
+    func cancelNotchConfirmations() {
+        maintenance.cancelConfirmation()
     }
 }
 

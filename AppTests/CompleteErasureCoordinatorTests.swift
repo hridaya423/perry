@@ -221,7 +221,7 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
     func testProductionKeychainInventoryOwnsEveryShippedSecretService() {
         XCTAssertEqual(
             Set(PerryLiveErasureErasers.providerKeychainServices),
-            Set(["dev.perry.integrations", "dev.perry.keys"])
+            Set(["dev.perry.integrations", "dev.perry.keys", "dev.perry.connectors"])
         )
     }
 

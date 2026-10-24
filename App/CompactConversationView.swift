@@ -3,123 +3,96 @@ import SwiftUI
 import PerryBrain
 import PerryOverlay
 
+final class CompactConversationPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
 struct CompactConversationView: View {
     @ObservedObject var controller: AppController
     @ObservedObject private var model: HomeModel
+    @ObservedObject private var presentation = NotchPresentation.shared
+    @State private var cameraInset: CGFloat = 32
     @State private var showsGuide = false
-    @State private var choosesTarget = false
 
     init(controller: AppController) {
         self.controller = controller
         self.model = controller.homeController.homeModel
     }
 
-    private var thread: PerryThread? {
-        guard case .thread(let id) = model.sidebarSelection else { return nil }
-        return model.threads.first { $0.id == id }
-    }
-
-    private var target: CuaTargetHint? {
-        thread.flatMap { model.conversationTargets[$0.id] } ?? (thread == nil ? model.newConversationTarget : nil)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            if showsGuide {
-                Button("Back to conversation", systemImage: "arrow.left") { showsGuide = false }
-                    .padding(.top, 12)
-                SessionPanelView(controller: controller)
-            } else {
-                HStack(spacing: 12) {
-                    PerryGlassCursorView(animation: .idle, size: 30, variant: .lens)
-                        .accessibilityHidden(true)
-                    Text("Perry").font(.system(.title3, design: .rounded, weight: .semibold))
+            Color.black.frame(height: cameraInset)
+            NotchInteractionHost(presentation: presentation,
+                                 onWorkspace: controller.showWorkspace,
+                                 onCollapse: controller.collapseNotch) {
+                workspace
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 16)
+            if presentation.current != nil, !presentation.showsInteraction {
+                HStack {
                     Spacer()
-                    Menu {
-                        Button("New conversation") { model.sidebarSelection = nil }
-                        ForEach(model.threads.prefix(8)) { thread in
-                            Button(thread.title.isEmpty ? "Untitled conversation" : thread.title) {
-                                model.sidebarSelection = .thread(thread.id)
-                            }
-                        }
-                    } label: { Image(systemName: "clock.arrow.circlepath") }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .accessibilityLabel("Recent conversations")
-                    Button("Open in Home", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        controller.dismiss()
-                        controller.homeController.openHome(selection: model.sidebarSelection)
-                    }
-                    .labelStyle(.iconOnly)
-                    .help("Open this conversation in Home")
-                    Button("Close", systemImage: "xmark") { controller.dismiss() }
-                        .labelStyle(.iconOnly)
-                        .keyboardShortcut(.cancelAction)
+                    Button("Return to active task", systemImage: "arrow.up.right") {
+                        presentation.showsInteraction = true
+                        controller.showPanel()
+                    }.buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
-                .padding(20)
-
-                HStack(spacing: 8) {
-                    Button {
-                        choosesTarget = true
-                    } label: {
-                        Label(target.map(CompactTargetChooser.targetName) ?? "Choose a window", systemImage: "macwindow")
-                            .lineLimit(1)
-                    }
-                    .help(target?.windowTitle ?? "Choose which window Perry can inspect")
-                    .disabled(thread.map { model.workingThreads.contains($0.id) || model.pendingQuestions[$0.id] != nil } ?? false)
-                    Spacer()
-                    Button("Guide or Do") { showsGuide = true }
-                        .help("Open spatial guidance and task controls")
-                }
-                .buttonStyle(.borderless)
-                .font(.callout)
-                .padding(.horizontal, 20)
+                .font(.caption)
+                .padding(.horizontal, 36)
                 .padding(.bottom, 12)
-                .popover(isPresented: $choosesTarget, arrowEdge: .bottom) { CompactTargetChooser(onSelect: selectTarget) }
-                Divider()
-                if let thread {
-                    HomeConversationView(thread: thread, model: model, focusComposer: true)
-                        .id(thread.id)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("What would you like help with?").font(.headline)
-                            if let brain = model.deps.brain {
-                                HomeConnectionView(brain: brain) {
-                                    controller.homeController.openHome(selection: .settings)
-                                }
-                            }
-                            HomeComposer(
-                                text: Binding(get: { model.newConversationDraft }, set: { model.updateNewDraft($0) }),
-                                placeholder: "Ask a question or describe a task…",
-                                canSend: !model.isCreatingConversation,
-                                focusOnAppear: true
-                            ) { model.onStartConversation?(model.newConversationDraft) }
-                            Text("Hold ⌃⌥ to talk while you point.")
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
-                        .padding(20)
-                    }
-                }
-                UnsavedInputRecoveryButton(model: model)
-                if let error = model.storageError {
-                    Label(error, systemImage: "exclamationmark.circle")
-                        .font(.callout).textSelection(.enabled).padding(16)
-                }
+            } else {
+                Color.clear.frame(height: 16)
             }
         }
-        .frame(minWidth: PerryTheme.Sizing.panelWidth, minHeight: PerryTheme.Sizing.panelHeight)
-        .background(PerryTheme.Colors.surface)
+        .background(Color.black)
+        .clipShape(NotchSilhouette())
+        .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
-        .onAppear { consumePrompt() }
+        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
+        .onAppear { updateCameraInset(); consumePrompt() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in updateCameraInset() }
         .onChange(of: controller.pendingPromptText) { _, _ in consumePrompt() }
+        .onChange(of: model.sidebarSelection) { _, _ in
+            showsGuide = false
+            controller.refreshNotchLayout()
+        }
+        .onChange(of: presentation.current?.id) { _, _ in controller.refreshNotchLayout() }
+        .task(id: presentation.current?.contentHeight) { controller.refreshNotchLayout() }
     }
 
-    private func selectTarget(_ target: CuaTargetHint?) {
-        if let thread { model.conversationTargets[thread.id] = target }
-        else { model.newConversationTarget = target }
-        choosesTarget = false
+    @ViewBuilder
+    private var workspace: some View {
+        if model.sidebarSelection == .settings {
+            NotchWorkspaceView(model: model)
+        } else if let onboarding = model.onboarding {
+            OnboardingNotchView(director: onboarding, model: model)
+        } else if showsGuide {
+            VStack(spacing: 0) {
+                HStack {
+                    Button("Back", systemImage: "chevron.left") { showsGuide = false }
+                    Spacer()
+                    Button("Close", systemImage: "xmark") {
+                        showsGuide = false
+                        controller.collapseNotch()
+                    }
+                    .labelStyle(.iconOnly)
+                }.buttonStyle(.borderless).padding(20)
+                SessionPanelView(controller: controller)
+            }
+        } else {
+            NotchWorkspaceView(model: model)
+        }
+    }
+
+    private func updateCameraInset() {
+        let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main
+        cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
     }
 
     private func consumePrompt() {
@@ -129,13 +102,14 @@ struct CompactConversationView: View {
         } else {
             model.sidebarSelection = nil
             model.updateNewDraft(text)
+            controller.conversationVoice.cancel()
             controller.pendingPromptText = nil
             showsGuide = false
         }
     }
 }
 
-private struct CompactTargetChooser: View {
+struct CompactTargetChooser: View {
     var onSelect: (CuaTargetHint?) -> Void
     @State private var targets: [CuaTargetHint] = []
 
@@ -160,18 +134,33 @@ private struct CompactTargetChooser: View {
                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                         }
                         .buttonStyle(.borderless)
+                        .focusable()
+                        .onKeyPress(keys: [.return, .space]) { _ in
+                            onSelect(item)
+                            return .handled
+                        }
                     }
                 }
             }
             .frame(height: targets.isEmpty ? 0 : 260)
             HStack {
                 Button("Refresh") { targets = EnvironmentProbe.availableTargets() }
+                    .focusable()
+                    .onKeyPress(keys: [.return, .space]) { _ in
+                        targets = EnvironmentProbe.availableTargets()
+                        return .handled
+                    }
                 Spacer()
                 Button("No window") { onSelect(nil) }
+                    .focusable()
+                    .onKeyPress(keys: [.return, .space]) { _ in
+                        onSelect(nil)
+                        return .handled
+                    }
             }
         }
         .padding(20)
-        .background(PerryTheme.Colors.surface)
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .frame(width: 340)
         .onAppear { targets = EnvironmentProbe.availableTargets() }
     }
@@ -191,4 +180,50 @@ private struct CompactTargetChooser: View {
         return applicationName(target)
     }
 
+}
+
+struct NotchInteractionHost<Workspace: View>: View {
+    @ObservedObject var presentation: NotchPresentation
+    let onWorkspace: () -> Void
+    let onCollapse: () -> Void
+    @ViewBuilder var workspace: () -> Workspace
+
+    private var showsInteraction: Bool {
+        presentation.current != nil && presentation.showsInteraction
+    }
+
+    var body: some View {
+        ZStack {
+            if !showsInteraction || presentation.current?.preservesWorkspace == true {
+                workspace()
+                    .frame(width: showsInteraction ? 0 : nil,
+                           height: showsInteraction ? 0 : nil)
+                    .clipped()
+                    .opacity(showsInteraction ? 0 : 1)
+                    .allowsHitTesting(!showsInteraction)
+                    .accessibilityHidden(showsInteraction)
+                    .disabled(showsInteraction)
+            }
+            if let entry = presentation.current, presentation.showsInteraction {
+                VStack(spacing: 16) {
+                    HStack {
+                        Button("Workspace", systemImage: "chevron.left") { onWorkspace() }
+                            .buttonStyle(.borderless)
+                        Spacer()
+                        Button("Collapse", systemImage: "chevron.up") { onCollapse() }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                    }
+                    ScrollView {
+                        entry.content
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                                presentation.measure(entry.id, height: height)
+                            }
+                    }
+                }.padding(24)
+            }
+        }
+    }
 }

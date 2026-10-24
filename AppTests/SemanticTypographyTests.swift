@@ -17,7 +17,6 @@ final class SemanticTypographyTests: XCTestCase {
         let homeFiles = [
             "BackgroundTasksView.swift",
             "HistoryView.swift",
-            "HomePeekView.swift",
             "HomeView.swift",
             "WhatsNewView.swift"
         ]

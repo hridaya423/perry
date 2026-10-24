@@ -9,23 +9,26 @@ struct HistoryView: View {
     /// recovery-availability half of the history outcome surface. Loaded
     /// with the entries so the badge never paints stale.
     let undoableEntryIDs: (@MainActor () async -> Set<UUID>)?
+    var askPerry: (() -> Void)?
     @State private var entries: [TranscriptEntry] = []
     @State private var query = ""
     @State private var selectedIDs = Set<UUID>()
+    @FocusState private var historyFocused: Bool
     @State private var message: String?
     @State private var isLoading = true
     @State private var showDeleteConfirmation = false
     @State private var undoableIDs = Set<UUID>()
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("History")
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                TextField("Search requests, apps, steps", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 230)
+            if !entries.isEmpty || !query.isEmpty {
+                HStack {
+                    Spacer()
+                    TextField("Search requests, apps, steps", text: $query)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 230)
+                }
             }
 
             if isLoading {
@@ -33,47 +36,50 @@ struct HistoryView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityLabel("Loading Perry history")
             } else if filteredEntries.isEmpty {
-                ContentUnavailableView(
-                    query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "No sessions yet" : "No matching sessions",
-                    systemImage: query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "clock" : "magnifyingglass",
-                    description: Text(
-                        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? "Completed, stopped, and failed sessions appear here."
-                            : "Try another request, app, or step."
-                    )
-                )
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    WorkspaceEmptyState(title: "No history yet", message: "Everything Perry does shows up here, including what it couldn’t finish.", actionTitle: askPerry == nil ? nil : "Ask Perry something", action: askPerry)
+                } else {
+                    WorkspaceEmptyState(face: .focused, title: "No matches", message: "Try another request, app, or step.")
+                }
             } else {
                 List(selection: $selectedIDs) {
                     ForEach(groupedEntries) { group in
                         Section(group.day.formatted(date: .complete, time: .omitted)) {
                             ForEach(group.entries) { entry in
-                                HistoryRow(entry: entry, undoable: undoableIDs.contains(entry.id))
+                                HistoryRow(entry: entry, undoable: undoableIDs.contains(entry.id), emphasized: historyFocused && selectedIDs.contains(entry.id))
                                     .tag(entry.id)
                             }
                         }
                     }
                 }
                 .listStyle(.inset)
+                .scrollContentBackground(.hidden)
+                .focused($historyFocused)
+                .onChange(of: selectedIDs) { _, selection in
+                    if !selection.isEmpty { historyFocused = true }
+                }
             }
 
-            HStack {
-                if let message {
-                    Text(message)
-                        .font(PerryTheme.Typography.note)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Export Markdown") { export(.markdown) }
+            if !entries.isEmpty || message != nil {
+                HStack {
+                    if let message {
+                        Text(message)
+                            .font(PerryTheme.Typography.note)
+                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    }
+                    Spacer()
+                    Button("Export Markdown") { export(.markdown) }
+                        .disabled(selectedIDs.isEmpty)
+                    Button("Export CSV") { export(.csv) }
+                        .disabled(selectedIDs.isEmpty)
+                    Button("Delete selected…", role: .destructive) {
+                        showDeleteConfirmation = true
+                    }
                     .disabled(selectedIDs.isEmpty)
-                Button("Export CSV") { export(.csv) }
-                    .disabled(selectedIDs.isEmpty)
-                Button("Delete selected…", role: .destructive) {
-                    showDeleteConfirmation = true
                 }
-                .disabled(selectedIDs.isEmpty)
             }
         }
-        .padding(18)
+        .padding(20)
         .task {
             async let entrySnapshot = store.snapshot()
             async let recoverySnapshot = undoableEntryIDs?() ?? []
@@ -82,22 +88,19 @@ struct HistoryView: View {
             isLoading = false
         }
         .onChange(of: query) { _, _ in refreshSearch() }
-        .confirmationDialog(
+        .notchDialog(
             "Delete \(selectedIDs.count) session record\(selectedIDs.count == 1 ? "" : "s")?",
             isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
+            message: "Removes the selected sessions from history and deletes their stored transcripts from this Mac. This cannot be undone."
         ) {
-            Button("Delete selected sessions", role: .destructive) {
-                deleteSelected()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Removes the selected sessions from history and deletes their stored transcripts from this Mac. This cannot be undone.")
+            let doomed = selectedIDs
+            return [NotchDialog.Action("Delete selected sessions", role: .destructive) {
+                deleteSelected(doomed)
+            }]
         }
     }
 
-    private func deleteSelected() {
-        let doomed = selectedIDs
+    private func deleteSelected(_ doomed: Set<UUID>) {
         Task { @MainActor in
             if await store.delete(doomed) {
                 selectedIDs.subtract(doomed)
@@ -127,11 +130,15 @@ struct HistoryView: View {
     }
 
     private func refreshSearch() {
-        Task {
+        searchTask?.cancel()
+        let query = query
+        searchTask = Task {
             let matches = await store.search(query)
             let activityMatches = await activityLog.search(query)
+            guard !Task.isCancelled else { return }
             if matches.isEmpty, !activityMatches.isEmpty {
                 let allEntries = await store.snapshot()
+                guard !Task.isCancelled else { return }
                 let matchingDays = Set(activityMatches.map { Calendar.current.startOfDay(for: $0.timestamp) })
                 entries = allEntries.filter { matchingDays.contains(Calendar.current.startOfDay(for: $0.finishedAt)) }
                 message = "Showing sessions with matching activity."
@@ -162,6 +169,10 @@ struct HistoryView: View {
 private struct HistoryRow: View {
     let entry: TranscriptEntry
     let undoable: Bool
+    let emphasized: Bool
+
+    private var selectionText: Color { Color(nsColor: .alternateSelectedControlTextColor) }
+    private var secondaryText: Color { emphasized ? selectionText : PerryTheme.Colors.textSecondary }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -172,40 +183,45 @@ private struct HistoryRow: View {
                     .frame(width: 22, height: 22)
             } else {
                 Image(systemName: "app.dashed")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryText)
                     .frame(width: 22, height: 22)
             }
             Image(systemName: iconName)
-                .foregroundStyle(iconColor)
+                .foregroundStyle(emphasized ? selectionText : iconColor)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.request)
                     .font(.body.weight(.medium))
                 Text(entry.summary)
                     .font(PerryTheme.Typography.note)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .foregroundStyle(secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if undoable || entry.verified != nil {
+                    HStack(spacing: 8) {
+                        if undoable {
+                            Label("Undo available", systemImage: "arrow.uturn.backward.circle")
+                                .font(PerryTheme.Typography.panelMetadata)
+                                .foregroundStyle(secondaryText)
+                        }
+                        if let verified = entry.verified {
+                            Label(verified ? "Verified" : "Check needed", systemImage: verified ? "checkmark.seal" : "exclamationmark.triangle")
+                                .font(PerryTheme.Typography.panelMetadata)
+                                .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
+                        }
+                    }
+                }
                 Text([
                     entry.outcome.rawValue,
                     entry.providerRoute,
                     entry.finishedAt.formatted(date: .abbreviated, time: .shortened)
                 ].compactMap { $0 }.joined(separator: " · "))
-                    .font(PerryTheme.Typography.monoSmall)
-                    .foregroundStyle(.tertiary)
+                    .font(PerryTheme.Typography.note)
+                    .foregroundStyle(secondaryText)
             }
-            Spacer()
-            if undoable {
-                Label("undo available", systemImage: "arrow.uturn.backward.circle")
-                    .font(PerryTheme.Typography.panelMetadata)
-                    .foregroundStyle(.secondary)
-            }
-            if let verified = entry.verified {
-                Label(verified ? "verified" : "check needed", systemImage: verified ? "checkmark.seal" : "exclamationmark.triangle")
-                    .font(PerryTheme.Typography.panelMetadata)
-                    .foregroundStyle(verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 4)
+        .foregroundStyle(emphasized ? selectionText : PerryTheme.Colors.text)
     }
 
     private var iconName: String {

@@ -1,96 +1,73 @@
-# Perry design language
+# Perry: living ink
 
-Perry is a quiet companion: spatial mint-and-ink marks drawn directly on the user's screen, native macOS surfaces, one canonical identity, one focal action per surface. It teaches by pointing (Guide) and works under supervision (Do). Nothing decorates that does not also inform.
+## Direction and evidence
 
-Source of truth for tokens: `App/PerryTheme.swift` and `PerryOverlayTheme` in `Packages/PerryOverlay`. This document records stable intent and usage rules; component APIs stay in code.
+Perry is a small, expressive ink companion that helps inside the Mac you already use. The approved direction combines **Perry redraws the window** and **Drawn to life**: handwriting becomes a character, and the character helps form the interface. References: `docs/design/2026-10-01-onboarding-concepts/10-redraw-the-window.png` and `09-drawn-to-life.png`.
 
-## Principles
+This is the target product contract, not a claim that the existing app already implements it. The current approved references are `docs/design/notch-only/refined/workspace-v3.png`, `cursor-feedback.png`, `results-approval.png`, and `routines-settings.png`. Migration and verification live in `docs/plans/2026-10-02-approved-notch-rebuild.md`. Codex owns design decisions and review; Devin SWE-2 Max implements bounded specifications.
 
-- **One canonical Perry.** One accent, one pointer, one panel shape. Per-user accent themes, novelty caption fonts, and alternate avatar styles are out of scope — they dilute recognition and multiply test surfaces.
-- **One focal action.** Every surface presents exactly one primary button. Secondary actions exist but never share the prominent style. The invocation panel has one Start; the intent card has one Approve; dialogs have one recovery path.
-- **Honest states.** A surface always says which of loading / empty / denied / planning / running / paused / approval / verified / unverified / failed / recovered / erased it is in. No silent transitions, no spinner without a status line.
-- **Ink on glass, not chrome.** Spatial marks (strokes, halos, numbered targets) draw over the user's windows in high-contrast mint ink. Panels use system materials and stay out of the way.
-- **Native macOS operation.** Rounded system type, standard controls, real panels and menus. Nothing that looks ported.
+Hey Clicky provides interaction evidence: a focused welcome, an introduction, a transition into the notch, contextual permissions, and a small companion beside the normal pointer. Its Home exists but does not lead every interaction. Perry uses original artwork and its own expression.
 
-## Colors
+## Surface hierarchy
 
-| Role | Token | Value | Use |
-|---|---|---|---|
-| accent | `PerryOverlayTheme.Colors.accent` | rgb(0.204, 0.827, 0.600) mint | The single product accent: primary actions, focus ring, guide ink, cursor tint. The only decorative color Perry owns. |
-| accentForeground | `PerryTheme.Colors.accentForeground` | rgb(0.024, 0.110, 0.070) | Text/icons on accent fills. |
-| primaryText | `Color.primary` | system | All primary copy. |
-| secondaryText | `Color.secondary` | system | Supporting copy, metadata. |
-| panelSurface | `controlBackgroundColor` | system | Panel/window backgrounds. |
-| mutedSurface | `underPageBackgroundColor` | system | Inset wells, secondary fills. |
-| success | `systemGreen` | system | Verified results, completed steps. |
-| caution | `systemYellow` | system | Warnings, unverified results. |
-| warning | `systemOrange` | system | Orange-tier approvals. |
-| danger | `systemRed` | system | Red-tier approvals, failures, destructive scope. |
-| active | `systemBlue` | system | Running/active indicators. |
-| focusRing | `accent` | mint | Focus indication always mint, never blue. |
+1. **Notch is home base.** The opaque black surface grows directly from the top edge and incorporates the camera exclusion area. It must never appear as a detached card beneath the notch. On displays without a notch, use the same top-edge anchored surface. Do not hide functionality on external displays.
+2. **The pointer stays yours.** A 20–24 pt ink companion may appear beside it during an active spatial interaction. Idle has no follower. No oversized glass pointer, persistent orbit, glow or animation loop. Contextual guide marks disappear when their target or session ends.
+3. **The workspace expands inside the notch.** A compact left rail holds saved Perrys and recent conversations. The main resting surface centers the companion and voice action; Tasks, Routines and Files remain easy to reach. There is no standalone Home window or Perry status-bar item. Typing is a secondary option; existing drafts remain recoverable.
+4. **Approvals remain explicit.** Notch status can announce that review is needed; full consequences, scope and Approve/Stop remain readable in an appropriately sized review surface. Red-tier confirmation and recovery behavior must survive the redesign.
+5. **Settings stay inside the notch.** Use native grouped controls, horizontal section navigation, understandable labels and inline recovery. Technical routing belongs here rather than in the welcome.
 
-Rules: trust-tier colors (green/yellow/orange/red) are semantic, never decorative. Mint is the only hue Perry asserts; everything else defers to the system palette so dark/light/increase-contrast modes stay correct.
+## Visual language
 
-## Typography
+The approved product uses dark surfaces: a black crown and perimeter, near-black content, and warm ivory ink. Light theme tokens remain available for existing components but are not the active presentation direction. Hand-drawn texture belongs to the character, welcome lettering and a few purposeful guide strokes. Body text and controls remain precise and native. Never rasterize buttons or body copy into illustrations.
 
-System-rounded for product voice, system text for everything else. Sizes scale with the user's text-size preference — never fixed points.
+Target semantic palette, to be implemented in `PerryTheme` and the overlay theme:
 
-| Token | Face | Use |
-|---|---|---|
-| panelTitle | `.headline` rounded bold | Surface titles ("Perry"). |
-| panelBody | `.body` | Prompts, primary copy. |
-| panelSubtitle | `.subheadline` | Secondary lines, transcript preview. |
-| panelMetadata | `.caption` medium | Status lines, progress. |
-| action | `.callout` medium | Buttons. |
-| note | `.caption` | Detail lines on cards. |
-| mono / monoSmall / value | `.caption`/`.caption2` monospaced | Paths, identifiers, durations — data, not prose. |
+| Role | Light | Dark |
+| --- | --- | --- |
+| canvas | #F5F3EE | #0C0D0E |
+| surface | #FFFEFA | #18191B |
+| primary ink | #202420 | #F3F0E8 |
+| secondary ink | #666D66 | #AAA9A5 |
+| subtle separator | #DCDDD5 | #3A403B |
+| primary action | #202420 | #EDEEE4 |
+| on primary | #FFFEFA | #202420 |
+| guiding accent | #3C7765 | #9CCBB6 |
 
-Rules: the title face is the only rounded variant; novelty caption fonts are out of scope. Copy follows `docs/tone-sheet.md` — terse, factual, present tense in Do; encouraging one-instruction steps in Guide.
 
-## Spacing
+These are design targets, not measured accessibility results. Verify rendered contrast before acceptance. System status colors retain semantic meaning; warning and destructive colors are never decoration. Increase Contrast strengthens edges; Reduce Transparency uses solid surfaces.
 
-| Token | Value | Use |
-|---|---|---|
-| label | 1 | Icon-to-label gap. |
-| tight | 2 | Dense pairs. |
-| control | 6 | Between related controls. |
-| inline | 8 | Grid gaps, button pairs. |
-| header | 10 | Header row internals. |
-| section | 12 | Between content sections. |
-| panelInset | 16 | Panel content padding. |
-| cardInset | 18 | Card content padding. |
+Typography: SF Pro for all functional copy, 13–15 pt body, 11–12 pt metadata, 20–28 pt surface headings. Rounded type is reserved for short friendly headings. Custom brush lettering is artwork used in the first welcome, not a font applied to every label. Dynamic text must wrap and remain usable at larger text sizes.
 
-## Layout & elevation
+Spacing: 4/8/12/16/24/32/48 pt. Controls use 8–12 pt radii; panels 20–24 pt; primary welcome actions may be capsules. One clear filled action per surface. Avoid nested card borders, oversized empty composers, repeated dividers and multiple equally prominent setup buttons.
 
-- Session panel: 390×320 min, corner radius 18, floats at panel level near the cursor — companion geometry, not a window you manage.
-- Settings: 760×520 (min 680×480), standard toolbar categories.
-- Intent card: 388pt wide, `.ultraThickMaterial`, radius 12, modal panel level — the only surface allowed to interrupt.
-- Surfaces float only while relevant; no always-on-top chrome in idle.
+## Character and art
 
-## Motion
+The character has an imperfect ink outline, simple round head, two small eyes and a readable pose. Its identity comes from gesture, not costumes or a settings gallery. It draws a line, peeks from an edge, listens, points and settles. Small versions simplify detail rather than shrinking a dense illustration. The welcome stroke becomes the character; later appearances recall that origin.
 
-- Feedback (state changes, dots, progress): ≤150 ms. `panelStateChange` = easeOut 0.16s.
-- Entrances: ≤300 ms, transforms + opacity only — no layout animation.
-- Guide ink draws itself in ~200 ms; pointer glides use spring easing.
-- Reduced motion removes travel and bounce; opacity/color feedback stays. No ease-in entrances, no 0.5s fades.
+Produce separate artwork assets for the welcome lettering and character, preserving alpha and adequate resolution. Keep text, actions and focus indicators native. Avoid shipping a full concept screenshot as the UI. Use light/dark-aware ink treatment; do not invert embedded paper backgrounds.
 
-## Sound
+## First-run experience
 
-Five cues (`wake`, `send`, `receive`, `done`, `fail`), each a short `.caf` under `App/Resources/Sounds`. Sounds are decorative confirmation, never the only channel — every cue has a visual counterpart. Respects system output; no ducking of user audio.
+The first-run welcome appears inside the notch. Start with the approved ivory hello artwork, one sentence and **Let’s begin**. Clicking or Return starts the introduction; no automatic microphone recording or speech on launch.
 
-## States & components
+Introduce where Perry lives with a short, skippable visual transition into the notch. Reduced Motion uses a cross-fade and the same explanatory text. Connect an account with one recommended action and an Other models link. Preserve pending, cancellation, error and retry states without discarding input.
 
-- **Cursor**: one faceted glass pointer rides at the cursor offset — translucent material, ink stroke, facet cuts; states idle / waiting / review / acting / failed read at a glance (pulse, dashed ring, tint, small motion). Never steals pointer control. The lens variant is the in-chrome glyph (session panel, activity strip) where a cursor-shaped icon would misread; it never rides the pointer.
-- **Invocation**: Guide/Do segmented control, one prompt field focused on open, one Start. Background scope is a Do choice, not a separate action. Runtime is automatic by default.
-- **Intent card**: one line of action + scope ("About to move 34 files to Trash"), Approve / Stop. Red tier requires typing the required phrase — voice never confirms red.
-- **Guide marks**: numbered targets only when grounded in the current AX snapshot; a marker that loses its target is removed, never re-pointed silently.
-- **Status language**: per `docs/tone-sheet.md`. Failures state what happened, what changed, what did not, and one safe next action.
+Ask for screen access at the moment the user chooses help in other apps. Explain Accessibility and Screen Recording separately, show their actual status, and offer a useful typed path without permission. Microphone access follows an explicit voice action. Never fire several system permission prompts merely by entering a page.
 
-## Do's and don'ts
+Practice demonstrates one small action at a time with sample content and a visible skip. Back, dismiss and relaunch preserve coherent progress. Completion settles into the notch rather than opening an unrelated dashboard.
 
-- Do keep every surface to one primary action; don't offer parallel actions that differ only in routing.
-- Do derive color from the semantic roles above; don't hardcode per-component hues or per-app accents.
-- Do respect reduced motion, increase-contrast, and text scaling on every surface; the UI test fixtures prove it.
-- Don't add settings for appearance variants — canonical identity is the product.
-- Don't animate layout; animate transform and opacity.
-- Don't let a marker, sound, or status line outlive the state that created it.
+## Interaction and motion
+
+The first welcome may draw itself once. Subsequent invocations are fast: feedback within 100–150 ms, panel arrival around 180–240 ms, shorter dismissal. Move the same character between surfaces to establish continuity. Do not replay onboarding spectacle in everyday use.
+
+Idle is still. Listening, thinking, acting and awaiting approval have distinct labels or shapes; motion is supplemental. Escape dismisses or cancels according to the current operation without silently approving anything. Keyboard focus is visible and initial focus is intentional. Mouse passage across the notch must not unexpectedly steal keyboard focus.
+
+Tasks expose Stop while running, a specific recovery action on failure and an honest completed or unverified result. Listening uses three bars beside the cursor. Working uses a short progress capsule with Stop; results can open in the notch. Long replies remain readable in the notch workspace. Background work remains discoverable when the active surface closes.
+
+## Removal list
+
+Remove the faceted glass cursor identity, permanent oversized follower, decorative state rings, automatic spoken first-run narration, stacked permission requests, onboarding inside the history shell, repeated model-configuration prose in the composer, duplicate Settings navigation, and primary actions competing with one another. Preserve backend capabilities, data, permission boundaries, trust checks and recovery paths.
+
+## Acceptance
+
+Look at and operate the real app in the approved dark appearance. Verify welcome, setup, denied permissions, voice initiation, optional typing, notch expansion, no-notch fallback, guide target, running task, approval, failure, completion, expanded workspace, settings and relaunch. Inspect actual frames for clipping, texture, typography and character scale. Unit tests do not prove visual quality; generated concepts do not prove motion quality. Build, relevant behavioral tests, visual evidence and code review must all pass before this contract is considered implemented.

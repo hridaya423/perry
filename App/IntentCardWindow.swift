@@ -4,19 +4,17 @@ import PerryGuide
 import PerryOverlay
 import PerryRuntimes
 
-/// Floating intent card anchored near the cursor. Orange: click the action
-/// button or Stop. Red: also requires typing the exact displayed target
-/// (PRD §4 — voice never suffices).
-final class IntentCardWindow: NSPanel {
+@MainActor
+final class IntentCardWindow {
     let approvalID: UUID
-    private let card: IntentCard
-    private let allowsStepThrough: Bool
     private let completion: (PlanDecision) -> Void
     private static var active: IntentCardWindow?
     private var finished = false
+    private var content: AnyView = AnyView(EmptyView())
+    private let presentation: NotchPresentation
     private var previousFrontmostApplication: NSRunningApplication?
 
-    override var canBecomeKey: Bool { true }
+    var frame: NSRect { presentation.frame }
 
     init(
         approvalID: UUID = UUID(),
@@ -24,85 +22,38 @@ final class IntentCardWindow: NSPanel {
         allowsStepThrough: Bool = false,
         alwaysAllowLabel: String? = nil,
         onAlwaysAllow: (() -> Void)? = nil,
+        presentation: NotchPresentation? = nil,
         completion: @escaping (PlanDecision) -> Void
     ) {
         self.approvalID = approvalID
-        self.card = card
-        self.allowsStepThrough = allowsStepThrough
         self.completion = completion
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 388, height: 320),
-            styleMask: [.titled, .utilityWindow, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        isFloatingPanel = true
-        level = .modalPanel
-        hidesOnDeactivate = false
-        PerryWindowChrome.applyChrome(to: self)
-        let hostingView = NSHostingView(rootView: IntentCardView(
+        self.presentation = presentation ?? .shared
+        content = AnyView(IntentCardView(
             card: card,
             allowsStepThrough: allowsStepThrough,
             alwaysAllowLabel: alwaysAllowLabel,
             onAlwaysAllow: onAlwaysAllow
-        ) { [weak self] decision in
-            self?.finish(decision)
-        })
-        contentView = hostingView
-        let fitting = hostingView.fittingSize
-        setContentSize(NSSize(width: max(388, fitting.width), height: max(280, fitting.height)))
-        // After hosting installs its own ideal-size constraints.
-        minSize = NSSize(width: 388, height: 280)
+        ) { [weak self] decision in self?.finish(decision) })
     }
 
-    /// Anchor the card beside the element it acts on through CaptionPlacer
-    /// (§4.4); with no target — plan cards cover several elements — fall back
-    /// to the cursor. `targetFrame` is AX-space, same as observed elements.
-    func show(anchoredAt targetFrame: CGRect? = nil) {
-        Self.active?.cancel()
+    func show() {
+        guard !finished else { return }
+        if Self.active !== self { Self.active?.cancel() }
         Self.active = self
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousFrontmostApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
-        var origin: CGPoint?
-        if let targetFrame, !targetFrame.isNull, targetFrame.width > 0, targetFrame.height > 0 {
-            let anchor = AXCoordinateConverter.appKitRect(
-                axX: targetFrame.minX, axY: targetFrame.minY,
-                width: targetFrame.width, height: targetFrame.height,
-                primaryScreenMaxY: Double(NSScreen.screens.first?.frame.maxY ?? 0)
-            )
-            if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchor) }) {
-                origin = CaptionPlacer.place(
-                    size: frame.size, anchor: anchor, in: screen.visibleFrame
-                ).origin
-            }
-        }
-        if origin == nil {
-            let mouse = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main
-            let visible = screen?.visibleFrame ?? .zero
-            let x = min(mouse.x + 24, visible.maxX - frame.width - 12)
-            let y = max(visible.minY + 12, mouse.y - frame.height - 24)
-            origin = NSPoint(x: max(visible.minX + 12, x), y: y)
-        }
-        setFrameOrigin(origin ?? .zero)
-        NSApp.activate(ignoringOtherApps: true)
-        makeKeyAndOrderFront(nil)
+        presentation.present(id: approvalID, priority: .approval, content: content, onDismiss: { [weak self] in self?.cancel() })
     }
 
-    func cancel() {
-        finish(.cancel)
-    }
+    func cancel() { finish(.cancel) }
 
     private func finish(_ decision: PlanDecision) {
         guard !finished else { return }
         finished = true
-        close()
+        presentation.remove(approvalID)
         if Self.active === self { Self.active = nil }
         completion(decision)
-        if let previousFrontmostApplication,
-           previousFrontmostApplication.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            previousFrontmostApplication.activate(options: [.activateAllWindows])
-        }
+        previousFrontmostApplication?.activate(options: [.activateAllWindows])
         previousFrontmostApplication = nil
     }
 }
@@ -117,16 +68,24 @@ struct IntentCardView: View {
     let onAnswer: (PlanDecision) -> Void
 
     @State private var typedConfirmation: String = ""
+    @State private var showsFullDetail = false
     @FocusState private var confirmationFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(colorForTier)
-                    .frame(width: 10, height: 10)
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(colorForTier)
+                        .frame(width: 7, height: 7)
+                    Text(tierLabel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Risk: \(tierLabel)")
                 Text(card.title)
-                    .font(PerryTheme.Typography.panelBody.weight(.semibold))
+                    .font(.title3.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -143,21 +102,33 @@ struct IntentCardView: View {
             .accessibilityElement(children: .contain)
 
             if let detail = card.detail, !detail.isEmpty {
-                Text(detail)
-                    .font(PerryTheme.Typography.note.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                VStack(alignment: .leading, spacing: 6) {
+                    if showsFullDetail {
+                        ScrollView {
+                            detailText(detail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 200)
+                    } else {
+                        detailText(detail)
+                            .lineLimit(4)
+                    }
+                    if detail.count > 220 || detail.contains("\n") {
+                        Button(showsFullDetail ? "Show less" : "Show more") { showsFullDetail.toggle() }
+                            .buttonStyle(.plain)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(PerryTheme.Colors.accent)
+                    }
+                }
             }
 
             if card.tier >= .red {
                 Text("This one needs real attention. Type \"\(card.redPhrase)\" exactly; I won’t take a voice yes for this.")
-                    .font(PerryTheme.Typography.note)
-                    .foregroundStyle(.secondary)
+                    .font(PerryTheme.Typography.settingsStatus)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Text(card.redPhrase)
                     .font(PerryTheme.Typography.mono)
                     .foregroundStyle(PerryTheme.Colors.danger)
-                // Neutral placeholder: showing the phrase inside the field
-                // looked like it was already typed while Approve stayed off.
                 TextField("Type it here to confirm", text: $typedConfirmation)
                     .textFieldStyle(.roundedBorder)
                     .font(PerryTheme.Typography.settingsStatus)
@@ -166,17 +137,24 @@ struct IntentCardView: View {
                     .accessibilityHint("Type the displayed target exactly to allow this action")
             }
 
-            HStack {
-                Button("Stop") { onAnswer(.cancel) }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
+            HStack(spacing: 8) {
                 if allowsStepThrough {
-                    Button("Edit") { onAnswer(.edit) }
-                        .keyboardShortcut("e", modifiers: .command)
-                        .accessibilityHint("Send the goal back to revise it")
-                    Button("Replay") { onAnswer(.replay) }
-                        .keyboardShortcut("r", modifiers: .command)
-                        .accessibilityHint("Re-observe the targets and show the preview again")
+                    HStack(spacing: 14) {
+                        Button("Edit") { onAnswer(.edit) }
+                            .keyboardShortcut("e", modifiers: .command)
+                            .accessibilityHint("Send the goal back to revise it")
+                        Button("Replay") { onAnswer(.replay) }
+                            .keyboardShortcut("r", modifiers: .command)
+                            .accessibilityHint("Re-observe the targets and show the preview again")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.callout)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                }
+                Spacer()
+                Button("Don’t allow") { onAnswer(.cancel) }
+                    .keyboardShortcut(.cancelAction)
+                if allowsStepThrough {
                     Button("Step through") {
                         guard isTypedConfirmationValid else {
                             NSSound.beep()
@@ -203,13 +181,16 @@ struct IntentCardView: View {
                     onAnswer(.run)
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(InkButtonStyle())
                 .disabled(!isTypedConfirmationValid)
             }
+            .buttonStyle(InkButtonStyle(.secondary))
+            .controlSize(.small)
         }
-        .padding(14)
+        .padding(18)
         .frame(minWidth: 340, maxWidth: .infinity)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+        .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
             if card.tier >= .red {
                 confirmationFocused = true
@@ -217,13 +198,21 @@ struct IntentCardView: View {
         }
     }
 
+    private func detailText(_ detail: String) -> some View {
+        Text(detail)
+            .font(.callout)
+            .foregroundStyle(PerryTheme.Colors.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+    }
+
     private func labeledRow(_ label: String, value: String, valueColor: Color = PerryTheme.Colors.textSecondary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
-                .font(PerryTheme.Typography.note.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(PerryTheme.Typography.settingsStatus.weight(.semibold))
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             Text(value)
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Typography.settingsStatus)
                 .foregroundStyle(valueColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -234,6 +223,15 @@ struct IntentCardView: View {
         guard let label = card.approveLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
               !label.isEmpty else { return "Approve" }
         return label.prefix(1).uppercased() + label.dropFirst()
+    }
+
+    private var tierLabel: String {
+        switch card.tier {
+        case .green: "Read only"
+        case .yellow: "Small change"
+        case .orange: "Needs your OK"
+        case .red: "High stakes"
+        }
     }
 
     private var colorForTier: Color {

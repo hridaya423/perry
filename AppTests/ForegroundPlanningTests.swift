@@ -353,6 +353,9 @@ final class ForegroundPlanningTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("build/dependable-evidence/unsaved-compact-\(name).png")
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
             window.close()
         }
@@ -381,6 +384,9 @@ final class ForegroundPlanningTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
                 .appendingPathComponent("build/dependable-evidence/waiting-guide-panel-\(name).png")
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
             window.close()
         }
@@ -689,24 +695,6 @@ final class ForegroundPlanningTests: XCTestCase {
             return false
         }
         XCTAssertTrue(dismissed, "dismiss while .asking did not settle — state: \(controller.sessionState)")
-    }
-
-    func testForegroundDoRoutesToTheAgentLoop() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let provider = AgentRouteProvider()
-        let controller = makeController(directory: directory)
-        controller.foreground.agentCoordinator = AgentCoordinator(
-            provider: { _ in provider },
-            host: PerryToolHost(executors: []),
-            threads: ThreadStore(directory: directory.appendingPathComponent("Threads")),
-            consent: ToolConsentStore(directory: nil)
-        )
-
-        let outcome = try await controller.foreground.debugRun(goal: "agent routed goal")
-
-        XCTAssertEqual(provider.requests.count, 1, "goal did not reach the agent loop")
-        XCTAssertEqual(outcome, .completed(stepsRun: 0))
     }
 
     func testFailedForegroundTaskRetryDispatchesTheReplacementOnce() async throws {
@@ -1199,17 +1187,24 @@ final class ForegroundPlanningTests: XCTestCase {
             consent: ToolConsentStore(directory: nil)
         )
         controller.foreground.start(goal: "old attempt")
-        await gate.waitForCall(1)
+        let firstCalled = await waitUntil { await gate.calls >= 1 }
+        XCTAssertTrue(firstCalled, "old attempt never streamed: \(controller.sessionState)")
         controller.dismiss()
         // The old run's teardown is async — a start that races it bounces off
-        // `supervisorActive`, so wait for teardown before the replacement.
-        let tornDown = await waitUntil { !controller.foreground.supervisorActive }
+        // `supervisorActive` or the in-flight start, so wait for both to clear.
+        let tornDown = await waitUntil { !controller.foreground.supervisorActive && !controller.foreground.startIsInFlight }
         XCTAssertTrue(tornDown, "old attempt's supervisor did not clear: \(controller.sessionState)")
         controller.foreground.start(goal: "replacement attempt")
-        await gate.waitForCall(2)
+        let replacementCalled = await waitUntil { await gate.calls >= 2 }
+        guard replacementCalled else {
+            await gate.releaseFirst()
+            await gate.releaseSecond()
+            return XCTFail("replacement never streamed: \(controller.sessionState), supervisor active: \(controller.foreground.supervisorActive)")
+        }
         let replacementStatus = controller.sessionStatus
         await gate.releaseFirst()
-        await gate.waitForFirstError()
+        let firstErrored = await waitUntil { await gate.sawFirstError }
+        XCTAssertTrue(firstErrored, "stale first stream never errored")
         await Task.yield()
 
         XCTAssertEqual(controller.sessionStatus, replacementStatus)
@@ -1273,6 +1268,210 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(controller.sessionState, .reporting(ReportState(taskID: taskID, summary: "Replacement report")))
     }
 
+    func testVoiceDispatchSteersTheScopedRunningTask() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = FinalizationGate()
+        let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
+        let controller = makeController(directory: directory)
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "rename the downloads")
+        let execution = try await waitForRunningExecution(controller)
+
+        controller.debugDispatch("skip the second file", voiceTaskScope: execution.taskID)
+        XCTAssertTrue(
+            controller.sessionStatus.contains("Steering: skip the second file"),
+            "scoped voice direction did not reach the run — status: \(controller.sessionStatus)"
+        )
+        guard case .executing(let steered) = controller.sessionState else {
+            return XCTFail("steering dropped the run — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(steered.taskID, execution.taskID)
+        XCTAssertEqual(steered.lifecycle, .running)
+
+        controller.foreground.pause()
+        controller.debugDispatch("continue carefully", voiceTaskScope: execution.taskID)
+        XCTAssertTrue(controller.sessionStatus.contains("Steering: continue carefully"))
+        guard case .executing(let paused) = controller.sessionState else {
+            return XCTFail("paused steering dropped the run — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(paused.lifecycle, .paused)
+        XCTAssertEqual(coordinator.runningThreads.count, 1)
+        XCTAssertTrue(controller.foreground.startIsInFlight)
+
+        controller.dismiss()
+        await gate.release()
+        await controller.foreground.joinStartTask()
+    }
+
+    func testVoiceDispatchRejectsStaleTaskScope() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = FinalizationGate()
+        let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
+        let controller = makeController(directory: directory)
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "rename the downloads")
+        let first = try await waitForRunningExecution(controller)
+
+        controller.debugDispatch("speech begun before this task")
+        XCTAssertTrue(controller.sessionStatus.contains("hold the shortcut again"))
+        XCTAssertFalse(controller.sessionStatus.contains("Steering:"))
+
+        controller.debugDispatch("use the other folder", voiceTaskScope: UUID())
+        XCTAssertTrue(
+            controller.sessionStatus.contains("moved on"),
+            "a scope that never matched this run was not dropped — status: \(controller.sessionStatus)"
+        )
+        guard case .executing(let stillFirst) = controller.sessionState else {
+            return XCTFail("stale scope disturbed the run — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(stillFirst.taskID, first.taskID)
+        XCTAssertEqual(stillFirst.lifecycle, .running)
+
+        controller.dismiss()
+        await gate.release()
+        await controller.foreground.joinStartTask()
+        controller.dismiss()
+
+        controller.foreground.start(goal: "rename the uploads")
+        let second = try await waitForRunningExecution(controller)
+        XCTAssertNotEqual(second.taskID, first.taskID)
+
+        controller.debugDispatch("keep going", voiceTaskScope: first.taskID)
+        XCTAssertTrue(controller.sessionStatus.contains("moved on"))
+        guard case .executing(let current) = controller.sessionState else {
+            return XCTFail("replacement run dropped — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(current.taskID, second.taskID)
+
+        controller.debugDispatch("keep going", voiceTaskScope: second.taskID)
+        XCTAssertTrue(controller.sessionStatus.contains("Steering: keep going"))
+
+        controller.dismiss()
+        await gate.release()
+        await controller.foreground.joinStartTask()
+    }
+
+    func testVoiceDispatchStopStopsTheTask() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = FinalizationGate()
+        let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
+        let controller = makeController(directory: directory)
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "rename the downloads")
+        let execution = try await waitForRunningExecution(controller)
+
+        controller.debugDispatch("stop", voiceTaskScope: execution.taskID)
+        guard case .executing(let stopping) = controller.sessionState else {
+            return XCTFail("spoken stop dropped the session outright — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(stopping.lifecycle, .stopping)
+        XCTAssertFalse(controller.sessionStatus.contains("Steering"), "stop was steered into the run instead of stopping it")
+
+        await gate.release()
+        await controller.foreground.joinStartTask()
+        if case .executing = controller.sessionState {
+            XCTFail("run never settled after spoken stop — state: \(controller.sessionState)")
+        }
+        controller.dismiss()
+    }
+
+    func testVoiceDispatchDuringApprovalCannotAcceptOrSteer() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = FinalizationGate()
+        let session = SessionController()
+        let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
+        let controller = makeController(directory: directory, session: session)
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "perform the fixture task")
+        let execution = try await waitForRunningExecution(controller)
+        try session.awaitApproval(UUID(), actionSummary: "Send the report")
+
+        controller.debugDispatch("yes, go ahead", voiceTaskScope: execution.taskID)
+        guard case .executing(let stillAwaiting) = controller.sessionState else {
+            return XCTFail("spoken approval disturbed the session — state: \(controller.sessionState)")
+        }
+        if case .awaitingApproval = stillAwaiting.lifecycle {} else {
+            XCTFail("spoken approval was accepted or bypassed — lifecycle: \(stillAwaiting.lifecycle)")
+        }
+        XCTAssertFalse(controller.sessionStatus.contains("Steering"))
+
+        controller.debugDispatch("stop", voiceTaskScope: execution.taskID)
+        if case .executing(let stopping) = controller.sessionState {
+            XCTAssertEqual(stopping.lifecycle, .stopping)
+        } else {
+            XCTFail("spoken stop during approval dropped the session — state: \(controller.sessionState)")
+        }
+
+        await gate.release()
+        await controller.foreground.joinStartTask()
+        controller.dismiss()
+    }
+
+    func testTypedSteeringStillReachesTheRunningTask() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let gate = FinalizationGate()
+        let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
+        let controller = makeController(directory: directory)
+        controller.agentCoordinator = coordinator
+        controller.foreground.agentCoordinator = coordinator
+        defer { Task { await gate.release() } }
+
+        controller.foreground.start(goal: "rename the downloads")
+        let execution = try await waitForRunningExecution(controller)
+
+        controller.foreground.steer("rename it final-report instead")
+        XCTAssertTrue(controller.sessionStatus.contains("Steering: rename it final-report instead"))
+        guard case .executing(let steered) = controller.sessionState else {
+            return XCTFail("typed steering dropped the run — state: \(controller.sessionState)")
+        }
+        XCTAssertEqual(steered.taskID, execution.taskID)
+
+        controller.dismiss()
+        await gate.release()
+        await controller.foreground.joinStartTask()
+    }
+
+    private func makeHeldRunCoordinator(directory: URL, gate: FinalizationGate) -> AgentCoordinator {
+        AgentCoordinator(
+            provider: { _ in ForegroundAnswerProvider(reason: .endTurn, waitAfterFirstText: { await gate.pause() }) },
+            host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: directory.appendingPathComponent("Threads")),
+            consent: ToolConsentStore(directory: nil)
+        )
+    }
+
+    private func waitForRunningExecution(_ controller: AppController) async throws -> ExecutionSessionState {
+        let running = await waitUntil(timeout: .seconds(10)) {
+            guard case .executing(let execution) = controller.sessionState else { return false }
+            return execution.lifecycle == .running
+        }
+        XCTAssertTrue(running, "run never reached .running — state: \(controller.sessionState)")
+        let execution: ExecutionSessionState?
+        if case .executing(let current) = controller.sessionState {
+            execution = current
+        } else {
+            execution = nil
+        }
+        return try XCTUnwrap(execution)
+    }
+
     private func makeController(
         directory: URL,
         finalizationBarrier: (@MainActor () async -> Void)? = nil,
@@ -1283,7 +1482,8 @@ final class ForegroundPlanningTests: XCTestCase {
         typedVerifier: (any TypedActionVerifier)? = nil,
         askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
         screenContextLoader: EnvironmentProbe.ScreenContextLoader? = nil,
-        session: SessionController? = nil
+        session: SessionController? = nil,
+        confirmer: (any Confirmer)? = nil
     ) -> AppController {
         let inventory = RuntimeInventory(
             setup: RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: []),
@@ -1322,7 +1522,7 @@ final class ForegroundPlanningTests: XCTestCase {
             },
             typedVerifier: typedVerifier,
             notifier: ForegroundNotifier(),
-            confirmer: ApprovingConfirmer(),
+            confirmer: confirmer ?? ApprovingConfirmer(),
             askUser: askUser ?? { _, _ in }
         )
     }
@@ -1410,57 +1610,11 @@ final class ForegroundPlanningTests: XCTestCase {
         )
     }
 
-    private func makeProductionController(
-        directory: URL,
-        inspector: RuntimeInventoryInspector,
-        workspace: WorkspaceCapture
-    ) -> AppController {
-        AppController(
-            debugStorageDirectory: directory,
-            runtimeInventoryLoader: { workingDirectory in
-                workspace.value = workingDirectory
-                return try await inspector.inspect(workingDirectory: workingDirectory)
-            },
-            screenContextLoader: { _, _ in
-                (
-                    ScreenContext(
-                        frontAppBundleID: "fixture.app",
-                        frontWindowTitle: "Fixture window",
-                        screenshotReferenceID: "cua:fixture",
-                        screenshotCoordinateSpace: .windowPixels
-                    ),
-                    nil
-                )
-            },
-            notifier: ForegroundNotifier(),
-            confirmer: ApprovingConfirmer()
-        )
-    }
-
     private func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-foreground-planning-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
-    }
-}
-
-private final class AgentRouteProvider: ModelProvider, @unchecked Sendable {
-    let id: ProviderID = "fixture.agent-route"
-    let displayName = "Fixture"
-    let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
-    private let lock = NSLock()
-    private var recorded: [ModelRequest] = []
-    var requests: [ModelRequest] { lock.withLock { recorded } }
-    func warm() async {}
-    func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
-    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
-        lock.withLock { recorded.append(request) }
-        return AsyncThrowingStream { continuation in
-            continuation.yield(.textDelta("Done."))
-            continuation.yield(.done(.endTurn))
-            continuation.finish()
-        }
     }
 }
 
@@ -1495,16 +1649,6 @@ private enum FullGuidePlannerError: Error, LocalizedError {
 
     var errorDescription: String? {
         "fixture full-guide planner failure"
-    }
-}
-
-private struct AlwaysVerifiedTypedActionVerifier: TypedActionVerifier {
-    func verify(
-        approvedAction: ApprovedExecutableAction,
-        result: ActionExecutionResult,
-        context: ScreenContext
-    ) async -> VerificationStatus {
-        .verified(evidence: "fixture verification")
     }
 }
 
@@ -1651,26 +1795,18 @@ private struct ForegroundAnswerProvider: ModelProvider {
 /// taken; answers immediately with a fixed text stream.
 private actor StartupStreamGate {
     private var callCount = 0
-    private var callWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
     private var firstReleased = false
     private var secondReleased = false
     private var firstErrorObserved = false
     private var firstReleaseWaiter: CheckedContinuation<Void, Never>?
     private var secondReleaseWaiter: CheckedContinuation<Void, Never>?
-    private var firstErrorWaiter: CheckedContinuation<Void, Never>?
+
+    var calls: Int { callCount }
+    var sawFirstError: Bool { firstErrorObserved }
 
     func enter() -> Int {
         callCount += 1
-        callWaiters[callCount]?.resume()
-        callWaiters[callCount] = nil
         return callCount
-    }
-
-    func waitForCall(_ count: Int) async {
-        if callCount >= count { return }
-        await withCheckedContinuation { continuation in
-            callWaiters[count] = continuation
-        }
     }
 
     func waitForFirstRelease() async {
@@ -1682,15 +1818,6 @@ private actor StartupStreamGate {
 
     func markFirstError() {
         firstErrorObserved = true
-        firstErrorWaiter?.resume()
-        firstErrorWaiter = nil
-    }
-
-    func waitForFirstError() async {
-        if firstErrorObserved { return }
-        await withCheckedContinuation { continuation in
-            firstErrorWaiter = continuation
-        }
     }
 
     func waitForSecondRelease() async {

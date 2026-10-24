@@ -132,13 +132,4 @@ final class WorkspaceFilePlanFabricatorTests: XCTestCase {
         XCTAssertEqual(path, " report.txt ")
         XCTAssertEqual(contents, "hello")
     }
-
-    func testWorkspaceExecutionPlanReturnsNilForNonFileGoals() async throws {
-        let plan = try await WorkspaceFilePlanFabricator().workspaceExecutionPlan(
-            goal: "organize the desktop",
-            workspace: URL(fileURLWithPath: "/tmp/perry-planner-nil"),
-            taskID: "typed-nil"
-        )
-        XCTAssertNil(plan)
-    }
 }

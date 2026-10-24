@@ -3,11 +3,6 @@ import Combine
 import PerryOverlay
 import SwiftUI
 
-/// Floating guide-controls surface shown while Perry is pointing at a target.
-/// Step mode: position, current target, and Done/Skip/Re-point/Stop — the
-/// control alternative to clicking the highlighted element. Map mode: numbered
-/// buttons matching the visible-path markers, so marker picking is never a
-/// click-only gesture. Stop is also reachable via Escape.
 final class GuideControlsState: ObservableObject {
     @Published var stepPosition: Int = 1
     @Published var targetLabel: String?
@@ -56,71 +51,101 @@ struct GuideControlsView: View {
                 stepContent
             }
         }
-        .padding(.horizontal, PerryTheme.Spacing.section)
-        .padding(.vertical, PerryTheme.Spacing.header)
-        .frame(width: 320)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-        .shadow(color: PerryTheme.Elevation.shadow, radius: 14, y: 6)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
     }
 
     private var stepContent: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            HStack(spacing: PerryTheme.Spacing.control) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                PerryCharacterView(pose: PerryCharacterPose(), size: 20)
+                    .accessibilityHidden(true)
                 Text("Step \(state.stepPosition)")
-                    .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .accessibilityLabel("Guide step position")
                     .accessibilityValue("Step \(state.stepPosition)")
-                if let targetLabel = state.targetLabel, !targetLabel.isEmpty {
-                    Text("· \(targetLabel)")
-                        .font(PerryTheme.Typography.panelMetadata)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                        .accessibilityLabel("Current target")
-                        .accessibilityValue(targetLabel)
-                }
-                Spacer(minLength: 0)
+                Spacer()
+                stopButton
             }
-            HStack(spacing: PerryTheme.Spacing.control) {
+            if let targetLabel = state.targetLabel, !targetLabel.isEmpty {
+                Text(targetLabel)
+                    .font(.title3.weight(.medium))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Current target")
+                    .accessibilityValue(targetLabel)
+            }
+            HStack(spacing: 8) {
                 if !state.hasPostcondition {
-                    Button("Done") { onDone() }
+                    Button("Done", action: onDone)
+                        .buttonStyle(InkButtonStyle())
                         .keyboardShortcut(.defaultAction)
                         .accessibilityHint("Tell Perry you finished this step")
                 }
-                Button("Back") { onBack() }
-                    .disabled(!state.canGoBack)
-                    .accessibilityHint("Show the previous step again")
-                Button("Skip") { onSkip() }
-                    .accessibilityHint("Skip this step")
-                Button("Re-point") { onRepoint() }
-                    .accessibilityHint("Find the target again")
-                Button("Do it") { onTakeOver() }
-                    .accessibilityHint("Hand the rest of this task to Perry")
-                Spacer(minLength: 0)
-                Button(role: .destructive) { onStop() } label: {
-                    Text("Stop")
+                Button(action: onTakeOver) {
+                    Label("Let Perry do it", systemImage: "cursorarrow.motionlines")
                 }
-                .keyboardShortcut(.cancelAction)
-                .accessibilityHint("Stop the guide")
+                .buttonStyle(InkButtonStyle(.secondary))
+                .accessibilityHint("Hand the rest of this task to Perry")
+                Spacer(minLength: 12)
+                Menu {
+                    Button("Back", action: onBack)
+                        .disabled(!state.canGoBack)
+                    Button("Find it again", action: onRepoint)
+                    Button("Skip this step", action: onSkip)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("More step options")
             }
-            .buttonStyle(.bordered)
             .controlSize(.small)
         }
     }
 
+    private var stopButton: some View {
+        Button(action: onStop) {
+            Image(systemName: "xmark")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                .frame(width: 24, height: 24)
+                .background(Color.white.opacity(0.06), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(.cancelAction)
+        .accessibilityLabel("Stop guide")
+        .help("Stop guide (Esc)")
+    }
+
     private var mapContent: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text("Pick a step to start from")
-                .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 36), spacing: PerryTheme.Spacing.control)], spacing: PerryTheme.Spacing.control) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Pick a step to start from")
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                stopButton
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 36), spacing: 8)], spacing: 8) {
                 ForEach(state.markerCaptions.indices, id: \.self) { index in
                     Button { onSelectMarker(index) } label: {
                         Text("\(index + 1)")
-                            .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
-                            .frame(width: 28, height: 28)
-                            .background(PerryTheme.Colors.canvas, in: Circle())
+                            .font(.callout.weight(.semibold))
+                            .monospacedDigit()
+                            .frame(width: 32, height: 32)
+                            .background(Color.white.opacity(0.06), in: Circle())
+                            .overlay(Circle().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Start at step \(index + 1)")
@@ -128,47 +153,40 @@ struct GuideControlsView: View {
                 }
             }
             .accessibilityElement(children: .contain)
-            HStack {
-                Spacer(minLength: 0)
-                Button(role: .destructive) { onStop() } label: {
-                    Text("Stop")
-                }
-                .keyboardShortcut(.cancelAction)
-                .controlSize(.small)
-                .accessibilityHint("Stop the guide")
-            }
         }
     }
 
     private var inputContent: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text(state.pendingPrompt ?? "")
-                .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
-            ForEach(state.pendingChoices.indices, id: \.self) { index in
-                Button(state.pendingChoices[index]) { onChooseInput(index) }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityHint("Answer the guide’s question with this choice")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(state.pendingPrompt ?? "")
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                stopButton
             }
-            HStack {
-                Spacer(minLength: 0)
-                Button(role: .destructive) { onStop() } label: {
-                    Text("Stop")
+            VStack(spacing: 8) {
+                ForEach(state.pendingChoices.indices, id: \.self) { index in
+                    Button(state.pendingChoices[index]) { onChooseInput(index) }
+                        .buttonStyle(InkChoiceStyle(isDefault: index == 0))
+                        .keyboardShortcut(index == 0 ? .defaultAction : nil)
+                        .accessibilityHint("Answer the guide’s question with this choice")
                 }
-                .keyboardShortcut(.cancelAction)
-                .controlSize(.small)
-                .accessibilityHint("Stop the guide")
             }
         }
     }
 }
 
-final class GuideControlsWindow: NSPanel {
+@MainActor
+final class GuideControlsWindow {
     let controlsState: GuideControlsState
-    private var sizeObserver: AnyCancellable?
-    private var anchorScreen: NSScreen?
+    private let id = UUID()
+    private let content: GuideControlsView
+    private let presentation: NotchPresentation
+
+    var isVisible: Bool { presentation.contains(id) }
+    var frame: NSRect { isVisible ? presentation.frame : .zero }
 
     init(
         state: GuideControlsState,
@@ -179,62 +197,19 @@ final class GuideControlsWindow: NSPanel {
         onSelectMarker: @escaping (Int) -> Void,
         onChooseInput: @escaping (Int) -> Void,
         onTakeOver: @escaping () -> Void,
-        onStop: @escaping () -> Void
+        onStop: @escaping () -> Void,
+        presentation: NotchPresentation? = nil
     ) {
-        self.controlsState = state
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 72),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        isFloatingPanel = true
-        level = .floating
-        title = "Perry guide controls"
-        identifier = NSUserInterfaceItemIdentifier("PerryGuideControls")
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        hidesOnDeactivate = false
-        ignoresMouseEvents = false
-        PerryWindowChrome.applyChrome(to: self)
-        let hostingView = NSHostingView(
-            rootView: GuideControlsView(
-                state: state,
-                onDone: onDone,
-                onBack: onBack,
-                onSkip: onSkip,
-                onRepoint: onRepoint,
-                onSelectMarker: onSelectMarker,
-                onChooseInput: onChooseInput,
-                onTakeOver: onTakeOver,
-                onStop: onStop
-            )
-        )
-        contentView = hostingView
-        sizeObserver = state.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async { self?.sizeToFit() }
-        }
+        controlsState = state
+        self.presentation = presentation ?? .shared
+        content = GuideControlsView(state: state, onDone: onDone, onBack: onBack, onSkip: onSkip,
+                                    onRepoint: onRepoint, onSelectMarker: onSelectMarker,
+                                    onChooseInput: onChooseInput, onTakeOver: onTakeOver, onStop: onStop)
     }
 
-    /// Anchored top-right like the activity strip; content grows downward so
-    /// the panel never leaves the screen or jumps between steps.
-    func show(on screen: NSScreen?) {
-        anchorScreen = screen ?? NSScreen.main
-        sizeToFit()
-        orderFrontRegardless()
+    func show() {
+        presentation.present(id: id, priority: .guide, content: content)
     }
 
-    private func sizeToFit() {
-        guard let hostingView = contentView as? NSHostingView<GuideControlsView> else { return }
-        let fitting = hostingView.fittingSize
-        let newSize = NSSize(width: max(320, fitting.width), height: max(56, fitting.height))
-        guard newSize != frame.size else { return }
-        let visible = (anchorScreen ?? NSScreen.main)?.visibleFrame ?? .zero
-        var newFrame = frame
-        newFrame.size = newSize
-        newFrame.origin.x = visible.maxX - newSize.width - 20
-        newFrame.origin.y = visible.maxY - newSize.height - 20
-        setFrame(newFrame, display: true, animate: false)
-    }
+    func orderOut(_ sender: Any?) { presentation.remove(id) }
 }

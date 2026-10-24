@@ -23,6 +23,26 @@ final class ToolHostTests: XCTestCase {
         ToolCall(id: "c1", name: name, arguments: args)
     }
 
+    func testRuntimeGroupsAddAndRemoveToolsWithoutShadowingBuiltIns() async {
+        let (host, builtIns) = host([("files.read", .green, [.agent])])
+        let added = ["mcp.notes.search", "files.read"].map {
+            RecordingExecutor(spec: ToolSpec(name: $0, description: $0, inputSchema: toolSchema([:]), tier: .green, surfaces: [.agent]))
+        }
+        host.setExecutors(added, group: "notes")
+        XCTAssertEqual(host.specs(for: .agent).map(\.name), ["files.read", "mcp.notes.search"])
+
+        _ = await host.handle(call("mcp.notes.search"), context: ToolContext(surface: .agent))
+        _ = await host.handle(call("files.read"), context: ToolContext(surface: .agent))
+        XCTAssertEqual(added[0].callCount, 1)
+        XCTAssertEqual(added[1].callCount, 0)
+        XCTAssertEqual(builtIns[0].callCount, 1)
+
+        host.setExecutors([], group: "notes")
+        XCTAssertEqual(host.specs(for: .agent).map(\.name), ["files.read"])
+        let removed = await host.handle(call("mcp.notes.search"), context: ToolContext(surface: .agent))
+        XCTAssertTrue(removed.isError)
+    }
+
     func testUnknownTool() async {
         let (host, _) = host([("echo", .green, [.agent])])
         let result = await host.handle(call("nope"), context: ToolContext(surface: .agent))
@@ -95,6 +115,19 @@ final class ToolHostTests: XCTestCase {
             .object(["rect": .object(["w": .string("wide")])]), against: schema
         )
         XCTAssertEqual(detail, "arguments.rect.w: expected number")
+    }
+
+    func testUnknownKeysFollowAdditionalProperties() {
+        let declared = JSONValue.object(["type": .string("object"), "properties": .object(["q": .object(["type": .string("string")])])])
+        let open = JSONValue.object(["type": .string("object")])
+        let explicitlyOpen = JSONValue.object(["type": .string("object"), "properties": .object([:]), "additionalProperties": .bool(true)])
+        let closed = JSONValue.object(["type": .string("object"), "additionalProperties": .bool(false)])
+        let arguments = JSONValue.object(["extra": .string("x")])
+
+        XCTAssertEqual(PerryToolHost.validate(arguments, against: declared), "arguments: unknown key \"extra\"")
+        XCTAssertNil(PerryToolHost.validate(arguments, against: open))
+        XCTAssertNil(PerryToolHost.validate(arguments, against: explicitlyOpen))
+        XCTAssertEqual(PerryToolHost.validate(arguments, against: closed), "arguments: unknown key \"extra\"")
     }
 
     func testTalkSurfaceRejectsActTool() async {

@@ -227,6 +227,7 @@ final class GuideSessionCoordinator {
         self?.handleSessionClick(point)
     }
     private var guideScopes: [UUID: GuideWorkerSession] = [:]
+    private var finalizingScopes: [UUID: GuideWorkerSession] = [:]
     private var currentGuideScopeID: UUID?
     private var guidePersistenceSuppressed = false
     private var lastGuideSpeechIdentity: GuideSpeechIdentity?
@@ -449,6 +450,9 @@ final class GuideSessionCoordinator {
         everythingGuideSession = nil
         hideGuideControls()
         currentGuideScopeID = nil
+        for scope in finalizingScopes.values {
+            scope.suppressFinalization()
+        }
         for scope in guideScopes.values {
             scope.suppressFinalization()
             scope.closeCallbackAdmission()
@@ -462,7 +466,7 @@ final class GuideSessionCoordinator {
                 await guideTask.value
             }
         }
-        for scope in scopes {
+        for scope in scopes + finalizingScopes.values {
             if let finalizationTask = scope.finalizationTask {
                 await finalizationTask.value
             }
@@ -530,8 +534,7 @@ final class GuideSessionCoordinator {
             )
         }
         guard let window = guideControlsWindow, !window.isVisible else { return }
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main
-        window.show(on: screen)
+        window.show()
     }
 
     private func hideGuideControls() {
@@ -884,8 +887,10 @@ final class GuideSessionCoordinator {
         let workflow: MemoryRecord? = request.outcome == .completed && !request.steps.isEmpty
             ? MemoryRecord(category: .appWorkflow, appBundleID: request.appBundleID, summary: "\(request.goal): \(request.steps.joined(separator: " → "))")
             : nil
+        finalizingScopes[scope.id] = scope
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer { self.finalizingScopes[scope.id] = nil }
             let progress = await scope.engine?.progress
             let current = await scope.engine?.currentPresentation()?.step.instruction
             var details = [request.summary]
@@ -905,6 +910,7 @@ final class GuideSessionCoordinator {
             case .failed: finish = .failed(request.summary)
             }
             scope.conversationOutcome = (details.joined(separator: "\n\n"), finish)
+            guard !self.guidePersistenceSuppressed, !scope.finalizationSuppressed else { return }
             _ = await self.transcriptStore.append(entry)
             if let workflow {
                 _ = await self.memoryStore.remember(workflow)

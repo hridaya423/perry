@@ -42,15 +42,15 @@ struct SessionPanelView: View {
                 .padding(PerryTheme.Spacing.panelInset)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minWidth: PerryTheme.Sizing.panelWidth, minHeight: PerryTheme.Sizing.panelHeight)
-        .background(PerryTheme.Colors.surface)
+        .frame(minWidth: PerryTheme.Sizing.panelWidth)
+        .background(PerryTheme.Colors.canvas)
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
             controller.runtimes.refreshChoices()
             consumePendingPrompt()
         }
-        .onReceive(controller.$pendingPromptText) { _ in
+        .onChange(of: controller.pendingPromptText) { _, _ in
             consumePendingPrompt()
         }
         .task {
@@ -90,7 +90,7 @@ struct SessionPanelView: View {
     private var panelContent: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
             HStack(spacing: PerryTheme.Spacing.header) {
-                PerryGlassCursorView(animation: .idle, size: 36, variant: .lens)
+                PerryCharacterView(pose: PerryCharacterPose(), size: 24)
                 VStack(alignment: .leading, spacing: PerryTheme.Spacing.label) {
                     Text("Perry")
                         .font(PerryTheme.Typography.panelTitle)
@@ -253,8 +253,7 @@ struct SessionPanelView: View {
                         .font(PerryTheme.Typography.action)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(PerryTheme.Colors.accent)
+                .buttonStyle(InkButtonStyle())
                 .disabled(requestIsEmpty)
                 .keyboardShortcut(.defaultAction)
                 .accessibilityHint("Submit the request to Perry")

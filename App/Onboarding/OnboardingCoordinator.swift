@@ -1,32 +1,37 @@
 import AppKit
+import Combine
 import PerryCapture
 import PerryOverlay
 
-/// Runs first-run onboarding: owns the director and the practice window, and
-/// connects the director's effects to permissions, Home, Talk, and the brain.
+/// Runs first-run onboarding inside the expanded notch: owns the director and
+/// the practice window, and connects the director's effects to permissions,
+/// the notch, Talk, and the brain.
 @MainActor
 final class OnboardingCoordinator {
     private let overlayState: PerryCursorState
-    private let makeSpeech: () -> any TalkSpeechOutput
     private let home: () -> HomeController
     private let talkSession: () -> TalkSession
     private let preferOnDeviceBrain: () -> Void
-    private lazy var speech = makeSpeech()
+    private let showNotch: () -> Void
+    private let endTalk: () -> Void
     private lazy var practiceWindow = PracticeWindow()
+    private var beatObservation: AnyCancellable?
     private(set) var director: OnboardingDirector?
 
     init(
         overlayState: PerryCursorState,
-        makeSpeech: @escaping () -> any TalkSpeechOutput,
         home: @escaping () -> HomeController,
         talkSession: @escaping () -> TalkSession,
-        preferOnDeviceBrain: @escaping () -> Void
+        preferOnDeviceBrain: @escaping () -> Void,
+        showNotch: @escaping () -> Void,
+        endTalk: @escaping () -> Void
     ) {
         self.overlayState = overlayState
-        self.makeSpeech = makeSpeech
         self.home = home
         self.talkSession = talkSession
         self.preferOnDeviceBrain = preferOnDeviceBrain
+        self.showNotch = showNotch
+        self.endTalk = endTalk
     }
 
     func runIfNeeded() {
@@ -57,14 +62,11 @@ final class OnboardingCoordinator {
     private func start(effects overrides: OnboardingDirector.Effects, resume: Bool = true) {
         director?.stop()
         var effects = overrides
-        effects.speak = { [weak self] line in
+        effects.showHint = { [weak self] line in
             self?.overlayState.taskBubbleText = line
-            self?.speech.speak(line)
         }
-        effects.requestScreenAccess = {
-            _ = PerryPermissionProbe.requestAccessibility()
-            _ = PerryPermissionProbe.requestScreenRecording()
-        }
+        effects.mark = { PerfMark.mark($0) }
+        effects.endTalk = { [weak self] in self?.endTalk() }
         effects.openScreenAccessSettings = {
             _ = PerryPermissionProbe.requestAccessibility()
             if let url = URL(
@@ -88,7 +90,12 @@ final class OnboardingCoordinator {
         let home = home()
         home.homeModel.onboarding = director
         home.homeModel.sidebarSelection = nil
-        home.openHome()
+        beatObservation = director.$beat
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak director] beat in
+                guard let self, let director, self.director === director, beat != nil else { return }
+                self.showNotch()
+            }
         talkSession().onTurnCompleted = { [weak director] in
             director?.noteTalkTurnCompleted()
         }
@@ -112,9 +119,18 @@ final class OnboardingCoordinator {
         practiceWindow.close()
         overlayState.taskBubbleText = nil
         talkSession().onTurnCompleted = nil
+        let firstCompletion = !PerryPreferences.onboardingCompleted
         PerryPreferences.onboardingCompleted = true
+#if !DEBUG
+        if firstCompletion { try? LoginItem.setEnabled(true) }
+#else
+        _ = firstCompletion
+#endif
+        beatObservation = nil
         director = nil
-        home().homeModel.onboarding = nil
+        let home = home()
+        home.homeModel.onboarding = nil
+        home.homeModel.deps.controller?.collapseNotch()
     }
 
 #if DEBUG

@@ -40,6 +40,8 @@ final class AppSubsystems {
     )
 
 
+    lazy var customConnectors = CustomConnectors(directory: self.storageDirectory, host: self.toolHost)
+
     /// The shared Perry registry — agent tools, the scheduler, and Home's
     /// sidebar all read the same directory.
     lazy var perryStore: PerryStore? = self.storageDirectory.map {
@@ -263,16 +265,67 @@ final class AppSubsystems {
         )
     )
 
+    lazy var conversationVoice: VoiceConversationController = {
+        let controller = VoiceConversationController(
+            services: .init(
+                makeInput: { [weak app = app] onTranscript, onPartial, onFailure in
+                    let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onFailure: onFailure)
+                    input.configure((try? app?.voice.currentDictationPreferences()) ?? .default)
+                    return input
+                },
+                run: { [unowned self] text in
+                    self.homeController.runSpokenTurn(
+                        self.homeController.acceptInput(text),
+                        spatial: nil,
+                        coordinator: self.agentCoordinator
+                    )
+                },
+                stop: { [unowned self] threadID in self.agentCoordinator.stop(threadID: threadID) },
+                output: SharedTalkOutput(voice: self.voice)
+            )
+        )
+        controller.onTurnCompleted = { [weak app = app] in app?.onboarding.noteTalkTurnCompleted() }
+        app.conversationVoiceObservation = controller.$state.removeDuplicates().dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak app = app] state in app?.presentConversationVoice(state) }
+        return controller
+    }()
+
     lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak app = app] in
-            guard app?.maintenance.isUnderMaintenance != true else { return }
-            app?.probe.pinInvocationTarget()
-            app?.talkSessionStarted = true
-            app?.talkSession.keyDown()
+            guard let app, !app.maintenance.isUnderMaintenance else { return }
+            app.conversationVoice.cancel()
+            app.probe.pinInvocationTarget()
+            if app.isTaskActive {
+                app.modifierHoldIsSteering = true
+                app.voice.beginDictation(steering: true)
+                return
+            }
+            app.talkSessionStarted = true
+            app.talkSession.keyDown()
         },
-        onHoldCommit: { [weak app = app] in app?.talkSession.holdCommitted() },
-        onHoldEnd: { [weak app = app] in app?.talkSession.keyUp() },
-        onHoldCancel: { [weak app = app] in app?.talkSession.holdCancelled() },
+        onHoldCommit: { [weak app = app] in
+            guard app?.modifierHoldIsSteering == false else { return }
+            app?.talkSession.holdCommitted()
+        },
+        onHoldEnd: { [weak app = app] in
+            guard let app else { return }
+            if app.modifierHoldIsSteering {
+                app.modifierHoldIsSteering = false
+                app.voice.finishDictation()
+            } else {
+                app.talkSession.keyUp()
+            }
+        },
+        onHoldCancel: { [weak app = app] in
+            guard let app else { return }
+            if app.modifierHoldIsSteering {
+                app.modifierHoldIsSteering = false
+                app.voice.cancelInput()
+            } else {
+                app.talkSession.holdCancelled()
+            }
+        },
         onComposer: { [weak app = app] in app?.toggleSession() }
     )
 
@@ -284,11 +337,12 @@ final class AppSubsystems {
         hooks: VoiceController.Hooks(
             setStatus: { [weak app = app] status in app?.sessionStatus = status },
             setTranscriptPreview: { [weak app = app] text in app?.transcriptPreview = text },
-            dispatch: { [weak app = app] text in app?.commandRouter.route(commandText: text) },
+            dispatch: { [weak app = app] text, taskScope in app?.commandRouter.route(commandText: text, voiceTaskScope: taskScope) },
             wake: { [weak app = app] in app?.wake() },
             sessionIsIdle: { [weak app = app] in app?.isIdle ?? false },
-            refreshStatusItem: { [weak app = app] in app?.statusMenu.refreshIndicator() },
-            guideSpeechFinished: { [weak app = app] identity in app?.guideCoordinator.handleSpeechFinished(identity: identity) }
+            wakeListeningChanged: { [weak app = app] in app?.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
+            guideSpeechFinished: { [weak app = app] identity in app?.guideCoordinator.handleSpeechFinished(identity: identity) },
+            executingTaskID: { [weak app = app] in app?.executingTaskID }
         )
     )
 
@@ -410,7 +464,11 @@ final class AppSubsystems {
         activityLog: self.activityLog
     )
 
-    lazy var notchStatus = NotchStatusController()
+    lazy var notchStatus: NotchStatusController = {
+        let controller = NotchStatusController()
+        controller.onOpenConversation = { [weak app = app] in app?.showPanel() }
+        return controller
+    }()
 
     lazy var homeThreadStore = ThreadStore(
         directory: (self.storageDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory()))
@@ -460,6 +518,13 @@ final class AppSubsystems {
             return finish
         }
         controller.onStop = { [weak app = app] id in app?.agentCoordinator.stop(threadID: id) }
+        controller.onOpenConversation = { [weak app = app] in app?.showPanel() }
+        controller.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
+        controller.onDismissConversation = { [weak app = app] in
+            guard let app, app.sessionPanel.isVisible else { return false }
+            app.collapseNotch()
+            return true
+        }
         app.agentRunningObservation = controller.bindWorkingThreads(self.agentCoordinator.$runningThreads)
         controller.perryListProvider = { [weak app = app] in
             await app?.perryStore?.list() ?? []
@@ -510,7 +575,6 @@ final class AppSubsystems {
                 backgroundCount: app?.lastBackgroundCount ?? 0,
                 awaitingApproval: app?.lastAwaitingApprovalCount ?? 0
             )
-            app?.updateHomePeek(isRecording: recording)
         },
         providerCompleter: { [weak app = app] in
             guard let brain = app?.brain else { return nil }
@@ -534,7 +598,6 @@ final class AppSubsystems {
                     backgroundCount: active,
                     awaitingApproval: awaiting
                 )
-                app?.updateHomePeek(isRecording: app?.routineLibrary.isRecording ?? false)
             }
         )
 #if DEBUG

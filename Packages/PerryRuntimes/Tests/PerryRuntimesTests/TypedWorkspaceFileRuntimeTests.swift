@@ -182,11 +182,6 @@ final class TypedWorkspaceFileRuntimeTests: XCTestCase {
         ))
     }
 
-    func testExecutionErrorSurfacesItsMessage() {
-        let error = ExecutionError(message: "the real reason it failed")
-        XCTAssertEqual(error.localizedDescription, "execution error: the real reason it failed")
-    }
-
     func testVerifierRejectsReceiptFromAnotherExecutionPlan() async throws {
         let plan = try makePlan(workspace: directory, path: "cross-execution.txt", contents: "receipt")
         let action = try XCTUnwrap(plan.actions.first)

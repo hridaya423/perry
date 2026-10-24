@@ -89,9 +89,16 @@ sleep 0.5
 EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
 mkdir -p "$EVIDENCE_DIR"
 LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
-PERRY_PERFORMANCE_EVENT_LOG="$LOG" \
-    "$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app/Contents/MacOS/Perry" \
-    "${LAB_ARGS[@]}" >/tmp/perry-drill-out.log 2>/tmp/perry-drill-err.log &
+APP_BUNDLE="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
+if [ -n "${TALK_WAV:-}" ]; then
+    # Apple Speech is charged to the responsible process; a shell-launched
+    # Perry makes the terminal responsible and TCC aborts it. LaunchServices
+    # makes Perry responsible for its own grants.
+    open -n "$APP_BUNDLE" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --args "${LAB_ARGS[@]}"
+else
+    PERRY_PERFORMANCE_EVENT_LOG="$LOG" "$APP_BUNDLE/Contents/MacOS/Perry" \
+        "${LAB_ARGS[@]}" >/tmp/perry-drill-out.log 2>/tmp/perry-drill-err.log &
+fi
 for _ in $(seq 1 20); do pgrep -x Perry >/dev/null && break; sleep 0.5; done
 pgrep -x Perry >/dev/null || { echo "talk-drill: Perry did not launch" >&2; exit 1; }
 MARKERS="$LOG.markers.jsonl"

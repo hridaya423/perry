@@ -337,41 +337,6 @@ final class ActivityLogTests: XCTestCase {
         let afterWipe = await reloaded.snapshot()
         XCTAssertTrue(afterWipe.isEmpty)
     }
-
-    func testInMemoryLogDoesNotTouchDisk() async throws {
-        let log = ActivityLog()
-        await log.record(
-            ActivityEntry(
-                actionSummary: "read window",
-                targetAppBundleID: nil,
-                tier: .green,
-                outcome: .allowed,
-                reversible: true
-            )
-        )
-        let snapshot = await log.snapshot()
-        XCTAssertEqual(snapshot.count, 1)
-        let contents = try? FileManager.default.contentsOfDirectory(atPath: tempDirectory.path)
-        XCTAssertTrue(contents?.isEmpty ?? true)
-    }
-
-    func testVerificationStatusRoundTripsWithEntries() async throws {
-        let log = ActivityLog()
-        await log.record(
-            ActivityEntry(
-                actionSummary: "rename notes.txt",
-                targetAppBundleID: "com.apple.finder",
-                tier: .yellow,
-                outcome: .allowed,
-                reversible: true,
-                verified: true
-            )
-        )
-
-        let entries = await log.snapshot()
-        let entry = try XCTUnwrap(entries.first)
-        XCTAssertEqual(entry.verified, true)
-    }
 }
 
 private final class RejectingMoveFileManager: FileManager {

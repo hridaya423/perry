@@ -1,0 +1,4 @@
+{"captured_at":"2026-10-13T22:16:43Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":4.055976867675781}
+{"captured_at":"2026-10-13T22:16:43Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":3.620028495788574}
+{"captured_at":"2026-10-13T22:16:45Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":249.58395957946777}
+{"captured_at":"2026-10-13T22:16:45Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.05805492401123047}

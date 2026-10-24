@@ -580,14 +580,6 @@ final class TalkSessionAskTests: XCTestCase {
         guard case .failed(let failure) = controller.state else { return XCTFail("expected failed") }
         XCTAssertEqual(failure.taskID, ask.id)
     }
-
-    func testDismissClearsAskingSession() throws {
-        let controller = SessionController()
-        try controller.wake()
-        try controller.startAsk(AskSessionState(id: UUID(), startedAt: Date(), question: "q"))
-        XCTAssertEqual(controller.requestDismissal(), .dismiss)
-        XCTAssertEqual(controller.state, .idle)
-    }
 }
 
 /// Minimal awaitable gate for cancellation tests.

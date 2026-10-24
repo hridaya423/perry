@@ -59,82 +59,105 @@ struct RoutineReviewView: View {
     let onRun: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
+        VStack(alignment: .leading, spacing: 12) {
             switch state.phase {
             case .recording: recordingContent
             case .review: reviewContent
             case .fillParameters: fillParametersContent
             }
         }
-        .padding(.horizontal, PerryTheme.Spacing.section)
-        .padding(.vertical, PerryTheme.Spacing.header)
-        .frame(width: 340)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-        .shadow(color: PerryTheme.Elevation.shadow, radius: 14, y: 6)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+        .tint(PerryTheme.Colors.accent)
+        .foregroundStyle(PerryTheme.Colors.text)
     }
 
     private var recordingContent: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text("Recording — show me the workflow")
+            Text("Recording your demonstration")
                 .font(.headline)
+            Text("Show the steps, then stop to review them.")
+                .font(.callout)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             Text("\(state.eventCount) steps captured")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {
                 Button("Cancel") { onDiscard() }
+                    .buttonStyle(InkButtonStyle(.secondary))
+                    .keyboardShortcut(.cancelAction)
                 Spacer(minLength: 0)
                 Button("Stop & review") { onStopRecording() }
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
         }
     }
 
     private var reviewContent: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Review what I learned")
                 .font(.headline)
             TextField("Name this routine", text: $state.name)
                 .textFieldStyle(.roundedBorder)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(state.steps.enumerated()), id: \.offset) { index, step in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(index + 1). \(step.summary)")
-                                .font(.callout)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if case .typeText = step.action {
-                                Toggle(
-                                    "Ask for this text each run",
-                                    isOn: Binding(
-                                        get: { state.parameterizedSteps.contains(index) },
-                                        set: { _ in state.toggleParameter(index) }
-                                    )
-                                )
-                                .toggleStyle(.checkbox)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
+            ViewThatFits(in: .vertical) {
+                stepList.fixedSize(horizontal: false, vertical: true)
+                ScrollView { stepList }
             }
             .frame(maxHeight: 220)
-            Text("On replay I find each control fresh — nothing is replayed by coordinates.")
+            .fixedSize(horizontal: false, vertical: true)
+            Text("Check each step before you save. Perry can ask for typed text each time it runs.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {
                 Button("Discard") { onDiscard() }
+                    .buttonStyle(InkButtonStyle(.secondary))
+                    .keyboardShortcut(.cancelAction)
                 Spacer(minLength: 0)
                 Button("Save routine") { onSave() }
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
                     .disabled(state.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
 
+    private var stepList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(state.steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("\(index + 1)")
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .background(Color.white.opacity(0.08), in: Circle())
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(step.summary)
+                            .font(.callout)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if case .typeText = step.action {
+                            Toggle(isOn: Binding(
+                                get: { state.parameterizedSteps.contains(index) },
+                                set: { _ in state.toggleParameter(index) }
+                            )) {
+                                Text("Ask me for this text each time")
+                                    .font(.caption)
+                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                            }
+                            .toggleStyle(InkSwitchStyle())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var fillParametersContent: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text("Run \"\(state.name)\"")
+            Text("Run “\(state.name)”")
                 .font(.headline)
             ForEach(Array(state.parameterPrompts.enumerated()), id: \.offset) { index, parameter in
                 TextField(
@@ -148,78 +171,39 @@ struct RoutineReviewView: View {
             }
             HStack {
                 Button("Cancel") { onDiscard() }
+                    .buttonStyle(InkButtonStyle(.secondary))
+                    .keyboardShortcut(.cancelAction)
                 Spacer(minLength: 0)
                 Button("Run") { onRun() }
+                    .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
         }
     }
 }
 
-final class RoutineReviewWindow: NSPanel {
-    private var anchorScreen: NSScreen?
-    private var sizeObserver: AnyCancellable?
+@MainActor
+final class RoutineReviewWindow {
+    private let id = UUID()
+    private let content: RoutineReviewView
+    private let presentation: NotchPresentation
 
     init(
         state: RoutineReviewState,
         onStopRecording: @escaping () -> Void,
         onDiscard: @escaping () -> Void,
         onSave: @escaping () -> Void,
-        onRun: @escaping () -> Void
+        onRun: @escaping () -> Void,
+        presentation: NotchPresentation? = nil
     ) {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 120),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        isFloatingPanel = true
-        level = .floating
-        title = "Perry routine review"
-        identifier = NSUserInterfaceItemIdentifier("PerryRoutineReview")
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        hidesOnDeactivate = false
-        ignoresMouseEvents = false
-        PerryWindowChrome.applyChrome(to: self)
-        let hostingView = NSHostingView(
-            rootView: RoutineReviewView(
-                state: state,
-                onStopRecording: onStopRecording,
-                onDiscard: onDiscard,
-                onSave: onSave,
-                onRun: onRun
-            )
-        )
-        // sizeToFit manages the frame explicitly — keep the hosting view out
-        // of window extrema negotiation or repeated published updates can
-        // re-invalidate constraints every pass (AppKit throws).
-        hostingView.sizingOptions = []
-        contentView = hostingView
-        sizeObserver = state.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async { self?.sizeToFit() }
-        }
+        self.presentation = presentation ?? .shared
+        content = RoutineReviewView(state: state, onStopRecording: onStopRecording,
+                                    onDiscard: onDiscard, onSave: onSave, onRun: onRun)
     }
 
-    func show(on screen: NSScreen?) {
-        anchorScreen = screen ?? NSScreen.main
-        sizeToFit()
-        orderFrontRegardless()
+    func show() {
+        presentation.present(id: id, priority: .routine, content: content)
     }
 
-    private func sizeToFit() {
-        guard let hostingView = contentView as? NSHostingView<RoutineReviewView> else { return }
-        // sizingOptions = [] on the attached view makes fittingSize
-        // under-measure — a detached view with defaults measures fine.
-        let fitting = NSHostingView(rootView: hostingView.rootView).fittingSize
-        let newSize = NSSize(width: max(340, fitting.width), height: max(80, fitting.height))
-        guard newSize != frame.size else { return }
-        let visible = (anchorScreen ?? NSScreen.main)?.visibleFrame ?? .zero
-        var newFrame = frame
-        newFrame.size = newSize
-        newFrame.origin.x = visible.maxX - newSize.width - 20
-        newFrame.origin.y = visible.maxY - newSize.height - 20
-        setFrame(newFrame, display: true, animate: false)
-    }
+    func close() { presentation.remove(id) }
 }

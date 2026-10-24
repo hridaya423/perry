@@ -5,7 +5,7 @@ struct BrainModelSettingsView: View {
     @ObservedObject var brain: BrainController
 
     var body: some View {
-        Picker("Home and Talk", selection: $brain.modelChoice) {
+        Picker("Conversations", selection: $brain.modelChoice) {
             ForEach(BrainController.ModelChoice.allCases, id: \.rawValue) { choice in
                 Text(choice.title).tag(choice.rawValue)
             }
@@ -19,19 +19,23 @@ struct BrainModelSettingsView: View {
                 brain.modelChoice = BrainController.ModelChoice.direct.rawValue
             })
         case .direct:
-            Text("Use the provider, model, and credential in Direct AI provider below. Perry stops if that provider cannot handle the request.")
+            Text("Open Configure direct provider below to choose a provider, model, and credential. Perry stops if it cannot handle the request.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
         case .local:
-            Text("Home and Talk use on-device models. Requests that need unavailable image or tool capabilities stop here; Perry won’t send them to a remote model.")
+            Text("Conversations stay on this Mac. If the model cannot handle an image or tool, Perry stops rather than sending the request elsewhere.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+            if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable {
+                Label("Apple Intelligence is available for text conversations.", systemImage: "checkmark.circle")
+                    .font(.callout)
+            }
             Button("Find models on this Mac") { Task { await brain.refresh() } }
                 .task { await brain.refresh() }
             if brain.localModels.isEmpty {
                 Text("No local server models found. Start Ollama or LM Studio, load a model, then check again.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
             } else {
                 ForEach(brain.localModels, id: \.id) { model in
                     VStack(alignment: .leading, spacing: 8) {
@@ -48,7 +52,7 @@ struct BrainModelSettingsView: View {
                         switch brain.localChecks[model.id] {
                         case .checking:
                             Text("Checking with sample text, a generated image, and a harmless test tool. No apps or files are changed.")
-                                .font(.callout).foregroundStyle(.secondary)
+                                .font(.callout).foregroundStyle(PerryTheme.Colors.textSecondary)
                         case .checked(_, let result):
                             checkRow("Text", result.text)
                             checkRow("Images", result.vision)
@@ -56,18 +60,18 @@ struct BrainModelSettingsView: View {
                         case .failed(let message):
                             Label(message, systemImage: "exclamationmark.circle").font(.callout)
                         case nil:
-                            Text("Not checked yet").font(.callout).foregroundStyle(.secondary)
+                            Text("Not checked yet").font(.callout).foregroundStyle(PerryTheme.Colors.textSecondary)
                         }
                     }
                 }
                 Text("Perry uses only capabilities that passed. Checks apply to this session; run them again after changing the model.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         case nil:
             Text("Choose a model to resume conversations. Perry hasn’t switched providers.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
 
@@ -79,9 +83,9 @@ struct BrainModelSettingsView: View {
                 .font(.callout)
         case .failed(let message):
             Label("\(title): \(message)", systemImage: "exclamationmark.circle")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(PerryTheme.Colors.textSecondary)
         case .notRun:
-            Text("\(title): not checked").font(.callout).foregroundStyle(.secondary)
+            Text("\(title): not checked").font(.callout).foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
 }

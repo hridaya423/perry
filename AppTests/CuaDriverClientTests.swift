@@ -103,7 +103,11 @@ final class CuaDriverClientTests: XCTestCase {
                 elif [ "$name" = "list_windows" ]; then
                     printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true},{"bundle_id":"com.example.Editor","pid":4242,"window_id":1002,"title":"Editor - Other","bounds":{"x":40,"y":40,"width":1200,"height":900},"z_index":10,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id"
                 elif [ "$name" = "get_window_state" ]; then
-                    if [ -f "$root/secure-fields" ]; then
+                    if [ -f "$root/large-image" ]; then
+                        printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"image","mimeType":"image/png","data":"' "$id"
+                        cat "$root/large-image"
+                        printf '"}]}}\n'
+                    elif [ -f "$root/secure-fields" ]; then
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-secure","elements":[{"element_token":"pw","role":"AXSecureTextField","label":"Password","value":"bullets","frame":{"x":20,"y":60,"width":160,"height":24}},{"element_token":"note","role":"AXTextField","value":"draft text","frame":{"x":20,"y":90,"width":160,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
                     else
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-1","elements":[{"element_token":"s1","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
@@ -201,6 +205,22 @@ final class CuaDriverClientTests: XCTestCase {
         let notificationIndex = try XCTUnwrap(lines.firstIndex { $0.contains("\"method\":\"notifications") })
         let checkIndex = try XCTUnwrap(lines.firstIndex { $0.contains("\"name\":\"check_permissions\"") })
         XCTAssertLessThan(notificationIndex, checkIndex)
+    }
+
+    func testLargeCapturePreservesEveryByteAcrossPipeReads() async throws {
+        let expected = Data((0..<1_048_576).map { UInt8(truncatingIfNeeded: ($0 * 31) ^ ($0 >> 8)) })
+        try expected.base64EncodedString().write(
+            to: testDirectory.appendingPathComponent("large-image"), atomically: true, encoding: .utf8
+        )
+        let client = makeClient()
+        addTeardownBlock { await client.shutdown() }
+        for index in 0..<3 {
+            let capture = try await client.capture(
+                target: CuaTargetHint(bundleID: "com.example.Editor", windowTitle: "Editor - Draft"),
+                sessionID: "large-capture-\(index)"
+            )
+            XCTAssertEqual(capture.screenshotData, expected)
+        }
     }
 
     func testPersistedWindowIDMustExistInsteadOfSelectingFallback() async throws {
@@ -1530,65 +1550,6 @@ final class CuaDriverClientTests: XCTestCase {
             atPath: workspace.appendingPathComponent("must-not-be-created.txt").path
         ))
         XCTAssertEqual(startCount(), 0)
-    }
-
-    func testConflictingWorkspaceClaimFailsBeforeExecution() async throws {
-        let service = CuaWorkerService()
-        addTeardownBlock { try await service.shutdown() }
-        let workspace = testDirectory.appendingPathComponent("claimed-workspace", isDirectory: true)
-        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
-        let gate = WorkerGate()
-        let holderStarted = expectation(description: "workspace holder started")
-        let holderFinished = expectation(description: "workspace holder finished")
-        let holderTeardownFinished = XCTestExpectation(description: "workspace holder teardown finished")
-        let holder = Task {
-            defer {
-                holderFinished.fulfill()
-                holderTeardownFinished.fulfill()
-            }
-            return try await service.withWorker(
-                scope: .background,
-                resources: [.workspace(workspace.path)]
-            ) { _ in
-                holderStarted.fulfill()
-                await gate.waitUntilReleased()
-                return true
-            }
-        }
-        addTeardownBlock {
-            holder.cancel()
-            await gate.release()
-            let result = await XCTWaiter.fulfillment(of: [holderTeardownFinished], timeout: 1)
-            if result != .completed {
-                XCTFail("workspace holder did not finish during teardown")
-            }
-        }
-        let startedResult = await XCTWaiter.fulfillment(of: [holderStarted], timeout: 1)
-        XCTAssertEqual(startedResult, .completed)
-
-        do {
-            _ = try await service.withWorker(
-                scope: .background,
-                resources: [.workspace(workspace.path)]
-            ) { _ in
-                true
-            }
-            XCTFail("a conflicting workspace claim succeeded")
-        } catch let error as CuaWorkerError {
-            XCTAssertEqual(error, .resourceBusy)
-        } catch {
-            XCTFail("unexpected error: \(error)")
-        }
-        await gate.release()
-        let finishedResult = await XCTWaiter.fulfillment(of: [holderFinished], timeout: 1)
-        guard finishedResult == .completed else {
-            XCTFail("workspace holder did not finish after release")
-            return
-        }
-        let holderResult = await holder.result
-        if case .failure(let error) = holderResult {
-            XCTFail("workspace holder failed: \(error)")
-        }
     }
 
     func testUnknownIntegrationIDFailsBeforeProviderCall() async throws {

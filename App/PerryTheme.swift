@@ -4,36 +4,32 @@ import SwiftUI
 
 enum PerryTheme {
     enum Colors {
-        // Canvas and surfaces
-        static let canvas = Color(nsColor: .underPageBackgroundColor)
-        static let surface = Color(nsColor: .controlBackgroundColor)
-
-        // Text
-        static let text = Color.primary
-        static let textSecondary = Color.secondary
-
-        // Accent
-        static let accent = Color(nsColor: NSColor(name: nil) { appearance in
-            if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-                return NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 1)
-            }
-            return NSColor(srgbRed: 0.055, green: 0.400, blue: 0.286, alpha: 1)
-        })
-        static let onAccent = Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                ? NSColor(srgbRed: 0.024, green: 0.110, blue: 0.070, alpha: 1)
-                : .white
-        })
-
-        // Status
+        static let canvas = color(light: 0xF5F3EE, dark: 0x0C0D0E)
+        static let surface = color(light: 0xFFFEFA, dark: 0x18191B)
+        static let text = color(light: 0x202420, dark: 0xF3F0E8)
+        static let textSecondary = color(light: 0x666D66, dark: 0xAAA9A5)
+        static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x303234)
+        static let primaryAction = color(light: 0x202420, dark: 0xF3F0E8)
+        static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
+        static let cameraCrown = Color.black
+        static let accent = color(light: 0x3C7765, dark: 0x9CCBB6)
+        static let onAccent = color(light: 0xFFFEFA, dark: 0x202420)
         static let success = Color(nsColor: .systemGreen)
         static let caution = Color(nsColor: .systemYellow)
         static let warning = Color(nsColor: .systemOrange)
         static let danger = Color(nsColor: .systemRed)
         static let active = Color(nsColor: .systemBlue)
-
-        // Focus
         static let focus = accent
+
+        private static func color(light: Int, dark: Int) -> Color {
+            Color(nsColor: NSColor(name: nil) { appearance in
+                let rgb = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+                return NSColor(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+                               green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                               blue: CGFloat(rgb & 0xFF) / 255,
+                               alpha: 1)
+            })
+        }
     }
 
     enum Elevation {
@@ -41,7 +37,7 @@ enum PerryTheme {
     }
 
     enum Typography {
-        static let panelTitle = Font.system(.headline, design: .rounded, weight: .bold)
+        static let panelTitle = Font.system(.headline, weight: .semibold)
         static let panelBody = Font.body
         static let panelSubtitle = Font.subheadline
         static let panelMetadata = Font.caption.weight(.medium)
@@ -52,7 +48,7 @@ enum PerryTheme {
         static let note = Font.caption
         static let mono = Font.system(.caption, design: .monospaced)
         static let monoSmall = Font.system(.caption2, design: .monospaced)
-        static let value = Font.system(.caption, design: .monospaced)
+        static let value = Font.callout.monospacedDigit()
     }
 
     enum Spacing {
@@ -72,7 +68,9 @@ enum PerryTheme {
 
     enum Sizing {
         static let panelWidth = CGFloat(480)
-        static let panelHeight = CGFloat(440)
+        static let panelHeight = CGFloat(380)
+        static let onboardingContentWidth = CGFloat(560)
+        static let onboardingContentHeight = CGFloat(430)
         static let settingsWidth = CGFloat(760)
         static let settingsHeight = CGFloat(520)
         static let settingsMinimumWidth = CGFloat(680)
@@ -81,17 +79,16 @@ enum PerryTheme {
         static let statusDot = CGFloat(7)
         static let progressWidth = CGFloat(70)
         static let protocolPickerWidth = CGFloat(190)
-        static let speechRateValueWidth = CGFloat(34)
-        static let realtimeRateValueWidth = CGFloat(42)
-        static let captionOpacityValueWidth = CGFloat(36)
-        static let workspaceApprovalMinimumWidth = CGFloat(480)
-        static let workspaceApprovalWidth = CGFloat(560)
-        static let workspaceApprovalMinimumHeight = CGFloat(340)
-        static let workspaceApprovalHeight = CGFloat(440)
+        static let speechRateValueWidth = CGFloat(40)
+        static let realtimeRateValueWidth = CGFloat(48)
+        static let captionOpacityValueWidth = CGFloat(44)
         static let filePreviewMinimumHeight = CGFloat(140)
     }
 
     enum Motion {
         static let panelStateChange = Animation.easeOut(duration: 0.16)
+        static let snap = Animation.snappy(duration: 0.16)
+        static let glide = Animation.spring(response: 0.32, dampingFraction: 0.86)
+        static let settle = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.42)
     }
 }

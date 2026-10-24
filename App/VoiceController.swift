@@ -17,11 +17,12 @@ final class VoiceController: NSObject, ObservableObject {
     struct Hooks {
         var setStatus: (String) -> Void = { _ in }
         var setTranscriptPreview: (String) -> Void = { _ in }
-        var dispatch: (String?) -> Void = { _ in }
+        var dispatch: (_ text: String?, _ taskScope: UUID?) -> Void = { _, _ in }
         var wake: () -> Void = {}
         var sessionIsIdle: () -> Bool = { false }
-        var refreshStatusItem: () -> Void = {}
+        var wakeListeningChanged: () -> Void = {}
         var guideSpeechFinished: (GuideSpeechIdentity) -> Void = { _ in }
+        var executingTaskID: () -> UUID? = { nil }
     }
 
     static let realtimeVoiceKeychainAccount = "realtime.voice"
@@ -39,6 +40,7 @@ final class VoiceController: NSObject, ObservableObject {
     private var realtimeTranscriptBuffer = ""
     private var realtimeCommandDispatched = false
     private var dictationAttemptID: UUID?
+    private var dictationScopedTaskID: UUID?
     private var dictationWorkerTask: Task<Void, Never>?
     private var dictationInsertionID: UUID?
     /// Post-insert edit watch for learn-on-edit (see scheduleDictationLearnChecks).
@@ -56,6 +58,29 @@ final class VoiceController: NSObject, ObservableObject {
             return nil
         }
     }()
+
+    var requestDictationPermission: () async -> Bool = DictationController.ensurePermission
+    var readRealtimeVoiceAPIKey: @MainActor () throws -> String? = {
+        try KeychainStore().readChecked(account: VoiceController.realtimeVoiceKeychainAccount)
+    }
+    lazy var startDictationCapture: @MainActor () throws -> Void = { [weak self] in
+        guard let self else { return }
+        try self.dictation.start()
+    }
+    lazy var makeRealtimeVoiceSession: @MainActor (
+        _ configuration: RealtimeVoiceConfiguration,
+        _ apiKey: String,
+        _ onEvent: @escaping (RealtimeVoiceEvent) -> Void
+    ) -> RealtimeVoiceSession = { [weak self] configuration, apiKey, onEvent in
+        RealtimeVoiceSession(
+            configuration: configuration,
+            apiKey: apiKey,
+            onPerformanceSample: { self?.recordPerformanceSample($0) },
+            onPerformanceMarker: { self?.recordPerformanceMarker($0) },
+            onTaskSnapshot: { self?.recordTaskSnapshot($0) },
+            onEvent: onEvent
+        )
+    }
 
     private lazy var dictation = DictationController(
         onTranscript: { [weak self] transcript in
@@ -115,7 +140,7 @@ final class VoiceController: NSObject, ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, PerryPreferences.wakeWordEnabled else { return }
                 PerryPreferences.wakeWordEnabled = false
-                self.hooks.refreshStatusItem()
+                self.hooks.wakeListeningChanged()
                 self.hooks.setStatus("Wake word is unavailable: \(reason). Use the hotkey instead.")
             }
         }
@@ -198,6 +223,23 @@ final class VoiceController: NSObject, ObservableObject {
             let right = "\($1.language) \($1.name)"
             return left.localizedCaseInsensitiveCompare(right) == .orderedAscending
         }
+    }
+
+    static func recommendedSpeechVoices(
+        from voices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices(),
+        languageCode: String = Locale.current.language.languageCode?.identifier ?? "en",
+        limit: Int = 5
+    ) -> [AVSpeechSynthesisVoice] {
+        let natural = voices.filter { voice in
+            !voice.identifier.contains("speech.synthesis") && !voice.identifier.contains("eloquence")
+                && Locale(identifier: voice.language).language.languageCode?.identifier == languageCode
+        }
+        let ranked = natural.sorted { left, right in
+            if left.quality != right.quality { return left.quality.rawValue > right.quality.rawValue }
+            return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+        }
+        var seenNames = Set<String>()
+        return Array(ranked.filter { seenNames.insert($0.name).inserted }.prefix(limit))
     }
 
     static func currentSpeechPreferences(defaults: UserDefaults = .standard) -> SpeechPreferences {
@@ -418,10 +460,13 @@ final class VoiceController: NSObject, ObservableObject {
 
     // MARK: Dictation input
 
-    func beginDictation() {
+    func beginDictation(steering: Bool = false) {
         dictationAttemptID = nil
         dictation.cancel()
+        overlayState.voiceState = .idle
+        overlayState.buddyState = .idle
         voiceInvocation.begin()
+        dictationScopedTaskID = steering ? hooks.executingTaskID() : nil
         let frontmostApplication = NSWorkspace.shared.frontmostApplication
         dictationTargetApplication = frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier
             ? nil
@@ -434,9 +479,18 @@ final class VoiceController: NSObject, ObservableObject {
                 realtimeTranscriptBuffer = ""
                 realtimeCommandDispatched = false
                 realtimeVoiceSession.beginInput()
-                overlayState.voiceState = .listening
-                overlayState.buddyState = .listening
-                hooks.setStatus("Listening via realtime voice — release the shortcut when you’re done.")
+                switch realtimeVoiceSession.state {
+                case .listening:
+                    overlayState.voiceState = .listening
+                    overlayState.buddyState = .listening
+                    hooks.setStatus(dictationScopedTaskID == nil
+                        ? "Listening via realtime voice — release the shortcut when you’re done."
+                        : "Listening — release to steer the task.")
+                case .connecting:
+                    hooks.setStatus("Connecting to realtime voice…")
+                case .idle, .responding, .failed:
+                    break
+                }
                 return
             case .idle, .failed:
                 realtimeVoiceSession.stop()
@@ -448,7 +502,7 @@ final class VoiceController: NSObject, ObservableObject {
         if let configuration = Self.currentRealtimeVoiceConfiguration() {
             let apiKey: String?
             do {
-                apiKey = try KeychainStore().readChecked(account: Self.realtimeVoiceKeychainAccount)
+                apiKey = try readRealtimeVoiceAPIKey()
             } catch {
                 hooks.setStatus("Perry could not read the realtime voice credential from Keychain; continuing with on-device dictation.")
                 beginLocalDictation()
@@ -458,25 +512,10 @@ final class VoiceController: NSObject, ObservableObject {
                 wakeWordListener.stop()
                 synthesizer.stopSpeaking(at: .word)
                 lastDictationLanguageIdentifier = nil
-                overlayState.voiceState = .listening
-                overlayState.buddyState = .listening
                 hooks.setStatus("Connecting to realtime voice…")
-                let session = RealtimeVoiceSession(
-                    configuration: configuration,
-                    apiKey: apiKey,
-                    onPerformanceSample: { [weak self] sample in
-                        self?.recordPerformanceSample(sample)
-                    },
-                    onPerformanceMarker: { [weak self] marker in
-                        self?.recordPerformanceMarker(marker)
-                    },
-                    onTaskSnapshot: { [weak self] snapshot in
-                        self?.recordTaskSnapshot(snapshot)
-                    },
-                    onEvent: { [weak self] event in
-                        self?.handleRealtimeVoiceEvent(event)
-                    }
-                )
+                let session = makeRealtimeVoiceSession(configuration, apiKey) { [weak self] event in
+                    self?.handleRealtimeVoiceEvent(event)
+                }
                 realtimeVoiceSession = session
                 session.start()
                 return
@@ -486,6 +525,9 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     private func beginLocalDictation() {
+        overlayState.voiceState = .idle
+        overlayState.buddyState = .idle
+        hooks.setStatus("Getting the microphone ready…")
         wakeWordListener.stop()
         synthesizer.stopSpeaking(at: .word)
         lastDictationLanguageIdentifier = nil
@@ -495,13 +537,10 @@ final class VoiceController: NSObject, ObservableObject {
             dictation.configure(.default)
             hooks.setStatus("Voice dictionary unavailable: \(error.localizedDescription)")
         }
-        overlayState.voiceState = .listening
-        overlayState.buddyState = .listening
-        hooks.setStatus("Listening on \(dictation.activeInputDeviceName()) — \(pushToTalk.shortcut.releaseHint).")
         let attemptID = UUID()
         dictationAttemptID = attemptID
         Task { @MainActor in
-            let granted = await DictationController.ensurePermission()
+            let granted = await self.requestDictationPermission()
             guard dictationAttemptID == attemptID else { return }
             guard granted else {
                 dictationAttemptID = nil
@@ -513,8 +552,13 @@ final class VoiceController: NSObject, ObservableObject {
                 return
             }
             do {
-                try dictation.start()
+                try startDictationCapture()
                 dictationAttemptID = nil
+                overlayState.voiceState = .listening
+                overlayState.buddyState = .listening
+                hooks.setStatus(dictationScopedTaskID == nil
+                    ? "Listening on \(dictation.activeInputDeviceName()) — \(pushToTalk.shortcut.releaseHint)."
+                    : "Listening — release to steer the task.")
             } catch {
                 dictationAttemptID = nil
                 overlayState.voiceState = .idle
@@ -544,6 +588,7 @@ final class VoiceController: NSObject, ObservableObject {
     func cancelInput() {
         voiceInvocation.cancel()
         dictationAttemptID = nil
+        dictationScopedTaskID = nil
         dictationSpeechEndedAt = nil
         dictationTargetApplication = nil
         dictationInsertionID = nil
@@ -620,17 +665,19 @@ final class VoiceController: NSObject, ObservableObject {
             hooks.setStatus(text)
         case .responseStarted:
             overlayState.voiceState = .responding
-            overlayState.animation = .waving
             hooks.setStatus("Perry is replying…")
         case .responseFinished:
             overlayState.voiceState = .idle
             overlayState.buddyState = .idle
-        case .responseInterrupted:
-            overlayState.voiceState = .listening
-            overlayState.buddyState = .listening
-        case .speechStarted:
-            overlayState.voiceState = .listening
-        case .sessionReady, .speechStopped, .audio, .ignored:
+        case .responseInterrupted, .speechStarted, .sessionReady:
+            if voiceInvocation.inputOpen, realtimeVoiceSession?.state == .listening {
+                overlayState.voiceState = .listening
+                overlayState.buddyState = .listening
+                hooks.setStatus(dictationScopedTaskID == nil
+                    ? "Listening via realtime voice — release the shortcut when you’re done."
+                    : "Listening — release to steer the task.")
+            }
+        case .speechStopped, .audio, .ignored:
             break
         }
     }
@@ -720,6 +767,13 @@ final class VoiceController: NSObject, ObservableObject {
         hooks.setTranscriptPreview("")
         overlayState.voiceState = .processing
         realtimeVoiceSession?.cancelCurrentResponse()
+        let voiceTaskScope = dictationScopedTaskID
+        dictationScopedTaskID = nil
+        if let voiceTaskScope, voiceTaskScope != hooks.executingTaskID() {
+            cancelInput()
+            hooks.setStatus("The task changed while you were speaking — hold the shortcut again.")
+            return
+        }
         let frontmostApplication = dictationTargetApplication
         dictationTargetApplication = nil
         let frontmostBundleID = frontmostApplication?.bundleIdentifier
@@ -742,7 +796,7 @@ final class VoiceController: NSObject, ObservableObject {
         } else {
             request = normalized
         }
-        if let insertion = VoiceTextPolicy.insertionText(
+        if voiceTaskScope == nil, let insertion = VoiceTextPolicy.insertionText(
             from: request,
             frontmostBundleID: frontmostBundleID,
             dictionary: [:]
@@ -756,7 +810,7 @@ final class VoiceController: NSObject, ObservableObject {
             return
         }
         dictationSpeechEndedAt = nil
-        hooks.dispatch(request.isEmpty ? nil : request)
+        hooks.dispatch(request.isEmpty ? nil : request, voiceTaskScope)
     }
 
     private func insertTextIntoFrontmostApp(_ text: String, target: NSRunningApplication) {
@@ -926,12 +980,12 @@ final class VoiceController: NSObject, ObservableObject {
 
     func updateWakeWordEnabled(_ enabled: Bool) {
         PerryPreferences.wakeWordEnabled = enabled
-        hooks.refreshStatusItem()
+        hooks.wakeListeningChanged()
         if enabled {
             Task { @MainActor in
-                guard await DictationController.ensurePermission() else {
+                guard await self.requestDictationPermission() else {
                     PerryPreferences.wakeWordEnabled = false
-                    self.hooks.refreshStatusItem()
+                    self.hooks.wakeListeningChanged()
                     self.hooks.setStatus("Wake word needs microphone and speech permission; the hotkey still works.")
                     return
                 }
@@ -954,7 +1008,7 @@ final class VoiceController: NSObject, ObservableObject {
         guard PerryPermissionProbe.checkMicrophone() == .granted,
               SFSpeechRecognizer.authorizationStatus() == .authorized else {
             PerryPreferences.wakeWordEnabled = false
-            hooks.refreshStatusItem()
+            hooks.wakeListeningChanged()
             hooks.setStatus("Wake word is off because microphone or speech permission is unavailable.")
             return
         }
@@ -968,7 +1022,7 @@ final class VoiceController: NSObject, ObservableObject {
         if trimmed.isEmpty {
             speak("I’m listening.")
         } else {
-            hooks.dispatch(trimmed)
+            hooks.dispatch(trimmed, nil)
         }
     }
 

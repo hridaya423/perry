@@ -1,33 +1,72 @@
 import AppKit
 import PerryOverlay
 
-/// The floating type/talk panel: built once, shown on invocation, and on
-/// hide hands focus back to the app the user came from.
+/// The expanded notch: one borderless panel pinned under the camera housing.
+/// Built once, shown on invocation, and on hide hands focus back to the app
+/// the user came from.
 @MainActor
 final class SessionPanelPresenter {
-    private static let frameAutosaveName = "perry.session.frame"
     private let makeContent: () -> NSView
     private var panel: NSPanel?
-    /// The app the user was in before Perry activated — restored on hide so
-    /// an invocation never leaves focus kidnapped. Same convention as
-    /// IntentCardWindow and AgentActivityStrip.
     private var previousFrontmostApplication: NSRunningApplication?
 
     init(makeContent: @escaping () -> NSView) {
         self.makeContent = makeContent
     }
 
-    var frame: CGRect? { panel?.frame }
+    var frame: CGRect? { panel?.isVisible == true ? panel?.frame : nil }
+    var isVisible: Bool { panel?.isVisible == true }
 
-    func show() {
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        if let frontmost = NSWorkspace.shared.frontmostApplication,
-           frontmost.processIdentifier != ownPID {
-            previousFrontmostApplication = frontmost
+    func show(frame: NSRect, activate: Bool) {
+        let panel = ensurePanel()
+        let wasVisible = panel.isVisible
+        place(frame)
+        if activate {
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            if let frontmost = NSWorkspace.shared.frontmostApplication,
+               frontmost.processIdentifier != ownPID {
+                previousFrontmostApplication = frontmost
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        } else {
+            panel.orderFrontRegardless()
         }
-        NSApp.activate(ignoringOtherApps: true)
-        ensurePanel().makeKeyAndOrderFront(nil)
+        if !wasVisible { growFromNotch(panel) }
         PerfMark.mark("panel.visible")
+    }
+
+    private func growFromNotch(_ panel: NSPanel) {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let content = panel.contentView,
+              let screen = panel.screen else { return }
+        content.wantsLayer = true
+        guard let layer = content.layer else { return }
+        let bounds = content.bounds
+        let notchWidth = screen.frame.width - (screen.auxiliaryTopLeftArea?.width ?? 0) - (screen.auxiliaryTopRightArea?.width ?? 0)
+        let notchHeight = max(screen.safeAreaInsets.top, 24)
+        let width = min(max(notchWidth, 160), bounds.width)
+        let start = CGRect(x: bounds.midX - width / 2, y: layer.isGeometryFlipped || content.isFlipped ? 0 : bounds.maxY - notchHeight, width: width, height: notchHeight)
+        let mask = CAShapeLayer()
+        mask.frame = bounds
+        mask.path = CGPath(rect: bounds, transform: nil)
+        layer.mask = mask
+        let animation = CABasicAnimation(keyPath: "path")
+        animation.fromValue = CGPath(roundedRect: start, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        animation.toValue = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        animation.duration = 0.34
+        animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak layer, weak mask] in
+            if layer?.mask === mask { layer?.mask = nil }
+        }
+        mask.add(animation, forKey: "grow")
+        CATransaction.commit()
+    }
+
+    func place(_ frame: NSRect) {
+        guard let panel, panel.frame != frame else { return }
+        panel.setFrame(frame, display: true)
     }
 
     /// Pays the one-time render cost so a first invocation only orders an
@@ -37,7 +76,8 @@ final class SessionPanelPresenter {
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        guard let panel, panel.isVisible else { return }
+        panel.orderOut(nil)
         let ownPID = ProcessInfo.processInfo.processIdentifier
         if NSApp.isActive,
            NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
@@ -50,32 +90,23 @@ final class SessionPanelPresenter {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let p = NSPanel(
-            contentRect: NSRect(
-                x: 0,
-                y: 0,
-                width: PerryTheme.Sizing.panelWidth,
-                height: PerryTheme.Sizing.panelHeight
-            ),
-            styleMask: [.titled, .utilityWindow, .fullSizeContentView, .resizable],
+        let p = CompactConversationPanel(
+            contentRect: NSRect(x: 0, y: 0, width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight),
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         p.contentView = makeContent()
+        p.appearance = NSAppearance(named: .darkAqua)
         p.identifier = SessionPanelView.windowIdentifier
-        p.contentMinSize = NSSize(width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight)
+        p.level = .statusBar
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.titlebarAppearsTransparent = true
-        p.level = .floating
+        p.hasShadow = false
+        p.isMovable = false
         PerryWindowChrome.applyChrome(to: p)
-        if !p.setFrameUsingName(Self.frameAutosaveName), let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            p.setFrameOrigin(NSPoint(x: frame.maxX - p.frame.width - 24, y: frame.minY + 80))
-        }
-        p.setFrameAutosaveName(Self.frameAutosaveName)
         panel = p
         return p
     }
@@ -89,9 +120,98 @@ extension AppController {
     }
 
     func showPanel() {
+        showPanel(activate: true)
+    }
+
+    func showPanel(activate: Bool) {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
-        sessionPanel.show()
+        homeController.setConversationVisible(true)
+        notchStatus.setConversationVisible(true)
+        sessionPanel.show(frame: notchPanelFrame(), activate: activate)
+    }
+
+    /// Size follows what the notch is showing: a focused stage (onboarding,
+    /// an approval, a guide step) stays narrow; the workspace opens wide.
+    private func notchPanelFrame() -> NSRect {
+        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else { return .zero }
+        let presentation = NotchPresentation.shared
+        let model = homeController.homeModel
+        let focused = (model.onboarding != nil && model.sidebarSelection != .settings)
+            || (presentation.current != nil && presentation.showsInteraction)
+        let interaction = presentation.showsInteraction ? presentation.current : nil
+        let contentHeight = interaction?.contentHeight.map { max(220, $0 + 136) } ?? (focused ? 460 : 520)
+        let size = NSSize(
+            width: min(focused ? 592 : 892, screen.frame.width - 32),
+            height: min(contentHeight + max(24, screen.safeAreaInsets.top), screen.frame.height - 64)
+        )
+        let frame = HomeController.notchPanelFrame(
+            size: size,
+            screenFrame: screen.frame,
+            centerX: HomeController.zoneRect(for: screen).midX
+        )
+        presentation.frame = frame
+        return frame
+    }
+
+    func presentConversationVoice(_ state: VoiceConversationController.State) {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        switch state {
+        case .requestingPermission:
+            break
+        case .listening:
+            overlayState.buddyState = .listening
+            overlayState.voiceState = .listening
+            overlayState.taskBubbleText = nil
+            overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
+            NotchPresentation.shared.dismissCurrent()
+            cancelNotchConfirmations()
+            hideSurfaces()
+        case .thinking:
+            overlayState.buddyState = .thinking
+            overlayState.voiceState = .processing
+            overlayState.taskBubbleText = "Working on your request"
+        case .speaking:
+            overlayState.buddyState = .idle
+            overlayState.voiceState = .responding
+            overlayState.taskBubbleText = "Speaking"
+        case .idle:
+            overlayState.voiceState = .idle
+            overlayState.buddyState = conversationVoice.answer.isEmpty ? .idle : .success
+            overlayState.taskBubbleText = conversationVoice.answer.isEmpty ? nil : "Answer ready"
+        case .failed:
+            overlayState.buddyState = .blocked
+            overlayState.voiceState = .idle
+            overlayState.taskBubbleText = nil
+            showPanel()
+        }
+    }
+
+    func refreshNotchLayout() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.sessionPanel.isVisible else { return }
+            self.sessionPanel.place(self.notchPanelFrame())
+        }
+    }
+
+    func collapseNotch() {
+        NotchPresentation.shared.dismissCurrent()
+        cancelNotchConfirmations()
+        hidePanel()
+    }
+
+    func showWorkspace() {
+        NotchPresentation.shared.dismissCurrent()
+        cancelNotchConfirmations()
+        NotchPresentation.shared.showsInteraction = false
+        showPanel()
+    }
+
+    func handleScreenLayoutChanged() {
+        guard !isUnderMaintenance else { return }
+        if sessionPanel.isVisible { sessionPanel.place(notchPanelFrame()) }
+        homeController.screenLayoutChanged()
+        notchStatus.repositionIfVisible()
     }
 
     /// Pays the one-time render cost for the session surfaces at launch so a
@@ -102,7 +222,14 @@ extension AppController {
     }
 
     func hidePanel() {
+        conversationVoice.cancel()
+        hideSurfaces()
+    }
+
+    private func hideSurfaces() {
         sessionPanel.hide()
+        homeController.setConversationVisible(false)
+        notchStatus.setConversationVisible(false)
     }
 
     func showBackgroundTasks() {

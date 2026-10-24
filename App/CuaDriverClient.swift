@@ -375,6 +375,7 @@ private struct CuaConnectionState {
     let process: Process
     let inputHandle: FileHandle
     let outputHandle: FileHandle
+    let outputTask: Task<Void, Never>
     var initializationTask: Task<Void, Error>?
 }
 
@@ -494,7 +495,7 @@ actor CuaDriverClient {
             guard accessibility && screenRecording else {
                 return CuaDriverHealth(
                     ready: false,
-                    summary: "Cua Driver needs Accessibility and Screen Recording permission in System Settings."
+                    summary: "Perry needs Accessibility and Screen Recording access. Enable Perry in System Settings → Privacy & Security."
                 )
             }
             return CuaDriverHealth(
@@ -885,15 +886,22 @@ actor CuaDriverClient {
 
         let inputHandle = inputPipe.fileHandleForWriting
         let outputHandle = outputPipe.fileHandleForReading
-        outputHandle.readabilityHandler = { [weak self] handle in
+        let output = AsyncStream<Data>.makeStream()
+        outputHandle.readabilityHandler = { handle in
             let data = handle.availableData
-            Task {
-                if data.isEmpty {
-                    await self?.failConnection(generation: generation, with: CuaDriverError.processExited)
-                } else {
-                    await self?.receive(data: data, generation: generation)
-                }
+            if data.isEmpty {
+                output.continuation.finish()
+            } else {
+                output.continuation.yield(data)
             }
+        }
+        let outputTask = Task { [weak self] in
+            for await data in output.stream {
+                guard !Task.isCancelled else { return }
+                await self?.receive(data: data, generation: generation)
+            }
+            guard !Task.isCancelled else { return }
+            await self?.failConnection(generation: generation, with: CuaDriverError.processExited)
         }
         readBuffers[generation] = Data()
         connection = CuaConnectionState(
@@ -901,6 +909,7 @@ actor CuaDriverClient {
             process: process,
             inputHandle: inputHandle,
             outputHandle: outputHandle,
+            outputTask: outputTask,
             initializationTask: nil
         )
 
@@ -1407,6 +1416,7 @@ actor CuaDriverClient {
         guard let connection else { return }
         self.connection = nil
         connection.outputHandle.readabilityHandler = nil
+        connection.outputTask.cancel()
         connection.initializationTask?.cancel()
         connection.inputHandle.closeFile()
         connection.outputHandle.closeFile()

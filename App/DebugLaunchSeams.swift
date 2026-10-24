@@ -86,8 +86,8 @@ extension AppController {
 
     /// Test seam for the dictated-command path — identical to what
     /// VoiceController's dispatch hook delivers after wake word/dictation.
-    func debugDispatch(_ text: String) {
-        commandRouter.route(commandText: text)
+    func debugDispatch(_ text: String, voiceTaskScope: UUID? = nil) {
+        commandRouter.route(commandText: text, voiceTaskScope: voiceTaskScope)
     }
 
     /// Seeds the History fixture and opens History for the capture lane.

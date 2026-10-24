@@ -545,7 +545,7 @@ enum PerryLiveErasureErasers {
     }
 
     static var providerKeychainServices: [String] {
-        ["dev.perry.integrations", "dev.perry.keys"]
+        ["dev.perry.integrations", "dev.perry.keys", CustomConnectors.keychainService]
     }
 
     private static func providerKeychainEraser() -> any PerryDataEraser {

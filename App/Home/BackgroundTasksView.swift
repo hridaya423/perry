@@ -7,74 +7,81 @@ import PerryRuntimes
 struct BackgroundTasksView: View {
     @ObservedObject var backgroundTasks: BackgroundTaskController
     let runtimes: RuntimeCatalog
+    var askPerry: (() -> Void)?
     @State private var hasLoaded = false
+
+    private var isEmpty: Bool {
+        hasLoaded && backgroundTasks.records.isEmpty && backgroundTasks.persistenceError == nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Background tasks")
-                        .font(.title3.weight(.semibold))
-                    Text("Perry keeps plans on this Mac and resumes only at safe step boundaries.")
-                        .font(PerryTheme.Typography.note)
-                        .foregroundStyle(.secondary)
-                    if hasLoaded, backgroundTasks.persistenceError == nil {
-                        Text("\(backgroundTasks.runningCount) active · \(backgroundTasks.records.count) saved")
-                            .font(PerryTheme.Typography.monoSmall)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                Button("Resume all") {
-                    backgroundTasks.resumeAll()
-                }
-                .disabled(!hasLoaded || backgroundTasks.persistenceError != nil || backgroundTasks.records.allSatisfy {
-                    !($0.canResumeWorkspaceTask && !$0.checkpoint.isAwaitingApproval && !backgroundTasks.isRunning($0.id))
-                })
-            }
-
-            if !hasLoaded {
-                ProgressView("Loading saved tasks")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if backgroundTasks.records.isEmpty, backgroundTasks.persistenceError == nil {
-                ContentUnavailableView(
-                    "No queued tasks",
-                    systemImage: "clock.arrow.circlepath",
-                    description: Text("Use Run in background from Perry’s menu or the session panel.")
+            if isEmpty {
+                WorkspaceEmptyState(
+                    title: "Nothing in the background",
+                    message: "Long jobs you hand to Perry keep running here while you work.",
+                    actionTitle: askPerry == nil ? nil : "Give Perry a job",
+                    action: askPerry
                 )
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 1) {
-                        if let issue = backgroundTasks.persistenceError {
-                            VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
-                                Label("Task storage needs attention", systemImage: "exclamationmark.triangle")
-                                    .font(.headline)
-                                    .accessibilityAddTraits(.isHeader)
-                                Text("Resolve the storage issue shown below, then reopen Perry. Keep the task files for recovery.")
-                                    .font(PerryTheme.Typography.note)
-                                Text(issue.localizedDescription)
-                                    .font(PerryTheme.Typography.note)
-                                    .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, PerryTheme.Spacing.section)
-                            .accessibilityIdentifier("background-task-storage-error")
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Tasks are saved on this Mac. Perry resumes them only between steps.")
+                            .font(PerryTheme.Typography.note)
+                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        if hasLoaded, backgroundTasks.persistenceError == nil {
+                            Text("\(backgroundTasks.runningCount) active · \(backgroundTasks.records.count) saved")
+                                .font(PerryTheme.Typography.note)
+                                .monospacedDigit()
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
                         }
-                        ForEach(backgroundTasks.records) { record in
-                            BackgroundTaskRow(record: record, backgroundTasks: backgroundTasks, runtimes: runtimes)
-                            if record.id != backgroundTasks.records.last?.id {
-                                Divider()
+                    }
+                    Spacer()
+                    Button("Resume all") {
+                        backgroundTasks.resumeAll()
+                    }
+                    .disabled(!hasLoaded || backgroundTasks.persistenceError != nil || backgroundTasks.records.allSatisfy {
+                        !($0.canResumeWorkspaceTask && !$0.checkpoint.isAwaitingApproval && !backgroundTasks.isRunning($0.id))
+                    })
+                }
+
+                if !hasLoaded {
+                    ProgressView("Loading saved tasks")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 1) {
+                            if let issue = backgroundTasks.persistenceError {
+                                VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
+                                    Label("Task storage needs attention", systemImage: "exclamationmark.triangle")
+                                        .font(.headline)
+                                        .accessibilityAddTraits(.isHeader)
+                                    Text("Resolve the storage issue shown below, then reopen Perry. Keep the task files for recovery.")
+                                        .font(PerryTheme.Typography.note)
+                                    Text(issue.localizedDescription)
+                                        .font(PerryTheme.Typography.note)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, PerryTheme.Spacing.section)
+                                .accessibilityIdentifier("background-task-storage-error")
+                            }
+                            ForEach(backgroundTasks.records) { record in
+                                BackgroundTaskRow(record: record, backgroundTasks: backgroundTasks, runtimes: runtimes)
+                                if record.id != backgroundTasks.records.last?.id {
+                                    Divider()
+                                }
                             }
                         }
                     }
+                    .scrollIndicators(.automatic)
                 }
-                .scrollIndicators(.automatic)
-            }
 
-            Text("Paused tasks may need your approval or their original app before they can continue.")
-                .font(PerryTheme.Typography.note)
-                .foregroundStyle(.secondary)
+                Text("Paused tasks may need your approval or their original app before they can continue.")
+                    .font(PerryTheme.Typography.note)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            }
         }
         .padding(20)
         .task {
@@ -93,6 +100,7 @@ private struct BackgroundTaskRow: View {
     let runtimes: RuntimeCatalog
     @State private var showDeleteConfirmation = false
     @State private var showUndoConfirmation = false
+    @State private var approvalPresentationID = UUID()
     @State private var workspaceApproval: TaskRecord?
 
     private var recoveryNotice: BackgroundTaskRecoveryNotice? {
@@ -109,19 +117,21 @@ private struct BackgroundTaskRow: View {
                 Text(record.goal)
                     .font(.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
-                if case .agent = record.plan {
-                    Text(record.state.rawValue.capitalized)
-                        .font(PerryTheme.Typography.monoSmall)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("\(record.state.rawValue.capitalized) · step \(min(record.checkpoint.nextStepIndex + 1, max(record.plan.actionCount, 1))) of \(record.plan.actionCount)")
-                        .font(PerryTheme.Typography.monoSmall)
-                        .foregroundStyle(.secondary)
+                Group {
+                    if case .agent = record.plan {
+                        Text(record.state.rawValue.capitalized)
+                    } else {
+                        Text("\(record.state.rawValue.capitalized) · step \(min(record.checkpoint.nextStepIndex + 1, max(record.plan.actionCount, 1))) of \(record.plan.actionCount)")
+                    }
                 }
+                .font(PerryTheme.Typography.note)
+                .monospacedDigit()
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
                 if case .legacy(let plan) = record.plan {
                     Text("Runtime: \(runtimes.name(for: plan.runtimeID))")
-                        .font(PerryTheme.Typography.monoSmall)
-                        .foregroundStyle(.secondary)
+                        .font(PerryTheme.Typography.note)
+                        .monospacedDigit()
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 if let recoveryNotice {
                     BackgroundTaskRecoveryNoticeView(notice: recoveryNotice)
@@ -134,7 +144,7 @@ private struct BackgroundTaskRow: View {
                 if recoveryNotice == nil, let message = backgroundTasks.message(for: record.id) {
                     Text(message)
                         .font(PerryTheme.Typography.note)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .lineLimit(2)
                 }
             }
@@ -142,34 +152,33 @@ private struct BackgroundTaskRow: View {
             controls
         }
         .padding(.vertical, 9)
-        .confirmationDialog(
+        .notchDialog(
             "Delete this task and its workspace?",
             isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
+            message: "This removes the saved task and every file in its private Perry workspace."
         ) {
-            Button("Delete task and workspace", role: .destructive) {
+            [NotchDialog.Action("Delete task and workspace", role: .destructive) {
                 backgroundTasks.discard(record.id)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the saved task and every file in its private Perry workspace.")
+            }]
         }
-        .sheet(item: $workspaceApproval) { presented in
-            WorkspaceTaskApprovalView(record: presented) {
-                backgroundTasks.approveWorkspace(presented)
-            }
+        .onChange(of: workspaceApproval?.id) { _, _ in
+            guard let presented = workspaceApproval else { return }
+            NotchPresentation.shared.present(id: approvalPresentationID, priority: .approval,
+                content: WorkspaceTaskApprovalView(record: presented, approve: {
+                    backgroundTasks.approveWorkspace(presented)
+                }, dismiss: {
+                    NotchPresentation.shared.remove(approvalPresentationID)
+                    workspaceApproval = nil
+                }))
         }
-        .confirmationDialog(
+        .notchDialog(
             "Undo Perry’s changes?",
             isPresented: $showUndoConfirmation,
-            titleVisibility: .visible
+            message: "Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched — Undo stops at the first conflict."
         ) {
-            Button("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
+            [NotchDialog.Action("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
                 backgroundTasks.undoWorkspaceChanges(record)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched — Undo stops at the first conflict.")
+            }]
         }
     }
 
@@ -275,7 +284,7 @@ private struct BackgroundTaskRow: View {
 private struct WorkspaceTaskApprovalView: View {
     let record: TaskRecord
     let approve: () -> Void
-    @Environment(\.dismiss) private var dismiss
+    let dismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
@@ -309,16 +318,13 @@ private struct WorkspaceTaskApprovalView: View {
                     .buttonStyle(.borderedProminent)
                 }
             } else {
-                Text("This approval is no longer available. Close this window and review the current task.")
+                Text("This approval is no longer available. Go back and review the current task.")
                 Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
         }
         .padding(PerryTheme.Spacing.panelInset)
-        .frame(minWidth: PerryTheme.Sizing.workspaceApprovalMinimumWidth,
-               idealWidth: PerryTheme.Sizing.workspaceApprovalWidth,
-               minHeight: PerryTheme.Sizing.workspaceApprovalMinimumHeight,
-               idealHeight: PerryTheme.Sizing.workspaceApprovalHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

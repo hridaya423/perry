@@ -2,6 +2,7 @@
 import AppKit
 import Foundation
 import XCTest
+import SwiftUI
 import PerryBrain
 import PerryCore
 import PerryGuide
@@ -10,6 +11,62 @@ import PerryRuntimes
 
 @MainActor
 final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
+    func testErasurePromptDeduplicatesAndCollapseCancelsBeforeMaintenance() async throws {
+        let directory = try temporaryDirectory()
+        addTeardownBlock { try self.removeFixture(directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        let originalOnPresent = presentation.onPresent
+        presentation.onPresent = nil
+        var enteredErasure = false
+        controller.debugSetMaintenanceFixture(skipEraseConfirmation: false) {
+            enteredErasure = true
+            throw FixtureError.release
+        }
+        defer {
+            presentation.onPresent = originalOnPresent
+            controller.homeController.stop()
+        }
+        let previousIDs = Set(presentation.entries.map(\.id))
+        controller.debugInvokeWipeDataAction()
+        let shown = await waitUntil { presentation.entries.contains { !previousIDs.contains($0.id) } }
+        XCTAssertTrue(shown)
+        let pendingIDs = Set(presentation.entries.map(\.id))
+        controller.debugInvokeWipeDataAction()
+        XCTAssertEqual(Set(presentation.entries.map(\.id)), pendingIDs)
+        controller.collapseNotch()
+        let dismissed = await waitUntil { Set(presentation.entries.map(\.id)) == previousIDs }
+        XCTAssertTrue(dismissed)
+        XCTAssertFalse(controller.debugMaintenanceOwnerHeld)
+        XCTAssertFalse(enteredErasure)
+    }
+
+    func testCollapsingUnsavedQuitConfirmationRestoresAdmissionAndRequest() async throws {
+        let directory = try temporaryDirectory()
+        addTeardownBlock { try self.removeFixture(directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        let originalOnPresent = presentation.onPresent
+        presentation.onPresent = nil
+        defer {
+            presentation.onPresent = originalOnPresent
+            controller.homeController.stop()
+            controller.homeController.closeHome()
+        }
+        controller.homeController.threadStore = nil
+        let input = controller.homeController.acceptInput("Preserve this request when quitting is cancelled")
+        let previousIDs = Set(presentation.entries.map(\.id))
+        XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateLater)
+        let shown = await waitUntil { presentation.entries.contains { !previousIDs.contains($0.id) } }
+        XCTAssertTrue(shown)
+        controller.collapseNotch()
+        let reopened = await waitUntil { !controller.debugMaintenanceOwnerHeld }
+        XCTAssertTrue(reopened)
+        XCTAssertTrue(controller.backgroundTasks.acceptsControls)
+        XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
+        XCTAssertEqual(Set(presentation.entries.map(\.id)), previousIDs)
+    }
+
     func testQuitChecksFailedAcceptedWritesBeforeDiscardingInput() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
@@ -28,27 +85,43 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertTrue(reopened)
         XCTAssertTrue(controller.backgroundTasks.acceptsControls)
         XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
-        XCTAssertNotNil(controller.homeController.homeWindow)
+        XCTAssertTrue(NSApp.windows.contains { $0.identifier == SessionPanelView.windowIdentifier })
         controller.homeController.stop()
         controller.homeController.closeHome()
     }
 
-    func testRenderUnsavedQuitAlert() throws {
+    func testRenderUnsavedQuitConfirmation() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
         let controller = AppController(debugStorageDirectory: directory)
-        let alert = controller.unsavedRequestQuitAlert()
-        alert.layout()
-        XCTAssertEqual(alert.buttons.first?.title, "Keep Perry open")
-        XCTAssertEqual(alert.buttons.last?.title, "Quit without saving")
-        XCTAssertTrue(alert.buttons.last?.hasDestructiveAction == true)
-        let content = try XCTUnwrap(alert.window.contentView)
+        let presentation = NotchPresentation.shared
+        let originalOnPresent = presentation.onPresent
+        presentation.onPresent = nil
+        let confirmation = controller.unsavedRequestQuitConfirmation()
+        defer {
+            confirmation.cancel()
+            presentation.onPresent = originalOnPresent
+            controller.homeController.stop()
+        }
+        let waiting = Task { await confirmation.confirm() }
+        for _ in 0..<100 where !presentation.contains(confirmation.requestID) { await Task.yield() }
+        let entry = try XCTUnwrap(presentation.current)
+        XCTAssertEqual(entry.id, confirmation.requestID)
+        let content = NSHostingView(rootView: entry.content)
+        content.frame = NSRect(x: 0, y: 0, width: 512, height: 280)
         content.layoutSubtreeIfNeeded()
         let bitmap = try XCTUnwrap(content.bitmapImageRepForCachingDisplay(in: content.bounds))
         content.cacheDisplay(in: content.bounds, to: bitmap)
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("build/dependable-evidence/unsaved-quit-alert.png")
+            .appendingPathComponent("build/dependable-evidence/unsaved-quit-notch.png")
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
+        confirmation.cancel()
+        let confirmed = await waiting.value
+        XCTAssertFalse(confirmed)
+        XCTAssertFalse(presentation.contains(confirmation.requestID))
     }
 
     func testNotificationCannotApproveNewRevisionBehindStaleTaskList() async throws {

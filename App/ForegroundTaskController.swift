@@ -576,7 +576,7 @@ final class ForegroundTaskController: ObservableObject {
             onSteer: { [weak self] instruction in self?.steer(instruction) },
             onTakeOver: { [weak self] in self?.takeOver() }
         )
-        activityStripWindow?.show(on: NSScreen.main)
+        activityStripWindow?.show()
     }
 
     /// The post-plan half of every foreground task: publication gate,
@@ -687,6 +687,10 @@ final class ForegroundTaskController: ObservableObject {
         context: RehearsalContext
     ) async -> (overlayIDs: Set<UUID>, sensitiveActionIDs: Set<ActionID>) {
         let plan = context.plan
+        guard plan.actions.contains(where: {
+            if case .computer = $0.operation { return true }
+            return false
+        }) else { return ([], []) }
         let targetStore = CuaGuideTargetStore()
         if let target = context.target {
             await targetStore.set(CuaTargetHint(
@@ -807,19 +811,8 @@ final class ForegroundTaskController: ObservableObject {
         )
     }
 
-    @MainActor
-    private static func presentAskUser(prompt: String, choices: [String]) throws {
-        let alert = NSAlert()
-        alert.messageText = prompt
-        alert.alertStyle = .informational
-        for choice in choices.prefix(3) {
-            alert.addButton(withTitle: choice)
-        }
-        alert.addButton(withTitle: "Cancel")
-        let response = alert.runModal()
-        guard (0..<choices.prefix(3).count).contains(response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue) else {
-            throw CancellationError()
-        }
+    private static func presentAskUser(prompt: String, choices: [String]) async throws {
+        try await TaskQuestionPresenter(prompt: prompt, choices: choices).ask()
     }
 
     private func typedTaskResources(
@@ -1254,6 +1247,7 @@ final class ForegroundTaskController: ObservableObject {
     func debugShowActivityFixture() {
         let fixtureStart = Date()
         activityStripState.reset()
+        activityStripState.isExpanded = true
         activityStripState.phase = .working
         activityStripState.title = "UI test fixture"
         activityStripState.detail = "Long task fixture · running"
@@ -1324,7 +1318,7 @@ final class ForegroundTaskController: ObservableObject {
                 self.activityStripState.detail = "Steering: \(instruction)"
             }
         )
-        activityStripWindow?.show(on: NSScreen.main)
+        activityStripWindow?.show()
     }
 #endif
 }

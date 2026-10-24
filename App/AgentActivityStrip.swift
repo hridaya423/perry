@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import PerryCore
 import PerryOverlay
@@ -198,6 +199,7 @@ struct AgentActivityStripView: View {
     let onToggleExpanded: () -> Void
 
     @State private var steering = ""
+    @State private var typedSteeringExpanded = false
     @FocusState private var steeringFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -215,12 +217,11 @@ struct AgentActivityStripView: View {
                 }
             }
         }
-        .padding(.horizontal, PerryTheme.Spacing.section)
-        .padding(.vertical, PerryTheme.Spacing.header)
-        .frame(width: state.isExpanded ? 370 : 300)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(colorForTier.opacity(0.65), lineWidth: 1))
-        .shadow(color: PerryTheme.Elevation.shadow, radius: 14, y: 6)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
         .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: state.isExpanded)
@@ -236,21 +237,29 @@ struct AgentActivityStripView: View {
                 steeringFocused = false
             }
         }
+        .onChange(of: typedSteeringExpanded) { _, expanded in
+            if expanded {
+                focusSteering()
+            } else {
+                steeringFocused = false
+            }
+        }
     }
 
     private var header: some View {
         HStack(spacing: PerryTheme.Spacing.header) {
             Button { onToggleExpanded() } label: {
                 HStack(alignment: .top, spacing: PerryTheme.Spacing.header) {
-                    PerryGlassCursorView(animation: state.phase == .failed ? .failed : state.phase == .paused ? .idle : .running, size: 30, variant: .lens)
+                    PerryCharacter(mood: state.phase == .failed ? .needsYou : state.phase == .paused ? .resting : .working, size: 24)
+                        .padding(.trailing, 4)
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
                         HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
                             Text(state.title)
                                 .font(PerryTheme.Typography.panelTitle)
-                                .lineLimit(1)
+                                .lineLimit(state.isExpanded ? nil : 1)
                             if let tier = state.tier {
                                 Text(tier.rawValue.capitalized)
-                                    .font(PerryTheme.Typography.monoSmall.weight(.semibold))
+                                    .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
                                     .foregroundStyle(color(for: tier))
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
@@ -261,22 +270,31 @@ struct AgentActivityStripView: View {
                             if let startedAt = state.startedAt {
                                 TimelineView(.periodic(from: startedAt, by: 1)) { context in
                                     Text(Self.elapsedText(since: startedAt, now: context.date))
-                                        .font(PerryTheme.Typography.monoSmall)
+                                        .font(PerryTheme.Typography.panelMetadata.monospacedDigit())
                                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 }
                             }
                         }
                         if !state.detail.isEmpty {
                             Text(state.detail)
-                                .font(PerryTheme.Typography.monoSmall)
+                                .font(PerryTheme.Typography.panelMetadata)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                .lineLimit(1)
+                                .lineLimit(state.isExpanded ? nil : 1)
                         }
                         if let progress = state.progress {
-                            ProgressView(value: progress)
-                                .progressViewStyle(.linear)
-                                .frame(width: 150)
-                                .tint(PerryTheme.Colors.accent)
+                            GeometryReader { proxy in
+                                Capsule()
+                                    .fill(PerryTheme.Colors.subtleSeparator)
+                                    .overlay(alignment: .leading) {
+                                        Capsule()
+                                            .fill(PerryTheme.Colors.accent)
+                                            .frame(width: proxy.size.width * min(max(progress, 0), 1))
+                                    }
+                            }
+                            .frame(maxWidth: 260)
+                            .frame(height: 4)
+                                .padding(.top, 4)
+                                .animation(.smooth(duration: 0.4), value: progress)
                                 .accessibilityHidden(true)
                         }
                     }
@@ -295,71 +313,42 @@ struct AgentActivityStripView: View {
     }
 
     private var expandedDetails: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-                statusDetails
-                if state.steps.isEmpty {
-                    Text("Waiting for the first step.")
-                        .font(PerryTheme.Typography.note)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel("Task steps")
-                        .accessibilityValue("Waiting for the first step")
-                } else {
-                    stepsDetails
-                }
-                if let verification = state.verification {
-                    Text("Read-back: \(verification)")
-                        .font(PerryTheme.Typography.panelMetadata)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel("Task verification")
-                        .accessibilityValue(verification)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.trailing, PerryTheme.Spacing.tight)
+        ViewThatFits(in: .vertical) {
+            detailsContent.fixedSize(horizontal: false, vertical: true)
+            ScrollView { detailsContent }
+                .scrollIndicators(.automatic)
         }
         .frame(maxHeight: 180)
-        .scrollIndicators(.automatic)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Expanded task details")
     }
 
-    private var statusDetails: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
-            HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
-                Text("Status")
+    private var detailsContent: some View {
+        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
+            if state.steps.isEmpty {
+                if state.detail.isEmpty || state.phase == .failed || state.phase == .reporting {
+                    Text(emptyStepsLabel)
+                        .font(PerryTheme.Typography.note)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Task steps")
+                        .accessibilityValue(emptyStepsLabel)
+                }
+            } else {
+                stepsDetails
+            }
+            if let verification = state.verification {
+                Text("Read-back: \(verification)")
                     .font(PerryTheme.Typography.panelMetadata)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: PerryTheme.Spacing.control)
-                Text(state.phase.displayLabel)
-                    .font(PerryTheme.Typography.monoSmall)
-                    .foregroundStyle(statusColor)
-            }
-            Text(state.title)
-                .font(PerryTheme.Typography.panelSubtitle)
-                .fixedSize(horizontal: false, vertical: true)
-            if !state.detail.isEmpty {
-                Text(state.detail)
-                    .font(PerryTheme.Typography.note)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            if let outcomeLabel {
-                HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
-                    Image(systemName: outcomeSymbol)
-                        .accessibilityHidden(true)
-                    Text("Outcome: \(outcomeLabel)")
-                }
-                .font(PerryTheme.Typography.panelMetadata)
-                .foregroundStyle(outcomeColor)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Task outcome")
-                .accessibilityValue(outcomeLabel)
+                    .accessibilityLabel("Task verification")
+                    .accessibilityValue(verification)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, PerryTheme.Spacing.tight)
     }
 
     private var stepsDetails: some View {
@@ -382,11 +371,11 @@ struct AgentActivityStripView: View {
                                 .font(PerryTheme.Typography.note.weight(.medium))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("\(step.reversible ? "Reversible" : "One-way") · Trust tier \(step.tier.rawValue)")
-                                .font(PerryTheme.Typography.monoSmall)
+                                .font(PerryTheme.Typography.panelMetadata)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             if let verification = step.verification {
                                 Text("Outcome: \(verification)")
-                                    .font(PerryTheme.Typography.monoSmall.weight(.medium))
+                                    .font(PerryTheme.Typography.panelMetadata.weight(.medium))
                                     .foregroundStyle(verification.hasPrefix("Verified") ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
                             }
                         }
@@ -404,73 +393,81 @@ struct AgentActivityStripView: View {
 
     private var steeringControls: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text("Steering")
-                .font(PerryTheme.Typography.panelMetadata)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                .accessibilityAddTraits(.isHeader)
-            HStack(spacing: PerryTheme.Spacing.control) {
-                TextField("Steer before the next step", text: $steering)
-                    .textFieldStyle(.roundedBorder)
-                    .font(PerryTheme.Typography.monoSmall)
-                    .focused($steeringFocused)
-                    .accessibilityLabel("Steering instruction")
-                    .accessibilityHint("Type an instruction for Perry before the next task step")
-                    .accessibilityValue(trimmedSteering.isEmpty ? "No instruction entered" : trimmedSteering)
-                    .onSubmit { sendSteering() }
-                Button("Send direction") { sendSteering() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(steeringIsEmpty)
-                    .keyboardShortcut(.defaultAction)
-                    .accessibilityLabel("Send steering instruction")
-                    .accessibilityHint("Send this instruction before Perry's next task step")
+            HStack(spacing: 6) {
+                Text("Hold")
+                Keycap(TalkGesture.keys)
+                Text("to steer")
+            }
+            .font(PerryTheme.Typography.panelMetadata)
+            .foregroundStyle(PerryTheme.Colors.textSecondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(TalkGesture.steer)
+            DisclosureGroup(isExpanded: $typedSteeringExpanded) {
+                HStack(spacing: PerryTheme.Spacing.control) {
+                    TextField("Steer before the next step", text: $steering)
+                        .textFieldStyle(.roundedBorder)
+                        .font(PerryTheme.Typography.panelMetadata)
+                        .focused($steeringFocused)
+                        .accessibilityLabel("Steering instruction")
+                        .accessibilityHint("Type an instruction for Perry before the next task step")
+                        .accessibilityValue(trimmedSteering.isEmpty ? "No instruction entered" : trimmedSteering)
+                        .onSubmit { sendSteering() }
+                    Button("Send") { sendSteering() }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.small)
+                        .disabled(steeringIsEmpty)
+                        .keyboardShortcut(.defaultAction)
+                        .accessibilityLabel("Send steering instruction")
+                        .accessibilityHint("Send this instruction before Perry's next task step")
+                }
+                .padding(.top, PerryTheme.Spacing.tight)
+            } label: {
+                Text("Type instead")
+                    .font(PerryTheme.Typography.panelMetadata)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
     }
 
     @ViewBuilder
     private var controls: some View {
-        HStack(spacing: PerryTheme.Spacing.inline) {
+        HStack(spacing: 6) {
             if state.phase == .working || state.phase == .starting {
                 Button { onPause() } label: {
-                    Image(systemName: "pause.fill")
+                    Label("Pause", systemImage: "pause.fill")
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Pause task")
                 .help("Pause before the next step")
             } else if state.phase == .paused {
                 Button { onResume() } label: {
-                    Image(systemName: "play.fill")
+                    Label("Resume", systemImage: "play.fill")
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel(state.handedToHuman ? "Continue with Perry" : "Resume task")
                 .help(state.handedToHuman ? "Replan the remaining work from the current screen" : "Resume the task")
             }
             if state.takeOverIsAvailable {
                 Button { onTakeOver() } label: {
-                    Image(systemName: "person.fill")
+                    Label("Take over", systemImage: "hand.raised")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("I'll do this step")
+                .accessibilityLabel("Take over this step")
                 .help("Pause so you can do the step yourself — Perry replans the rest")
             }
             if state.retryIsAvailable {
-                Button { onRetry() } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Retry task")
-                .help("Retry the last task")
+                Button("Try again") { onRetry() }
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.small)
+                    .accessibilityLabel("Retry task")
+                    .help("Run the task again")
             }
             if state.stopIsAvailable {
                 Button(role: .destructive) { onStop() } label: {
-                    Image(systemName: "stop.fill")
+                    Label("Stop", systemImage: "stop.fill")
                 }
-                .buttonStyle(.plain)
                 .accessibilityLabel("Stop task")
                 .help("Stop the task")
             }
         }
+        .buttonStyle(ContextChipStyle(iconOnly: !state.isExpanded))
     }
 
     private func sendSteering() {
@@ -482,7 +479,7 @@ struct AgentActivityStripView: View {
 
     private func focusSteering() {
         DispatchQueue.main.async {
-            guard state.isExpanded else { return }
+            guard state.isExpanded, typedSteeringExpanded else { return }
             steeringFocused = true
         }
     }
@@ -491,13 +488,25 @@ struct AgentActivityStripView: View {
         trimmedSteering.isEmpty
     }
 
+    private var emptyStepsLabel: String {
+        state.phase == .failed || state.phase == .reporting
+            ? "Perry didn’t change anything."
+            : "Waiting for the first step."
+    }
+
     private var trimmedSteering: String {
         steering.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var headerAccessibilityValue: String {
-        guard let progress = state.progress else { return state.title }
-        return "\(state.title), \(Int(progress * 100)) percent complete"
+        var parts = [state.title, state.phase.displayLabel]
+        if !state.detail.isEmpty {
+            parts.append(state.detail)
+        }
+        if let progress = state.progress {
+            parts.append("\(Int(progress * 100)) percent complete")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func stepAccessibilityValue(_ step: AgentActivityStep) -> String {
@@ -525,57 +534,6 @@ struct AgentActivityStripView: View {
         }
     }
 
-    private var statusColor: Color {
-        switch state.phase {
-        case .failed:
-            return PerryTheme.Colors.danger
-        case .paused, .confirming:
-            return PerryTheme.Colors.warning
-        case .verifying:
-            return PerryTheme.Colors.success
-        case .reporting:
-            return outcomeLabel == "Stopped" ? PerryTheme.Colors.warning : PerryTheme.Colors.success
-        default:
-            return PerryTheme.Colors.accent
-        }
-    }
-
-    private var outcomeLabel: String? {
-        switch state.phase {
-        case .failed:
-            return "Failed"
-        case .reporting:
-            switch state.title.lowercased() {
-            case "task complete", "task finished":
-                return "Complete"
-            case "task stopped":
-                return "Stopped"
-            default:
-                return "Reporting"
-            }
-        default:
-            return nil
-        }
-    }
-
-    private var outcomeSymbol: String {
-        switch outcomeLabel {
-        case "Complete": return "checkmark.circle.fill"
-        case "Stopped": return "stop.circle.fill"
-        case "Failed": return "xmark.octagon.fill"
-        default: return "arrow.triangle.2.circlepath"
-        }
-    }
-
-    private var outcomeColor: Color {
-        switch outcomeLabel {
-        case "Complete": return PerryTheme.Colors.success
-        case "Stopped": return PerryTheme.Colors.warning
-        case "Failed": return PerryTheme.Colors.danger
-        default: return PerryTheme.Colors.textSecondary
-        }
-    }
-
     private static func elapsedText(since start: Date, now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(start)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
@@ -598,16 +556,12 @@ private extension AgentActivityPhase {
 }
 
 @MainActor
-final class AgentActivityStripWindow: NSPanel {
+final class AgentActivityStripWindow {
+    private let id = UUID()
     private let state: AgentActivityStripState
     private let onStop: () -> Void
-    private var previousFrontmostApplication: NSRunningApplication?
-
-    private var perryProcessIdentifier: pid_t {
-        ProcessInfo.processInfo.processIdentifier
-    }
-
-    override var canBecomeKey: Bool { state.isExpanded }
+    private let presentation: NotchPresentation
+    private var content: AnyView = AnyView(EmptyView())
 
     init(
         state: AgentActivityStripState,
@@ -616,77 +570,31 @@ final class AgentActivityStripWindow: NSPanel {
         onStop: @escaping () -> Void,
         onRetry: @escaping () -> Void,
         onSteer: @escaping (String) -> Void,
-        onTakeOver: @escaping () -> Void = {}
+        onTakeOver: @escaping () -> Void = {},
+        presentation: NotchPresentation? = nil
     ) {
         self.state = state
         self.onStop = onStop
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 72),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        isFloatingPanel = true
-        level = .floating
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = false
-        hidesOnDeactivate = false
-        ignoresMouseEvents = false
-        PerryWindowChrome.applyChrome(to: self)
-        contentView = NSHostingView(rootView: AgentActivityStripView(state: state, onPause: onPause, onResume: onResume, onStop: onStop, onRetry: onRetry, onSteer: onSteer, onTakeOver: onTakeOver, onToggleExpanded: { [weak self] in self?.setExpanded(!(self?.state.isExpanded ?? false)) }))
+        self.presentation = presentation ?? .shared
+        content = AnyView(AgentActivityStripView(state: state, onPause: onPause,
+            onResume: onResume, onStop: onStop, onRetry: onRetry, onSteer: onSteer,
+            onTakeOver: onTakeOver, onToggleExpanded: { [weak self] in
+                guard let self else { return }
+                self.setExpanded(!self.state.isExpanded)
+            }))
     }
 
-    func show(on screen: NSScreen?) {
-        guard let screen else { orderFrontRegardless(); return }
-        let visible = screen.visibleFrame
-        setFrameOrigin(NSPoint(x: visible.maxX - frame.width - 20, y: visible.maxY - frame.height - 20))
-        orderFrontRegardless()
+    func show() {
+        presentation.present(id: id, priority: .activity, content: content, reveal: state.isExpanded)
+    }
+
+    func orderOut(_ sender: Any?) { presentation.remove(id) }
+
+    func setExpanded(_ expanded: Bool, animate: Bool = true) {
+        state.isExpanded = expanded
     }
 
 #if DEBUG
-    func debugInvokeStop() {
-        onStop()
-    }
+    func debugInvokeStop() { onStop() }
 #endif
-
-    func setExpanded(_ expanded: Bool, animate: Bool = true) {
-        let newWidth: CGFloat = expanded ? 370 : 300
-        let newHeight: CGFloat = expanded ? 330 : 72
-        let frameNeedsUpdate = frame.width != newWidth || frame.height != newHeight
-        let styleNeedsUpdate = expanded == styleMask.contains(.nonactivatingPanel)
-        guard state.isExpanded != expanded || frameNeedsUpdate || styleNeedsUpdate else { return }
-
-        let wasExpanded = state.isExpanded
-        if expanded && !wasExpanded {
-            let frontmostApplication = NSWorkspace.shared.frontmostApplication
-            previousFrontmostApplication = frontmostApplication?.processIdentifier == perryProcessIdentifier ? nil : frontmostApplication
-        }
-        state.isExpanded = expanded
-        let oldFrame = frame
-        let newFrame = NSRect(
-            x: oldFrame.maxX - newWidth,
-            y: oldFrame.maxY - newHeight,
-            width: newWidth,
-            height: newHeight
-        )
-        setFrame(newFrame, display: true, animate: animate && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
-        if expanded {
-            styleMask.remove(.nonactivatingPanel)
-            NSApp.activate(ignoringOtherApps: true)
-            makeKeyAndOrderFront(nil)
-        } else {
-            let shouldRestorePreviousApplication = NSApp.isActive
-                && NSWorkspace.shared.frontmostApplication?.processIdentifier == perryProcessIdentifier
-            resignKey()
-            styleMask.insert(.nonactivatingPanel)
-            orderFrontRegardless()
-            if shouldRestorePreviousApplication,
-               let previousFrontmostApplication,
-               previousFrontmostApplication.processIdentifier != perryProcessIdentifier {
-                previousFrontmostApplication.activate(options: [.activateAllWindows])
-            }
-            self.previousFrontmostApplication = nil
-        }
-    }
 }

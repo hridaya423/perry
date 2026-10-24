@@ -32,10 +32,22 @@ final class CommandRouter {
         self.host = host
     }
 
-    func route(commandText: String?) {
+    /// `voiceTaskScope` is the task a dictation hold began against: steering
+    /// goes to that task only, so speech never redirects a task that started
+    /// or changed while the user was talking.
+    func route(commandText: String?, voiceTaskScope: UUID? = nil) {
         guard let host else { return }
         guard let text = commandText, !text.isEmpty else {
             host.showPanel()
+            return
+        }
+        if let voiceTaskScope {
+            guard case .executing(let execution) = host.sessionController.state,
+                  execution.taskID == voiceTaskScope else {
+                host.sessionStatus = "That task already moved on — hold the shortcut again to steer the current one."
+                return
+            }
+            steer(text, execution: execution)
             return
         }
         if case .asking = host.sessionController.state {
@@ -51,6 +63,10 @@ final class CommandRouter {
             }
             return
         }
+        if case .executing = host.sessionController.state {
+            host.sessionStatus = "A task started while you were speaking — hold the shortcut again to steer it."
+            return
+        }
         switch GuideIntentParser.parse(text) {
         case .guide(let goal):
             host.startGuiding(goal: goal)
@@ -63,6 +79,19 @@ final class CommandRouter {
         case .notAGuideRequest:
             host.ask(question: text)
         }
+    }
+
+    private func steer(_ text: String, execution: ExecutionSessionState) {
+        guard let host else { return }
+        if case .dismiss = GuideIntentParser.parse(text) {
+            host.dismiss()
+            return
+        }
+        guard execution.lifecycle == .running || execution.lifecycle == .paused else {
+            host.sessionStatus = "Perry can’t take direction right now — use the task controls, or say “stop”."
+            return
+        }
+        host.foreground.steer(text)
     }
 
     func runHomeGuide(

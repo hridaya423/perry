@@ -62,7 +62,7 @@ enum ToolApprovalPresenter {
                     }
                 }
                 presentation.window = window
-                window.show(anchoredAt: targetFrame)
+                window.show()
             }
         } onCancel: {
             Task { @MainActor in presentation.window?.cancel() }

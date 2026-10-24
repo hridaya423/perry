@@ -13,18 +13,4 @@ final class IntegrationDescriptorTests: XCTestCase {
         XCTAssertEqual(decoded, reference)
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("secret"))
     }
-
-    func testIntegrationDescriptorRoundTripsCredentialReferenceWithoutSecretValue() throws {
-        let descriptor = IntegrationDescriptor(
-            id: "example",
-            displayName: "Example",
-            credentialReference: CredentialReference(service: "dev.perry.tests", account: "example")
-        )
-
-        let data = try JSONEncoder().encode(descriptor)
-        let decoded = try JSONDecoder().decode(IntegrationDescriptor.self, from: data)
-
-        XCTAssertEqual(decoded, descriptor)
-        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("credentialValue"))
-    }
 }

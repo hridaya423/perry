@@ -364,15 +364,32 @@ final class HomeRecoveryTests: XCTestCase {
         home.homeModel.onStartConversation?(home.homeModel.newConversationDraft)
         let finished = await waitUntil { home.homeModel.threads.first?.turns.count == 1 && home.homeModel.pendingQuestions.isEmpty }
         XCTAssertTrue(finished)
-        XCTAssertNil(home.homeWindow)
         let id = try XCTUnwrap(home.homeModel.threads.first?.id)
         let saved = await ThreadStore(directory: root).thread(id: id)
         XCTAssertEqual(saved?.turns.first?.answer, "Cedar")
         XCTAssertEqual(home.homeModel.sidebarSelection, .thread(id))
+        var presented = false
+        home.onOpenConversation = { presented = true }
         home.openHome(selection: home.homeModel.sidebarSelection)
-        XCTAssertNotNil(home.homeWindow)
+        XCTAssertTrue(presented)
         XCTAssertEqual(home.homeModel.sidebarSelection, .thread(id))
         XCTAssertEqual(home.homeModel.conversationTargets[id], target)
+    }
+
+    func testReopeningCompactWorkspacePreservesDraftTargetUntilDraftIsCleared() async throws {
+        let home = HomeController()
+        home.threadStore = ThreadStore(directory: try directory())
+        defer { home.stop() }
+        let first = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
+        let next = CuaTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
+        home.prepareConversation(target: first)
+        home.homeModel.updateNewDraft("Summarize this document")
+        home.prepareConversation(target: next)
+        XCTAssertEqual(home.homeModel.newConversationTarget, first)
+        XCTAssertEqual(home.homeModel.newConversationDraft, "Summarize this document")
+        home.homeModel.updateNewDraft("")
+        home.prepareConversation(target: next)
+        XCTAssertEqual(home.homeModel.newConversationTarget, next)
     }
 
     func testConversationRetainsItsInvocationTargetAcrossFollowUps() async throws {
@@ -382,8 +399,10 @@ final class HomeRecoveryTests: XCTestCase {
         let next = CuaTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
         var capturedBeforePresentation = false
         var delivered: [(UUID, CuaTargetHint?)] = []
+        var presented = false
+        home.onOpenConversation = { presented = true }
         home.captureTarget = {
-            capturedBeforePresentation = home.homeWindow?.isKeyWindow != true
+            capturedBeforePresentation = !presented
             return first
         }
         home.answerProvider = { input, target, _ in
@@ -476,7 +495,12 @@ final class HomeRecoveryTests: XCTestCase {
         defer { home.stop() }
         let loaded = await waitUntil { home.homeModel.threads.first?.pendingTurn != nil }
         XCTAssertTrue(loaded)
-        let content = try XCTUnwrap(home.homeWindow?.contentView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let content = NSHostingView(rootView: NotchWorkspaceView(model: home.homeModel))
+        window.contentView = content
+        window.orderFrontRegardless()
+        defer { window.close() }
         func scrollViews(in view: NSView) -> [NSScrollView] {
             (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap { scrollViews(in: $0) }
         }
@@ -509,34 +533,6 @@ final class HomeRecoveryTests: XCTestCase {
         home.homeModel.conversationPositions[id] = .init()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(restored.contentView.bounds.maxY, try XCTUnwrap(restored.documentView).bounds.maxY, accuracy: 2)
-    }
-
-    func testSetupAndSidebarFitInsideHomeWindow() async throws {
-        let home = HomeController()
-        let director = OnboardingDirector()
-        director.start()
-        home.homeModel.onboarding = director
-        home.openHome()
-        defer { home.stop(); director.stop() }
-        let content = try XCTUnwrap(home.homeWindow?.contentView)
-        func splitView(in view: NSView) -> NSSplitView? {
-            if let split = view as? NSSplitView { return split }
-            return view.subviews.lazy.compactMap { splitView(in: $0) }.first
-        }
-        let loaded = await waitUntil { splitView(in: content) != nil }
-        XCTAssertTrue(loaded)
-        content.layoutSubtreeIfNeeded()
-        let split = try XCTUnwrap(splitView(in: content))
-        let bounds = split.convert(split.bounds, to: content)
-        XCTAssertGreaterThanOrEqual(bounds.minY, -1)
-        XCTAssertLessThanOrEqual(bounds.maxY, content.bounds.maxY + 1)
-        home.homeModel.threads = (1...3).map { PerryThread(title: "A conversation about project \($0)") }
-        home.homeModel.onboarding = nil
-        await Task.yield()
-        content.layoutSubtreeIfNeeded()
-        let welcomeBounds = split.convert(split.bounds, to: content)
-        XCTAssertGreaterThanOrEqual(welcomeBounds.minY, -1)
-        XCTAssertLessThanOrEqual(welcomeBounds.maxY, content.bounds.maxY + 1)
     }
 
 }

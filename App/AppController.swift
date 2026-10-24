@@ -25,6 +25,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var perryStore: PerryStore? { subsystems.perryStore }
     var integrationBackend: AppIntegrationBackend { subsystems.integrationBackend }
     var suggestionController: SuggestionController { subsystems.suggestionController }
+    var customConnectors: CustomConnectors { subsystems.customConnectors }
     var perryScheduler: PerrySchedulerController? { subsystems.perryScheduler }
     var mcp: MCPSocketLifecycle { subsystems.mcp }
     var overlaySampleLog: PerformanceSampleLog? { subsystems.overlaySampleLog }
@@ -63,6 +64,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         set { subsystems.agentCoordinator = newValue }
     }
     var homeController: HomeController { subsystems.homeController }
+    var conversationVoice: VoiceConversationController { subsystems.conversationVoice }
+    var conversationVoiceObservation: AnyCancellable?
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
     var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
     var backgroundTasks: BackgroundTaskController { subsystems.backgroundTasks }
@@ -73,12 +76,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var statusMenu = StatusMenuController(host: self)
     lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
 #if DEBUG
-        NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
+        let host = NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
             to: CompactConversationView(controller: self)
         ))
 #else
-        NSHostingView(rootView: CompactConversationView(controller: self))
+        let host = NSHostingView(rootView: CompactConversationView(controller: self))
 #endif
+        host.sizingOptions = []
+        return host
     }
     let intentCards = IntentCardPresenter()
     private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
@@ -101,14 +106,16 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var guideBridge = GuideSessionBridge(host: self)
     lazy var commandRouter = CommandRouter(host: self)
     var talkSessionStarted = false
+    var modifierHoldIsSteering = false
     var lastBackgroundCount = 0
     var lastAwaitingApprovalCount = 0
     lazy var onboarding = OnboardingCoordinator(
         overlayState: overlayState,
-        makeSpeech: { [unowned self] in SharedTalkOutput(voice: voice) },
         home: { [unowned self] in homeController },
         talkSession: { [unowned self] in talkSession },
-        preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() }
+        preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() },
+        showNotch: { [unowned self] in showPanel() },
+        endTalk: { [unowned self] in conversationVoice.cancel() }
     )
     var persistenceTasks: [UUID: Task<Void, Never>] = [:]
 #if DEBUG
@@ -198,6 +205,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if case .executing = sessionState { return true }
         return false
     }
+    var executingTaskID: UUID? {
+        guard case .executing(let execution) = sessionState else { return nil }
+        return execution.taskID
+    }
     var sessionState: SessionState { sessionController.state }
     var taskProgress: Double? {
         guard case .executing(let execution) = sessionState else { return nil }
@@ -231,12 +242,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 self.talkSession.cancel()
             }
             self.onboarding.noteSessionTransition(from: self.sessionController.state, to: state)
-            // Last answer feeds the Home peek's preview line.
-            if case .asking(let ask) = state, let text = ask.answerText {
-                self.homeController.noteAnswer(text)
-            }
-            if case .talking(let talk) = state, let text = talk.answerText {
-                self.homeController.noteAnswer(text)
+            if let cue = SoundPlayer.cue(from: self.sessionController.state, to: state) {
+                SoundPlayer.play(cue)
             }
             self.objectWillChange.send()
         }
@@ -259,7 +266,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.appearance = NSAppearance(named: .darkAqua)
         NSApp.setActivationPolicy(.accessory)
+        NotchPresentation.shared.onPresent = { [weak self] priority in self?.showPanel(activate: priority == .approval || priority == .routine) }
         // A companion that gets terminated mid-setup loses the user's trust
         // (HeyClicky lost first-run setups to this). Opt out explicitly.
         ProcessInfo.processInfo.disableAutomaticTermination(
@@ -287,7 +296,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         )
         ensureSupportDirectory()
-        statusMenu.install()
         installHotkey()
         voice.startInputListeners()
         modifierHoldMonitor.start()
@@ -313,6 +321,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         suggestionController.start()
         if let dir = storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
             mcp.startAfterLaunch(directory: dir)
+            customConnectors.connectAll()
         }
 #if DEBUG
         applyDebugLaunchSurface()
@@ -325,6 +334,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         subsystems.talkSpeechInput.warmUp()
         subsystems.realtimeTalkVoice()?.warmUp()
         voice.refreshWakeWordListener()
+        notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled)
         Task { @MainActor [weak self] in
             await self?.backgroundTasks.recoverInterruptedAndStartQueued()
         }
@@ -341,6 +351,20 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             name: .perryWipeDataRequested,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersChanged),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
+    }
+
+    @objc private func screenParametersChanged() {
+        handleScreenLayoutChanged()
+    }
+
+    func buildMenu() -> NSMenu {
+        statusMenu.makeMenu()
     }
 
     private func ensureSupportDirectory() {
@@ -474,6 +498,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func runOnboarding(force: Bool) {
         onboarding.run(force: force)
+    }
+
+    func openOnboardingSettings() {
+        openSettings(tab: .runtimes)
     }
 
     func updateWakeShortcut(_ shortcut: WakeShortcut) throws {

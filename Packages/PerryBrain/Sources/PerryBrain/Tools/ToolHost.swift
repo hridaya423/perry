@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import os
 import PerryCore
 
 public struct ToolResult: Sendable, Equatable {
@@ -84,26 +85,33 @@ public protocol ToolExecutor: Sendable {
 /// surface gating, schema validation, and tiered approval — in that order.
 public final class PerryToolHost: Sendable {
     private let executors: [String: any ToolExecutor]
-    private let specsByName: [String: ToolSpec]
+    private let groups = OSAllocatedUnfairLock(initialState: [String: [String: any ToolExecutor]]())
     private let logger = Logger(subsystem: "ai.perry.brain", category: "tool-host")
 
     public init(executors: [any ToolExecutor]) {
         var byName: [String: any ToolExecutor] = [:]
-        var specs: [String: ToolSpec] = [:]
         for executor in executors {
             byName[executor.spec.name] = executor
-            specs[executor.spec.name] = executor.spec
         }
         self.executors = byName
-        self.specsByName = specs
+    }
+
+    public func setExecutors(_ executors: [any ToolExecutor], group: String) {
+        let byName = Dictionary(executors.map { ($0.spec.name, $0) }) { first, _ in first }
+            .filter { self.executors[$0.key] == nil }
+        groups.withLock { $0[group] = byName.isEmpty ? nil : byName }
+    }
+
+    private func executor(named name: String) -> (any ToolExecutor)? {
+        executors[name] ?? groups.withLock { state in state.values.lazy.compactMap { $0[name] }.first }
     }
 
     public func spec(named name: String) -> ToolSpec? {
-        specsByName[name]
+        executor(named: name)?.spec
     }
 
     public func specs(for surface: ToolSurface) -> [ToolSpec] {
-        specsByName.values
+        (executors.values.map(\.spec) + groups.withLock { $0.values.flatMap { $0.values.map(\.spec) } })
             .filter { $0.surfaces.contains(surface) && ToolGate.allows($0.name, on: surface) }
             .sorted { $0.name < $1.name }
     }
@@ -113,9 +121,10 @@ public final class PerryToolHost: Sendable {
             .text(call.id, error.localizedDescription, isError: true)
         }
         guard !Task.isCancelled else { return fail(.cancelled) }
-        guard let executor = executors[call.name], let spec = specsByName[call.name] else {
+        guard let executor = executor(named: call.name) else {
             return fail(.unknownTool(call.name))
         }
+        let spec = executor.spec
         if let rejection = ToolGate.check(call, on: context.surface) {
             return fail(.surfaceDenied(name: rejection.toolName, surface: rejection.surface))
         }
@@ -181,7 +190,8 @@ public final class PerryToolHost: Sendable {
             for required in schema["required"]?.arrayValue?.compactMap(\.stringValue) ?? [] {
                 guard object[required] != nil else { return "\(path): missing required key \"\(required)\"" }
             }
-            for key in object.keys where properties[key] == nil {
+            let rejectsUnknownKeys = schema["additionalProperties"].map { $0 == .bool(false) } ?? (schema["properties"] != nil)
+            for key in object.keys where rejectsUnknownKeys && properties[key] == nil {
                 return "\(path): unknown key \"\(key)\""
             }
             for (key, child) in object {

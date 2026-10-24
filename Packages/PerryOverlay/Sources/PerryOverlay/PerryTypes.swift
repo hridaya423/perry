@@ -57,18 +57,6 @@ public extension Color {
     }
 }
 
-public enum PerryBuddyAnimationState: Equatable {
-    case idle
-    case waiting
-    case runningRight
-    case runningLeft
-    case running
-    case waving
-    case jumping
-    case failed
-    case review
-}
-
 /// Canonical buddy states. Animation is never the only signal: each state has
 /// a static label and icon, and surfaces show text status alongside the pose.
 public enum PerryBuddyState: String, Equatable, Sendable {
@@ -80,18 +68,6 @@ public enum PerryBuddyState: String, Equatable, Sendable {
     case awaitingApproval
     case success
     case blocked
-
-    public var pose: PerryBuddyAnimationState {
-        switch self {
-        case .idle: return .idle
-        case .listening, .awaitingApproval: return .waiting
-        case .thinking: return .review
-        case .guiding: return .waving
-        case .acting: return .running
-        case .success: return .jumping
-        case .blocked: return .failed
-        }
-    }
 
     public var label: String {
         switch self {
@@ -128,13 +104,7 @@ public enum PerryVoicePhase: Equatable {
 }
 
 public final class PerryCursorState: ObservableObject {
-    /// Semantic buddy state; setting it drives the sprite pose. Transient
-    /// poses (e.g. waving while speaking, running during travel) still write
-    /// `animation` directly after any `buddyState` write.
-    @Published public var buddyState: PerryBuddyState = .idle {
-        didSet { animation = buddyState.pose }
-    }
-    @Published public var animation: PerryBuddyAnimationState = .idle
+    @Published public var buddyState: PerryBuddyState = .idle
     @Published public var taskBubbleText: String?
     @Published public var voiceState: PerryVoicePhase = .idle
     @Published public var currentAudioPowerLevel: CGFloat = 0

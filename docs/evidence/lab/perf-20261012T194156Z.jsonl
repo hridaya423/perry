@@ -1,0 +1,12 @@
+{"captured_at":"2026-10-12T19:42:00Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":6.0520172119140625}
+{"captured_at":"2026-10-12T19:42:00Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":5.429983139038086}
+{"captured_at":"2026-10-12T19:42:02Z","collector":"overlay","metric_id":"overlay.frame_interval_ms","scenario":"overlay","unit":"ms","value":9.527862071990967}
+{"captured_at":"2026-10-12T19:42:02Z","collector":"overlay","metric_id":"overlay.frame_interval_max_ms","scenario":"overlay","unit":"ms","value":16.93105697631836}
+{"captured_at":"2026-10-12T19:42:02Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":210.25598049163818}
+{"captured_at":"2026-10-12T19:42:02Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.033020973205566406}
+{"captured_at":"2026-10-12T19:42:03Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":3.2650232315063477}
+{"captured_at":"2026-10-12T19:42:03Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":2.4480819702148438}
+{"captured_at":"2026-10-12T19:42:19Z","collector":"overlay","metric_id":"overlay.frame_interval_ms","scenario":"overlay","unit":"ms","value":65.89780860210783}
+{"captured_at":"2026-10-12T19:42:19Z","collector":"overlay","metric_id":"overlay.frame_interval_max_ms","scenario":"overlay","unit":"ms","value":5269.924998283386}
+{"captured_at":"2026-10-12T19:42:19Z","collector":"overlay","metric_id":"overlay.fade_cleanup_ms","scenario":"overlay","unit":"ms","value":248.14903736114502}
+{"captured_at":"2026-10-12T19:42:19Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":0.06699562072753906}

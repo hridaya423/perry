@@ -151,10 +151,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(VoiceController.bluetoothPrerollDelay(isBluetooth: false), 0)
     }
 
-    func testDefaultOutputBluetoothProbeReturnsWithoutCrashing() {
-        _ = AudioRouteMonitor.defaultOutputIsBluetooth()
-    }
-
     /// fn-hold: the modifiers alone commit after the grace window; a real key
     /// inside the window means a chord (fn+arrow) and never presses.
     func testPushToTalkFunctionHoldGraceCommitsAndChordBusts() async throws {

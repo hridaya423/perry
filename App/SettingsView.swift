@@ -13,18 +13,30 @@ enum SettingsTab: String, CaseIterable {
     case runtimes
     case integrations
     case memory
-    case appearance
     case safety
+
+    var tabTitle: String {
+        switch self {
+        case .general: "General"
+        case .voice: "Voice"
+        case .runtimes: "Models"
+        case .integrations: "Apps"
+        case .memory: "Memory"
+        case .safety: "Safety"
+        }
+    }
 }
 
 struct SettingsView: View {
     let controller: AppController
     @AppStorage(PerryPreferences.$settingsTab.key) private var selectedTab = SettingsTab.general.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var tabNamespace
     @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
     @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcutRaw = WakeShortcut.optionCommandP.rawValue
     @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcutRaw = PushToTalkShortcut.functionHold.rawValue
     @State private var pttSystemConflict = false
+    @State private var opensAtLogin = LoginItem.isEnabled
     @AppStorage(PerryPreferences.$speechOutputEnabled.key) private var speechOutputEnabled = true
     @AppStorage(PerryPreferences.$speechRate.key) private var speechRate = 1.0
     @AppStorage(PerryPreferences.$speechVoiceIdentifier.key) private var speechVoiceIdentifier = ""
@@ -73,23 +85,37 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Settings").font(.title2.weight(.semibold))
-                Spacer()
-                Picker("Settings section", selection: $selectedTab) {
-                    Text("General").tag(SettingsTab.general.rawValue)
-                    Text("Voice & Input").tag(SettingsTab.voice.rawValue)
-                    Text("Models & Advanced").tag(SettingsTab.runtimes.rawValue)
-                    Text("Connected Apps").tag(SettingsTab.integrations.rawValue)
-                    Text("Memory").tag(SettingsTab.memory.rawValue)
-                    Text("Appearance").tag(SettingsTab.appearance.rawValue)
-                    Text("Safety").tag(SettingsTab.safety.rawValue)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 22) {
+                    ForEach(SettingsTab.allCases, id: \.rawValue) { tab in
+                        Button {
+                            withAnimation(reduceMotion ? nil : PerryTheme.Motion.glide) { selectedTab = tab.rawValue }
+                        } label: {
+                            Text(tab.tabTitle)
+                                .font(.callout.weight(.semibold))
+                                .hidden()
+                                .overlay {
+                                    Text(tab.tabTitle)
+                                        .font(.callout.weight(selectedTab == tab.rawValue ? .semibold : .regular))
+                                        .foregroundStyle(selectedTab == tab.rawValue ? PerryTheme.Colors.text : PerryTheme.Colors.textSecondary)
+                                }
+                                .padding(.vertical, 4)
+                                .overlay(alignment: .bottom) {
+                                    if selectedTab == tab.rawValue {
+                                        Capsule()
+                                            .fill(PerryTheme.Colors.text)
+                                            .frame(height: 2)
+                                            .matchedGeometryEffect(id: "settingsTab", in: tabNamespace)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedTab == tab.rawValue ? .isSelected : [])
+                    }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
             }
-            .padding(20)
             Divider()
             switch SettingsTab(rawValue: selectedTab) ?? .general {
             case .general: generalTab
@@ -97,37 +123,55 @@ struct SettingsView: View {
             case .runtimes: runtimesTab
             case .integrations: integrationsTab
             case .memory: memoryTab
-            case .appearance: appearanceTab
             case .safety: safetyTab
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollContentBackground(.hidden)
+        .background(PerryTheme.Colors.canvas)
         .tint(PerryTheme.Colors.accent)
+        .buttonStyle(InkButtonStyle(.secondary))
+        .toggleStyle(InkSwitchStyle())
         .foregroundStyle(PerryTheme.Colors.text)
         .transaction { transaction in
             if reduceMotion {
                 transaction.animation = nil
             }
         }
-        .alert("Perry could not save that setting", isPresented: Binding(
-            get: { settingsError != nil },
-            set: { if !$0 { settingsError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(settingsError ?? "Unknown settings error")
-        }
+        .notchDialog(
+            "Perry could not save that setting",
+            item: $settingsError,
+            message: settingsError ?? "Unknown settings error",
+            cancelTitle: "OK"
+        ) { _ in [] }
     }
 
     private var generalTab: some View {
         Form {
+            Section("Startup") {
+                Toggle("Open Perry when you log in", isOn: $opensAtLogin)
+                    .onChange(of: opensAtLogin) { _, value in
+                        guard value != LoginItem.isEnabled else { return }
+                        do {
+                            try LoginItem.setEnabled(value)
+                        } catch {
+                            opensAtLogin = LoginItem.isEnabled
+                            settingsError = error.localizedDescription
+                        }
+                    }
+                if LoginItem.needsApproval {
+                    Text("Approve Perry in System Settings → General → Login Items.")
+                        .settingNote()
+                }
+            }
             Section("Invocation") {
-                Toggle("Say \"hey Perry\" to wake", isOn: $wakeWordEnabled)
+                Toggle(isOn: $wakeWordEnabled) {
+                    Text("Say “hey Perry” to wake")
+                    Text("Listens on this Mac for the phrase and keeps no transcript.").settingNote()
+                }
                     .onChange(of: wakeWordEnabled) { _, value in
                         controller.voice.updateWakeWordEnabled(value)
                     }
-                Text("Perry listens on device for the phrase and keeps no ambient transcript.")
-                    .settingNote()
                 Picker("Wake shortcut", selection: $wakeShortcutRaw) {
                     ForEach(WakeShortcut.allCases) { shortcut in
                         Text(shortcut.title).tag(shortcut.rawValue)
@@ -142,10 +186,13 @@ struct SettingsView: View {
                         settingsError = error.localizedDescription
                     }
                 }
-                Picker("Dictation", selection: $pttShortcutRaw) {
+                Picker(selection: $pttShortcutRaw) {
                     ForEach(PushToTalkShortcut.allCases) { shortcut in
                         Text(shortcut.title).tag(shortcut.rawValue)
                     }
+                } label: {
+                    Text("Dictation")
+                    Text("Hold it in any app to type by voice. Double-tap Caps Lock for hands-free.").settingNote()
                 }
                 .onChange(of: pttShortcutRaw) { _, value in
                     guard let shortcut = PushToTalkShortcut(rawValue: value) else { return }
@@ -153,17 +200,16 @@ struct SettingsView: View {
                     refreshPttConflict()
                 }
                 if pttSystemConflict {
-                    Text("This shortcut is already used by macOS and may not reach Perry — pick another, or change it under System Settings → Keyboard → Keyboard Shortcuts.")
+                    Text("macOS already uses this shortcut, so it may not reach Perry. Pick another, or change it in System Settings › Keyboard › Keyboard Shortcuts.")
                         .settingNote()
                 }
-                Text("Hold the dictation shortcut from any app to type by voice. Caps Lock double-tap is available for hands-free use.")
-                    .settingNote()
             }
             permissionsSection
         }
         .formStyle(.grouped)
         .task { await refreshPermissions() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            opensAtLogin = LoginItem.isEnabled
             Task { await refreshPermissions() }
         }
     }
@@ -261,7 +307,15 @@ struct SettingsView: View {
             Section("Voice out") {
                 Toggle("Speak replies", isOn: $speechOutputEnabled)
                     .onChange(of: speechOutputEnabled) { _, _ in saveSpeechPreferences() }
-                Picker("Voice", selection: $speechVoiceIdentifier) {
+                ForEach(VoiceController.recommendedSpeechVoices(), id: \.identifier) { voice in
+                    VoiceChoiceRow(
+                        voice: voice,
+                        isSelected: voice.identifier == (speechVoiceIdentifier.isEmpty ? VoiceController.speakingVoice?.identifier : speechVoiceIdentifier),
+                        select: { speechVoiceIdentifier = voice.identifier },
+                        preview: { controller.voice.previewSpeechVoice(voice) }
+                    )
+                }
+                Picker("All voices", selection: $speechVoiceIdentifier) {
                     Text("Best available").tag("")
                     ForEach(VoiceController.availableSpeechVoices(), id: \.identifier) { voice in
                         Text("\(voice.name) · \(voice.language)").tag(voice.identifier)
@@ -270,30 +324,30 @@ struct SettingsView: View {
                 .onChange(of: speechVoiceIdentifier) { _, _ in saveSpeechPreferences() }
                 HStack(spacing: PerryTheme.Spacing.inline) {
                     Text("Speed")
-                    Slider(value: $speechRate, in: 0.5...1.5, step: 0.1, label: { Text("Speech speed") })
-                        .labelsHidden()
+                    InkSlider(value: $speechRate, range: 0.5...1.5, step: 0.1, label: "Speech speed")
                         .onChange(of: speechRate) { _, _ in saveSpeechPreferences() }
                     Text("\(speechRate, specifier: "%.1f")×")
                         .font(PerryTheme.Typography.value)
                         .frame(width: PerryTheme.Sizing.speechRateValueWidth, alignment: .trailing)
                 }
-                Button("Preview voice") {
-                    let voice = AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice
-                    if let voice { controller.voice.previewSpeechVoice(voice) }
-                }
                 if (AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice)?.quality == .default {
-                    Text("This is a compact voice. Enhanced and Premium voices sound far more natural and are free to download.")
-                        .settingNote()
-                    Button("Download a natural voice…") {
+                    actionRow("This voice sounds robotic", detail: "Enhanced and Premium voices sound far more natural. They’re free.", action: "Get one…") {
                         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
                         NSWorkspace.shared.open(url)
                     }
                 }
-                Text("Perry uses the system voice installed on this Mac. Voice previews never leave the device.")
-                    .settingNote()
+            }
+            Section("Captions") {
+                HStack(spacing: PerryTheme.Spacing.inline) {
+                    Text("Caption opacity")
+                    InkSlider(value: $captionOpacity, range: 0.55...1.0, step: 0.05, label: "Caption opacity")
+                    Text("\(captionOpacity * 100, specifier: "%.0f")%")
+                        .font(PerryTheme.Typography.value)
+                        .frame(width: PerryTheme.Sizing.captionOpacityValueWidth, alignment: .trailing)
+                }
             }
             dictationSettings
-            Section("Enhanced realtime voice (optional, BYOK)") {
+            Section("Realtime voice (bring your own key)") {
                 DisclosureGroup("Configure realtime voice") {
                     TextField("WebSocket endpoint", text: $realtimeVoiceEndpoint)
                         .textFieldStyle(.roundedBorder)
@@ -311,8 +365,7 @@ struct SettingsView: View {
                     }
                     HStack(spacing: PerryTheme.Spacing.inline) {
                         Text("Response speed")
-                        Slider(value: $realtimeVoiceSpeed, in: 0.25...1.5, step: 0.05, label: { Text("Response speed") })
-                            .labelsHidden()
+                        InkSlider(value: $realtimeVoiceSpeed, range: 0.25...1.5, step: 0.05, label: "Response speed")
                         Text("\(realtimeVoiceSpeed, specifier: "%.2f")×")
                             .font(PerryTheme.Typography.value)
                             .frame(width: PerryTheme.Sizing.realtimeRateValueWidth, alignment: .trailing)
@@ -421,12 +474,13 @@ struct SettingsView: View {
     private var memoryTab: some View {
         Form {
             Section("Memory") {
-                Toggle("Remember context between sessions", isOn: $memoryEnabled)
+                Toggle(isOn: $memoryEnabled) {
+                    Text("Remember context between conversations")
+                    Text("Stored on this Mac, never synced. You can read or erase it any time.").settingNote()
+                }
                     .onChange(of: memoryEnabled) { _, value in
                         Task { await controller.setMemoryEnabled(value) }
                     }
-                Text("Stored locally, inspectable, and never synced. Turn it off for goldfish mode.")
-                    .settingNote()
                 ForEach(MemoryRecord.Category.allCases, id: \.self) { category in
                     Toggle(Self.memoryCategoryTitle(category), isOn: Binding(
                         get: { memoryCategoryToggles[category] ?? true },
@@ -435,47 +489,40 @@ struct SettingsView: View {
                             Task { await controller.setMemoryCategoryEnabled(category, enabled: value) }
                         }
                     ))
+                    .disabled(!memoryEnabled)
                 }
-                Button("Erase all Perry data…", role: .destructive) {
-                    NotificationCenter.default.post(name: .perryWipeDataRequested, object: nil)
-                }
-                Text("Removes tasks, history, memory, approvals, preferences, credentials, and temporary files after you confirm.")
-                    .settingNote()
             }
             Section("Activity") {
-                Button("Export activity log") {
-                    controller.exportActivityLog()
-                }
-                Button("Export redacted diagnostics") {
+                actionRow("Activity log", action: "Export…") { controller.exportActivityLog() }
+                actionRow("Diagnostics", detail: "Setup and permission details only, never your requests, files, transcripts or memories.", action: "Export…") {
                     controller.exportDiagnostics()
                 }
-                Button("Report a problem…") {
-                    showReportProblem = true
+                actionRow("Something wrong?", action: "Report a problem…") { showReportProblem = true }
+            }
+            Section {
+                actionRow("Erase all Perry data", detail: "Tasks, history, memory, approvals, preferences, credentials and temporary files. Perry asks you to confirm first.", action: "Erase…", role: .destructive) {
+                    NotificationCenter.default.post(name: .perryWipeDataRequested, object: nil)
                 }
-                Text("The diagnostics bundle contains environment, permission, runtime, and count data; it excludes requests, paths, transcripts, and memory text.")
-                    .settingNote()
             }
         }
         .formStyle(.grouped)
         .onAppear {
             refreshMemory()
         }
-        .confirmationDialog(
+        .notchDialog(
             "Report a problem",
             isPresented: $showReportProblem,
-            titleVisibility: .visible
+            message: "Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository."
         ) {
-            Button("Export diagnostics first") {
+            var actions = [NotchDialog.Action("Export diagnostics first") {
                 controller.exportDiagnostics()
-            }
+            }]
             if let url = perryIssuesURL {
-                Button("Open GitHub issues") {
+                actions.append(NotchDialog.Action("Open GitHub issues") {
                     NSWorkspace.shared.open(url)
-                }
+                })
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Export diagnostics, then attach the file to a new issue on Perry’s GitHub repository.")
+            return actions
         }
     }
 
@@ -530,7 +577,7 @@ struct SettingsView: View {
                     .accessibilityElement(children: .contain)
                 }
                 HStack(spacing: PerryTheme.Spacing.inline) {
-                    Button("Refresh runtime status") {
+                    Button("Check again") {
                         refreshRuntimeStatus()
                     }
                     if hasCopyableRuntimeCommands {
@@ -540,7 +587,7 @@ struct SettingsView: View {
                     }
                 }
                 if hasCopyableRuntimeCommands {
-                    Text("Run the copied command in Terminal, then choose Refresh runtime status.")
+                    Text("Run the copied command in Terminal, then choose Check again.")
                         .settingNote()
                 }
             }
@@ -551,65 +598,66 @@ struct SettingsView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Computer-use driver status")
                     .accessibilityValue(runtimeSettings.status.cuaStatus)
-                TextField("Cua Driver path (optional)", text: $cuaDriverPath)
-                    .textFieldStyle(.roundedBorder)
-                Button("Save Cua Driver settings") {
-                    controller.reloadCuaDriverConfiguration()
-                    refreshRuntimeStatus()
+                DisclosureGroup("Custom driver path") {
+                    TextField("Cua Driver path (optional)", text: $cuaDriverPath)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Save Cua Driver settings") {
+                        controller.reloadCuaDriverConfiguration()
+                        refreshRuntimeStatus()
+                    }
                 }
                 Text("Cua Driver is what lets Perry see the screen and act in other apps.")
                     .settingNote()
             }
             Section("Direct AI provider") {
-                Picker("Provider", selection: $byokVisionProviderRaw) {
-                    ForEach(RuntimeProviderSetupChoice.allCases) { provider in
-                        Text(provider.displayName).tag(provider.rawValue)
+                DisclosureGroup("Configure direct provider") {
+                    Picker("Provider", selection: $byokVisionProviderRaw) {
+                        ForEach(RuntimeProviderSetupChoice.allCases) { provider in
+                            Text(provider.displayName).tag(provider.rawValue)
+                        }
                     }
-                }
-                .onChange(of: byokVisionProviderRaw) { _, _ in
-                    applySelectedVisionProvider()
-                }
-                if selectedVisionProvider == .custom {
-                    TextField("HTTPS base URL", text: $byokVisionEndpoint)
+                    .onChange(of: byokVisionProviderRaw) { _, _ in
+                        applySelectedVisionProvider()
+                    }
+                    if selectedVisionProvider == .custom {
+                        TextField("HTTPS base URL", text: $byokVisionEndpoint)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        LabeledContent("Endpoint") {
+                            Text(selectedVisionProvider.endpoint.absoluteString)
+                                .font(PerryTheme.Typography.monoSmall)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    TextField("Model ID", text: $byokVisionModel)
                         .textFieldStyle(.roundedBorder)
-                } else {
-                    LabeledContent("Endpoint") {
-                        Text(selectedVisionProvider.endpoint.absoluteString)
-                            .font(PerryTheme.Typography.monoSmall)
-                            .foregroundStyle(PerryTheme.Colors.textSecondary)
-                            .textSelection(.enabled)
-                    }
-                }
-                TextField("Model ID", text: $byokVisionModel)
-                    .textFieldStyle(.roundedBorder)
-                SecureField("API key", text: $byokVisionKey)
-                    .textFieldStyle(.roundedBorder)
-                HStack(spacing: PerryTheme.Spacing.inline) {
-                    Button("Save credential") {
-                        saveSecret(byokVisionKey, account: RuntimeCatalog.byokVisionKeychainAccount) {
-                            byokVisionKey = ""
-                            byokVisionKeyIsSaved = true
-                            refreshRuntimeStatus()
+                    SecureField("API key", text: $byokVisionKey)
+                        .textFieldStyle(.roundedBorder)
+                    HStack(spacing: PerryTheme.Spacing.inline) {
+                        Button("Save credential") {
+                            saveSecret(byokVisionKey, account: RuntimeCatalog.byokVisionKeychainAccount) {
+                                byokVisionKey = ""
+                                byokVisionKeyIsSaved = true
+                                refreshRuntimeStatus()
+                            }
+                        }
+                        .disabled(!canSaveVisionCredential)
+                        if byokVisionKeyIsSaved {
+                            Button("Remove credential…", role: .destructive) {
+                                showRemoveVisionCredentialConfirmation = true
+                            }
                         }
                     }
-                    .disabled(!canSaveVisionCredential)
-                    if byokVisionKeyIsSaved {
-                        Button("Remove credential…", role: .destructive) {
-                            showRemoveVisionCredentialConfirmation = true
-                        }
+                    .notchDialog(
+                        "Remove the \(selectedVisionProvider.displayName) credential?",
+                        isPresented: $showRemoveVisionCredentialConfirmation,
+                        message: "Perry removes this API key from Keychain. You’ll need to enter it again before using this provider."
+                    ) {
+                        [NotchDialog.Action("Remove credential", role: .destructive) {
+                            removeVisionCredential()
+                        }]
                     }
-                }
-                .confirmationDialog(
-                    "Remove the \(selectedVisionProvider.displayName) credential?",
-                    isPresented: $showRemoveVisionCredentialConfirmation,
-                    titleVisibility: .visible
-                ) {
-                    Button("Remove credential", role: .destructive) {
-                        removeVisionCredential()
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Perry removes this API key from Keychain. You’ll need to enter it again before using this provider.")
                 }
                 Text(visionCredentialStatus)
                     .settingNote()
@@ -621,22 +669,24 @@ struct SettingsView: View {
                     Text("No app skills are installed yet.")
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                 } else {
-                    ForEach(skills) { skill in
-                        Toggle(isOn: Binding(
-                            get: { skillEnabled[skill.id] ?? true },
-                            set: { value in
-                                skillEnabled[skill.id] = value
-                                AppSkillLibrary(storageDirectory: AppController.supportDirectory).setEnabled(value, for: skill.bundleID)
+                    DisclosureGroup("App skills") {
+                        ForEach(skills) { skill in
+                            Toggle(isOn: Binding(
+                                get: { skillEnabled[skill.id] ?? true },
+                                set: { value in
+                                    skillEnabled[skill.id] = value
+                                    AppSkillLibrary(storageDirectory: AppController.supportDirectory).setEnabled(value, for: skill.bundleID)
+                                }
+                            )) {
+                                VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
+                                    Text(skill.displayName)
+                                    Text("\(skill.bundleID) · \(skill.source.rawValue)")
+                                        .font(PerryTheme.Typography.monoSmall)
+                                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                }
                             }
-                        )) {
-                            VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
-                                Text(skill.displayName)
-                                Text("\(skill.bundleID) · \(skill.source.rawValue)")
-                                    .font(PerryTheme.Typography.monoSmall)
-                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                            }
+                            .accessibilityLabel("\(skill.displayName), \(skill.source.rawValue) skill")
                         }
-                        .accessibilityLabel("\(skill.displayName), \(skill.source.rawValue) skill")
                     }
                 }
                 Text("Skills are local Markdown notes injected only for the matching foreground app.")
@@ -666,50 +716,56 @@ struct SettingsView: View {
     private var integrationsTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
-                Text("Connect services with OAuth. If a provider asks for a redirect URL, register dev.perry.perry:/oauth/callback. Tokens stay in Keychain, and remote writes stay off until you enable them per service — every write still asks first.")
+                Text("Give Perry access to the apps you work in. Connections stay in this Mac’s Keychain. Each service starts read-only, and every change Perry makes still asks you first.")
                     .settingNote()
-                ForEach(RemoteIntegrationDefinition.catalog) { definition in
-                    IntegrationRow(definition: definition, connections: controller.integrationConnections)
-                    if definition.id != RemoteIntegrationDefinition.catalog.last?.id {
-                        Divider()
+                VStack(alignment: .leading, spacing: 16) {
+                    ForEach(RemoteIntegrationDefinition.catalog) { definition in
+                        IntegrationRow(definition: definition, connections: controller.integrationConnections)
+                        if definition.id != RemoteIntegrationDefinition.catalog.last?.id {
+                            Divider()
+                        }
                     }
                 }
+                .padding(16)
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12))
+                CustomConnectorsSection(connectors: controller.customConnectors)
             }
-            .padding(PerryTheme.Spacing.cardInset)
+            .frame(maxWidth: 704)
+            .frame(maxWidth: .infinity)
+            .padding(20)
         }
-    }
-
-    private var appearanceTab: some View {
-        Form {
-            Section("Overlay") {
-                HStack(spacing: PerryTheme.Spacing.inline) {
-                    Text("Caption opacity")
-                    Slider(value: $captionOpacity, in: 0.35...1.0, step: 0.05, label: { Text("Caption opacity") })
-                        .labelsHidden()
-                    Text("\(captionOpacity * 100, specifier: "%.0f")%")
-                        .font(PerryTheme.Typography.value)
-                        .frame(width: PerryTheme.Sizing.captionOpacityValueWidth, alignment: .trailing)
-                }
-                Text("Reduced-motion behavior follows the macOS accessibility setting.")
-                    .settingNote()
-            }
-        }
-        .formStyle(.grouped)
     }
 
     private var safetyTab: some View {
         Form {
-            Section("Always blocked") {
+            Section {
                 ForEach(Self.blockedApps, id: \.bundleID) { app in
-                    VStack(alignment: .leading, spacing: PerryTheme.Spacing.label) {
+                    HStack(spacing: 10) {
+                        Group {
+                            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable()
+                            } else {
+                                Image(systemName: "lock.fill")
+                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                            }
+                        }
+                        .frame(width: 20, height: 20)
+                        .accessibilityHidden(true)
                         Text(app.name)
-                        Text(app.bundleID)
-                            .font(PerryTheme.Typography.monoSmall)
+                        Spacer()
+                        Text("Never")
+                            .font(PerryTheme.Typography.note)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                     }
+                    .help(app.bundleID)
                     .accessibilityElement(children: .combine)
                 }
-                Text("Banking, password-manager, sign-in, payment, and checkout windows are refused before screen capture or action.")
+            } header: {
+                Text("Always blocked")
+            } footer: {
+                Text("Perry never looks at or acts in these apps. Banking, sign-in, payment and checkout windows are refused the same way, in any app.")
                     .settingNote()
             }
         }
@@ -802,11 +858,24 @@ struct SettingsView: View {
         }
     }
 
+    private func actionRow(_ title: String, detail: String? = nil, action: String, role: ButtonRole? = nil, perform: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let detail {
+                    Text(detail).settingNote()
+                }
+            }
+            Spacer(minLength: 8)
+            Button(action, role: role, action: perform)
+        }
+    }
+
     private static func memoryCategoryTitle(_ category: MemoryRecord.Category) -> String {
         switch category {
         case .appWorkflow: return "App workflows"
         case .preference: return "Preferences"
-        case .pastSession: return "Past sessions"
+        case .pastSession: return "Past conversations"
         }
     }
 
@@ -933,7 +1002,7 @@ enum RuntimeProviderSetupChoice: String, CaseIterable, Identifiable {
     }
 }
 
-private extension View {
+extension View {
     func settingNote() -> some View {
         font(PerryTheme.Typography.note)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -970,5 +1039,62 @@ extension AppController {
         await memoryStore.setConfiguration(
             MemoryConfiguration(enabled: current.enabled, categoryToggles: toggles)
         )
+    }
+}
+
+private struct VoiceChoiceRow: View {
+    let voice: AVSpeechSynthesisVoice
+    let isSelected: Bool
+    let select: () -> Void
+    let preview: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: preview) {
+                Image(systemName: "play.fill")
+                    .font(.caption2.weight(.bold))
+                    .frame(width: 24, height: 24)
+                    .background(PerryTheme.Colors.subtleSeparator.opacity(0.7), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Preview \(voice.name)")
+            Button(action: select) {
+                HStack(spacing: 8) {
+                    Text(voice.name)
+                        .foregroundStyle(PerryTheme.Colors.text)
+                    if let region {
+                        Text(region)
+                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    }
+                    if let quality {
+                        Text(quality)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(PerryTheme.Colors.accent)
+                    }
+                    Spacer()
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(PerryTheme.Colors.accent)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(voice.name)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+    }
+
+    private var region: String? {
+        Locale(identifier: voice.language).region.flatMap { Locale.current.localizedString(forRegionCode: $0.identifier) }
+    }
+
+    private var quality: String? {
+        switch voice.quality {
+        case .premium: "Premium"
+        case .enhanced: "Enhanced"
+        default: nil
+        }
     }
 }

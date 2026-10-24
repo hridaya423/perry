@@ -22,12 +22,12 @@ struct GhostCursorLayer: View {
     @ViewBuilder
     private func ghostCursor(_ cursor: PerryExternalCursor) -> some View {
         let local = PerryOverlaySpace.localPoint(cursor.screenLocation, in: screenFrame)
-        let position = CGPoint(x: local.x + 35, y: local.y + 25)
+        let position = PerryOverlaySpace.characterCenter(pointingAt: local, size: 30)
         let color = perryAccentColor(cursor.accentHex)
         ZStack {
             // §5 ghost morph: another agent's pointer is a dashed outline,
             // never filled — reads as Perry's, not the user's.
-            PerryGlassCursorView(size: 30, morph: .ghost)
+            PerryCharacter(mood: .working, size: 30)
                 .shadow(color: color.opacity(0.90), radius: 10, x: 0, y: 0)
                 .position(position)
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))

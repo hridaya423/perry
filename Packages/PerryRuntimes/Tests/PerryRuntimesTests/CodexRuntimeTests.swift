@@ -199,10 +199,6 @@ final class CodexRuntimeTests: XCTestCase {
             XCTAssertFalse(unavailable.searchedPaths.contains("/bin/codex"))
         }
     }
-
-    private func makeWorkspace() -> URL {
-        FileManager.default.temporaryDirectory
-    }
 }
 
 private final class BundleToken {}
