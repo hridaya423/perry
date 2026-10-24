@@ -48,8 +48,10 @@ struct AgentTurnBridge: MCPBridge {
     let wireNames: [String: String]
     let execute: ToolExecutionHandler
     let stop: AgentTurnStop
+    let dropsImages: Bool
 
-    init(tools: [ToolSpec], execute: @escaping ToolExecutionHandler, stop: AgentTurnStop) {
+    init(tools: [ToolSpec], execute: @escaping ToolExecutionHandler, stop: AgentTurnStop, dropsImages: Bool = false) {
+        self.dropsImages = dropsImages
         var names: [String: String] = [:]
         var specs: [ToolSpec] = []
         for tool in tools {
@@ -74,7 +76,14 @@ struct AgentTurnBridge: MCPBridge {
             return ToolResult(callID: UUID().uuidString, content: [.text("Unknown tool \(name).")], isError: true)
         }
         do {
-            return try await execute(ToolCall(id: UUID().uuidString, name: original, arguments: arguments))
+            var result = try await execute(ToolCall(id: UUID().uuidString, name: original, arguments: arguments))
+            if dropsImages {
+                result.content = result.content.map { part in
+                    if case .image = part { return .text("[A screenshot was here. This agent can’t read images.]") }
+                    return part
+                }
+            }
+            return result
         } catch {
             stop.stop(error)
             throw error

@@ -102,19 +102,11 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         defer { try? FileManager.default.removeItem(at: workspace) }
 
         let stop = AgentTurnStop()
-        var mcpServers: [JSONValue] = []
-        var wireNames: Set<String> = []
+        let ledger = AcpToolCallLedger()
         var scope: MCPScope?
         defer { scope?.close() }
-        if let executeTool, !request.tools.isEmpty {
-            guard let helper, let scopes else {
-                throw ModelProviderError(kind: .notConfigured, provider: id, message: "Perry’s tool helper is missing from this build, so \(displayName) can’t use Perry’s tools.")
-            }
-            let bridge = AgentTurnBridge(tools: request.tools, execute: executeTool, stop: stop)
-            let opened = try scopes.openScope(bridge)
-            scope = opened
-            wireNames = Set(bridge.wireNames.keys)
-            mcpServers = [Self.perryServer(helper: helper, scope: opened)]
+        if executeTool != nil, !request.tools.isEmpty, helper == nil || scopes == nil {
+            throw ModelProviderError(kind: .notConfigured, provider: id, message: "Perry’s tool helper is missing from this build, so \(displayName) can’t use Perry’s tools.")
         }
 
         let process = Process()
@@ -139,9 +131,10 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             for await event in events {
                 switch event {
                 case .notification(let note) where note.method == "session/update":
+                    ledger.record(note.params["update"])
                     if let text = Self.messageText(note.params) { continuation.yield(.textDelta(text)) }
                 case .incomingRequest(let incoming):
-                    await Self.answer(incoming, on: connection, perryTools: wireNames)
+                    await Self.answer(incoming, on: connection, ledger: ledger)
                 default:
                     break
                 }
@@ -160,6 +153,16 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             let acceptsImages = initialized["agentCapabilities"]?["promptCapabilities"]?["image"]?.boolValue == true
             if !acceptsImages, Self.hasImages(request.messages) {
                 throw ModelProviderError(kind: .unavailable, provider: id, message: "\(displayName) can’t read screenshots. Choose a model that can see your screen in Settings, Models.")
+            }
+            var mcpServers: [JSONValue] = []
+            let negotiated: ModelCapabilities = acceptsImages ? [.vision, .tools, .streaming] : [.tools, .streaming]
+            let tools = request.tools.filter { $0.requiredCapabilities.isSubset(of: negotiated) }
+            if let executeTool, let helper, let scopes, !tools.isEmpty {
+                let bridge = AgentTurnBridge(tools: tools, execute: executeTool, stop: stop, dropsImages: !acceptsImages)
+                let opened = try scopes.openScope(bridge)
+                scope = opened
+                ledger.allow(Set(bridge.wireNames.keys))
+                mcpServers = [Self.perryServer(helper: helper, scope: opened)]
             }
             let session = try await connection.request("session/new", params: .object([
                 "cwd": .string(workspace.path),
@@ -233,27 +236,19 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         return update["content"]?["text"]?.stringValue
     }
 
-    static func permissionOutcome(_ params: JSONValue, perryTools: Set<String>) -> JSONValue {
+    static func permissionOutcome(_ params: JSONValue, ledger: AcpToolCallLedger) -> JSONValue {
+        ledger.record(params["toolCall"])
         let options = params["options"]?.arrayValue ?? []
-        let wanted = isPerryTool(params["toolCall"], perryTools: perryTools) ? "allow_once" : "reject_once"
+        let wanted = ledger.isPerryTool(params["toolCall"]?["toolCallId"]?.stringValue) ? "allow_once" : "reject_once"
         guard let option = options.first(where: { $0["kind"]?.stringValue == wanted })?["optionId"] else {
             return .object(["outcome": .object(["outcome": .string("cancelled")])])
         }
         return .object(["outcome": .object(["outcome": .string("selected"), "optionId": option])])
     }
 
-    static func isPerryTool(_ toolCall: JSONValue?, perryTools: Set<String>) -> Bool {
-        if let kind = toolCall?["kind"]?.stringValue, kind != "other" { return false }
-        let title = (toolCall?["title"]?.stringValue ?? "").lowercased()
-        let words = title.split { !($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }.map(String.init)
-        let names = Set(perryTools.map { $0.lowercased() })
-        let namesPerry = words.contains { $0 == "perry" || ($0.hasPrefix("perry-") && names.contains(String($0.dropFirst(6)))) }
-        return namesPerry && words.contains { names.contains($0) }
-    }
-
-    private static func answer(_ incoming: JSONRPCIncomingRequest, on connection: JSONRPCConnection, perryTools: Set<String>) async {
+    private static func answer(_ incoming: JSONRPCIncomingRequest, on connection: JSONRPCConnection, ledger: AcpToolCallLedger) async {
         if incoming.method == "session/request_permission" {
-            try? await connection.respond(to: incoming.id, result: permissionOutcome(incoming.params, perryTools: perryTools))
+            try? await connection.respond(to: incoming.id, result: permissionOutcome(incoming.params, ledger: ledger))
         } else {
             try? await connection.respondError(to: incoming.id, code: -32601, message: "Perry does not offer \(incoming.method).")
         }
@@ -276,5 +271,53 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             blocks.insert(.object(["type": .string("text"), "text": .string("Instructions from Perry, the app you are working inside:\n" + system)]), at: 0)
         }
         return blocks
+    }
+}
+
+final class AcpToolCallLedger: @unchecked Sendable {
+    private struct Call {
+        var kinds: Set<String> = []
+        var titles: Set<String> = []
+        var provider: String?
+        var toolName: String?
+        var metaToolName: String?
+    }
+
+    private let lock = NSLock()
+    private var allowed: Set<String> = []
+    private var calls: [String: Call] = [:]
+
+    func allow(_ names: Set<String>) {
+        lock.withLock { allowed = Set(names.map { $0.lowercased() }) }
+    }
+
+    func record(_ update: JSONValue?) {
+        guard let update, let id = update["toolCallId"]?.stringValue else { return }
+        lock.withLock {
+            var call = calls[id] ?? Call()
+            if let kind = update["kind"]?.stringValue { call.kinds.insert(kind) }
+            if let title = update["title"]?.stringValue { call.titles.insert(title.lowercased().trimmingCharacters(in: .whitespaces)) }
+            if let provider = update["rawInput"]?["providerIdentifier"]?.stringValue { call.provider = provider.lowercased() }
+            if let tool = update["rawInput"]?["toolName"]?.stringValue { call.toolName = tool.lowercased() }
+            if let tool = update["_meta"]?.objectValue?.first(where: { $0.key.hasSuffix("/toolName") })?.value.stringValue {
+                call.metaToolName = tool.lowercased()
+            }
+            calls[id] = call
+        }
+    }
+
+    func isPerryTool(_ id: String?) -> Bool {
+        guard let id else { return false }
+        return lock.withLock {
+            guard let call = calls[id], call.kinds.isSubset(of: ["other"]) else { return false }
+            if call.provider == "perry", let tool = call.toolName, allowed.contains(tool) { return true }
+            if let tool = call.metaToolName, allowed.contains(where: { "mcp__perry__\($0)" == tool }) { return true }
+            guard !call.titles.isEmpty else { return false }
+            return call.titles.allSatisfy { title in
+                allowed.contains { name in
+                    ["perry: \(name)", "perry-\(name): \(name)", "mcp__perry__\(name)", "perry__\(name)", "perry/\(name)", "calling \(name) from perry"].contains(title)
+                }
+            }
+        }
     }
 }

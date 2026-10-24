@@ -216,7 +216,7 @@ final class AgentCoordinator: ObservableObject {
                     try GuideTargetValidator.requireUnprotected(spatialContext.observation)
                     let observation = spatialContext.observation
                     observations.store(AgentObservationStore.Snapshot(
-                        index: ElementIndex(elements: observation.observedElements), window: nil,
+                        index: ElementIndex(elements: observation.observedElements, prefix: observations.restartIDs(runID: runID)), window: nil,
                         screenshotData: observation.screenshotData,
                         windowBoundsAX: observation.windowBounds.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
                     ), runID: runID)

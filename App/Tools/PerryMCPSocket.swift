@@ -102,11 +102,10 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
         }
         return MCPScope(socketPath: socketPath, token: token) { [weak self] in
             guard let self else { return }
-            let clients = self.lock.withLock {
+            self.lock.withLock {
                 self.scopes[token] = nil
-                return self.scopeClients.removeValue(forKey: token) ?? []
+                for fd in self.scopeClients.removeValue(forKey: token) ?? [] { shutdown(fd, SHUT_RDWR) }
             }
-            for fd in clients { shutdown(fd, SHUT_RDWR) }
         }
     }
 

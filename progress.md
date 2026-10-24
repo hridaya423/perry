@@ -258,6 +258,17 @@ model-profiles, task-failed.
   rejects a bad checksum and a path escape), a live test (`PERRY_LIVE_ACP_REGISTRY=1`) that fetched the real
   registry and installed Goose (11 s), and the `acp-registry` render.
 
+- Cross-model review (GPT-6 Astra in Devin, two rounds). Round 1 fixed in `c306675`, `bd25c8e`, `f2b521b`,
+  `2ef71e0`. Round 2 fixed in the next commit: ACP permission is decided from every update the agent sent for
+  that tool call, and needs an exact Perry identity; text-only agents get no vision tools and no screenshots;
+  scope close shuts down client sockets under the lock; Talk seeds restart element IDs; browser.read lists the
+  real first and last IDs.
+  Evidence: PerryBrain 327/0; app suites CuaWorkerProcessTests, AgentCoordinatorTests, BrowserToolsTests green
+  apart from the Cursor live test; live Claude Code passes; live ACP passes against Devin
+  (`PERRY_LIVE_ACP_COMMAND="devin acp"`), whose identity arrives as `_meta["cognition.ai/toolName"]`.
+  Not re-verified: live Cursor. The local `cursor-agent` crashes at launch with `Cannot find module 'tree-sitter'`
+  (its version folder changed at 22:45 on 2026-10-24, outside Perry).
+
 ### Not started
 
 - UX items done (`7197927`): panel on the display under the pointer, hover zones and a top tab on every display,
@@ -265,4 +276,5 @@ model-profiles, task-failed.
   tracking that re-renders only the bubble and character. Evidence: build, OverlayPointer test, app suite 636/0.
   Not visually verified: the external-display tab (no external display attached) and the animations (Core
   Animation does not show in offscreen renders; a live capture would include the user's windows).
-- A live computer-use drill, a live Talk latency measurement, and a cross-model review of the diff.
+- The user runs these: a live computer-use drill (needs Accessibility and Screen Recording grants for the Debug
+  build), a live Talk latency measurement, and a visual check of the animations and the external-display tab.

@@ -562,8 +562,11 @@ final class CuaWorkerProcessTests: XCTestCase {
     }
 
     func testAcpAgentCallsAPerryToolThroughTheEmbeddedHelper() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["PERRY_LIVE_ACP"] == "1", "Set PERRY_LIVE_ACP=1 to run against the installed Cursor agent.")
-        let agent = try XCTUnwrap(AcpAgent.known.first { $0.id == "cursor" })
+        let environment = ProcessInfo.processInfo.environment
+        try XCTSkipUnless(environment["PERRY_LIVE_ACP"] == "1", "Set PERRY_LIVE_ACP=1 to run against the installed Cursor agent, or PERRY_LIVE_ACP_COMMAND for another agent.")
+        let command = environment["PERRY_LIVE_ACP_COMMAND"].map { $0.split(separator: " ").map(String.init) }
+        let agent = try command.map { AcpAgent(id: "live", name: "Live agent", command: $0[0], arguments: Array($0.dropFirst())) }
+            ?? XCTUnwrap(AcpAgent.known.first { $0.id == "cursor" })
         let executable = try XCTUnwrap(agent.executable())
         let (service, _) = try makeFixture(sharedTarget: true)
         let socketDirectory = URL(fileURLWithPath: "/tmp/perry-mcp-\(UUID())")

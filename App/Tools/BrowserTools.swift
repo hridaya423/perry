@@ -96,7 +96,8 @@ private struct BrowserReadExecutor: ToolExecutor {
                 "title: \(captured.target.title)",
             ]
             if let url, !url.isEmpty { lines.append("url: \(url)") }
-            lines.append("elements: \(index.entries.count) (ids e1…e\(index.entries.count))")
+            let ids = index.entries.map(\.compactID)
+            lines.append("elements: \(ids.count)" + (ids.isEmpty ? "" : " (ids \(ids[0])…\(ids[ids.count - 1]))"))
             if let text = captured.accessibilitySnapshot {
                 lines.append("snapshot:\n\(text)")
             }

@@ -82,6 +82,13 @@ final class AgentObservationStore: @unchecked Sendable {
         generations[runID] = nil
     }
 
+    func restartIDs(runID: UUID) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        generations[runID] = 1
+        return "e"
+    }
+
     func nextIDPrefix(runID: UUID) -> String {
         lock.lock()
         defer { lock.unlock() }
