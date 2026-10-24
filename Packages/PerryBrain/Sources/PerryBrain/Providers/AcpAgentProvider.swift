@@ -5,12 +5,23 @@ public struct AcpAgent: Sendable, Equatable, Codable, Identifiable {
     public var name: String
     public var command: String
     public var arguments: [String]
+    public var environment: [String: String]
 
-    public init(id: String = UUID().uuidString, name: String, command: String, arguments: [String]) {
+    public init(id: String = UUID().uuidString, name: String, command: String, arguments: [String], environment: [String: String] = [:]) {
         self.id = id
         self.name = name
         self.command = command
         self.arguments = arguments
+        self.environment = environment
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        command = try container.decode(String.self, forKey: .command)
+        arguments = try container.decode([String].self, forKey: .arguments)
+        environment = try container.decodeIfPresent([String: String].self, forKey: .environment) ?? [:]
     }
 
     public static let known: [AcpAgent] = [
@@ -42,6 +53,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
 
     private let executable: URL
     private let arguments: [String]
+    private let environment: [String: String]
     private let helper: URL?
     private let scopes: (any MCPScopeHost)?
 
@@ -50,6 +62,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         self.displayName = agent.name
         self.executable = executable
         self.arguments = agent.arguments
+        self.environment = agent.environment
         self.helper = helper
         self.scopes = scopes
     }
@@ -108,6 +121,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
         process.executableURL = executable
         process.arguments = arguments
         process.currentDirectoryURL = workspace
+        process.environment = Self.environment(adding: environment)
         let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -175,6 +189,13 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
             throw error
         }
         await connection.close()
+    }
+
+    static func environment(adding extra: [String: String], base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var result = base.merging(extra) { _, new in new }
+        let path = (AcpAgent.searchPaths + [base["PATH"] ?? ""]).filter { !$0.isEmpty }.joined(separator: ":")
+        result["PATH"] = path
+        return result
     }
 
     static func perryServer(helper: URL, scope: MCPScope) -> JSONValue {

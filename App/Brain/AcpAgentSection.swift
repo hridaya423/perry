@@ -6,6 +6,9 @@ struct AcpAgentSection: View {
     @State private var selection = ""
     @State private var name = ""
     @State private var command = ""
+    @State private var registry: [AcpRegistryEntry]?
+    @State private var loadingRegistry = false
+    @State private var registryError: String?
 
     private static let custom = "custom"
 
@@ -31,6 +34,31 @@ struct AcpAgentSection: View {
         Text("Perry starts the agent in its read-only mode when it has one and refuses the agent’s own requests to run commands or edit files. The agent can still read files without asking.")
             .settingNote()
             .onAppear(perform: load)
+        DisclosureGroup("More agents from the ACP registry") {
+            if let registry {
+                AcpRegistryList(entries: registry, brain: brain, failure: $registryError)
+            } else {
+                Button(loadingRegistry ? "Loading the registry…" : "Load the registry") { loadRegistry() }
+                    .disabled(loadingRegistry)
+                Text("Perry contacts agentclientprotocol.com only when you press this.").settingNote()
+            }
+            if let registryError {
+                Label(registryError, systemImage: "exclamationmark.circle").settingNote()
+            }
+        }
+    }
+
+    private func loadRegistry() {
+        loadingRegistry = true
+        registryError = nil
+        Task {
+            defer { loadingRegistry = false }
+            do {
+                registry = try await AcpRegistry.fetch()
+            } catch {
+                registryError = "Couldn’t load the registry: \(error.localizedDescription)"
+            }
+        }
     }
 
     private var chosen: AcpAgent? {
@@ -55,4 +83,61 @@ struct AcpAgentSection: View {
             command = ([current.command] + current.arguments).joined(separator: " ")
         }
     }
+}
+
+struct AcpRegistryList: View {
+    let entries: [AcpRegistryEntry]
+    @ObservedObject var brain: BrainController
+    @Binding var failure: String?
+    @State private var installing: String?
+
+    var body: some View {
+        ForEach(entries) { entry in row(entry) }
+    }
+
+    private func row(_ entry: AcpRegistryEntry) -> some View {
+        let availability = entry.availability { tool in AcpAgent(name: tool, command: tool, arguments: []).executable() }
+        return HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.name).font(.callout.weight(.medium))
+                Text(entry.summary).settingNote().lineLimit(2)
+                if case .unavailable(let reason) = availability {
+                    Text(reason).settingNote()
+                }
+            }
+            Spacer()
+            switch availability {
+            case .ready(let agent):
+                Button(brain.acpAgent == agent ? "In use" : "Use") { brain.setAcpAgent(agent) }
+                    .disabled(brain.acpAgent == agent)
+            case .download(let archive, let sha256, let command, let arguments, let environment):
+                if installing == entry.id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button("Download and use") {
+                        install(entry, archive: archive, sha256: sha256, command: command, arguments: arguments, environment: environment)
+                    }
+                    .disabled(installing != nil)
+                }
+            case .unavailable:
+                EmptyView()
+            }
+        }
+    }
+
+    private func install(_ entry: AcpRegistryEntry, archive: URL, sha256: String, command: String, arguments: [String], environment: [String: String]) {
+        guard let root = AppController.supportDirectory?.appendingPathComponent("AcpAgents", isDirectory: true) else { return }
+        installing = entry.id
+        failure = nil
+        Task {
+            defer { installing = nil }
+            do {
+                let agent = try await AcpRegistry.install(entry, archive: archive, sha256: sha256, command: command, arguments: arguments, environment: environment, into: root)
+                brain.setAcpAgent(agent)
+            } catch {
+                failure = "Couldn’t install \(entry.name): \(error.localizedDescription)"
+            }
+        }
+    }
+
 }

@@ -28,6 +28,7 @@ struct PerryErasurePaths: Sendable {
         cacheDirectories = [
             supportDirectory?.appendingPathComponent("Caches", isDirectory: true),
             supportDirectory?.appendingPathComponent("CodexRuntime", isDirectory: true),
+            supportDirectory?.appendingPathComponent("AcpAgents", isDirectory: true),
             supportDirectory?.appendingPathComponent("Telemetry", isDirectory: true),
             resolvedCaches?.appendingPathComponent("dev.perry.Perry", isDirectory: true),
         ].compactMap { $0 }

@@ -389,6 +389,18 @@ final class NotchSurfaceRenderTests: XCTestCase {
             .controlSize(.small)
             .preferredColorScheme(.dark)
         try await render(agents, name: "acp-agent", size: NSSize(width: 640, height: 300))
+        let registry = AcpRegistry.parse(Data(#"""
+        {"agents":[
+          {"id":"gemini","name":"Gemini CLI","version":"1","description":"Google's agent in your terminal.","distribution":{"npx":{"package":"@google/gemini-cli@1","args":["--experimental-acp"]}}},
+          {"id":"goose","name":"Goose","version":"1","description":"An open-source agent from Block.","distribution":{"binary":{"darwin-aarch64":{"archive":"https://example.invalid/g.tar.bz2","cmd":"./goose","sha256":"abc"}}}},
+          {"id":"devin","name":"Devin","version":"1","description":"Cognition's coding agent.","distribution":{"binary":{"darwin-aarch64":{"archive":"https://example.invalid/d.tar.gz","cmd":"./devin"}}}}
+        ]}
+        """#.utf8))
+        let list = Form { Section("More agents from the ACP registry") { AcpRegistryList(entries: registry, brain: brain, failure: .constant(nil)) } }
+            .formStyle(.grouped)
+            .controlSize(.small)
+            .preferredColorScheme(.dark)
+        try await render(list, name: "acp-registry", size: NSSize(width: 640, height: 320))
     }
 
     private func render<Content: View>(_ content: Content, name: String, size: NSSize, wait: Double = 0.2, folder: String = "notch-rebuild-evidence") async throws {
