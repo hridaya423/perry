@@ -33,7 +33,7 @@ The user installed the DMG and found these problems before trying any real task:
 | 15 | The notch icons are ugly | Default SF Symbols at mixed sizes and weights, in mixed containers. | Phase 3 |
 | 16 | Stop claiming the code is perfect | C4 review: about 3–4k lines are safe to delete. `AppController` is a god object. Voice has three entry paths and four state machines for one idea. | Phase 1 |
 
-Research behind every decision is in `docs/research/2026-10-25/` (r1–r7 external, c1–c4 code audits). Cite those reports when a task needs detail. Do not repeat the research.
+Research behind every decision is in `docs/research/2026-10-25/` (r1–r10 external, c1–c4 code audits). Cite those reports when a task needs detail. Do not repeat the research.
 
 ## 1. Decisions
 
@@ -43,7 +43,7 @@ The user answered on 2026-10-25. Rows marked "pending research" will be updated 
 |---|---|---|---|
 | D1 | Routine replay (the typed-plan engine, about 4.5k lines) | **Keep. It is a feature.** Isolate it (Task 1.8), and fix replay so that each step resolves against the screen it runs on (Task 1.9). Then offer it after the first goal: "Show me one thing you do often" (Task 7.11). | c4 #4, r10 §3 |
 | D2 | Realtime voice | **Keep, and widen it.** Offer OpenAI Realtime, Grok Voice, Gemini Live and GPT-Live (Beta), with ElevenLabs later. Split the file and fix the current-API defects first (Task 4.7), then add the providers (Task 4.8). "The other one" is most likely Grok Voice. The owner should confirm. | c4 #9, r9 |
-| D3 | Local models and engine | **The absolute best, not the safe default.** Search Hugging Face exhaustively, including fine-tunes such as Ornith. Pick the fastest engine per model (llama.cpp Metal, MLX or another), and apply every optimization from the owner's win-pc stack (`~/model-stack-HANDOFF.md`). New dependencies are expected; each one is named in Phase 6. | r3, r8 (pending research) |
+| D3 | Local models and engine | **Qwen3.6-35B-A3B for fast turns and Qwen3.8-27B for hard ones** on 32 GB and up; Qwen3.5 2B to 9B below that. One architecture covers every role, so a swap is a file load. Engine: a bundled `llama-server`, with MLX and Splash tested per Mac. Ornith-1.5 and Holo4 are challengers in Perry-bench, not defaults (vendor scores only). The win-pc settings that carry over are in r8 §5. Needs approval for `llama-server` and the model files (Task 6.5). | r8 |
 | D4 | App connections | **Perry-owned sign-in.** Linear, GitHub, Slack and Calendar (through EventKit) take days. Google Calendar, Notion and Microsoft take weeks, after Perry has a domain. Gmail takes months (Google restricted scopes). Hosted MCP sign-in covers vendors that support it (Tasks 6.6, 6.7). | r10 |
 | D5 | Notch look | **Mockups first, in Paper** (Paper.app is open). The user picks before code. The r6 §7.11 palette is the starting point. | r6 §7, r1 §B |
 | D6 | Optional voice detectors (FluidAudio Silero VAD, Smart Turn) | Not added unless the built-in detector misses the fixture targets in Task 4.2. | r4 §3.3 |
@@ -890,7 +890,7 @@ This is a manual drill on the test Mac, or on this Mac only when the user is awa
 - Pre-select the saved choice if one exists. Otherwise pre-select the first row that is ready.
 - Render and commit.
 
-### Task 6.3: Machine profile and model fit
+### Task 6.3: Machine profile and model fit (D3, r8 §6.1)
 
 **Files:**
 - Create `App/Brain/MachineProfile.swift`.
@@ -898,55 +898,84 @@ This is a manual drill on the test Mac, or on this Mac only when the user is awa
 
 **MachineProfile reads:**
 - Total memory from `ProcessInfo.physicalMemory`.
-- The chip from `machdep.cpu.brand_string` and `hw.model`.
-- Available memory from `host_statistics64`.
+- The chip and GPU core count from `machdep.cpu.brand_string`, `hw.model` and IOKit.
 - The GPU budget from `MTLDevice.recommendedMaxWorkingSetSize`.
-- Memory-pressure events from a `DispatchSource` memory-pressure source.
+- Power source, Low Power Mode and `ProcessInfo.thermalState`.
+- Apple Intelligence availability.
+- Memory-pressure events from `DispatchSource.makeMemoryPressureSource`.
 - Do not use `os_proc_available_memory`. It is unavailable on macOS (r3 §5.1).
 
-**ModelFit:** `recommend(memoryGB:chip:budget:available:) -> Recommendation`. It encodes the tier table in r3 §5 and the presets in r3 §7. The candidate models are those the D3 runtime can run.
+**ModelFit:** `recommend(profile:budget:) -> Recommendation`. The recommendation has an interactive lane, an optional deep lane and a helper. It encodes the r8 §0.1 and §6.1 tables:
+
+| Memory | Interactive | Deep (on request) |
+|---|---|---|
+| 8 GB | Qwen3.5-2B UD-Q4_K_XL (4B only if the fit rule passes) | none, cloud |
+| 16 GB | Qwen3.5-9B UD-Q4_K_XL on M3 and newer; Qwen3.5-4B on M1 and M2 | none until P7 |
+| 24 GB | Qwen3.5-9B UD-Q6_K_XL | none until P7 |
+| 32 GB | Qwen3.6-35B-A3B UD-IQ4_XS | Qwen3.8-27B UD-IQ4_XS |
+| 48 GB | Qwen3.6-35B-A3B UD-Q4_K_XL | Qwen3.8-27B UD-Q5_K_XL |
+| 64 GB | Qwen3.6-35B-A3B UD-Q6_K | Qwen3.8-27B UD-Q6_K |
+| 96 GB and up | Qwen3.6-35B-A3B Q8_0 | Qwen3.8-27B Q8_0 |
+
+The helper is Apple Foundation Models where available, else Qwen3.5-0.8B.
+
+**Rules (r8 §6.1):**
+- Fit: Active memory stays below 75% of `recommendedMaxWorkingSetSize`.
+- Latency: the interactive lane needs a first token within 6 s and decode of 15 tok/s or more. The benchmark in Task 6.5 decides; the table is only the starting rung.
+- Chip class beats RAM: a 24 GB M4 Pro starts one rung higher than a 24 GB M4.
+- One lane is resident at a time below 96 GB.
 
 **Steps:**
-1. Write failing table tests: 8, 16, 24, 32, 48 and 64 GB, crossed with the budget presets.
+1. Write failing table tests: each tier, M1 and M4 Pro chips at 24 GB, and the three budget presets.
 2. Implement and commit.
 
 ### Task 6.4: The On this Mac screen
 
 **Files:**
 - Create `App/Brain/LocalBrainView.swift`, extracted from `BrainModelSettingsView.swift:34-79`.
-- Modify `BrainController.refresh()`, which now runs `checkLocalModel` for every discovered model automatically.
 
-**Content (r3 §7):**
+**Content (r3 §7, r8 §6.2):**
 - The machine line, for example "This Mac: M4 Pro, 48 GB".
+- The recommended model, its download size and one plain speed sentence from the benchmark, for example "Answers screen questions in about 4 seconds."
+- "Download and set up" starts Task 6.5. Nothing downloads without this click.
 - An Apple Intelligence row that states its limits: "Text answers. Reads windows as text after Task 2.4. Cannot act."
-- Detected Ollama and LM Studio models, each with its checked capabilities.
-- The recommended model for this machine.
-- "How much memory can Perry keep ready?" A snapping slider: None, 2, 4, 8 or 24 GB, limited by the tier.
-- "Let go after": 2 min, 10 min, 1 h or Never.
-- "When this Mac's model cannot do a task": "Ask me before using the cloud" (the default) or "Never use the cloud".
+- Ollama and LM Studio models, if present, as "Use a model you already have".
+- "How much memory can Perry keep ready?" with three choices (r8 §6.2): "Nothing" (the server exits after 30 idle minutes), "Up to 2 GB" (the helper only) and "Keep the main model ready".
+- "When this Mac's model cannot do a task": "Ask me before using the cloud" (the default) or "Never use the cloud". Escalation rules are in r8 §6.5.
 
-**Unloading:**
-- With D3 at its default, the budget and timer map to Ollama `keep_alive`.
-- On a `.warning` memory-pressure event, unload the model.
-- If neither runtime is installed, show one line with a link to install Ollama. Do not download in the background.
-
-**8 GB Macs:** the default is None and the Apple model, and no screenshot model is offered.
+**8 GB Macs:** say plainly that answers on this Mac are limited and recommend Cloud. The 2B model is the offline option.
 
 **Steps:**
-1. Write failing tests:
-   - The budget and the "let go after" value map to the `keep_alive` value sent to Ollama.
-   - A pressure warning triggers an unload request.
+1. Write failing tests: each memory choice maps to the server's idle settings (`--sleep-idle-seconds` and the exit timer), and a pressure warning stops the server.
 2. Implement, render the 8 GB and 48 GB variants, and commit.
 
-### Task 6.5: MLX helper (only if D3 is approved)
+### Task 6.5: The local engine: `llama-server` (D3, needs approval)
 
-Write a separate plan: `docs/plans/<date>-mlx-local-brain.md`. It covers:
-- A helper process that exits when idle.
-- A pinned Hugging Face revision, a disk check and resumable download.
-- Qwen3.5 4B or 9B as both the brain and the screen-reading model.
-- An evaluation against the 200-case gate in `docs/plans/megaplan-iii-painkiller.md`.
+**Owner approval first (r8 §6.4):** the llama.cpp `llama-server` binary (MIT, signed and notarised by Perry) and the Unsloth GGUF model files. Splash and an MLX server are for Perry-bench only. mlx-swift-lm and the Prism fork are deferred.
 
-Do not start that plan without the approval.
+**Files:**
+- Create `App/Brain/LocalEngine.swift`. It starts, health-checks and stops one `llama-server` process on loopback with a random API key in a 0600 file.
+- Create `App/Brain/ModelDownloader.swift`. It resumes downloads, checks free disk space first and verifies each file against the Hugging Face SHA-256.
+- Create `App/Brain/LocalBenchmark.swift`, the onboarding benchmark in r8 §6.3.
+- The engine speaks OpenAI-compatible HTTP, so the existing local provider path in `BrainController` talks to it. No Swift package links llama.cpp.
+
+**Server flags (r8 §6.2, mapped from the win-pc stack in r8 §5):**
+- Interactive lane: `-ngl all -fa on -c 32768 -np 1 --image-max-tokens 640 --cache-ram 2048 --ctx-checkpoints 8 --checkpoint-min-step 1024 --sleep-idle-seconds 300`, thinking off, temperature 0.7, top-p 0.8, top-k 20, min-p 0.
+- Deep lane: `--reasoning-effort medium --reasoning-budget 4096 --reasoning-preserve`, temperature 1.0, top-p 0.95, top-k 20, min-p 0, `max_tokens` 6144. MTP (`--spec-type draft-mtp --spec-draft-n-max 2`) only if the benchmark shows a 15% gain.
+- Action steps use a JSON schema, temperature 0.3 or lower and presence penalty 0.
+- Prompt layout: system prompt and tools, history, accessibility text, then the screenshot last. Do not keep old screenshots.
+- Prewarm with a one-token request on hotkey-down. Stop the server on a memory-pressure warning.
+
+**Benchmark (r8 §6.3):** fingerprint, start rung, five measurements (load, cold turn, cached reference turn, decode, five tool calls), then step down one rung at most three times. Save `bench.json`. Postpone it on battery, in Low Power Mode or when the Mac is hot.
+
+**Steps:**
+1. Write failing tests with a fake process and a fake HTTP server: the launch arguments per lane, the API-key file mode, a SHA-256 mismatch rejects the file, and the step-down rule picks the right rung from recorded measurements.
+2. Implement, then run the benchmark on the test Mac, not on the owner's MacBook.
+3. Commit per file.
+
+### Task 6.5b: Perry-bench (before the defaults are final)
+
+Run r8 §7 P1 to P6 and P9 to P10 on the test Mac. P4 puts Ornith-1.5 and Holo4-35B-A3B against the defaults on 50 Perry tasks. A challenger replaces a default only with 5 more points of task success and no more invalid tool calls. Record the results in `docs/research/<date>-perry-bench.md` and update the `ModelFit` table.
 
 ### Task 6.6: Perry-owned sign-in for apps (D4)
 

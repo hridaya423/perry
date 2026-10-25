@@ -1,8 +1,8 @@
 # Current: first-impressions rework (2026-10-25)
 
-- Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r10, c1-c4; r8 still running).
+- Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r10, c1-c4).
 - Trigger: the user installed the 3344b57 DMG and listed 16 first-impression defects (plan section 0).
-- Decisions D1-D6 answered 2026-10-25 (plan section 1). D3 waits for r8.
+- Decisions D1-D6 answered 2026-10-25 (plan section 1). D3 updated from r8; Phase 6 needs approval for `llama-server` and the model files.
 
 ## Task log
 
