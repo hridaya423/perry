@@ -1,36 +1,5 @@
 import AppKit
 
-/// What quit and erase need from the app: every subsystem they close,
-/// stop, or join, plus the panel and status hooks. Implemented by
-/// AppController — the member list is the documented blast radius of a
-/// maintenance operation.
-@MainActor
-protocol MaintenanceHost: AnyObject {
-    var mcp: MCPSocketLifecycle { get }
-    var agentCoordinator: AgentCoordinator { get }
-    var brain: BrainController { get }
-    var homeController: HomeController { get }
-    var backgroundTasks: BackgroundTaskController { get }
-    var guideCoordinator: GuideSessionCoordinator { get }
-    var workers: CuaWorkerService { get }
-    var foreground: ForegroundTaskController { get }
-    var talkSession: TalkSession { get }
-    var notchStatus: NotchStatusController { get }
-    var perryScheduler: PerrySchedulerController? { get }
-    var suggestionController: SuggestionController { get }
-    var routineLibrary: RoutineLibraryController { get }
-    var voice: VoiceController { get }
-    var spatial: SpatialSelectionController { get }
-    var oauthCoordinator: OAuthCoordinator { get }
-    var runtimes: RuntimeCatalog { get }
-    var completeErasure: CompleteErasureCoordinator { get }
-    var customConnectors: CustomConnectors { get }
-    var conversationVoice: VoiceConversationController { get }
-    var hasUnsavedHomeRequests: Bool { get }
-    var sessionStatus: String { get set }
-    func hidePanel()
-}
-
 /// Quit and erase are Perry's two "own the whole app" operations: both close
 /// admission everywhere, run an ordered stop-and-join checklist, then hand
 /// control back — or out. The ordering is the behavior, so it lives in one
@@ -39,7 +8,7 @@ protocol MaintenanceHost: AnyObject {
 final class MaintenanceCoordinator {
     private enum Operation { case termination, erasure }
 
-    private weak var host: (any MaintenanceHost)?
+    private weak var host: AppController?
     private var owner: Operation?
     private(set) var terminationPrepared = false
     private(set) var isErasureInProgress = false
@@ -64,7 +33,7 @@ final class MaintenanceCoordinator {
     }
 #endif
 
-    init(host: any MaintenanceHost) {
+    init(host: AppController) {
         self.host = host
     }
 
@@ -301,7 +270,7 @@ final class MaintenanceCoordinator {
     }
 }
 
-extension AppController: MaintenanceHost {
+extension AppController {
     var hasUnsavedHomeRequests: Bool {
         !homeController.homeModel.unsavedInputs.isEmpty
     }
