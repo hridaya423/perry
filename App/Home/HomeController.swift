@@ -41,6 +41,7 @@ final class HomeController {
     private var defaultsObserver: (any NSObjectProtocol)?
     private var conversationVisible = false
     private var dotPanels: [NSPanel] = []
+    private var blinkTimer: Timer?
     let homeModel = HomeModel()
     private var welcomeDraftEdited = false
     private var welcomeDraftLoaded = false
@@ -121,6 +122,8 @@ final class HomeController {
         cachedZones = nil
         deadlineTimer?.invalidate()
         deadlineTimer = nil
+        blinkTimer?.invalidate()
+        blinkTimer = nil
         dotPanels.forEach { $0.orderOut(nil) }
         insideZone = false
         intent = HomeHoverIntent()
@@ -213,13 +216,15 @@ final class HomeController {
     /// The hover strip: on a notched screen, the dead space beside/under the
     /// camera (auxiliary areas bracket the notch); otherwise the centre of
     /// the menu bar, under the resting tab.
+    nonisolated static let notchEar: CGFloat = 26
+
     nonisolated static func zoneRect(for screen: NSScreen) -> CGRect {
         let top = screen.frame.maxY
         if screen.safeAreaInsets.top > 0 {
             let left = screen.auxiliaryTopLeftArea?.maxX ?? screen.frame.midX - 100
             let right = screen.auxiliaryTopRightArea?.minX ?? screen.frame.midX + 100
             let center = (left + right) / 2
-            let width = max(220, right - left + 40)
+            let width = max(220, right - left + notchEar * 2 + 12)
             return CGRect(x: center - width / 2,
                           y: top - screen.safeAreaInsets.top - 8,
                           width: width,
@@ -240,8 +245,8 @@ final class HomeController {
         guard screen.safeAreaInsets.top > 0,
               let left = screen.auxiliaryTopLeftArea?.maxX,
               let right = screen.auxiliaryTopRightArea?.minX else { return zoneRect(for: screen) }
-        return CGRect(x: left, y: screen.frame.maxY - screen.safeAreaInsets.top,
-                      width: right - left, height: screen.safeAreaInsets.top)
+        return CGRect(x: left - notchEar, y: screen.frame.maxY - screen.safeAreaInsets.top,
+                      width: right - left + notchEar * 2, height: screen.safeAreaInsets.top)
     }
 
     nonisolated static func notchPanelFrame(size: CGSize, screenFrame: CGRect, centerX: CGFloat) -> CGRect {
@@ -346,8 +351,64 @@ final class HomeController {
 
     private func showRestingDotIfNeeded() {
         guard isEnabled, dotPanels.isEmpty else { return }
-        dotPanels = NSScreen.screens.filter { $0.safeAreaInsets.top == 0 }.map(Self.makeRestingTab(on:))
+        dotPanels = NSScreen.screens.map { Self.makeNotchEyes(on: $0) ?? Self.makeRestingTab(on: $0) }
         dotPanels.forEach { $0.orderFrontRegardless() }
+        if blinkTimer == nil {
+            blinkTimer = Timer.scheduledTimer(withTimeInterval: 7, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.blinkNotchEyes() }
+            }
+        }
+    }
+
+    private static func makeNotchEyes(on screen: NSScreen) -> NSPanel? {
+        guard screen.safeAreaInsets.top > 0,
+              let left = screen.auxiliaryTopLeftArea,
+              let right = screen.auxiliaryTopRightArea else { return nil }
+        let ear = notchEar
+        let height = screen.safeAreaInsets.top
+        let frame = CGRect(x: left.maxX - ear, y: screen.frame.maxY - height, width: right.minX - left.maxX + ear * 2, height: height)
+        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.level = .statusBar
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        PerryWindowChrome.applyChrome(to: panel)
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.cornerRadius = 9
+        view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        view.setAccessibilityElement(false)
+        var tint = NSColor.white.cgColor
+        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+            tint = NSColor(PerryTheme.Colors.accent).cgColor
+        }
+        let eyeSize = CGSize(width: 3.5, height: 9)
+        let eyesWidth = eyeSize.width * 2 + 4
+        let originX = frame.width - ear + (ear - eyesWidth) / 2 - 2
+        for index in 0..<2 {
+            let eye = CALayer()
+            eye.backgroundColor = tint
+            eye.cornerRadius = eyeSize.width / 2
+            eye.bounds = CGRect(origin: .zero, size: eyeSize)
+            eye.position = CGPoint(x: originX + eyeSize.width / 2 + CGFloat(index) * (eyeSize.width + 4), y: height / 2)
+            view.layer?.addSublayer(eye)
+        }
+        panel.contentView = view
+        panel.appearance = NSAppearance(named: .darkAqua)
+        return panel
+    }
+
+    private func blinkNotchEyes() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        for eye in dotPanels.filter(\.isVisible).flatMap({ $0.contentView?.layer?.sublayers ?? [] }) {
+            let blink = CAKeyframeAnimation(keyPath: "transform.scale.y")
+            blink.values = [1, 0.12, 1]
+            blink.duration = 0.18
+            eye.add(blink, forKey: "blink")
+        }
     }
 
     private static func makeRestingTab(on screen: NSScreen) -> NSPanel {
