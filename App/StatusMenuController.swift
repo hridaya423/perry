@@ -2,54 +2,18 @@ import AppKit
 import PerryGuide
 import UniformTypeIdentifiers
 
-/// What Perry's command menu asks of the app. Every menu action is a call
-/// through here; the menu itself owns only items, titles, and file panels.
-@MainActor
-protocol StatusMenuHost: AnyObject {
-    var isUpdateAvailable: Bool { get }
-    var isNotchStatusEnabled: Bool { get }
-    var isRecordingDemonstration: Bool { get }
-    func wake()
-    func speak(_ text: String)
-    func checkForUpdates()
-    func toggleDemonstrationRecording()
-    func toggleNotchStatus() -> Bool
-    func routines() -> [LearnedRoutine]
-    func runRoutine(_ routine: LearnedRoutine)
-    func importRoutine(from url: URL)
-    func exportRoutine(_ routine: LearnedRoutine, to url: URL)
-    func removeRoutine(_ routine: LearnedRoutine)
-    func setWorkspaceRoot(_ url: URL)
-    func showFullGuideForFrontmostWindow()
-    func presentBackgroundComposer()
-    func showBackgroundTasks()
-    func retryLastTask()
-    func showHistory()
-    func exportDiagnostics()
-    func showWhatsNew()
-    func showSettings()
-    func toggleMemory()
-    func currentMemoryConfiguration() async -> MemoryConfiguration
-    func requestCompleteErasure()
-#if DEBUG
-    func runBrainSmokeTest()
-    func runFailureDrill(_ drill: FailureDrill)
-    func applyDebugStateFixture(_ fixture: DebugStateFixture)
-#endif
-}
-
 /// Perry's command menu, opened from the notch's More button. Perry has no
 /// menu-bar item; the notch owns every first-party entry point.
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
-    private weak var host: (any StatusMenuHost)?
+    private weak var host: AppController?
     private var memoryMenuItem: NSMenuItem?
     private var backgroundTasksMenuItem: NSMenuItem?
     private var recordDemoMenuItem: NSMenuItem?
     private var workspaceLabelItem: NSMenuItem?
     private var watchLearnMenu: NSMenu?
 
-    init(host: any StatusMenuHost) {
+    init(host: AppController) {
         self.host = host
     }
 
@@ -301,7 +265,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 #endif
 }
 
-extension AppController: StatusMenuHost {
+extension AppController {
     var isUpdateAvailable: Bool { updateNoticeController.availability == .available }
     var isNotchStatusEnabled: Bool { notchStatus.isEnabled }
     var isRecordingDemonstration: Bool { routineLibrary.isRecording }
