@@ -92,8 +92,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
     private var manifestRefresher: CuaCapabilityManifest.Refresher?
-    lazy var demoFlow = DemoFlowController(host: self)
-    var demoDirector: DemoDirector { demoFlow.director }
 
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
@@ -447,9 +445,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionStatus = "Ready when you are."
         probe.clearInvocationTarget()
         guideCoordinator.stopClickObservation()
-        guideCoordinator.cancelPendingDemoInputs()
         spatial.stopMonitoring()
-        spatial.releaseWaiter()
         voice.cancelInput()
         intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }

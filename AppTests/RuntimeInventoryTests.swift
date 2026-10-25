@@ -37,7 +37,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
         XCTAssertFalse(record.canRun)
-        XCTAssertFalse(inventory.hasReadyCLI)
         XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
@@ -49,7 +48,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(record.authentication, .configured)
         XCTAssertTrue(record.canRun)
         XCTAssertFalse(record.isReady)
-        XCTAssertFalse(inventory.hasReadyCLI)
         XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli"])
     }
 

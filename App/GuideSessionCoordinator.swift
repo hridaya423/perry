@@ -247,7 +247,6 @@ final class GuideSessionCoordinator {
     private var guideStepPosition = 0
     private var activeGuideStepID: UUID?
     private var activeGuideInstruction: String?
-    private var guideWaiter: CheckedContinuation<Bool, Never>?
     private let fullGuideCaptureLoader: FullGuideCaptureLoader?
     private let fullGuideContinuationBarrier: FullGuideContinuationBarrier?
     private let fullGuidePlanner: FullGuidePlanner?
@@ -352,20 +351,6 @@ final class GuideSessionCoordinator {
         startGuiding(goal: goal, threadID: threadID, targetHint: targetHint, full: true)
     }
 
-    func runGuideForDemo(goal: String) async -> Bool {
-        await withCheckedContinuation { continuation in
-            guideWaiter = continuation
-            startGuiding(goal: goal)
-        }
-    }
-
-    func cancelPendingDemoInputs() {
-        if let guideWaiter {
-            self.guideWaiter = nil
-            guideWaiter.resume(returning: false)
-        }
-    }
-
     func stopClickObservation() {
         clickObserver.stop()
     }
@@ -379,10 +364,6 @@ final class GuideSessionCoordinator {
         activeGuideInstruction = nil
         everythingGuideSession = nil
         hideGuideControls()
-        if let guideWaiter {
-            self.guideWaiter = nil
-            guideWaiter.resume(returning: false)
-        }
         if let scope = currentGuideScope,
            scope.id == guide.id {
             scope.requestFinalization(
@@ -1174,12 +1155,6 @@ final class GuideSessionCoordinator {
         if let scope, scope.id == guide.id, scope.workerBodyActive {
             scope.requestFinalization(GuideFinalizationRequest(id: guide.id, goal: guide.goal, startedAt: guide.startedAt, steps: guide.steps, outcome: outcome, summary: finalSummary, appBundleID: guide.appBundleID))
         }
-        let guideSucceeded = isComplete && guide.actionableStepIDs.count >= 2
-        let demoWasWaiting = guideWaiter != nil
-        if let guideWaiter {
-            self.guideWaiter = nil
-            guideWaiter.resume(returning: guideSucceeded)
-        }
         output?.guideSetStatus(isComplete ? "Guide complete." : finalSummary)
         output?.guidePlay(isComplete ? .done : .fail)
         output?.guideSetBuddyState(isComplete ? .success : (outcome == .stopped ? .idle : .blocked))
@@ -1188,7 +1163,7 @@ final class GuideSessionCoordinator {
         _ = sessionController.requestDismissal()
         output?.guideClearPresentation()
         if isComplete {
-            speak(demoWasWaiting && !guideSucceeded ? "I couldn’t complete two live guide steps in that window." : "That’s the whole flow.", guideID: guide.id, scopeID: scope?.id)
+            speak("That’s the whole flow.", guideID: guide.id, scopeID: scope?.id)
         } else {
             speak(finalSummary, guideID: guide.id, scopeID: scope?.id)
         }

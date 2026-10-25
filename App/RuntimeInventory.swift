@@ -14,7 +14,6 @@ struct RuntimeInventory {
     let choices: [RuntimeChoice]
     let credentialFailure: String?
 
-    var hasReadyCLI: Bool { setup.records.contains(where: \.isReady) }
 }
 
 @MainActor

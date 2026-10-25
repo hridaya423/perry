@@ -21,7 +21,6 @@ protocol MaintenanceHost: AnyObject {
     var routineLibrary: RoutineLibraryController { get }
     var voice: VoiceController { get }
     var spatial: SpatialSelectionController { get }
-    var demoDirector: DemoDirector { get }
     var oauthCoordinator: OAuthCoordinator { get }
     var runtimes: RuntimeCatalog { get }
     var completeErasure: CompleteErasureCoordinator { get }
@@ -275,7 +274,6 @@ final class MaintenanceCoordinator {
         guard let host else { return }
         await host.mcp.discard()
         await host.brain.stopSetup()
-        host.demoDirector.cancel()
         host.conversationVoice.resetConversation()
         host.talkSession.cancelAsk()
         host.talkSession.cancel()

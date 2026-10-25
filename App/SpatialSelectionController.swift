@@ -18,7 +18,6 @@ final class SpatialSelectionController {
         onSelection: { [weak self] selection in self?.select(selection) },
         onCancel: { [weak self] in self?.cancelSelection() }
     )
-    private var waiter: CheckedContinuation<SpatialSelection?, Never>?
     private var describeTask: Task<Void, Never>?
     private(set) var selection: SpatialSelection?
 
@@ -40,26 +39,13 @@ final class SpatialSelectionController {
     func stopMonitoring() { monitor.stop() }
     func clearSelection() { selection = nil }
 
-    /// The demo awaits the next selection instead of having it described.
-    func waitForSelection() async -> SpatialSelection? {
-        await withCheckedContinuation { continuation in
-            waiter = continuation
-        }
-    }
-
-    func releaseWaiter() {
-        guard let waiter else { return }
-        self.waiter = nil
-        waiter.resume(returning: nil)
-    }
-
     func cancelDescription() { describeTask?.cancel() }
 
     func joinDescription() async {
         await describeTask?.value
     }
 
-    func describe(_ selection: SpatialSelection) async -> Bool {
+    private func describe(_ selection: SpatialSelection) async {
         let snapshot: AXSnapshot?
         do {
             snapshot = try await workers.withWorker(scope: .dictation, resources: []) { worker in
@@ -72,7 +58,6 @@ final class SpatialSelectionController {
         let label = Self.label(for: selection.rect, snapshot: snapshot)
         overlayState.circleSelectSnapLabel = label
         speak(label == nil ? "I have the area you circled." : "I have \(label!).")
-        return snapshot != nil
     }
 
     private func showStroke(_ points: [CGPoint]) {
@@ -89,7 +74,6 @@ final class SpatialSelectionController {
         overlayState.circleSelectSnappedRect = nil
         overlayState.circleSelectSnapLabel = nil
         selection = nil
-        releaseWaiter()
         setStatus("Circle a window with ⌥⌘ and drag.")
     }
 
@@ -98,15 +82,10 @@ final class SpatialSelectionController {
         overlayState.circleSelectLivePoints = selection.points
         overlayState.circleSelectSnappedRect = selection.rect
         setStatus("Area selected. Tell Perry what to do there.")
-        if let waiter {
-            self.waiter = nil
-            waiter.resume(returning: selection)
-            return
-        }
         describeTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.describeTask = nil }
-            _ = await self.describe(selection)
+            await self.describe(selection)
         }
     }
 

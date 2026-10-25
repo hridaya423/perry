@@ -836,25 +836,6 @@ final class ForegroundTaskController: ObservableObject {
         return directory
     }
 
-    // MARK: Demo
-
-    func runForDemo(goal: String) async -> DoOutcome? {
-        guard !supervisorActive, !startIsInFlight else { return nil }
-        let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
-        defer { cancelInvocationIfCurrent(attemptID) }
-        guard let outcome = await begin(goal: goal, attemptID: attemptID) else { return nil }
-        let transcript = await transcriptStore.snapshot().first { $0.request == goal }
-        guard case .completed = outcome,
-              transcript?.verified == true else {
-            return .failed(
-                stepSummary: "demo verification",
-                reason: "The task did not produce independent verification for every side effect."
-            )
-        }
-        return outcome
-    }
-
     // MARK: Controls
 
     func pause() {

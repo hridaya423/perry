@@ -24,7 +24,6 @@ protocol StatusMenuHost: AnyObject {
     func presentBackgroundComposer()
     func showBackgroundTasks()
     func retryLastTask()
-    func runDemo()
     func showHistory()
     func exportDiagnostics()
     func showWhatsNew()
@@ -117,7 +116,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         watchLearnMenu = watchMenu
         menu.addItem(watchItem)
 #if DEBUG
-        menu.addItem(withTitle: "Run live Perry demo", action: #selector(demoAction), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Brain smoke test", action: #selector(brainSmokeTestAction), keyEquivalent: "").target = self
         let drills = NSMenuItem(title: "Failure drills", action: nil, keyEquivalent: "")
         let drillMenu = NSMenu()
@@ -235,7 +233,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     @objc private func backgroundPromptAction() { host?.presentBackgroundComposer() }
     @objc private func backgroundTasksAction() { host?.showBackgroundTasks() }
     @objc private func retryAction() { host?.retryLastTask() }
-    @objc private func demoAction() { host?.runDemo() }
     @objc private func recordDemoAction() { host?.toggleDemonstrationRecording() }
 
     @objc private func toggleNotchStatusAction(_ sender: NSMenuItem) {
@@ -354,7 +351,6 @@ extension AppController: StatusMenuHost {
     }
 
     func retryLastTask() { foreground.retry() }
-    func runDemo() { demoFlow.director.run() }
     func showSettings() { homeController.openHome(selection: .settings) }
 
     func toggleMemory() {
