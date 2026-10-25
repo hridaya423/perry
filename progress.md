@@ -1,3 +1,10 @@
+# Current: first-impressions rework (2026-10-25)
+
+- Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r7, c1-c4).
+- Trigger: the user installed the 3344b57 DMG and listed 16 first-impression defects (plan section 0).
+- Status: plan written, not started. Waiting on decisions D1-D6 (plan section 1); defaults apply if unanswered.
+- Next: Task 0.1 (test Mac readiness), then Phase 1 deletions.
+
 # Progress: designed Perry (installer, onboarding, product)
 
 Branch: `codex/living-ink-redesign`. Started 2026-10-21.
