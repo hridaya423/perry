@@ -32,66 +32,67 @@ final class CommandRouter {
         self.host = host
     }
 
-    /// `voiceTaskScope` is the task a dictation hold began against: steering
-    /// goes to that task only, so speech never redirects a task that started
-    /// or changed while the user was talking.
+    enum Route: Equatable {
+        case showPanel
+        case status(String)
+        case steer(String)
+        case dismiss
+        case askInGuide(String, full: Bool)
+        case ask(String)
+        case guide(String)
+        case showEverything(String)
+        case doTask(String)
+    }
+
     func route(commandText: String?, voiceTaskScope: UUID? = nil) {
         guard let host else { return }
-        guard let text = commandText, !text.isEmpty else {
-            host.showPanel()
-            return
-        }
-        if let voiceTaskScope {
-            guard case .executing(let execution) = host.sessionController.state,
-                  execution.taskID == voiceTaskScope else {
-                host.sessionStatus = "That task already moved on. Hold the shortcut again to steer the current one."
-                return
-            }
-            steer(text, execution: execution)
-            return
-        }
-        if case .asking = host.sessionController.state {
-            switch GuideIntentParser.parse(text) {
-            case .dismiss:
-                host.dismiss()
-            case .guide:
-                continueAskInGuide(request: text, full: false)
-            case .showEverything:
-                continueAskInGuide(request: text, full: true)
-            case .doTask, .notAGuideRequest:
-                host.ask(question: text)
-            }
-            return
-        }
-        if case .executing = host.sessionController.state {
-            host.sessionStatus = "A task started while you were speaking. Hold the shortcut again to steer it."
-            return
-        }
-        switch GuideIntentParser.parse(text) {
-        case .guide(let goal):
-            host.startGuiding(goal: goal)
-        case .showEverything(let goal):
-            Task { await host.showEverything(goal: goal, targetHint: nil) }
-        case .doTask(let goal):
-            host.foreground.start(goal: goal)
-        case .dismiss:
-            host.dismiss()
-        case .notAGuideRequest:
-            host.ask(question: text)
+        switch Self.decide(commandText, state: host.sessionController.state, voiceTaskScope: voiceTaskScope) {
+        case .showPanel: host.showPanel()
+        case .status(let status): host.sessionStatus = status
+        case .steer(let text): host.foreground.steer(text)
+        case .dismiss: host.dismiss()
+        case .askInGuide(let request, let full): continueAskInGuide(request: request, full: full)
+        case .ask(let question): host.ask(question: question)
+        case .guide(let goal): host.startGuiding(goal: goal)
+        case .showEverything(let goal): Task { await host.showEverything(goal: goal, targetHint: nil) }
+        case .doTask(let goal): host.foreground.start(goal: goal)
         }
     }
 
-    private func steer(_ text: String, execution: ExecutionSessionState) {
-        guard let host else { return }
-        if case .dismiss = GuideIntentParser.parse(text) {
-            host.dismiss()
-            return
+    /// `voiceTaskScope` is the task a dictation hold began against: steering
+    /// goes to that task only, so speech never redirects a task that started
+    /// or changed while the user was talking.
+    nonisolated static func decide(_ commandText: String?, state: SessionState, voiceTaskScope: UUID?) -> Route {
+        guard let text = commandText, !text.isEmpty else { return .showPanel }
+        let intent = GuideIntentParser.parse(text)
+        if let voiceTaskScope {
+            guard case .executing(let execution) = state, execution.taskID == voiceTaskScope else {
+                return .status("That task already moved on. Hold the shortcut again to steer the current one.")
+            }
+            if case .dismiss = intent { return .dismiss }
+            guard execution.lifecycle == .running || execution.lifecycle == .paused else {
+                return .status("Perry can’t take direction right now. Use the task controls, or say “stop”.")
+            }
+            return .steer(text)
         }
-        guard execution.lifecycle == .running || execution.lifecycle == .paused else {
-            host.sessionStatus = "Perry can’t take direction right now. Use the task controls, or say “stop”."
-            return
+        if case .asking = state {
+            switch intent {
+            case .dismiss: return .dismiss
+            case .guide: return .askInGuide(text, full: false)
+            case .showEverything: return .askInGuide(text, full: true)
+            case .doTask, .notAGuideRequest: return .ask(text)
+            }
         }
-        host.foreground.steer(text)
+        if case .executing = state {
+            return .status("A task started while you were speaking. Hold the shortcut again to steer it.")
+        }
+        switch intent {
+        case .guide(let goal): return .guide(goal)
+        case .showEverything(let goal): return .showEverything(goal)
+        case .doTask(let goal): return .doTask(goal)
+        case .dismiss: return .dismiss
+        case .notAGuideRequest: return .ask(text)
+        }
     }
 
     func runHomeGuide(
