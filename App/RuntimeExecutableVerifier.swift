@@ -70,37 +70,6 @@ enum RuntimeExecutableVerifier {
         }
     }
 
-    static func openCode(at executable: URL) async throws -> RuntimeInstallationStatus {
-        try Task.checkCancellation()
-        let resolved = executable.resolvingSymlinksInPath().standardizedFileURL
-        guard let digest = try await sha256(at: resolved),
-              digest == OpenCodeRuntime.pinnedBinarySHA256 else {
-            return .unverified(reason: "OpenCode checksum does not match the pinned release")
-        }
-        do {
-            let result = try await CLIRuntime.runProcess(
-                executable: resolved,
-                arguments: ["--version"],
-                timeout: 10
-            )
-            try Task.checkCancellation()
-            let version = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard result.exitCode == 0, version == OpenCodeRuntime.pinnedVersion else {
-                return .unverified(reason: "OpenCode did not report version \(OpenCodeRuntime.pinnedVersion)")
-            }
-            return .verified(RuntimeInstallationIdentity(
-                source: .officialCLI,
-                version: version,
-                executablePath: resolved.path,
-                artifactSHA256: digest
-            ))
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            return .unverified(reason: "OpenCode identity probe failed")
-        }
-    }
-
     static func sha256(at executable: URL) async throws -> String? {
         try Task.checkCancellation()
         let worker = Task.detached(priority: .utility) { () throws -> String? in

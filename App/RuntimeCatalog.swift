@@ -4,20 +4,16 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Owns runtime routing: inventory inspection, provider selection for a goal,
-/// the user-facing runtime choices list, and BYOK provider configuration.
+/// Owns runtime inventory inspection and BYOK provider configuration.
 /// Session-state checks and status text stay outside — callers pass them in.
 @MainActor
 final class RuntimeCatalog: ObservableObject {
     static let byokVisionKeychainAccount = "byok.vision"
 
-    @Published private(set) var choices = [RuntimeChoice(id: RuntimeChoice.automaticID, name: "Automatic")]
-
     private let setStatus: (String) -> Void
-    private var choicesRefreshTask: Task<Void, Never>?
 
 #if DEBUG
-    typealias InventoryLoader = @MainActor (URL?) async throws -> RuntimeInventory
+    typealias InventoryLoader = @MainActor () async throws -> RuntimeInventory
     private let debugInventoryLoader: InventoryLoader?
 
     init(
@@ -56,18 +52,18 @@ final class RuntimeCatalog: ObservableObject {
     /// spawned auth probe per CLI — so the result is cached briefly, keyed by
     /// everything that can change the answer. `currentSetup` bypasses it: an
     /// explicit Settings refresh must always see the real state.
-    func inspect(workingDirectory: URL? = nil) async throws -> RuntimeInventory {
+    func inspect() async throws -> RuntimeInventory {
 #if DEBUG
         if let debugInventoryLoader {
-            return try await debugInventoryLoader(workingDirectory)
+            return try await debugInventoryLoader()
         }
 #endif
-        let key = await inventoryCacheKey(workingDirectory: workingDirectory)
+        let key = await inventoryCacheKey()
         if let cached = cachedInventory, cached.key == key,
            Date().timeIntervalSince(cached.at) < inventoryCacheTTL {
             return cached.inventory
         }
-        let inventory = try await inspector.inspect(workingDirectory: workingDirectory)
+        let inventory = try await inspector.inspect()
         cachedInventory = (key, Date(), inventory)
         return inventory
     }
@@ -79,10 +75,10 @@ final class RuntimeCatalog: ObservableObject {
     /// Cheap fingerprint of everything inspection can report differently:
     /// each CLI's located executable (path+mtime+size), the bundled Codex
     /// data directory's contents (auth writes land there), the BYOK endpoint
-    /// and model, and the working directory. locate+stat only — no hashing,
+    /// and model. locate+stat only — no hashing,
     /// no spawned probes.
-    private func inventoryCacheKey(workingDirectory: URL?) async -> String {
-        var parts = [workingDirectory?.path ?? "-"]
+    private func inventoryCacheKey() async -> String {
+        var parts: [String] = []
         for definition in RuntimeCLIDefinition.production(codexRuntimeHome: Self.codexRuntimeHome) {
             do {
                 let url = try definition.locate().resolvingSymlinksInPath().standardizedFileURL
@@ -113,43 +109,6 @@ final class RuntimeCatalog: ObservableObject {
         return "\(mtime):\(size)"
     }
 
-    /// Selects a provider for one attempt. `attemptIsCurrent` is the caller's
-    /// staleness check — it is consulted after each suspension so a superseded
-    /// attempt cannot keep routing.
-    func cancelPendingRefreshes() {
-        choicesRefreshTask?.cancel()
-    }
-
-    func refreshChoices() {
-        choicesRefreshTask?.cancel()
-        choicesRefreshTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let choices = await self.availableChoices()
-            guard !Task.isCancelled else { return }
-            self.choices = choices
-        }
-    }
-
-    /// Whether anything beyond "Automatic" is offered — i.e. something exists
-    /// that can actually take a task over. The panel uses this for its inline
-    /// "no runtime" recovery; `start` still re-validates.
-    var hasExecutionCapableChoice: Bool {
-        choices.contains { $0.id != RuntimeChoice.automaticID }
-    }
-
-    func availableChoices() async -> [RuntimeChoice] {
-        do {
-            let inventory = try await inspect()
-            if let failure = inventory.credentialFailure { setStatus(failure) }
-            return inventory.choices
-        } catch is CancellationError {
-            return []
-        } catch {
-            setStatus("Perry could not inspect the available runtimes. Try refreshing runtime setup.")
-            return []
-        }
-    }
-
     /// Settings and explicit refresh surfaces call this — always re-inspect.
     func currentSetup() async -> RuntimeSetupSnapshot {
         invalidateRuntimeInventory()
@@ -163,13 +122,9 @@ final class RuntimeCatalog: ObservableObject {
     }
 
     func name(for id: String) -> String {
-        if let choice = choices.first(where: { $0.id == id }) {
-            return choice.name
-        }
         switch id {
         case "cli.codex": return "Bundled Codex"
         case "cli.claude-code": return "Claude Code"
-        case "cli.opencode": return "OpenCode"
         case "local.task-planner": return "Perry local planner"
         case "local.workspace-files": return "Perry workspace files"
         case "byok.vision": return "Custom provider"

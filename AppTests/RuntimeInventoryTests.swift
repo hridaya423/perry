@@ -14,8 +14,7 @@ final class RuntimeInventoryTests: XCTestCase {
         try Data("fixture".utf8).write(to: executable)
         fixture.executable = directory.appendingPathComponent("alias")
         try FileManager.default.createSymbolicLink(at: fixture.executable, withDestinationURL: executable)
-        let workspace = directory.appendingPathComponent("workspace")
-        let inventory = try await fixture.inspector.inspect(workingDirectory: workspace)
+        let inventory = try await fixture.inspector.inspect()
 
         XCTAssertEqual(fixture.events, ["locate", "verify", "authenticate"])
         XCTAssertEqual(fixture.observedExecutables, Array(repeating: executable.resolvingSymlinksInPath(), count: 2))
@@ -23,10 +22,9 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(record.signInCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signOutCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signInCommand?.environment, ["CODEX_HOME": "/fixture/private-home"])
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli", "local.workspace-files"])
     }
 
-    func testRejectedInstallationHasNoAuthenticationCommandsOrChoice() async throws {
+    func testRejectedInstallationHasNoAuthenticationCommands() async throws {
         let fixture = Fixture()
         fixture.installation = .unverified(reason: "checksum mismatch")
         let inventory = try await fixture.inspector.inspect()
@@ -37,7 +35,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
         XCTAssertFalse(record.canRun)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
     func testConfiguredCredentialsAllowRunningWithoutClaimingReadiness() async throws {
@@ -48,7 +45,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(record.authentication, .configured)
         XCTAssertTrue(record.canRun)
         XCTAssertFalse(record.isReady)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic", "fixture.cli"])
     }
 
     func testCancellationDuringVerificationOrAuthenticationReturnsNoInventory() async {
@@ -79,18 +75,17 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(fixture.observedExecutables.last, fixture.executable)
         XCTAssertEqual(inventory.setup.records.first?.authentication, .missing)
         XCTAssertEqual(inventory.setup.records.first?.signInCommand?.executable, fixture.executable)
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
-    func testOfficialAndCustomProvidersProduceChoicesAndSummaries() async throws {
-        let cases: [(String, String, String, String)] = [
-            ("https://api.openai.com", "direct.openai", "OpenAI", "OpenAI"),
-            ("https://api.anthropic.com", "direct.anthropic", "Anthropic", "Anthropic"),
-            ("https://generativelanguage.googleapis.com", "direct.gemini", "Gemini", "Gemini"),
-            ("https://openrouter.ai/api", "direct.openrouter", "OpenRouter", "OpenRouter"),
-            ("https://custom.example", "byok.vision", "Custom OpenAI-compatible provider", "Custom provider"),
+    func testOfficialAndCustomProvidersProduceSummaries() async throws {
+        let cases: [(String, String)] = [
+            ("https://api.openai.com", "OpenAI"),
+            ("https://api.anthropic.com", "Anthropic"),
+            ("https://generativelanguage.googleapis.com", "Gemini"),
+            ("https://openrouter.ai/api", "OpenRouter"),
+            ("https://custom.example", "Custom provider"),
         ]
-        for (url, id, name, summaryName) in cases {
+        for (url, summaryName) in cases {
             let fixture = Fixture()
             let endpoint = BYOKAgentEndpoint(baseURL: try XCTUnwrap(URL(string: url)), model: "fixture-model")
             let inspector = RuntimeInventoryInspector(
@@ -98,13 +93,11 @@ final class RuntimeInventoryTests: XCTestCase {
                 commandLineProviders: [fixture.definition]
             )
             let inventory = try await inspector.inspect()
-            XCTAssertEqual(inventory.choices.map(\.id), ["automatic", id, "fixture.cli"], url)
-            XCTAssertEqual(inventory.choices.first { $0.id == id }?.name, name, url)
             XCTAssertEqual(inventory.setup.summary, "\(summaryName) credential configured. Perry verifies it when a task starts.", url)
         }
     }
 
-    func testCredentialFailureIsSanitizedAndLeavesNoChoices() async throws {
+    func testCredentialFailureIsSanitized() async throws {
         let inventory = try await RuntimeInventoryInspector(
             readDirectProvider: { throw FixtureError() }, commandLineProviders: []
         ).inspect()
@@ -112,7 +105,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(inventory.setup.summary, "Perry could not read the direct-provider credential from Keychain.")
         XCTAssertEqual(inventory.credentialFailure, inventory.setup.summary)
         XCTAssertFalse(inventory.setup.summary.contains("seeded-secret"))
-        XCTAssertEqual(inventory.choices.map(\.id), ["automatic"])
     }
 
     func testOrdinaryProbeFailuresKeepRecordsAndSanitizeErrors() async throws {
@@ -136,9 +128,9 @@ final class RuntimeInventoryTests: XCTestCase {
     func testProductionDefinitionsKeepCodexHomeAndExpectedAdapters() throws {
         let home = URL(fileURLWithPath: "/fixture/perry-private-codex")
         let definitions = RuntimeCLIDefinition.production(codexRuntimeHome: home)
-        XCTAssertEqual(definitions.map(\.name), ["Bundled Codex", "Claude Code", "OpenCode"])
-        XCTAssertEqual(definitions.map(\.id), ["cli.codex", "cli.claude-code", "cli.opencode"])
-        XCTAssertEqual(definitions.map(\.authenticatesInApp), [true, false, false])
+        XCTAssertEqual(definitions.map(\.name), ["Bundled Codex", "Claude Code"])
+        XCTAssertEqual(definitions.map(\.id), ["cli.codex", "cli.claude-code"])
+        XCTAssertEqual(definitions.map(\.authenticatesInApp), [true, false])
         XCTAssertEqual(definitions[0].environment, ["CODEX_HOME": home.path])
         XCTAssertEqual(definitions[0].signInArguments, ["login", "--device-auth"])
     }

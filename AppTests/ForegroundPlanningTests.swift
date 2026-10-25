@@ -1487,13 +1487,12 @@ final class ForegroundPlanningTests: XCTestCase {
     ) -> AppController {
         let inventory = RuntimeInventory(
             setup: RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: []),
-            choices: [RuntimeChoice(id: "fixture.cli", name: "Fixture CLI")],
             credentialFailure: nil
         )
         return AppController(
             debugStorageDirectory: directory,
             sessionController: session ?? SessionController(),
-            runtimeInventoryLoader: { _ in inventory },
+            runtimeInventoryLoader: { inventory },
             permissionSnapshotLoader: {
                 PerryPermissionSnapshot(
                     accessibility: true,
@@ -1552,7 +1551,6 @@ final class ForegroundPlanningTests: XCTestCase {
     private func makeWakingController(
         directory: URL,
         session: SessionController,
-        workspace: WorkspaceCapture? = nil,
         finalizationBarrier: (@MainActor () async -> Void)? = nil,
         finalizationPersistenceBarrier: (@Sendable () async -> Void)? = nil
     ) -> AppController {
@@ -1563,10 +1561,7 @@ final class ForegroundPlanningTests: XCTestCase {
         return AppController(
             debugStorageDirectory: directory,
             sessionController: session,
-            runtimeInventoryLoader: { workingDirectory in
-                workspace?.value = workingDirectory
-                return try await inspector.inspect(workingDirectory: workingDirectory)
-            },
+            runtimeInventoryLoader: { try await inspector.inspect() },
             permissionSnapshotLoader: {
                 PerryPermissionSnapshot(
                     accessibility: true,
@@ -1743,10 +1738,6 @@ private actor FullGuidePlannerGate {
     }
 }
 
-
-private final class WorkspaceCapture: @unchecked Sendable {
-    var value: URL?
-}
 
 private struct ApprovingConfirmer: Confirmer {
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { true }

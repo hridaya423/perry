@@ -43,19 +43,6 @@ struct DebugLaunchSeams {
                 seams.storageDirectory = URL(fileURLWithPath: path, isDirectory: true)
             }
         }
-        // `--perry-debug-runtimes none` reports an inventory with only
-        // Automatic + the planning-only local planner, so UI captures can
-        // exercise the panel's inline no-runtime recovery deterministically.
-        if let index = arguments.firstIndex(of: "--perry-debug-runtimes"),
-           arguments.indices.contains(index + 1),
-           arguments[index + 1] == "none" {
-            seams.runtimeInventoryLoader = { workingDirectory in
-                try await RuntimeInventoryInspector(
-                    readDirectProvider: { nil },
-                    commandLineProviders: []
-                ).inspect(workingDirectory: workingDirectory)
-            }
-        }
         // `--perry-guide-drill` swaps the model planner for the offline
         // AXGuidePlanner — the lab's Preview click→next-mark drill stays
         // deterministic and needs no provider key.
@@ -276,7 +263,6 @@ extension AppController {
     }
 
     func showDebugBackgroundTasksStorageError() {
-        runtimes.refreshChoices()
         homeController.openHome(selection: .tasks)
     }
 }

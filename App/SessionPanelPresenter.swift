@@ -288,7 +288,6 @@ extension AppController {
     }
 
     func showBackgroundTasks() {
-        runtimes.refreshChoices()
         homeController.openHome(selection: .tasks)
     }
 }

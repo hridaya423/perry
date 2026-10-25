@@ -6,14 +6,12 @@ struct ConfiguredDirectRuntime {
     let credential: String
 }
 
-/// What the runtime probe found: the Settings setup snapshot plus the composer
-/// choices list. Nothing routes through providers — open-ended work runs on the
-/// built-in agent; this is install/auth bookkeeping only.
+/// What the runtime probe found for Settings. Nothing routes through
+/// providers — open-ended work runs on the built-in agent; this is
+/// install/auth bookkeeping only.
 struct RuntimeInventory {
     let setup: RuntimeSetupSnapshot
-    let choices: [RuntimeChoice]
     let credentialFailure: String?
-
 }
 
 @MainActor
@@ -21,20 +19,17 @@ struct RuntimeInventoryInspector {
     let readDirectProvider: () throws -> ConfiguredDirectRuntime?
     let commandLineProviders: [RuntimeCLIDefinition]
 
-    func inspect(workingDirectory: URL? = nil) async throws -> RuntimeInventory {
+    func inspect() async throws -> RuntimeInventory {
         try Task.checkCancellation()
         var records: [RuntimeSetupRecord] = []
-        var choices = [RuntimeChoice(id: RuntimeChoice.automaticID, name: "Automatic")]
         var directSummary: String?
         var credentialFailure: String?
         do {
             if let configured = try readDirectProvider(), !configured.credential.isEmpty {
                 let endpoint = configured.endpoint
                 if let host = endpoint.baseURL.host, let kind = DirectAIProvider(officialHost: host) {
-                    choices.append(RuntimeChoice(id: kind.runtimeID, name: kind.displayName))
                     directSummary = "\(kind.displayName) credential configured. Perry verifies it when a task starts."
                 } else {
-                    choices.append(RuntimeChoice(id: "byok.vision", name: "Custom OpenAI-compatible provider"))
                     directSummary = "Custom provider credential configured. Perry verifies it when a task starts."
                 }
             }
@@ -47,12 +42,6 @@ struct RuntimeInventoryInspector {
             try Task.checkCancellation()
             guard let record = try await definition.inspect() else { continue }
             records.append(record)
-            if record.canRun {
-                choices.append(RuntimeChoice(id: record.id, name: record.name))
-            }
-        }
-        if workingDirectory != nil {
-            choices.append(RuntimeChoice(id: "local.workspace-files", name: "Perry workspace files"))
         }
         try Task.checkCancellation()
         return RuntimeInventory(
@@ -61,7 +50,7 @@ struct RuntimeInventoryInspector {
                     ?? "Perry's built-in agent handles open-ended work. Install Codex for delegated coding tasks.",
                 records: records
             ),
-            choices: choices, credentialFailure: credentialFailure
+            credentialFailure: credentialFailure
         )
     }
 }
@@ -206,15 +195,6 @@ struct RuntimeCLIDefinition {
                 locate: { try CLIRuntime.locateExecutable() }, verify: RuntimeExecutableVerifier.claude,
                 authenticate: { try await CLIRuntime.authenticationStatus(executable: $0) },
                 id: "cli.claude-code",
-                signInArguments: ["auth", "login"], signOutArguments: ["auth", "logout"], environment: [:]
-            ),
-            RuntimeCLIDefinition(
-                name: "OpenCode",
-                usesProviderAuthentication: true,
-                unverifiedMessage: "OpenCode is installed but does not match Perry's pinned release. Perry will not use it.",
-                locate: { try OpenCodeRuntime.locateExecutable() }, verify: RuntimeExecutableVerifier.openCode,
-                authenticate: { try await OpenCodeRuntime.authenticationStatus(executable: $0) },
-                id: "cli.opencode",
                 signInArguments: ["auth", "login"], signOutArguments: ["auth", "logout"], environment: [:]
             ),
         ]

@@ -240,34 +240,6 @@ final class SessionPanelAccessibilityUITests: XCTestCase {
         XCTAssertTrue(window.frame.contains(start.frame), "Start extends beyond the panel")
     }
 
-    func testDoSegmentRevealsBackgroundScopeRuntimeDisclosureAndRecovery() {
-        app.launchArguments += ["--perry-debug-runtimes", "none"]
-        app.launch()
-        let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 5))
-
-        let doSegment = window.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == %@", "Do")).firstMatch
-        XCTAssertTrue(doSegment.waitForExistence(timeout: 2))
-        doSegment.click()
-
-        XCTAssertTrue(window.buttons["Start"].waitForExistence(timeout: 2))
-        let backgroundToggle = window.checkBoxes["Run in background"]
-        XCTAssertTrue(backgroundToggle.waitForExistence(timeout: 2))
-        backgroundToggle.click()
-        XCTAssertTrue(window.buttons["Queue task"].waitForExistence(timeout: 2))
-
-        let disclosure = window.buttons["Runtime options"]
-        XCTAssertTrue(disclosure.waitForExistence(timeout: 2))
-        disclosure.click()
-        XCTAssertTrue(window.staticTexts["Runtime"].waitForExistence(timeout: 2))
-
-        let recovery = window.buttons["Open Runtimes settings"]
-        XCTAssertTrue(recovery.waitForExistence(timeout: 2))
-        XCTAssertTrue(recovery.isHittable)
-        XCTAssertTrue(window.frame.contains(recovery.frame), "Recovery action extends beyond the panel")
-    }
-
     func testNaturalLanguagePreselectsDoVisibly() {
         app.launch()
         let window = app.windows.firstMatch

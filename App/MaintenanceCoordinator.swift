@@ -75,7 +75,6 @@ final class MaintenanceCoordinator {
             sender.reply(toApplicationShouldTerminate: false)
             return .terminateLater
         }
-        host?.runtimes.cancelPendingRefreshes()
         host?.backgroundTasks.closeControls()
         host?.guideCoordinator.prepareForTermination()
         Task { @MainActor [self] in

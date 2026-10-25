@@ -8,7 +8,6 @@ final class RuntimeExecutableVerifierTests: XCTestCase {
         let checks: [@Sendable () async throws -> Void] = [
             { _ = try await RuntimeExecutableVerifier.codex(at: executable) },
             { _ = try await RuntimeExecutableVerifier.claude(at: executable) },
-            { _ = try await RuntimeExecutableVerifier.openCode(at: executable) },
             { _ = try await RuntimeExecutableVerifier.sha256(at: executable) },
         ]
         for check in checks {
@@ -78,38 +77,6 @@ final class RuntimeExecutableVerifierTests: XCTestCase {
             return XCTFail("expected non-Anthropic executable to fail verification")
         }
         XCTAssertTrue(reason.contains("signed by Anthropic"))
-    }
-
-    func testInstalledOpenCodeMatchesPinnedRelease() async throws {
-        let executable: URL
-        do {
-            executable = try OpenCodeRuntime.locateExecutable()
-        } catch {
-            throw XCTSkip("OpenCode is not installed")
-        }
-
-        let status = try await RuntimeExecutableVerifier.openCode(at: executable)
-
-        guard case .verified(let identity) = status else {
-            return XCTFail("Expected the installed OpenCode release to verify, got \(status)")
-        }
-        XCTAssertEqual(identity.version, OpenCodeRuntime.pinnedVersion)
-        XCTAssertEqual(identity.artifactSHA256, OpenCodeRuntime.pinnedBinarySHA256)
-    }
-
-    func testChangedOpenCodeArtifactFailsClosed() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let executable = directory.appendingPathComponent("opencode")
-        try Data("changed".utf8).write(to: executable)
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-
-        let status = try await RuntimeExecutableVerifier.openCode(at: executable)
-
-        guard case .unverified(let reason) = status else {
-            return XCTFail("Expected an unverified installation")
-        }
-        XCTAssertTrue(reason.contains("checksum"))
     }
 
     func testInstalledClaudeHasOfficialIdentityAndVersion() async throws {

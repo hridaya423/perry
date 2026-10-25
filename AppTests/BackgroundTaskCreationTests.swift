@@ -240,9 +240,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
         )
         return AppController(
             debugStorageDirectory: directory,
-            runtimeInventoryLoader: { workingDirectory in
-                try await inspector.inspect(workingDirectory: workingDirectory)
-            },
+            runtimeInventoryLoader: { try await inspector.inspect() },
             permissionSnapshotLoader: {
                 probe.incrementPermission()
                 XCTFail("background task tests must not request desktop permissions")

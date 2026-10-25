@@ -47,7 +47,6 @@ struct SessionPanelView: View {
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
-            controller.runtimes.refreshChoices()
             consumePendingPrompt()
         }
         .onChange(of: controller.pendingPromptText) { _, _ in
@@ -156,23 +155,6 @@ struct SessionPanelView: View {
                         .controlSize(.small)
                         .font(PerryTheme.Typography.panelMetadata)
                     Spacer()
-                }
-
-                if controller.runtimes.choices.count > 1 && !controller.runtimes.hasExecutionCapableChoice {
-                    HStack(spacing: PerryTheme.Spacing.control) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundStyle(PerryTheme.Colors.caution)
-                        Text("Perry needs an AI agent to take over tasks. Set one up in Models settings.")
-                            .font(PerryTheme.Typography.panelMetadata)
-                            .foregroundStyle(PerryTheme.Colors.text)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer()
-                        Button("Open Models settings") {
-                            controller.openSettings(tab: .runtimes)
-                        }
-                        .buttonStyle(InkButtonStyle(.secondary))
-                        .controlSize(.small)
-                    }
                 }
             }
 

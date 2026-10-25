@@ -51,13 +51,6 @@ struct RuntimeSetupSnapshot: Equatable {
     let records: [RuntimeSetupRecord]
 }
 
-struct RuntimeChoice: Identifiable, Equatable {
-    static let automaticID = "automatic"
-
-    let id: String
-    let name: String
-}
-
 struct RuntimeAuthenticationCommand: Equatable {
     let executable: URL
     let arguments: [String]
