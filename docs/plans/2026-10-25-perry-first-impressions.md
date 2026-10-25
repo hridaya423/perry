@@ -1050,7 +1050,7 @@ Then build, run the tests, and commit.
 The cloud card (Task 6.2) and the On this Mac card (Task 6.4) sit side by side. One selection covers both cards.
 
 **Readiness:**
-- `.direct` needs a saved profile. Today it is always "ready" (`HomeOnboardingView.swift:386`).
+- `.direct` needs a saved profile. Today it is always "ready" (`App/Onboarding/OnboardingBeats.swift:386`).
 - "Later" leaves no brain. The later beats then use typed chips, and Task 2.3 answers in state (c).
 
 Render and commit.

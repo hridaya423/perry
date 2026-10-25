@@ -13,10 +13,15 @@
 - 1.1 Done (`2d95c6a`): demo flow deleted, -477 lines. Verified by build and 638 app tests.
 - 1.2 Done (`cca6af0`): prototypes and dead package types deleted, -686 lines. Verified by PerryCore/Guide/Runtimes package tests and 638 app tests.
 - 1.3 Done (`06654f0`): runtime choices, the unreachable warning, the inventory working directory, the OpenCode CLI record and a stale UI test deleted, -391 lines. Verified by PerryRuntimes tests and 636 app tests (the one failure was a test expectation, fixed and rerun).
+- 1.4 Done (`01d81e9`): model and shortcut choices stored as enums; `Preference` decodes `RawRepresentable` values. Deviation: an unreadable saved model choice reads as `.local`, not `.chatGPT`, to keep the existing rule that a damaged setting never selects a remote provider. Verified by `BrainControllerTests`, new `PerryPreferencesTests`, and 637 app tests.
+- 1.5 Done (`4b0d4d6`): `CommandRouter.decide` split out as a pure function; `CommandRouterTests` pins 21 routes. Deviation: no `MaintenanceOrderingTests` yet. A recording fake needs about 20 controller fakes; `BackgroundTaskLifecycleOrderingTests` already pins quit and erase behaviour through the real `AppController`.
+- 1.6 Done (`857e449`..`719c4fd`): the four single-conformer host protocols are deleted (coordinators hold a weak `AppController`), plus five unused forwards. Deviation: no `Hooks` structs; each coordinator uses 11-28 members, so hooks would be a bag of callbacks. The other forwards stay because about 800 call sites read them. Verified by build after each protocol and 638 app tests.
+- 1.7 Done (`6c135be`): `HomeOnboardingView.swift` moved to `App/Onboarding/OnboardingBeats.swift`.
+- 1.8 and 1.9 deferred: the typed-plan path in `ForegroundTaskController` (`executePreparedPlan`, rehearsal marks, `handleTypedDoEvent`) serves routines only but shares session, supervisor and control state. 1.9 fix 1 reworks the same code, so both run together before Task 7.11.
 
 ## Next
 
-- 1.4 typed enum preferences, 1.5 router and maintenance table tests, 1.6 remove the AppController forwarding layer.
+- Phase 2: 2.1 `PromptAssembler` with golden tests.
 
 # Progress: designed Perry (installer, onboarding, product)
 
