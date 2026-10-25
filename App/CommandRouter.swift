@@ -2,33 +2,14 @@ import Foundation
 import PerryBrain
 import PerryGuide
 
-/// What routing a text command needs from the app: the sessions it can
-/// dispatch to and the surfaces it dismisses into. Implemented by
-/// AppController.
-@MainActor
-protocol CommandRouteHost: AnyObject {
-    var sessionController: SessionController { get }
-    var homeController: HomeController { get }
-    var talkSession: TalkSession { get }
-    var guideCoordinator: GuideSessionCoordinator { get }
-    var foreground: ForegroundTaskController { get }
-    var sessionStatus: String { get set }
-    var isUnderMaintenance: Bool { get }
-    func showPanel()
-    func dismiss()
-    func ask(question: String)
-    func startGuiding(goal: String)
-    func showEverything(goal: String, targetHint: CuaTargetHint?) async
-}
-
 /// One funnel for typed and dictated commands — the panel's submit, the
 /// voice dispatch hook, and the debug seam all end here. Parsing decides the
 /// session; the router performs it.
 @MainActor
 final class CommandRouter {
-    private weak var host: (any CommandRouteHost)?
+    private weak var host: AppController?
 
-    init(host: any CommandRouteHost) {
+    init(host: AppController) {
         self.host = host
     }
 
@@ -149,6 +130,6 @@ final class CommandRouter {
     }
 }
 
-extension AppController: CommandRouteHost {
+extension AppController {
     var isUnderMaintenance: Bool { maintenance.isUnderMaintenance }
 }
