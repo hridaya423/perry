@@ -37,16 +37,16 @@ Research behind every decision is in `docs/research/2026-10-25/` (r1–r7 extern
 
 ## 1. Decisions
 
-The defaults below apply unless the user chooses otherwise. Tasks that depend on a decision say so.
+The user answered on 2026-10-25. Rows marked "pending research" will be updated when the named report arrives.
 
-| ID | Question | Default | Evidence |
+| ID | Question | Decision | Evidence |
 |---|---|---|---|
-| D1 | Keep the typed-plan engine (`DoSupervisor`, `WorkspaceFileRuntime`, `TaskCoordinator`, about 4.5k lines)? Only routine replay reaches it. | Keep, but isolate it behind one `RoutineRunner` and stop calling it "Do". Decide retirement after the rework. | c4 #4 |
-| D2 | Keep realtime voice (about 5.3k lines with tests, BYOK only)? | Keep as a BYOK lab feature. Split the file mechanically. The new local end-of-turn detector is the default for every path. | c4 #9, r4 §3.2 |
-| D3 | Local model runtime. | No new dependency: Apple Foundation Models plus detected Ollama and LM Studio models. A bundled MLX helper (lowest idle RAM, in-app model download) needs approval for `mlx-swift-lm`, `swift-transformers` and `swift-huggingface`. It gets its own plan if approved. | r3 §4, §7 |
-| D4 | App connections in onboarding. | Show the apps the user named, with a "Set up in Settings" action. Perry-owned OAuth clients (PKCE) are a separate product decision. Gmail scopes are Google "restricted" and need a security assessment. | c2 §5 #4, r7 §7 step 6 |
-| D5 | Notch look. | r6 §7.11: black crown that fades to warm charcoal `#1A1B1D`, ivory text `#F5F2EA`, one mint accent `#7BE3BD`, state colours only on the eyes. Render mockups before code (Task 3.0). | r6 §7, r1 §B |
-| D6 | Optional voice detectors (FluidAudio Silero VAD, Smart Turn). | Not added. Use only if the built-in detector misses the fixture targets in Task 4.2. | r4 §3.3 |
+| D1 | Routine replay (the typed-plan engine, about 4.5k lines) | **Keep. It is a feature.** Isolate it (Task 1.8), and fix replay so that each step resolves against the screen it runs on (Task 1.9). Then offer it after the first goal: "Show me one thing you do often" (Task 7.11). | c4 #4, r10 §3 |
+| D2 | Realtime voice | **Keep, and widen it.** Offer OpenAI Realtime, Grok Voice, Gemini Live and GPT-Live (Beta), with ElevenLabs later. Split the file and fix the current-API defects first (Task 4.7), then add the providers (Task 4.8). "The other one" is most likely Grok Voice. The owner should confirm. | c4 #9, r9 |
+| D3 | Local models and engine | **The absolute best, not the safe default.** Search Hugging Face exhaustively, including fine-tunes such as Ornith. Pick the fastest engine per model (llama.cpp Metal, MLX or another), and apply every optimization from the owner's win-pc stack (`~/model-stack-HANDOFF.md`). New dependencies are expected; each one is named in Phase 6. | r3, r8 (pending research) |
+| D4 | App connections | **Perry-owned sign-in.** Linear, GitHub, Slack and Calendar (through EventKit) take days. Google Calendar, Notion and Microsoft take weeks, after Perry has a domain. Gmail takes months (Google restricted scopes). Hosted MCP sign-in covers vendors that support it (Tasks 6.6, 6.7). | r10 |
+| D5 | Notch look | **Mockups first, in Paper** (Paper.app is open). The user picks before code. The r6 §7.11 palette is the starting point. | r6 §7, r1 §B |
+| D6 | Optional voice detectors (FluidAudio Silero VAD, Smart Turn) | Not added unless the built-in detector misses the fixture targets in Task 4.2. | r4 §3.3 |
 
 ## 2. Rules for every task
 
@@ -199,6 +199,26 @@ The rework touches `AppController`, the voice entry paths, the notch owners and 
 2. Existing routine tests must pass unchanged.
 3. Commit with the message `Put routine replay behind RoutineRunner; Do is the agent loop only`.
 
+### Task 1.9: Make routine replay safe enough to promote (D1)
+
+**Files:**
+- `Packages/PerryGuide/Sources/PerryGuide/RoutineReplay.swift:57-124`
+- `Packages/PerryGuide/Sources/PerryGuide/LearnedRoutine.swift:282`
+- `App/RoutineLibraryController.swift:160-175`
+- `App/DemonstrationRecorder.swift`
+- `docs/capabilities.md:77-79`
+
+These fixes come from r10 §3.6, in order of effect. Each one starts with a failing test.
+
+1. **Resolve each step just before it runs.** Use a fresh observation, not the one snapshot taken before step 1. Test: a two-step routine whose second target appears only after step 1 replays without a "not found" error.
+2. **Verify each click against the screen before that step**, not against the pre-run screenshot.
+3. **Record ⌘ chords** as named key presses with their modifiers.
+4. **Keep the "sensitive" flag** across Tab and Return key presses.
+5. **Typed text defaults to "Ask me each time".** Fix `docs/capabilities.md:77-79` to match the code.
+6. **Set `tested` after a verified run**, and show "Worked N times".
+
+Commit each fix separately.
+
 ---
 
 ## Phase 2: An honest first answer
@@ -292,13 +312,13 @@ Spec source: r6 §7 (numbers), c3 §7 (defects with file and line), and r1 §B (
 
 ### Task 3.0: Mockups before code (D5)
 
-**Files:** `docs/design/2026-10-25-notch-mockups.html`, a self-contained page.
+**Files:** A Paper file ("Perry notch 2026-10-25"), exported to `docs/design/2026-10-25-notch-mockups/*.png`. If the Paper connection is down, use a self-contained HTML page with the same content, checked with `html_preview`.
 
 1. Draw three variants at 1:1 points against a menu-bar strip and a 32 pt notch:
    - Resting eyes: the r6 §7.2 capsules, a variant of Perry's pointer mascot in the wing, and the current eyes.
    - The peek at 440 pt with the D5 palette.
    - The listening state.
-2. Check the page with `html_preview`, then publish it with `html_render`. The user picks one variant.
+2. Show the variants to the user. The user picks one.
 3. Record the choice in `progress.md`. Use the D5 default only if the user does not answer.
 
 ### Task 3.1: Split notch presence out of `HomeController`
@@ -648,9 +668,59 @@ Hold-to-talk stays "release = send", with a 250 ms tail after release. A press s
 - Extract `App/Voice/DictationInsertion.swift` (`:772-980`).
 - Only move code. Run the tests and commit.
 
-### Task 4.7: Realtime file split (D2 default)
+### Task 4.7: Realtime file split and current-API fixes
 
 Move the about 25 types in `RealtimeVoiceSession.swift` into `App/Realtime/` files, with no logic change. Set realtime to use the local detector plus a manual commit (`turn_detection` stays null). Commit.
+
+Also fix these defects, each with a test that fails first (r9 §3.1):
+- Send the `OpenAI-Beta` header only in the explicit beta mode (`RealtimeVoiceSession.swift:1021-1023`). OpenAI removed the beta interface on 2026-05-12.
+- Change the default model to `gpt-realtime-2.1`, because `gpt-realtime` shuts down on 2027-01-20. Make the transcription model per provider instead of hard-coding `gpt-4o-transcribe` (`:1269`).
+- The dictation path calls `finishInputTranscribing()`, not `finishInput()` (`VoiceController.swift:583`), so the realtime model does not answer as well as the brain.
+
+### Task 4.8: Realtime providers (D2)
+
+**Files:**
+- Create `App/Realtime/RealtimeProvider.swift` with the types from r9 §3.3:
+  - `RealtimeProviderID` (openAI, grok, gemini, gptLive, elevenLabs, custom).
+  - `RealtimeProviderCapabilities` (turn control, silent commit, billing, limits).
+  - `RealtimeProvider`.
+  - `OpenAIWireDialect`, which holds the protocol differences as data.
+- Create `App/Realtime/GeminiLiveTransport.swift` and `App/Realtime/GPTLiveTransport.swift`. Both conform to the existing `RealtimeVoiceTransport` (`RealtimeVoiceSession.swift:589`).
+- Store one Keychain account per provider (`realtime.voice.<id>`).
+
+**Order of delivery:**
+
+| Order | Provider | Role | Work |
+|---|---|---|---|
+| 1 | OpenAI Realtime | Ears and mouth (the brain answers) | Exists. Fixed in Task 4.7. |
+| 2 | Grok Voice | Ears and mouth | A dialect on the OpenAI wire |
+| 3 | Gemini Live (`gemini-3.8-live`) | Conversational front | New transport |
+| 4 | GPT-Live (`gpt-live-1`), labelled Beta | Conversational front | New transport |
+| 5 | ElevenLabs | Conversational front | Later |
+
+**Roles (r9 §3.4):**
+- "Ears and mouth": the provider transcribes and speaks. Perry's brain thinks and uses the tools.
+- "Conversational front": the provider talks, and it calls one tool, `ask_perry(request)`, for anything that touches the screen, apps, drawing or tasks. Perry's brain answers, and its text returns as the tool result.
+
+**Turn-taking:** the local `EndOfTurnDetector` plus a manual commit, for every provider that allows one. GPT-Live and ElevenLabs own their own turns, so for them the detector drives only the UI and barge-in.
+
+**Connections and cost:** per-connected-minute providers (GPT-Live, ElevenLabs) connect on key-down or local speech onset, never at launch. Stream mic audio only from onset minus a 1.5 s ring buffer.
+
+**Settings, Voice page:**
+- A provider picker, with a one-line cost note per provider.
+- A key field per provider and a voice picker.
+- A turn-taking choice: "Perry decides when I'm done" or "Hold to talk only".
+- An Advanced disclosure that keeps today's raw fields.
+- Onboarding does not ask about realtime. After the first good spoken turn, Perry shows one optional card, "Make Perry's voice faster. Add a key."
+
+**Tests:**
+- Each transport maps recorded provider event fixtures to `RealtimeVoiceTransportEvent` values. Non-OpenAI transports synthesize `.responseStarted` so `RealtimeVoiceResponseTracker` keeps working.
+- No per-minute provider connects at launch.
+- Measure first audio after release with fixtures (r9 §3.8).
+
+**Dependencies:** none (WebSocket only). WebRTC and Amazon Nova Sonic are out of scope.
+
+Commit one provider per commit.
 
 ---
 
@@ -878,6 +948,65 @@ Write a separate plan: `docs/plans/<date>-mlx-local-brain.md`. It covers:
 
 Do not start that plan without the approval.
 
+### Task 6.6: Perry-owned sign-in for apps (D4)
+
+**Owner actions first** (code cannot do these):
+1. Buy Perry's domain (`PRD.md:188`) and publish a home page and a privacy page on it.
+2. Register Perry's apps with Linear, GitHub (an OAuth App using device flow), Slack (PKCE enabled) and Google (a Desktop client).
+3. Put the client IDs in the gitignored build settings, the same way `SUFeedURL` is injected (`project.yml:72-75`).
+
+**Files:** `App/RemoteIntegrations.swift` (`:784-860` catalog, `:892` redirect, `:973` stored secret, `:1161-1314` OAuth), `App/IntegrationConnections.swift:21-37`, `App/IntegrationRow.swift:90-185`.
+
+**Changes (r10 §2.2):**
+- Each definition carries a bundled client configuration. "Use my own OAuth app" remains as a secondary path.
+- Redirect kind per provider:
+
+| Kind | Mechanism | Providers |
+|---|---|---|
+| Custom scheme | `ASWebAuthenticationSession` | Slack, Linear |
+| Loopback | short-lived `NWListener` on `127.0.0.1` | Google (required), GitHub, Microsoft |
+| Device flow | no redirect | GitHub |
+
+- Use a non-ephemeral browser session, so an existing Google or Slack login works ("click, approve", not "type password").
+- Request only read scopes at first connect. Remove `chat:write` (`:815`) and Linear `write` (`:830`) from first consent. Ask for write scopes when the user turns on writes.
+- Split `google-workspace` into Calendar, Drive (`drive.file`) and Gmail definitions, so Calendar can ship while Gmail waits for review.
+- Revoke the grant at the provider on disconnect.
+- Add Calendar through macOS EventKit (no OAuth, a system permission prompt).
+
+**Waves (r10 §1.3):**
+
+| Wave | Providers | Wait |
+|---|---|---|
+| A, days | Linear, GitHub, Calendar through EventKit; Slack with its rate-limit caveat | none |
+| B, weeks | Google Calendar and `drive.file`, Notion (its secret ships in the binary), Microsoft | domain, then review |
+| C, months | Gmail read, full Drive read | Google restricted-scope verification and probably a CASA assessment |
+
+Until wave C, Gmail uses a guided "use my own app" wizard.
+
+**Tests:**
+- Each redirect kind with a fake browser and a fake listener.
+- The loopback port is accepted at token exchange (`:1309-1314`).
+- First consent requests only read scopes.
+
+Commit one provider wave per commit.
+
+### Task 6.7: Sign in to hosted MCP servers
+
+**Files:** `App/CustomConnectors.swift:15-20,193-194` (static bearer token only today), `Packages/PerryBrain/Sources/PerryBrain/MCP/*`.
+
+**Changes:** implement MCP authorization:
+- Protected-resource metadata discovery (RFC 9728).
+- PKCE.
+- The `resource` parameter (RFC 8707).
+- Client ID Metadata Documents, with dynamic client registration as the fallback.
+- An `iss` check (RFC 9207).
+
+**Result:** one-click connect to any vendor MCP server that supports it (Linear supports it today), with no Perry registration and no secret in the binary. Each MCP tool still passes Perry's approval tiers (`MCPConnector.swift:24-36`).
+
+**Test:** a local fake MCP authorization server with a recorded discovery, registration and token exchange.
+
+**Commit** the MCP sign-in.
+
 ---
 
 ## Phase 7: Onboarding rebuild
@@ -969,13 +1098,14 @@ Render and commit.
    - Skipping every question leaves memory off.
 2. Implement, render and commit.
 
-### Task 7.8: Apps (D4 default)
+### Task 7.8: Apps (D4)
 
-- Show only the apps the user named, plus Google if mail or calendar came up.
-- Each tile has a one-line description and "Set up in Settings". The action opens Settings, then Apps. Footer: "Skip".
-- If D4 approves Perry OAuth clients, the tile instead uses `IntegrationConnections.connect`, and a separate plan covers the client registration.
-
-Render and commit.
+- Show the apps the user named in the interview. Add Calendar if meetings or a calendar came up.
+- Each tile has a one-line description and one "Connect" button (Tasks 6.6 and 6.7). Copy: "Read-only to start. I ask before I change anything."
+- Apps that are not available yet show "Coming soon", or "Use my own app" for Gmail. Never show a developer form here.
+- At most one connect is suggested. The rest say "Later in Settings > Apps". The footer is "Skip".
+- Test: the tile list is built from interview apps. Wave C apps never show a "Connect" button.
+- Render and commit.
 
 ### Task 7.9: First goal
 
@@ -994,6 +1124,17 @@ Render and commit.
 **Test:** a goal that names an installed app routes to Guide. A topic routes to Ask. A relaunch resumes at `firstGoal` with the goal intact.
 
 Render and commit.
+
+### Task 7.11: The routine offer after the first goal (D1)
+
+- When the first Do task that used a GUI app completes, the notch shows a card. Title: "Show me one thing you do often." Body: "Do it once while I watch. I will write down the steps. You check them before I save anything." Buttons: "Show me" and "Not now".
+- Before recording, show the small print "Works best for steps inside one app window. I cannot see passwords." If Input Monitoring is missing, show the drag helper.
+- While recording, the notch shows a red dot, a step count and "Done". A ring marks each control Perry recognized. Pressing Esc twice cancels the recording and saves nothing.
+- Review heading: "Check what I learned." A step Perry could not recognize shows as "You do this one".
+- The first run is a rehearsal with the step list visible. Success: "Done. That worked. I will remember it." Failure: name the step, for example "I stopped at step 3. I could not find 'Export'."
+- Do not show this card until Task 1.9 is done. Use the copy in r10 §3.8, and follow its honesty rules.
+- Test: the card appears once, after the first GUI Do task, and never during setup.
+- Render and commit.
 
 ### Task 7.10: Phase verification
 
