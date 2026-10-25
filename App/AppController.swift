@@ -16,14 +16,12 @@ import PerryRuntimes
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private var hotkey: HotkeyController?
-    // Subsystem forwards — the composition graph lives in `subsystems`;
-    // these keep existing call sites and host-protocol conformances working.
+    // Subsystem forwards; the composition graph lives in `subsystems`.
     var overlayState: PerryCursorState { subsystems.overlayState }
     var brain: BrainController { subsystems.brain }
     var foregroundWorkerLease: ForegroundWorkerLease { subsystems.foregroundWorkerLease }
     var toolHost: PerryToolHost { subsystems.toolHost }
     var perryStore: PerryStore? { subsystems.perryStore }
-    var integrationBackend: AppIntegrationBackend { subsystems.integrationBackend }
     var suggestionController: SuggestionController { subsystems.suggestionController }
     var customConnectors: CustomConnectors { subsystems.customConnectors }
     var perryScheduler: PerrySchedulerController? { subsystems.perryScheduler }
@@ -55,10 +53,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         get { subsystems.backgroundTaskCoordinator }
         set { subsystems.backgroundTaskCoordinator = newValue }
     }
-    var backgroundTaskRunner: ResumableTaskRunner { subsystems.backgroundTaskRunner }
     var notchStatus: NotchStatusController { subsystems.notchStatus }
-    var homeThreadStore: ThreadStore { subsystems.homeThreadStore }
-    var toolConsent: ToolConsentStore { subsystems.toolConsent }
     var agentCoordinator: AgentCoordinator {
         get { subsystems.agentCoordinator }
         set { subsystems.agentCoordinator = newValue }
@@ -69,7 +64,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
     var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
     var backgroundTasks: BackgroundTaskController { subsystems.backgroundTasks }
-    var erasurePaths: PerryErasurePaths { subsystems.erasurePaths }
     var completeErasure: CompleteErasureCoordinator { subsystems.completeErasure }
     private lazy var subsystems = AppSubsystems(app: self)
     lazy var maintenance = MaintenanceCoordinator(host: self)
