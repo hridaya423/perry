@@ -1,9 +1,22 @@
 # Current: first-impressions rework (2026-10-25)
 
-- Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r7, c1-c4).
+- Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r10, c1-c4; r8 still running).
 - Trigger: the user installed the 3344b57 DMG and listed 16 first-impression defects (plan section 0).
-- Status: plan written, not started. Waiting on decisions D1-D6 (plan section 1); defaults apply if unanswered.
-- Next: Task 0.1 (test Mac readiness), then Phase 1 deletions.
+- Decisions D1-D6 answered 2026-10-25 (plan section 1). D3 waits for r8.
+
+## Task log
+
+- 0.1 Test Mac: **live drills blocked**: `mac-tailscale` has Xcode 16.3 (needs 26+). Disk is fine now (63 GB free), macOS 27.0.1. Local builds and unit tests continue.
+- CI baseline at 9249f82+: green. 640 app tests (8 skipped), all package suites pass.
+- 0.2 Done (`c7a5228`): 49 baseline renders in `docs/evidence/first-impressions/before/`, each opened and annotated in its README.
+- 0.3 Done (`40ec19e`): stale Metal Toolchain note removed from `AGENTS.md`.
+- 1.1 Done (`2d95c6a`): demo flow deleted, -477 lines. Verified by build and 638 app tests.
+- 1.2 Done (`cca6af0`): prototypes and dead package types deleted, -686 lines. Verified by PerryCore/Guide/Runtimes package tests and 638 app tests.
+- 1.3 Done (`06654f0`): runtime choices, the unreachable warning, the inventory working directory, the OpenCode CLI record and a stale UI test deleted, -391 lines. Verified by PerryRuntimes tests and 636 app tests (the one failure was a test expectation, fixed and rerun).
+
+## Next
+
+- 1.4 typed enum preferences, 1.5 router and maintenance table tests, 1.6 remove the AppController forwarding layer.
 
 # Progress: designed Perry (installer, onboarding, product)
 
