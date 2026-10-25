@@ -2,38 +2,18 @@ import AppKit
 import PerryGuide
 import PerryOverlay
 
-/// What a guide or ask session reaches for beyond its own state — the
-/// overlay, cursor state, spatial selection, voice, the environment probe,
-/// and the foreground runner. Implemented by AppController; the member list
-/// is a session's documented surface area into the app.
-@MainActor
-protocol GuideBridgeHost: AnyObject {
-    var overlayManager: OverlayWindowManager { get }
-    var overlayState: PerryCursorState { get }
-    var spatial: SpatialSelectionController { get }
-    var voice: VoiceController { get }
-    var probe: EnvironmentProbe { get }
-    var foreground: ForegroundTaskController { get }
-    var sessionPanelFrame: CGRect? { get }
-    var intentCardFrame: CGRect? { get }
-    var sessionStatus: String { get set }
-    func clearSessionSurfaces()
-    func presentFailure(_ message: String, recovery: FailureRecovery?)
-    func clearFailure()
-}
-
 /// GuideSessionCoordinator and TalkSession see the app only through
 /// GuideSessionOutput/GuideSessionContext; this bridge forwards those calls
 /// to the extracted owners, so neither session needs the whole controller.
 @MainActor
 final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
-    private weak var host: (any GuideBridgeHost)?
+    private weak var host: AppController?
 
     private var guideOverlay: GuideOverlayPresenter? {
         host.map { GuideOverlayPresenter(overlayState: $0.overlayState) }
     }
 
-    init(host: any GuideBridgeHost) {
+    init(host: AppController) {
         self.host = host
     }
 
@@ -133,7 +113,7 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     }
 }
 
-extension AppController: GuideBridgeHost {
+extension AppController {
     var sessionPanelFrame: CGRect? { sessionPanel.frame }
     var intentCardFrame: CGRect? { intentCards.frame }
 
