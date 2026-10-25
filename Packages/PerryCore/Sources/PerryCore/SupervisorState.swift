@@ -113,21 +113,3 @@ public struct SupervisorStateMachine: Sendable {
         state = .idle
     }
 }
-
-public actor AsyncSupervisorStateMachine {
-    private var machine: SupervisorStateMachine
-
-    public init(initial: SupervisorState = .idle) {
-        machine = SupervisorStateMachine(initial: initial)
-    }
-
-    public var state: SupervisorState { machine.state }
-
-    public func send(_ event: SupervisorEvent) throws -> SupervisorState {
-        try machine.send(event)
-    }
-
-    public func reset() {
-        machine.reset()
-    }
-}

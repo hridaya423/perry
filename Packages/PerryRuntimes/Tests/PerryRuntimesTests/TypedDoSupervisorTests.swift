@@ -426,7 +426,7 @@ private actor RehearsalRecordingConfirmer: Confirmer {
     }
 }
 
-private actor RecordingTypedActionExecutor: TypedActionExecutor {
+private actor RecordingTypedActionExecutor: ExecutableActionExecutor {
     private(set) var received: ApprovedExecutableAction?
 
     func execute(_ approvedAction: ApprovedExecutableAction) async throws -> ActionExecutionResult {
@@ -487,7 +487,7 @@ private actor TypedEventRecorder {
     }
 }
 
-private actor CancellableTypedActionExecutor: TypedActionExecutor {
+private actor CancellableTypedActionExecutor: ExecutableActionExecutor {
     private(set) var started = false
     private(set) var cancellationObserved = false
     private var startedContinuation: CheckedContinuation<Void, Never>?

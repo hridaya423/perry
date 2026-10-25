@@ -37,8 +37,6 @@ public protocol ExecutableActionExecutor: Sendable {
     func execute(_ approvedAction: ApprovedExecutableAction) async throws -> ActionExecutionResult
 }
 
-public typealias TypedActionExecutor = ExecutableActionExecutor
-
 public struct CLIUnavailableError: Error, CustomStringConvertible, LocalizedError {
     public let searchedPaths: [String]
     public var errorDescription: String? { description }

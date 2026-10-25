@@ -237,7 +237,7 @@ public actor DoSupervisor {
         plan: ExecutionPlan,
         context: ScreenContext = .empty,
         targetWindow: WindowContext? = nil,
-        typedExecutor: any TypedActionExecutor
+        typedExecutor: any ExecutableActionExecutor
     ) async -> DoOutcome {
         guard await beginRun() else {
             return .blocked(reason: "session machine refused start")
@@ -287,7 +287,7 @@ public actor DoSupervisor {
         _ plan: ExecutionPlan,
         context: ScreenContext,
         targetWindow: WindowContext?,
-        typedExecutor: any TypedActionExecutor
+        typedExecutor: any ExecutableActionExecutor
     ) async -> DoOutcome {
         guard !cancelRequested else {
             await stop(reason: "user cancelled before the task started")
@@ -580,7 +580,7 @@ public actor DoSupervisor {
     private func perform(
         _ action: ExecutableAction,
         approvedAction: ApprovedExecutableAction,
-        typedExecutor: any TypedActionExecutor,
+        typedExecutor: any ExecutableActionExecutor,
         context: ScreenContext,
         targetWindow: WindowContext?,
         stepsRun: inout Int
@@ -666,7 +666,7 @@ public actor DoSupervisor {
 
     private func executeWithTimeout(
         _ approvedAction: ApprovedExecutableAction,
-        executor: any TypedActionExecutor
+        executor: any ExecutableActionExecutor
     ) async throws -> ActionExecutionResult {
         let execution = Task<ActionExecutionResult, Error> {
             try await executor.execute(approvedAction)

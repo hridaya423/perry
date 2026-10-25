@@ -137,8 +137,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         }
         fixtures.submenu = fixtureMenu
         menu.addItem(fixtures)
-        menu.addItem(withTitle: "Invocation prototypes", action: #selector(prototypeAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Cursor prototypes", action: #selector(cursorPrototypeAction), keyEquivalent: "").target = self
 #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: "History", action: #selector(historyAction), keyEquivalent: "").target = self
@@ -300,8 +298,6 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         host?.applyDebugStateFixture(fixture)
     }
 
-    @objc private func prototypeAction() { DebugPrototypeWindow.show() }
-    @objc private func cursorPrototypeAction() { DebugCursorGalleryWindow.show() }
 #endif
 }
 

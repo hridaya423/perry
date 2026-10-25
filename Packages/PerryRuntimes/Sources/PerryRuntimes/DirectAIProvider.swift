@@ -37,15 +37,3 @@ public enum DirectAIProvider: String, CaseIterable, Codable, Sendable {
         self = provider
     }
 }
-
-public struct DirectProviderConfiguration: Equatable, Sendable {
-    public let provider: DirectAIProvider
-    public let model: String
-    public let baseURL: URL
-
-    public init(provider: DirectAIProvider, model: String, baseURL: URL? = nil) {
-        self.provider = provider
-        self.model = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.baseURL = baseURL ?? provider.defaultBaseURL
-    }
-}

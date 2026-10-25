@@ -167,14 +167,6 @@ extension AppController {
             DispatchQueue.main.async { [weak self] in
                 self?.debugShowHistoryFixture()
             }
-        } else if debugSurface == .prototypes {
-            DispatchQueue.main.async {
-                DebugPrototypeWindow.show()
-            }
-        } else if debugSurface == .cursors {
-            DispatchQueue.main.async {
-                DebugCursorGalleryWindow.show()
-            }
         } else if debugSurface == .intentCard {
             DispatchQueue.main.async {
                 IntentCardWindow(card: PerryDebugLaunchSurface.intentCardFixture, allowsStepThrough: true) { _ in }.show()

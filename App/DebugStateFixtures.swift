@@ -204,8 +204,6 @@ enum PerryDebugLaunchSurface: String, Equatable {
     case activity
     case guideControls = "guide-controls"
     case history
-    case prototypes
-    case cursors
     case notch
     case intentCard = "intent-card"
     case backgroundTasksStorageError = "background-tasks-storage-error"

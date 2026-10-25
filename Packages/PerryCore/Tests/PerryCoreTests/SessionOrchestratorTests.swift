@@ -132,60 +132,6 @@ final class SupervisorStateMachineTests: XCTestCase {
         XCTAssertEqual(machine.state, .executing(.awaitingApproval))
     }
 
-    func testAsyncWrapperMatchesSyncBehavior() async throws {
-        let orchestrator = AsyncSupervisorStateMachine()
-        var current = await orchestrator.state
-        XCTAssertEqual(current, .idle)
-        _ = try await orchestrator.send(.wake)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .listening)
-        _ = try await orchestrator.send(.startDoing)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .executing(.running))
-        _ = try await orchestrator.send(.requestConfirmation)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .executing(.awaitingApproval))
-        _ = try await orchestrator.send(.denyAction)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .stopped)
-        _ = try await orchestrator.send(.dismiss)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .idle)
-
-        _ = try await orchestrator.send(.wake)
-        _ = try await orchestrator.send(.startGuiding)
-        _ = try await orchestrator.send(.taskFinished)
-        current = await orchestrator.state
-        XCTAssertEqual(current, .listening)
-        await orchestrator.reset()
-        current = await orchestrator.state
-        XCTAssertEqual(current, .idle)
-    }
-
-    func testConcurrentWakeHasExactlyOneWinner() async {
-        let orchestrator = AsyncSupervisorStateMachine()
-        let winners = await withTaskGroup(of: Bool.self) { group -> Int in
-            for _ in 0..<50 {
-                group.addTask {
-                    do {
-                        _ = try await orchestrator.send(.wake)
-                        return true
-                    } catch {
-                        return false
-                    }
-                }
-            }
-            var successes = 0
-            for await won in group {
-                if won { successes += 1 }
-            }
-            return successes
-        }
-        XCTAssertEqual(winners, 1)
-        let finalState = await orchestrator.state
-        XCTAssertEqual(finalState, .listening)
-    }
-
     func testStartingWindowCanBeCancelledBeforeExecution() throws {
         var machine = SupervisorStateMachine(initial: .starting)
 
