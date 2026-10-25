@@ -211,6 +211,6 @@ final class OnboardingDirector: ObservableObject {
     }
 
     static var dictationShortcut: PushToTalkShortcut {
-        PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .functionHold
+        PerryPreferences.pttShortcut
     }
 }

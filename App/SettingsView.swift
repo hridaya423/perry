@@ -33,8 +33,8 @@ struct SettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var tabNamespace
     @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
-    @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcutRaw = WakeShortcut.optionCommandP.rawValue
-    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcutRaw = PushToTalkShortcut.functionHold.rawValue
+    @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcut = WakeShortcut.optionCommandP
+    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcut = PushToTalkShortcut.functionHold
     @State private var pttSystemConflict = false
     @State private var opensAtLogin = LoginItem.isEnabled
     @AppStorage(PerryPreferences.$speechOutputEnabled.key) private var speechOutputEnabled = true
@@ -166,30 +166,28 @@ struct SettingsView: View {
                     .onChange(of: wakeWordEnabled) { _, value in
                         controller.voice.updateWakeWordEnabled(value)
                     }
-                Picker("Wake shortcut", selection: $wakeShortcutRaw) {
+                Picker("Wake shortcut", selection: $wakeShortcut) {
                     ForEach(WakeShortcut.allCases) { shortcut in
-                        Text(shortcut.title).tag(shortcut.rawValue)
+                        Text(shortcut.title).tag(shortcut)
                     }
                 }
-                .onChange(of: wakeShortcutRaw) { _, value in
-                    guard let shortcut = WakeShortcut(rawValue: value) else { return }
+                .onChange(of: wakeShortcut) { _, shortcut in
                     do {
                         try controller.updateWakeShortcut(shortcut)
                     } catch {
-                        wakeShortcutRaw = PerryPreferences.wakeShortcut
+                        wakeShortcut = PerryPreferences.wakeShortcut
                         settingsError = error.localizedDescription
                     }
                 }
-                Picker(selection: $pttShortcutRaw) {
+                Picker(selection: $pttShortcut) {
                     ForEach(PushToTalkShortcut.allCases) { shortcut in
-                        Text(shortcut.title).tag(shortcut.rawValue)
+                        Text(shortcut.title).tag(shortcut)
                     }
                 } label: {
                     Text("Dictation")
                     Text("Hold it in any app to type by voice. Double-tap Caps Lock for hands-free.").settingNote()
                 }
-                .onChange(of: pttShortcutRaw) { _, value in
-                    guard let shortcut = PushToTalkShortcut(rawValue: value) else { return }
+                .onChange(of: pttShortcut) { _, shortcut in
                     controller.voice.updatePushToTalkShortcut(shortcut)
                     refreshPttConflict()
                 }
@@ -280,7 +278,7 @@ struct SettingsView: View {
     }
 
     private func refreshPttConflict() {
-        guard let chord = PushToTalkShortcut(rawValue: pttShortcutRaw)?.symbolicChord else {
+        guard let chord = pttShortcut.symbolicChord else {
             pttSystemConflict = false
             return
         }

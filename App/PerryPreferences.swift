@@ -5,17 +5,27 @@ import PerryOverlay
 struct Preference<Value> {
     let key: String
     let fallback: Value
+    private let decode: (Any) -> Value?
+    private let encode: (Value) -> Any
     init(wrappedValue: Value, _ key: String) {
         self.key = key
         self.fallback = wrappedValue
+        decode = { $0 as? Value }
+        encode = { $0 }
+    }
+    init(wrappedValue: Value, _ key: String) where Value: RawRepresentable {
+        self.key = key
+        self.fallback = wrappedValue
+        decode = { ($0 as? Value.RawValue).flatMap(Value.init(rawValue:)) }
+        encode = { $0.rawValue }
     }
     var wrappedValue: Value {
-        get { UserDefaults.standard.object(forKey: key) as? Value ?? fallback }
+        get { UserDefaults.standard.object(forKey: key).flatMap(decode) ?? fallback }
         nonmutating set {
             if let optional = newValue as? AnyOptionalPreference, optional.isNil {
                 UserDefaults.standard.removeObject(forKey: key)
             } else {
-                UserDefaults.standard.set(newValue, forKey: key)
+                UserDefaults.standard.set(encode(newValue), forKey: key)
             }
         }
     }
@@ -48,8 +58,8 @@ enum PerryPreferences {
     // MARK: Invocation
 
     @Preference("perry.wakeWord.enabled") static var wakeWordEnabled = false
-    @Preference("perry.wakeShortcut") static var wakeShortcut = "optionCommandP"
-    @Preference("perry.ptt.shortcut") static var pttShortcut = "functionHold"
+    @Preference("perry.wakeShortcut") static var wakeShortcut = WakeShortcut.optionCommandP
+    @Preference("perry.ptt.shortcut") static var pttShortcut = PushToTalkShortcut.functionHold
 
     // MARK: Brain & providers
 

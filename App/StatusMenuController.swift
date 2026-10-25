@@ -80,7 +80,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        let shortcut = WakeShortcut(rawValue: PerryPreferences.wakeShortcut) ?? .optionCommandP
+        let shortcut = PerryPreferences.wakeShortcut
         menu.addItem(withTitle: "Wake Perry (\(shortcut.title))", action: #selector(wakeAction), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Ask Perry…", action: #selector(askPromptAction), keyEquivalent: "").target = self

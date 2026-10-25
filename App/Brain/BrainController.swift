@@ -22,14 +22,19 @@ final class BrainController: ObservableObject {
         }
     }
 
-    @Published private var selectedModel: String
-    var modelChoice: String {
+    @Published private var selectedModel: ModelChoice
+    var modelChoice: ModelChoice {
         get { selectedModel }
         set {
             guard acceptsSetup else { return }
             selectedModel = newValue
-            defaults.set(newValue, forKey: PerryPreferences.$modelChoice.key)
+            defaults.set(newValue.rawValue, forKey: PerryPreferences.$modelChoice.key)
         }
+    }
+
+    private static func savedChoice(in defaults: UserDefaults) -> ModelChoice {
+        guard let raw = defaults.string(forKey: PerryPreferences.$modelChoice.key) else { return .chatGPT }
+        return ModelChoice(rawValue: raw) ?? .local
     }
     @Published private(set) var isSigningIn = false
     @Published private(set) var signInError: String?
@@ -106,7 +111,7 @@ final class BrainController: ObservableObject {
         self.defaults = defaults
         self.profileStore = ModelProfileStore(defaults: defaults)
         self.discoverLocalModels = discoverLocalModels
-        self.selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
+        self.selectedModel = Self.savedChoice(in: defaults)
         reloadProfiles()
         acpAgent = defaults.data(forKey: PerryPreferences.$acpAgent.key).flatMap { try? JSONDecoder().decode(AcpAgent.self, from: $0) }
     }
@@ -115,7 +120,7 @@ final class BrainController: ObservableObject {
         guard acceptsSetup, let data = try? JSONEncoder().encode(agent) else { return }
         defaults.set(data, forKey: PerryPreferences.$acpAgent.key)
         acpAgent = agent
-        modelChoice = ModelChoice.acp.rawValue
+        modelChoice = .acp
     }
 
     var acpAgentAvailable: Bool { acpAgent?.executable() != nil }
@@ -160,7 +165,7 @@ final class BrainController: ObservableObject {
         guard acceptsSetup, profiles.contains(where: { $0.id == id }) else { return }
         profileStore.activeID = id
         activeProfileID = id
-        modelChoice = ModelChoice.direct.rawValue
+        modelChoice = .direct
     }
 
     func hasCredential(_ profile: ModelProfile) -> Bool {
@@ -222,7 +227,7 @@ final class BrainController: ObservableObject {
             if case .checked(let model, _) = state { return localModels.contains(model) }
             return true
         }
-        if modelChoice == ModelChoice.chatGPT.rawValue {
+        if modelChoice == .chatGPT {
             let status = await codex?.account.status() ?? .unknown
             guard acceptsSetup, setupGeneration == generation, !Task.isCancelled else { return }
             account = status
@@ -263,7 +268,7 @@ final class BrainController: ObservableObject {
     }
 
     func reloadPreferences() {
-        selectedModel = defaults.string(forKey: PerryPreferences.$modelChoice.key) ?? ModelChoice.chatGPT.rawValue
+        selectedModel = Self.savedChoice(in: defaults)
         reloadProfiles()
     }
 
@@ -285,7 +290,7 @@ final class BrainController: ObservableObject {
         guard acceptsSetup,
               defaults.string(forKey: PerryPreferences.$modelChoice.key) == nil,
               onDeviceRouteAvailable else { return }
-        modelChoice = ModelChoice.local.rawValue
+        modelChoice = .local
     }
 
     func reopenAdmission() {
@@ -342,9 +347,7 @@ final class BrainController: ObservableObject {
     }
 
     func route(_ requirement: RouteRequirement) async throws -> RouteDecision {
-        guard let choice = ModelChoice(rawValue: modelChoice) else {
-            throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Choose a conversation model in Settings. The saved choice is unavailable.")
-        }
+        let choice = modelChoice
         var requirement = requirement
         switch choice {
         case .chatGPT:

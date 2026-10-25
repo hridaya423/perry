@@ -387,7 +387,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: Wake / dismiss
 
     private func installHotkey() {
-        let shortcut = WakeShortcut(rawValue: PerryPreferences.wakeShortcut) ?? .optionCommandP
+        let shortcut = PerryPreferences.wakeShortcut
         do {
             hotkey = try HotkeyController(modifiers: shortcut.modifiers, keyCode: shortcut.keyCode) { [weak self] in
                 Task { @MainActor in self?.toggleSession() }
@@ -517,7 +517,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 Task { @MainActor in self?.toggleSession() }
             }
         }
-        PerryPreferences.wakeShortcut = shortcut.rawValue
+        PerryPreferences.wakeShortcut = shortcut
         sessionStatus = "Wake shortcut changed to \(shortcut.title)."
     }
 

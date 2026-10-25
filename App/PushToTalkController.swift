@@ -85,7 +85,7 @@ final class PushToTalkController {
     private static let modifierHoldGrace: TimeInterval = 0.18
 
     init(
-        shortcut: PushToTalkShortcut = PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .functionHold,
+        shortcut: PushToTalkShortcut = PerryPreferences.pttShortcut,
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void
     ) {

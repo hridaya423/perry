@@ -375,7 +375,7 @@ private struct BrainChoiceBeat: View {
     @ObservedObject var brain: BrainController
     let openSettings: () -> Void
 
-    private var choice: BrainController.ModelChoice { BrainController.ModelChoice(rawValue: brain.modelChoice) ?? .chatGPT }
+    private var choice: BrainController.ModelChoice { brain.modelChoice }
     private var signedIn: Bool { if case .signedIn = brain.account { return true }; return false }
     private var ready: Bool {
         switch choice {
@@ -440,7 +440,7 @@ private struct BrainChoiceBeat: View {
 
     private func option(_ value: BrainController.ModelChoice, title: String, detail: String, icon: String) -> some View {
         let selected = choice == value
-        return Button { brain.modelChoice = value.rawValue } label: {
+        return Button { brain.modelChoice = value } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 15))
@@ -525,7 +525,7 @@ private struct FinaleBeat: View {
     }
 
     private var items: [FinaleCard.Item] {
-        let choice = brain.flatMap { BrainController.ModelChoice(rawValue: $0.modelChoice) }
+        let choice = brain?.modelChoice
         var signedIn = false
         if case .signedIn = brain?.account { signedIn = true }
         let answers: FinaleCard.Item = switch choice {

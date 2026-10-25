@@ -27,15 +27,15 @@ final class BrainControllerTests: XCTestCase {
     func testErasedModelPreferenceReloadsWithoutRecreatingStoredData() async throws {
         let defaults = try isolatedDefaults()
         let brain = BrainController(defaults: defaults, codexFactory: { nil })
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         brain.closeAdmission()
-        brain.modelChoice = BrainController.ModelChoice.direct.rawValue
+        brain.modelChoice = .direct
         XCTAssertEqual(defaults.string(forKey: PerryPreferences.$modelChoice.key), BrainController.ModelChoice.local.rawValue)
         await brain.stopSetup()
         defaults.removeObject(forKey: PerryPreferences.$modelChoice.key)
         brain.reloadPreferences()
         brain.reopenAdmission()
-        XCTAssertEqual(brain.modelChoice, BrainController.ModelChoice.chatGPT.rawValue)
+        XCTAssertEqual(brain.modelChoice, .chatGPT)
         XCTAssertNil(defaults.object(forKey: PerryPreferences.$modelChoice.key))
     }
 
@@ -56,7 +56,7 @@ final class BrainControllerTests: XCTestCase {
                 return [model]
             }, codexFactory: { nil }
         )
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         let oldRouter = try brain.router()
         let refresh = Task { await brain.refresh() }
         await fulfillment(of: [started], timeout: 2)
@@ -169,7 +169,7 @@ final class BrainControllerTests: XCTestCase {
             readCredential: { $0 == profile.keyAccount ? "fixture-key" : nil },
             transport: transport, defaults: try defaults(with: profile)
         )
-        brain.modelChoice = BrainController.ModelChoice.direct.rawValue
+        brain.modelChoice = .direct
         let planner = brain.makeGuidePlanner(storageDirectory: nil) { _, request in
             var request = request
             request.messages.insert(.assistant(text: "Prior conversation: Orchid document", toolCalls: []), at: 0)
@@ -206,7 +206,7 @@ final class BrainControllerTests: XCTestCase {
                 readCredential: { [account = customProfile.keyAccount] in $0 == account ? "fixture-key" : nil },
                 transport: GuideBrainTransport(responses: [response]), defaults: try defaults(with: customProfile)
             )
-            brain.modelChoice = BrainController.ModelChoice.direct.rawValue
+            brain.modelChoice = .direct
             do {
                 _ = try await brain.makeGuidePlanner(storageDirectory: nil).nextStep(goal: "Save", observation: guideObservation(), context: .empty)
                 XCTFail("Incomplete or ungrounded guidance must fail")
@@ -221,7 +221,7 @@ final class BrainControllerTests: XCTestCase {
             XCTFail("Local Guide must not read remote credentials")
             return nil
         }, defaults: try isolatedDefaults())
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         do {
             _ = try await brain.makeGuidePlanner(storageDirectory: nil).nextStep(goal: "Save", observation: guideObservation(), context: .empty)
             XCTFail("No verified local vision model is available")
@@ -252,7 +252,7 @@ final class BrainControllerTests: XCTestCase {
             readCredential: { _ in nil }, defaults: try isolatedDefaults(),
             discoverLocalModels: { [.init(server: .ollama, baseURL: URL(string: "http://127.0.0.1:11434")!, name: "vision-model")] }
         )
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         await brain.refresh()
         XCTAssertEqual(brain.localModels.count, 1)
         do {
@@ -269,7 +269,7 @@ final class BrainControllerTests: XCTestCase {
             readCredential: { _ in nil }, transport: CapabilityTestTransport(), defaults: try isolatedDefaults(),
             discoverLocalModels: { [.init(server: .ollama, baseURL: URL(string: "http://127.0.0.1:11434")!, name: "test-model", revision: revision)] }
         )
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         await brain.refresh()
         let model = try XCTUnwrap(brain.localModels.first)
         brain.checkLocalModel(model)
@@ -312,7 +312,7 @@ final class BrainControllerTests: XCTestCase {
             XCTFail("Local selection must not read remote credentials")
             return "unused-key"
         }, defaults: defaults)
-        brain.modelChoice = BrainController.ModelChoice.local.rawValue
+        brain.modelChoice = .local
         do {
             let decision = try await brain.route(RouteRequirement(capabilities: [.tools, .vision], tier: .deep))
             XCTAssertTrue(decision.provider.capabilities.contains(.local))
@@ -320,15 +320,10 @@ final class BrainControllerTests: XCTestCase {
             XCTAssertEqual(error.kind, .notConfigured)
         }
         let restored = BrainController(defaults: defaults)
-        XCTAssertEqual(restored.modelChoice, BrainController.ModelChoice.local.rawValue)
+        XCTAssertEqual(restored.modelChoice, .local)
         defaults.set("unknown-choice", forKey: PerryPreferences.$modelChoice.key)
         let unreadableChoice = BrainController(defaults: defaults)
-        do {
-            _ = try await unreadableChoice.route(RouteRequirement())
-            XCTFail("An unrecognized setting must not select a remote provider")
-        } catch let error as ModelProviderError {
-            XCTAssertEqual(error.provider, "settings")
-        }
+        XCTAssertEqual(unreadableChoice.modelChoice, .local, "An unrecognized setting must not select a remote provider")
     }
 
     func testCustomProviderReceivesOnlyItsConfiguredEndpointAndModel() async throws {
@@ -339,7 +334,7 @@ final class BrainControllerTests: XCTestCase {
             readCredential: { [profile] in $0 == profile.keyAccount ? "custom-test-key" : nil },
             transport: transport, defaults: try defaults(with: profile)
         )
-        brain.modelChoice = BrainController.ModelChoice.direct.rawValue
+        brain.modelChoice = .direct
         let decision = try await brain.route(RouteRequirement(capabilities: [.vision, .tools]))
         XCTAssertEqual(decision.provider.id, "custom")
         do {

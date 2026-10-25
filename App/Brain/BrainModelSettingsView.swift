@@ -6,17 +6,14 @@ struct BrainModelSettingsView: View {
 
     var body: some View {
         Picker("Conversations", selection: $brain.modelChoice) {
-            ForEach(BrainController.ModelChoice.allCases, id: \.rawValue) { choice in
-                Text(choice.title).tag(choice.rawValue)
-            }
-            if BrainController.ModelChoice(rawValue: brain.modelChoice) == nil {
-                Text("Saved model unavailable").tag(brain.modelChoice)
+            ForEach(BrainController.ModelChoice.allCases, id: \.self) { choice in
+                Text(choice.title).tag(choice)
             }
         }
-        switch BrainController.ModelChoice(rawValue: brain.modelChoice) {
+        switch brain.modelChoice {
         case .chatGPT:
             HomeConnectionView(brain: brain, openSettings: {
-                brain.modelChoice = BrainController.ModelChoice.direct.rawValue
+                brain.modelChoice = .direct
             })
         case .claudeCode:
             if brain.claudeCodeAvailable {
@@ -77,10 +74,6 @@ struct BrainModelSettingsView: View {
                     .font(.callout)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
-        case nil:
-            Text("Choose a model to resume conversations. Perry hasn’t switched providers.")
-                .font(.callout)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
 

@@ -121,7 +121,7 @@ final class VoiceController: NSObject, ObservableObject {
     )
 
     private lazy var pushToTalk = PushToTalkController(
-        shortcut: PushToTalkShortcut(rawValue: PerryPreferences.pttShortcut) ?? .functionHold,
+        shortcut: PerryPreferences.pttShortcut,
         onPress: { [weak self] in self?.beginDictation() },
         onRelease: { [weak self] in self?.finishDictation() }
     )

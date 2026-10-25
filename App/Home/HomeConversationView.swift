@@ -170,8 +170,8 @@ struct HomeConnectionView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if brain.modelChoice != BrainController.ModelChoice.chatGPT.rawValue {
-                Text(BrainController.ModelChoice(rawValue: brain.modelChoice).map { "\($0.title) selected" } ?? "Saved model unavailable")
+            if brain.modelChoice != .chatGPT {
+                Text("\(brain.modelChoice.title) selected")
                     .font(.headline)
                 Text("You can change this choice in model settings.")
                     .font(.callout)
@@ -228,7 +228,7 @@ struct ModelSettingsButton: View {
     let openSettings: () -> Void
 
     private var title: String {
-        guard let choice = BrainController.ModelChoice(rawValue: brain.modelChoice) else { return "Choose a model" }
+        let choice = brain.modelChoice
         if choice == .chatGPT, case .signedOut = brain.account { return "Connect ChatGPT" }
         return "Model: \(choice.title)"
     }
