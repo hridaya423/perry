@@ -26,7 +26,7 @@ struct CompactConversationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.black.frame(height: cameraInset)
+            PerryTheme.Colors.crown.frame(height: cameraInset)
             NotchInteractionHost(presentation: presentation,
                                  onWorkspace: controller.showWorkspace,
                                  onCollapse: controller.collapseNotch) {
@@ -49,7 +49,7 @@ struct CompactConversationView: View {
                 Color.clear.frame(height: 16)
             }
         }
-        .background(Color.black)
+        .background(PerryTheme.Colors.crown)
         .clipShape(NotchSilhouette())
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)

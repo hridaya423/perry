@@ -277,7 +277,7 @@ final class NotchPresence {
         PerryWindowChrome.applyChrome(to: panel)
         let view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.backgroundColor = NSColor(PerryTheme.Colors.crown).cgColor
         view.layer?.cornerRadius = 9
         view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         view.setAccessibilityElement(false)
@@ -326,7 +326,7 @@ final class NotchPresence {
         PerryWindowChrome.applyChrome(to: tab)
         let view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
+        view.layer?.backgroundColor = NSColor(PerryTheme.Colors.crown).cgColor
         view.layer?.cornerRadius = size.height / 2
         view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         tab.contentView = view

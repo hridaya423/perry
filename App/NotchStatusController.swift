@@ -189,7 +189,7 @@ final class NotchStatusController {
         controller.wakeSeparator.textColor = .secondaryLabelColor
         controller.wakeIcon.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
-        controller.wakeIcon.contentTintColor = NSColor(PerryOverlayTheme.Colors.accent)
+        controller.wakeIcon.contentTintColor = NSColor(PerryTheme.Colors.accent)
         controller.separator2.textColor = .secondaryLabelColor
         controller.gear.image = NSImage(systemSymbolName: "gearshape.2", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))

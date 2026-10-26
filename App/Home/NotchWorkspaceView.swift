@@ -250,7 +250,7 @@ struct NotchWorkspaceView: View {
             }
             .mask {
                 VStack(spacing: 0) {
-                    Color.black
+                    Rectangle()
                     LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 20)
                 }
             }

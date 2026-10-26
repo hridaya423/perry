@@ -50,4 +50,18 @@ final class SemanticTypographyTests: XCTestCase {
             )
         }
     }
+
+    func testNotchViewsUsePaletteTokensInsteadOfBlack() throws {
+        let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App")
+        let directories = ["Home", "Notch"].map { app.appendingPathComponent($0) }
+        let files = try directories.flatMap { try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+            .filter { $0.pathExtension == "swift" } + [app.appendingPathComponent("CompactConversationView.swift")]
+        XCTAssertGreaterThan(files.count, 3)
+        for file in files {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            XCTAssertNil(source.range(of: #"\b(NS)?Color\.black\b"#, options: .regularExpression),
+                         "\(file.lastPathComponent) paints black directly; use PerryTheme.Colors.crown or a palette token")
+        }
+    }
 }
