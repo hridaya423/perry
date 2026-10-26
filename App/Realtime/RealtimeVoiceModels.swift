@@ -7,6 +7,7 @@ enum RealtimeVoiceProtocolMode: String, CaseIterable, Sendable {
     case openAIGA
     case openAIBeta
     case compatible
+    case grok
 
     var title: String {
         switch self {
@@ -14,6 +15,7 @@ enum RealtimeVoiceProtocolMode: String, CaseIterable, Sendable {
         case .openAIGA: return "OpenAI current"
         case .openAIBeta: return "OpenAI beta"
         case .compatible: return "Compatible endpoint"
+        case .grok: return "xAI Grok"
         }
     }
 }
@@ -78,6 +80,7 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
     let protocolMode: RealtimeVoiceProtocolMode
     let inputLanguage: String?
     let transcriptionModel: String
+    let provider: RealtimeProviderID
 
     init(
         endpoint: URL,
@@ -87,7 +90,8 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
         instructions: String = "You are Perry, a concise and helpful desktop voice assistant. Speak naturally and keep replies short unless the user asks for detail.",
         protocolMode: RealtimeVoiceProtocolMode = .automatic,
         inputLanguage: String? = nil,
-        transcriptionModel: String = "gpt-4o-transcribe"
+        transcriptionModel: String = "gpt-4o-transcribe",
+        provider: RealtimeProviderID = .custom
     ) {
         self.endpoint = endpoint
         self.model = model
@@ -99,6 +103,7 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
         let normalizedLanguage = inputLanguage?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.inputLanguage = normalizedLanguage?.isEmpty == true ? nil : normalizedLanguage
         self.transcriptionModel = transcriptionModel
+        self.provider = provider
     }
 }
 

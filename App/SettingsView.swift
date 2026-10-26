@@ -374,7 +374,7 @@ struct SettingsView: View {
                             realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
                         }
                         Button("Save realtime voice API key") {
-                            saveSecret(realtimeVoiceKey, account: VoiceController.realtimeVoiceKeychainAccount) {
+                            saveSecret(realtimeVoiceKey, account: (RealtimeProvider.current ?? RealtimeProvider(.custom)).keychainAccount) {
                                 realtimeVoiceKey = ""
                             }
                         }

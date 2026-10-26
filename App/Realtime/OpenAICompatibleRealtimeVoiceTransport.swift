@@ -9,20 +9,31 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
     private var didResume = false
     private var inputHasAudio = false
     private var correlation = RealtimeVoiceTransportCorrelation()
+    private var unechoedResponseMetadata: [String: String]?
 
     init(configuration: RealtimeVoiceConfiguration, apiKey: String) {
         self.task = URLSession.shared.webSocketTask(with: Self.request(for: configuration, apiKey: apiKey))
         self.configuration = configuration
-        switch configuration.protocolMode {
-        case .automatic:
-            self.mode = configuration.endpoint.host?.contains("api.openai.com") == true ? .openAIGA : .compatible
-        case .openAIGA, .openAIBeta, .compatible:
-            self.mode = configuration.protocolMode
-        }
+        self.mode = Self.mode(for: configuration)
+    }
+
+    static func mode(for configuration: RealtimeVoiceConfiguration) -> RealtimeVoiceProtocolMode {
+        guard configuration.protocolMode == .automatic else { return configuration.protocolMode }
+        let host = configuration.endpoint.host ?? ""
+        if host.contains("api.openai.com") { return .openAIGA }
+        if host.contains("api.x.ai") { return .grok }
+        return .compatible
     }
 
     static func request(for configuration: RealtimeVoiceConfiguration, apiKey: String) -> URLRequest {
-        var request = URLRequest(url: configuration.endpoint)
+        var url = configuration.endpoint
+        if mode(for: configuration) == .grok,
+           var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           components.queryItems?.contains(where: { $0.name == "model" }) != true {
+            components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "model", value: configuration.model)]
+            url = components.url ?? url
+        }
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         if configuration.protocolMode == .openAIBeta {
             request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
@@ -58,26 +69,7 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
         do {
             try await send(payload: ["type": "input_audio_buffer.commit"])
             commitSent = true
-            switch mode {
-            case .openAIGA:
-                try await send(payload: [
-                    "type": "response.create",
-                    "response": [
-                        "output_modalities": ["audio"],
-                        "metadata": request.metadata,
-                    ],
-                ])
-            case .openAIBeta, .compatible:
-                try await send(payload: [
-                    "type": "response.create",
-                    "response": [
-                        "modalities": ["audio", "text"],
-                        "metadata": request.metadata,
-                    ],
-                ])
-            case .automatic:
-                break
-            }
+            try await requestResponse(request)
         } catch {
             if !commitSent {
                 correlation.removePendingCommit(tag: tag)
@@ -122,6 +114,10 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
                 "content": [["type": "input_text", "text": normalized]],
             ],
         ])
+        try await requestResponse(request)
+    }
+
+    private func requestResponse(_ request: RealtimeVoiceResponseRequest) async throws {
         switch mode {
         case .openAIGA:
             try await send(payload: [
@@ -139,6 +135,9 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
                     "metadata": request.metadata,
                 ],
             ])
+        case .grok:
+            unechoedResponseMetadata = request.metadata
+            try await send(payload: ["type": "response.create"])
         case .automatic:
             break
         }
@@ -189,10 +188,12 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
         }
         if type == "response.created" {
             let response = payload["response"] as? [String: Any]
-            return .responseStarted(
-                response?["id"] as? String ?? responseID,
-                metadata: stringMetadata(response?["metadata"])
-            )
+            var metadata = stringMetadata(response?["metadata"])
+            if mode == .grok, metadata == nil {
+                metadata = unechoedResponseMetadata
+                unechoedResponseMetadata = nil
+            }
+            return .responseStarted(response?["id"] as? String ?? responseID, metadata: metadata)
         }
         if type == "response.done" || type == "response.completed" {
             let response = payload["response"] as? [String: Any]
@@ -205,6 +206,15 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
             guard let encoded = payload["delta"] as? String,
                   let decoded = Data(base64Encoded: encoded) else { return .ignored }
             return .audio(decoded, responseID: responseID)
+        }
+        if type == "conversation.item.input_audio_transcription.updated" {
+            guard let text = (payload["transcript"] as? String) ?? (payload["delta"] as? String), !text.isEmpty else {
+                return .ignored
+            }
+            return .transcriptDelta(
+                text,
+                correlation: correlation.transcriptCorrelation(for: payload["item_id"] as? String)
+            )
         }
         if type == "conversation.item.input_audio_transcription.delta"
             || type == "input_audio_transcription.delta" {
@@ -240,6 +250,10 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
     }
 
     #if DEBUG
+    func prepareResponseFixture(_ request: RealtimeVoiceResponseRequest) {
+        unechoedResponseMetadata = request.metadata
+    }
+
     func prepareCommitFixture(tag: RealtimeVoicePacketTag) throws {
         guard correlation.enqueueCommit(tag: tag) else {
             throw RealtimeVoiceError.inputCorrelationLimitReached
@@ -291,6 +305,23 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
                             "voice": configuration.voice,
                             "speed": configuration.responseSpeed,
                         ],
+                    ],
+                ],
+            ]
+        case .grok:
+            var grokTranscription: [String: Any] = ["model": configuration.transcriptionModel]
+            if let inputLanguage = configuration.inputLanguage {
+                grokTranscription["language_hint"] = inputLanguage
+            }
+            return [
+                "type": "session.update",
+                "session": [
+                    "instructions": configuration.instructions,
+                    "voice": configuration.voice,
+                    "turn_detection": NSNull(),
+                    "audio": [
+                        "input": ["format": inputFormat, "transcription": grokTranscription],
+                        "output": ["format": inputFormat, "speed": configuration.responseSpeed],
                     ],
                 ],
             ]

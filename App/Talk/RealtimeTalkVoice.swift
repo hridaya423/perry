@@ -45,7 +45,9 @@ final class RealtimeTalkVoice {
             responseSpeed: configuration.responseSpeed,
             instructions: Self.instructions,
             protocolMode: configuration.protocolMode,
-            inputLanguage: configuration.inputLanguage
+            inputLanguage: configuration.inputLanguage,
+            transcriptionModel: configuration.transcriptionModel,
+            provider: configuration.provider
         )
         let sessionFactory = {
             RealtimeVoiceSession(
@@ -78,8 +80,9 @@ final class RealtimeTalkVoice {
         onPerformanceMarker: @escaping (PerformanceMarker) -> Void = { _ in },
         onTaskSnapshot: @escaping (RealtimeTaskSnapshot) -> Void = { _ in }
     ) -> RealtimeTalkVoice? {
-        guard let configuration = VoiceController.currentRealtimeVoiceConfiguration(),
-              let apiKey = try? keychain.readChecked(account: VoiceController.realtimeVoiceKeychainAccount),
+        guard let provider = RealtimeProvider.current,
+              let configuration = provider.configuration(),
+              let apiKey = try? provider.apiKey(keychain: keychain),
               !apiKey.isEmpty else { return nil }
         return RealtimeTalkVoice(
             configuration: configuration,
@@ -94,6 +97,7 @@ final class RealtimeTalkVoice {
 
     /// Connect at launch so the first realtime hold never pays it.
     func warmUp() {
+        guard RealtimeProvider(session.configuration.provider).billing == .perToken else { return }
         ensureSession().start()
     }
 
@@ -111,7 +115,9 @@ final class RealtimeTalkVoice {
     }
 
     private func ensureSession() -> RealtimeVoiceSession {
-        if case .failed = session.state {
+        if session.isShutDown {
+            session = makeSession()
+        } else if case .failed = session.state {
             session = makeSession()
         }
         return session

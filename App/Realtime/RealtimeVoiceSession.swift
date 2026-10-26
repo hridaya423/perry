@@ -4,7 +4,7 @@ import PerryCore
 
 @MainActor
 final class RealtimeVoiceSession {
-    private let configuration: RealtimeVoiceConfiguration
+    let configuration: RealtimeVoiceConfiguration
     private let apiKey: String
     private let transport: any RealtimeVoiceTransport
     private let onEvent: (RealtimeVoiceEvent) -> Void
@@ -56,6 +56,9 @@ final class RealtimeVoiceSession {
     private var sessionGeneration = 0
     private(set) var state: RealtimeVoiceSessionState = .idle
     private(set) var echoCancellationEnabled = false
+    private var meteredHangUp: Task<Void, Never>?
+    var meteredIdleTimeout: Duration = .seconds(30)
+    var isShutDown: Bool { shutdownRequested }
 
     /// Whether uncommitted microphone audio is buffered — a silent hold
     /// should settle empty rather than commit nothing and fail the
@@ -123,6 +126,7 @@ final class RealtimeVoiceSession {
     }
 
     deinit {
+        meteredHangUp?.cancel()
         startTask?.cancel()
         receiveTask?.cancel()
         commitTask?.cancel()
@@ -137,6 +141,7 @@ final class RealtimeVoiceSession {
     func start() {
         guard state == .idle, shutdownTask == nil, !shutdownRequested else { return }
         state = .connecting
+        scheduleMeteredHangUp()
         sessionGeneration += 1
         let sessionID = sessionGeneration
         let workerToken = startWorker(.connection)
@@ -188,6 +193,7 @@ final class RealtimeVoiceSession {
     }
 
     func beginInput() {
+        scheduleMeteredHangUp()
         commitTask?.cancel()
         commitTask = nil
         let wasResponding = state == .responding
@@ -440,6 +446,20 @@ final class RealtimeVoiceSession {
         )
     }
 
+    private func scheduleMeteredHangUp() {
+        guard RealtimeProvider(configuration.provider).billing == .perMinute else { return }
+        meteredHangUp?.cancel()
+        meteredHangUp = Task { [weak self, meteredIdleTimeout] in
+            try? await Task.sleep(for: meteredIdleTimeout)
+            guard !Task.isCancelled, let self else { return }
+            if state == .responding || inputHasAudio {
+                scheduleMeteredHangUp()
+            } else {
+                stop()
+            }
+        }
+    }
+
     func speakText(_ text: String) {
         switch state {
         case .idle, .failed:
@@ -448,6 +468,7 @@ final class RealtimeVoiceSession {
             break
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        scheduleMeteredHangUp()
         let cancelResponse = state == .responding || responseTracker.authorizedRequestCount > 0
         let tag = RealtimeVoicePacketTag(
             sessionID: sessionGeneration,
@@ -764,6 +785,7 @@ final class RealtimeVoiceSession {
                     guard responseTracker.activeRequest?.tag == currentTag else { continue }
                     guard responseTracker.finish(responseID) else { continue }
                     state = .listening
+                    scheduleMeteredHangUp()
                     onEvent(.responseFinished(responseID))
                 case .responseInterrupted(let responseID):
                     let currentTag = RealtimeVoicePacketTag(

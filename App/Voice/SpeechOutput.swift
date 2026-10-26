@@ -161,31 +161,6 @@ extension VoiceController {
         return Float(0.42 + ((clamped - 0.5) / 1.0) * 0.24)
     }
 
-    static func currentRealtimeVoiceConfiguration() -> RealtimeVoiceConfiguration? {
-        guard let rawURL = PerryPreferences.realtimeVoiceEndpoint,
-              let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let scheme = url.scheme?.lowercased(),
-              ["wss", "ws"].contains(scheme),
-              url.host != nil else { return nil }
-        let configuredModel = PerryPreferences.realtimeVoiceModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let isOpenAI = url.host?.contains("api.openai.com") == true
-        let usesDefault = configuredModel.isEmpty || RealtimeVoiceConfiguration.retiredOpenAIModels.contains(configuredModel)
-        let model = isOpenAI && usesDefault ? RealtimeVoiceConfiguration.openAIModel : configuredModel
-        guard !model.isEmpty else { return nil }
-        let protocolMode = RealtimeVoiceProtocolMode(rawValue: PerryPreferences.realtimeVoiceProtocol) ?? .automatic
-        let responseSpeed = PerryPreferences.realtimeVoiceSpeed
-        let voice = PerryPreferences.realtimeVoiceVoice
-        let instructions = PerryPreferences.realtimeVoiceInstructions
-        return RealtimeVoiceConfiguration(
-            endpoint: url,
-            model: model,
-            voice: voice,
-            responseSpeed: responseSpeed,
-            instructions: instructions,
-            protocolMode: protocolMode
-        )
-    }
-
     /// Whether the shared speech engine is mid-utterance — Talk barge-in and
     /// the output adapter read this so every feature's speech is observed.
     var isSpeaking: Bool { synthesizer.isSpeaking }

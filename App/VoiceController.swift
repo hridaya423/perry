@@ -25,7 +25,6 @@ final class VoiceController: NSObject, ObservableObject {
         var executingTaskID: () -> UUID? = { nil }
     }
 
-    static let realtimeVoiceKeychainAccount = "realtime.voice"
 
     let overlayState: PerryCursorState
     let workers: CuaWorkerService
@@ -61,7 +60,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     var requestDictationPermission: () async -> Bool = DictationController.ensurePermission
     var readRealtimeVoiceAPIKey: @MainActor () throws -> String? = {
-        try KeychainStore().readChecked(account: VoiceController.realtimeVoiceKeychainAccount)
+        try RealtimeProvider.current?.apiKey()
     }
     lazy var startDictationCapture: @MainActor () throws -> Void = { [weak self] in
         guard let self else { return }
@@ -216,7 +215,7 @@ final class VoiceController: NSObject, ObservableObject {
         }
         realtimeTranscriptBuffer = ""
         realtimeCommandDispatched = false
-        if let configuration = Self.currentRealtimeVoiceConfiguration() {
+        if let configuration = RealtimeProvider.current?.configuration() {
             let apiKey: String?
             do {
                 apiKey = try readRealtimeVoiceAPIKey()
