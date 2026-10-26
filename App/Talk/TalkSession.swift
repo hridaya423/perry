@@ -289,7 +289,7 @@ final class TalkSession {
                 Self.screenAccessNoticeShown = true
                 output?.guideReportFailure(
                     "Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.",
-                    recovery: .privacy("Privacy_ScreenCapture")
+                    recovery: .privacy(.screenRecording)
                 )
             }
 
@@ -363,7 +363,7 @@ final class TalkSession {
 
     private static func recovery(forInput error: Error) -> FailureRecovery? {
         switch error as? DictationController.DictationError {
-        case .permissionDenied?: .privacy("Privacy_Microphone")
+        case .permissionDenied?: .privacy(.microphone)
         case .deviceUnavailable?: .settings(.voice)
         default: nil
         }

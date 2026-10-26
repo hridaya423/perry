@@ -202,20 +202,20 @@ struct SettingsView: View {
     private var permissionsSection: some View {
         Section("Permissions") {
             permissionRow(
-                name: "Accessibility",
+                name: PrivacyPane.accessibility.displayName(),
                 why: "Lets Perry read and act on whatever you point at.",
                 granted: permissions?.accessibility
             ) {
                 _ = PerryPermissionProbe.requestAccessibility()
-                openPrivacyPane("Privacy_Accessibility")
+                PrivacyPane.accessibility.open()
             }
             permissionRow(
-                name: "Screen Recording",
+                name: PrivacyPane.screenRecording.displayName(),
                 why: "Lets Perry see window contents so answers stay grounded.",
                 granted: permissions?.screenRecording.isUsable
             ) {
                 _ = PerryPermissionProbe.requestScreenRecording()
-                openPrivacyPane("Privacy_ScreenCapture")
+                PrivacyPane.screenRecording.open()
             }
             permissionRow(
                 name: "Microphone",
@@ -224,16 +224,16 @@ struct SettingsView: View {
             ) {
                 Task {
                     _ = await PerryPermissionProbe.requestMicrophone()
-                    openPrivacyPane("Privacy_Microphone")
+                    PrivacyPane.microphone.open()
                 }
             }
             permissionRow(
-                name: "Input Monitoring",
+                name: PrivacyPane.inputMonitoring.displayName(),
                 why: "Lets Perry hear the dictation key while other apps are focused.",
                 granted: permissions?.inputMonitoring
             ) {
                 _ = PerryPermissionProbe.requestInputMonitoring()
-                openPrivacyPane("Privacy_ListenEvent")
+                PrivacyPane.inputMonitoring.open()
             }
             Text("Enabling Screen Recording may ask you to quit and reopen Perry.")
                 .settingNote()
@@ -280,11 +280,6 @@ struct SettingsView: View {
             modifiers: chord.modifiers,
             in: SymbolicHotkeys.load()
         )
-    }
-
-    private func openPrivacyPane(_ anchor: String) {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
-        NSWorkspace.shared.open(url)
     }
 
     private var voiceAndInputTab: some View {

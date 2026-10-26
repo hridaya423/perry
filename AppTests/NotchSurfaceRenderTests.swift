@@ -375,7 +375,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await render(openNotch(controller), name: "perry-editor-existing", size: NSSize(width: 892, height: 720), wait: 0.5)
 
         model.sidebarSelection = nil
-        controller.presentFailure("Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.", recovery: .privacy("Privacy_ScreenCapture"))
+        controller.presentFailure("Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.", recovery: .privacy(.screenRecording))
         presentation.showsInteraction = true
         try await render(openNotch(controller), name: "failure-notice", size: NSSize(width: 592, height: 420))
         controller.clearFailure()

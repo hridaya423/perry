@@ -2,7 +2,7 @@ import AppKit
 
 enum FailureRecovery: Equatable {
     case settings(SettingsTab)
-    case privacy(String)
+    case privacy(PrivacyPane)
     case thread(UUID)
 
     var title: String {
@@ -44,9 +44,8 @@ extension AppController {
         switch recovery {
         case .settings(let tab):
             openSettings(tab: tab)
-        case .privacy(let anchor):
-            guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
-            NSWorkspace.shared.open(url)
+        case .privacy(let pane):
+            pane.open()
         case .thread(let id):
             homeController.homeModel.sidebarSelection = .thread(id)
             showPanel(activate: true)

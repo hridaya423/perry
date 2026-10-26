@@ -69,17 +69,11 @@ final class OnboardingCoordinator {
         effects.endTalk = { [weak self] in self?.endTalk() }
         effects.openScreenAccessSettings = {
             _ = PerryPermissionProbe.requestAccessibility()
-            if let url = URL(
-                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-            ) {
-                NSWorkspace.shared.open(url)
-            }
+            PrivacyPane.accessibility.open()
         }
         effects.openScreenRecordingSettings = {
             _ = PerryPermissionProbe.requestScreenRecording()
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                NSWorkspace.shared.open(url)
-            }
+            PrivacyPane.screenRecording.open()
         }
         effects.beginPractice = { [weak self] in
             guard let self else { return }
