@@ -31,7 +31,7 @@ struct ModelProfilesSection: View {
             form
         }
         if let errorMessage {
-            Label(errorMessage, systemImage: "exclamationmark.circle").settingNote()
+            StatusLabel(errorMessage, .attention).settingNote()
         }
     }
 
@@ -47,7 +47,7 @@ struct ModelProfilesSection: View {
                             Text(modelLine(profile)).settingNote()
                         }
                     } icon: {
-                        Image(systemName: brain.activeProfile?.id == profile.id ? "largecircle.fill.circle" : "circle")
+                        RadioMark(selected: brain.activeProfile?.id == profile.id)
                     }
                 }
                 .buttonStyle(.plain)
@@ -75,7 +75,7 @@ struct ModelProfilesSection: View {
         case .checked(let checkedModel, let result) where checkedModel == profile.model:
             Text(summary(result)).settingNote()
         case .failed(let message):
-            Label(message, systemImage: "exclamationmark.circle").settingNote()
+            StatusLabel(message, .attention).settingNote()
         case .checking:
             Text("Checking text, images, and tools with a harmless test.").settingNote()
         default:

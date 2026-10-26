@@ -26,8 +26,7 @@ struct BrainSettingsPage: View {
             SettingsCard(title: "Agents", footer: setup.records.contains(where: { $0.status == setup.summary }) ? nil : setup.summary) {
                 ForEach(setup.records) { runtime in
                     HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.inline) {
-                        Image(systemName: runtime.isReady ? "checkmark.circle.fill" : "exclamationmark.circle")
-                            .foregroundStyle(runtime.isReady ? PerryTheme.Colors.success : PerryTheme.Colors.textSecondary)
+                        StatusMark(runtime.isReady ? .ok : .attention)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(runtime.name)

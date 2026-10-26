@@ -93,10 +93,7 @@ struct CloudBrainList: View {
             if index > 0 { SettingsDivider() }
             Button { select(row) } label: {
                 HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: selection == row ? "largecircle.fill.circle" : "circle")
-                        .font(PerryTheme.Icon.row)
-                        .foregroundStyle(selection == row ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
-                        .accessibilityHidden(true)
+                    RadioMark(selected: selection == row)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.title)
                         Text(row.capability)

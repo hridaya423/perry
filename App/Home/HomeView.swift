@@ -260,18 +260,7 @@ struct RoutinesView: View {
     }
 
     private func appIcon(_ bundleID: String) -> some View {
-        Group {
-            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable()
-            } else {
-                Image(systemName: "app.dashed")
-                    .resizable()
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-            }
-        }
-        .frame(width: 16, height: 16)
-        .accessibilityHidden(true)
+        BrandMark(id: bundleID, name: appName(bundleID), bundleID: bundleID, size: 16)
     }
 
     private func appName(_ bundleID: String) -> String {
@@ -411,7 +400,7 @@ struct UnsavedInputRecoveryButton: View {
             Button {
                 isPresented = true
             } label: {
-                Label("Requests not saved (\(model.unsavedInputs.count))", systemImage: "exclamationmark.triangle")
+                StatusLabel("Requests not saved (\(model.unsavedInputs.count))", .attention)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.borderless)
@@ -436,7 +425,7 @@ struct UnsavedInputRecoveryView: View {
     var body: some View {
         if !model.unsavedInputs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Label("Requests not saved", systemImage: "exclamationmark.triangle")
+                StatusLabel("Requests not saved", .attention)
                     .font(PerryTheme.Scale.rowTitle)
                 Text("Keep Perry open or copy your text. Saving again won’t send it.")
                     .font(PerryTheme.Scale.body).foregroundStyle(.secondary)

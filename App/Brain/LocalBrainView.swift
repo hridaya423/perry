@@ -44,8 +44,7 @@ struct LocalBrainView: View {
             if profile.appleIntelligenceAvailable {
                 SettingsDivider()
                 SettingsRow(title: "Apple Intelligence", detail: "Text answers. Reads windows as text. Can’t act.") {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(PerryTheme.Colors.success)
+                    StatusMark(.ok)
                         .accessibilityLabel("Available")
                 }
             }
@@ -101,8 +100,7 @@ struct LocalBrainView: View {
             .settingsRowPadding()
         case .ready:
             SettingsRow(title: "Ready on this Mac") {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(PerryTheme.Colors.success)
+                StatusMark(.ok)
             }
         case .failed(let message):
             SettingsRow(title: "Setup stopped", detail: message) {
@@ -122,10 +120,7 @@ struct LocalBrainView: View {
     private func choiceRow(_ title: String, detail: String?, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .font(PerryTheme.Icon.row)
-                    .foregroundStyle(selected ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
-                    .accessibilityHidden(true)
+                RadioMark(selected: selected)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                     if let detail {

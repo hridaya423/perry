@@ -49,6 +49,7 @@ struct IntegrationRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
+                BrandMark(id: definition.id, name: definition.displayName)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(definition.displayName)
                         .font(PerryTheme.Typography.panelBody.weight(.semibold))
@@ -58,7 +59,7 @@ struct IntegrationRow: View {
                 }
                 Spacer(minLength: 8)
                 if connected {
-                    Label("Connected", systemImage: "checkmark.circle.fill")
+                    StatusLabel("Connected", .ok)
                         .font(PerryTheme.Typography.note)
                         .foregroundStyle(PerryTheme.Colors.success)
                     Menu {
@@ -74,6 +75,8 @@ struct IntegrationRow: View {
                         Button("Disconnect…") { showDisconnectConfirmation = true }
                     } label: {
                         Image(systemName: "ellipsis")
+                            .font(PerryTheme.Icon.utility)
+                            .foregroundStyle(PerryTheme.Colors.icon)
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
@@ -266,10 +269,10 @@ struct IntegrationRow: View {
                 .controlSize(.small)
                 .accessibilityHidden(true)
         case .succeeded:
-            Image(systemName: "checkmark.circle.fill")
+            StatusMark(.ok)
                 .accessibilityHidden(true)
         case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
+            StatusMark(.failed)
                 .accessibilityHidden(true)
         }
     }

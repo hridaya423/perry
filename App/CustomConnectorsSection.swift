@@ -83,10 +83,10 @@ struct CustomConnectorsSection: View {
     private func statusLabel(_ status: CustomConnectors.Status?) -> some View {
         switch status {
         case .ready(let count):
-            Label("\(count) \(count == 1 ? "tool" : "tools")", systemImage: "checkmark.circle.fill")
+            StatusLabel("\(count) \(count == 1 ? "tool" : "tools")", .ok)
                 .foregroundStyle(PerryTheme.Colors.success)
         case .failed(let message):
-            Label("Offline", systemImage: "exclamationmark.triangle.fill")
+            StatusLabel("Offline", .attention)
                 .foregroundStyle(PerryTheme.Colors.warning)
                 .help(message)
         case .connecting, nil:

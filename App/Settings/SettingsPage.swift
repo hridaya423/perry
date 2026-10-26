@@ -106,7 +106,7 @@ struct SettingsSidebar: View {
             Button(action: onBack) {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
-                        .font(PerryTheme.Icon.inline)
+                        .imageScale(.small)
                     Text("Back")
                         .font(PerryTheme.Scale.body)
                 }
@@ -154,7 +154,8 @@ struct SettingsSidebar: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: page.systemImage)
-                    .foregroundStyle(selected ? PerryTheme.Colors.text : PerryTheme.Colors.textSecondary)
+                    .font(PerryTheme.Icon.rail)
+                    .foregroundStyle(selected ? PerryTheme.Colors.text : PerryTheme.Colors.icon)
                     .frame(width: 18)
                     .accessibilityHidden(true)
                 Text(page.sidebarTitle)
@@ -285,7 +286,7 @@ struct SettingsAdvanced<Content: View>: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.right")
-                        .font(PerryTheme.Icon.inline)
+                        .imageScale(.small)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                     Text(title)
                         .font(PerryTheme.Scale.section)

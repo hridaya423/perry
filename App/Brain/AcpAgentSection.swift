@@ -43,7 +43,7 @@ struct AcpAgentSection: View {
                 Text("Perry contacts agentclientprotocol.com only when you press this.").settingNote()
             }
             if let registryError {
-                Label(registryError, systemImage: "exclamationmark.circle").settingNote()
+                StatusLabel(registryError, .attention).settingNote()
             }
         }
     }

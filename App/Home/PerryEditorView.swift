@@ -71,7 +71,7 @@ struct PerryEditorView: View {
                 }
             }
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.circle").settingNote()
+                StatusLabel(errorMessage, .attention).settingNote()
             }
         }
         .formStyle(.grouped)

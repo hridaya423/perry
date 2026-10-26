@@ -117,9 +117,7 @@ private struct VoiceChoiceRow: View {
                     }
                     Spacer()
                     if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(PerryTheme.Icon.inline)
-                            .foregroundStyle(PerryTheme.Colors.accent)
+                        StatusMark(.ok)
                     }
                 }
                 .contentShape(Rectangle())

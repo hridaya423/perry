@@ -34,7 +34,7 @@ struct HomeConversationView: View {
                                     .lineSpacing(4)
                             }
                             if let reason = turn.failureReason {
-                                Label(reason, systemImage: "exclamationmark.circle")
+                                StatusLabel(reason, .attention)
                                     .font(PerryTheme.Scale.body)
                                     .foregroundStyle(.secondary)
                             }
@@ -95,7 +95,7 @@ struct HomeConversationView: View {
                             .disabled(model.stoppingThreads.contains(thread.id))
                     }
                 } else if let error = model.threadErrors[thread.id], error != thread.turns.last?.failureReason {
-                    Label(error, systemImage: "exclamationmark.circle")
+                    StatusLabel(error, .attention)
                         .font(PerryTheme.Scale.body)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -179,7 +179,7 @@ struct HomeConnectionView: View {
                 Button("Model settings", action: openSettings).buttonStyle(.borderless)
             } else if case .signedIn(let email, _) = brain.account {
                 HStack {
-                    Label(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", systemImage: "checkmark.circle")
+                    StatusLabel(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", .ok)
                         .font(PerryTheme.Scale.body)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                     Spacer()
@@ -212,7 +212,7 @@ struct HomeConnectionView: View {
                 }
             }
             if let error = brain.signInError {
-                Label(error, systemImage: "exclamationmark.circle")
+                StatusLabel(error, .attention)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
@@ -235,7 +235,7 @@ struct ModelSettingsButton: View {
 
     var body: some View {
         Button(action: openSettings) {
-            Label(title, systemImage: "cpu")
+            Label(title, systemImage: brain.modelChoice == .local ? "laptopcomputer" : "cloud")
         }
         .fixedSize()
         .accessibilityLabel("Model: \(title)")

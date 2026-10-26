@@ -52,15 +52,13 @@ struct ShortcutCheckRow: View {
                     .foregroundStyle(PerryTheme.Colors.text)
                 Spacer(minLength: 8)
             case .heard:
-                Image(systemName: "checkmark.circle")
-                    .foregroundStyle(PerryTheme.Colors.success)
+                StatusMark(.ok)
                 Text("Heard it. \(gesture.keys) works everywhere.")
                     .foregroundStyle(PerryTheme.Colors.text)
                 Spacer(minLength: 8)
                 Button("Try again", action: start)
             case .needsInputMonitoring:
-                Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(PerryTheme.Colors.caution)
+                StatusMark(.attention)
                 Text("I can only hear that key inside Perry. Turn on Input Monitoring.")
                     .foregroundStyle(PerryTheme.Colors.text)
                     .fixedSize(horizontal: false, vertical: true)

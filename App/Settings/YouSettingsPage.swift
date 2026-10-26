@@ -50,8 +50,9 @@ struct YouSettingsPage: View {
                             forget(record)
                         } label: {
                             Image(systemName: "xmark")
-                                .font(PerryTheme.Icon.inline)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                .font(PerryTheme.Icon.utility)
+                                .imageScale(.small)
+                                .foregroundStyle(PerryTheme.Colors.icon)
                                 .frame(width: 22, height: 22)
                                 .contentShape(Rectangle())
                         }

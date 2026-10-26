@@ -194,7 +194,7 @@ final class NotchStatusController {
         controller.gear.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         controller.gear.contentTintColor = .labelColor
-        controller.reviewIcon.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)?
+        controller.reviewIcon.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         controller.reviewIcon.contentTintColor = .labelColor
 

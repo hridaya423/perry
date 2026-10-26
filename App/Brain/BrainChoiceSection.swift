@@ -30,10 +30,7 @@ struct BrainChoiceSection: View {
             SettingsDivider()
             Button { brain.modelChoice = .local } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: brain.modelChoice == .local ? "largecircle.fill.circle" : "circle")
-                        .font(PerryTheme.Icon.row)
-                        .foregroundStyle(brain.modelChoice == .local ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
-                        .accessibilityHidden(true)
+                    RadioMark(selected: brain.modelChoice == .local)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("On this Mac")
                         Text(localCapability)

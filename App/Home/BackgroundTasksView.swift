@@ -51,7 +51,7 @@ struct BackgroundTasksView: View {
                         LazyVStack(spacing: 1) {
                             if let issue = backgroundTasks.persistenceError {
                                 VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
-                                    Label("Task storage needs attention", systemImage: "exclamationmark.triangle")
+                                    StatusLabel("Task storage needs attention", .attention)
                                         .font(PerryTheme.Scale.rowTitle)
                                         .accessibilityAddTraits(.isHeader)
                                     Text("Resolve the storage issue shown below, then reopen Perry. Keep the task files for recovery.")
@@ -107,10 +107,7 @@ private struct BackgroundTaskRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: iconName)
-                .font(PerryTheme.Scale.rowTitle)
-                .foregroundStyle(iconColor)
-                .frame(width: 24, height: 24)
+            lead
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.goal)
                     .font(PerryTheme.Scale.body.weight(.medium))
@@ -254,27 +251,19 @@ private struct BackgroundTaskRow: View {
         backgroundTasks.undoableDescriptions(for: record)
     }
 
-    private var iconName: String {
-        if recoveryNotice != nil { return "exclamationmark.triangle" }
-        switch record.state {
-        case .queued, .ready: return "clock"
-        case .running: return "arrow.triangle.2.circlepath"
-        case .paused: return "pause.circle"
-        case .completed: return "checkmark.circle"
-        case .blocked: return "hand.raised.circle"
-        case .failed: return "xmark.circle"
-        }
-    }
-
-    private var iconColor: Color {
-        if recoveryNotice != nil { return PerryTheme.Colors.warning }
-        switch record.state {
-        case .queued, .ready: return .secondary
-        case .running: return PerryTheme.Colors.active
-        case .paused: return PerryTheme.Colors.warning
-        case .completed: return PerryTheme.Colors.success
-        case .blocked: return PerryTheme.Colors.warning
-        case .failed: return PerryTheme.Colors.danger
+    @ViewBuilder
+    private var lead: some View {
+        if recoveryNotice != nil {
+            LeadDisc(systemImage: "exclamationmark", tint: PerryTheme.Colors.caution)
+        } else {
+            switch record.state {
+            case .queued, .ready: LeadDisc(systemImage: "clock", tint: PerryTheme.Colors.icon)
+            case .running: LeadSpinner()
+            case .paused: LeadDisc(systemImage: "pause", tint: PerryTheme.Colors.caution)
+            case .completed: LeadDisc(systemImage: "checkmark", tint: PerryTheme.Colors.success)
+            case .blocked: LeadDisc(systemImage: "hand.raised", tint: PerryTheme.Colors.caution)
+            case .failed: LeadDisc(systemImage: "xmark", tint: PerryTheme.Colors.danger)
+            }
         }
     }
 }

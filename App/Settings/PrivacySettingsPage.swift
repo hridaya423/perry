@@ -30,19 +30,7 @@ struct PrivacySettingsPage: View {
                 ForEach(Array(Self.blockedApps.enumerated()), id: \.element.bundleID) { index, app in
                     if index > 0 { SettingsDivider() }
                     HStack(spacing: 10) {
-                        Group {
-                            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app.bundleID) {
-                                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable()
-                            } else {
-                                Image(systemName: "lock.fill")
-                                    .font(PerryTheme.Icon.inline)
-                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                            }
-                        }
-                        .frame(width: 20, height: 20)
-                        .accessibilityHidden(true)
+                        BrandMark(id: app.bundleID, name: app.name, bundleID: app.bundleID, size: 20)
                         Text(app.name)
                             .font(PerryTheme.Scale.body)
                         Spacer()
@@ -98,8 +86,7 @@ struct PrivacySettingsPage: View {
         return SettingsRow(title: name, detail: why) {
             switch granted {
             case .some(true):
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(PerryTheme.Colors.success)
+                StatusMark(.ok)
                     .accessibilityLabel("\(name) permission granted")
             case .some(false):
                 Button("Turn on…") { fix(pane) }

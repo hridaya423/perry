@@ -15,6 +15,7 @@ struct SystemCalendarRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
+                BrandMark(id: "apple-calendar", name: "Calendar")
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Calendar")
                         .font(PerryTheme.Typography.panelBody.weight(.semibold))
@@ -25,7 +26,7 @@ struct SystemCalendarRow: View {
                 Spacer(minLength: 8)
                 switch state {
                 case .granted:
-                    Label("Connected", systemImage: "checkmark.circle.fill")
+                    StatusLabel("Connected", .ok)
                         .font(PerryTheme.Typography.note)
                         .foregroundStyle(PerryTheme.Colors.success)
                 case .notAsked:

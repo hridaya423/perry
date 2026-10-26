@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import PerryCore
+import PerryOverlay
 
 struct HistoryView: View {
     let store: TranscriptStore
@@ -166,7 +167,7 @@ struct HistoryView: View {
     }
 }
 
-private struct HistoryRow: View {
+struct HistoryRow: View {
     let entry: TranscriptEntry
     let undoable: Bool
     let emphasized: Bool
@@ -176,19 +177,7 @@ private struct HistoryRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            if let appIcon {
-                Image(nsImage: appIcon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 22, height: 22)
-            } else {
-                Image(systemName: "app.dashed")
-                    .foregroundStyle(secondaryText)
-                    .frame(width: 22, height: 22)
-            }
-            Image(systemName: iconName)
-                .foregroundStyle(emphasized ? selectionText : iconColor)
-                .frame(width: 20)
+            lead
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.request)
                     .font(PerryTheme.Scale.body.weight(.medium))
@@ -199,24 +188,27 @@ private struct HistoryRow: View {
                 if undoable || entry.verified != nil {
                     HStack(spacing: 8) {
                         if undoable {
-                            Label("Undo available", systemImage: "arrow.uturn.backward.circle")
+                            Label("Undo available", systemImage: "arrow.uturn.backward")
                                 .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(secondaryText)
                         }
                         if let verified = entry.verified {
-                            Label(verified ? "Verified" : "Check needed", systemImage: verified ? "checkmark.seal" : "exclamationmark.triangle")
+                            StatusLabel(verified ? "Verified" : "Check needed", verified ? .ok : .attention, tint: emphasized ? selectionText : nil)
                                 .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
                         }
                     }
                 }
-                Text([
-                    entry.outcome.rawValue,
-                    entry.providerRoute,
-                    entry.finishedAt.formatted(date: .abbreviated, time: .shortened)
-                ].compactMap { $0 }.joined(separator: " · "))
-                    .font(PerryTheme.Scale.secondary)
-                    .foregroundStyle(secondaryText)
+                HStack(spacing: 5) {
+                    StatusMark(outcomeKind, tint: emphasized ? selectionText : nil)
+                    Text([
+                        entry.outcome.rawValue,
+                        entry.providerRoute,
+                        entry.finishedAt.formatted(date: .abbreviated, time: .shortened)
+                    ].compactMap { $0 }.joined(separator: " · "))
+                        .foregroundStyle(secondaryText)
+                }
+                .font(PerryTheme.Scale.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -224,26 +216,25 @@ private struct HistoryRow: View {
         .foregroundStyle(emphasized ? selectionText : PerryTheme.Colors.text)
     }
 
-    private var iconName: String {
-        switch entry.outcome {
-        case .completed: return "checkmark.circle.fill"
-        case .stopped: return "stop.circle.fill"
-        case .failed: return "xmark.circle.fill"
+    @ViewBuilder
+    private var lead: some View {
+        if let bundleID = entry.appBundleID {
+            BrandMark(id: bundleID, name: appName(bundleID), bundleID: bundleID)
+        } else {
+            PerryCharacterView(pose: PerryCharacterPose(), size: PerryTheme.Icon.slot)
         }
     }
 
-    private var iconColor: Color {
+    private var outcomeKind: StatusMark.Kind {
         switch entry.outcome {
-        case .completed: return PerryTheme.Colors.success
-        case .stopped: return PerryTheme.Colors.warning
-        case .failed: return PerryTheme.Colors.danger
+        case .completed: .ok
+        case .stopped: .attention
+        case .failed: .failed
         }
     }
 
-    private var appIcon: NSImage? {
-        guard let bundleID = entry.appBundleID,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
-        return NSWorkspace.shared.icon(forFile: url.path)
+    private func appName(_ bundleID: String) -> String {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?.deletingPathExtension().lastPathComponent ?? bundleID
     }
 }
 
