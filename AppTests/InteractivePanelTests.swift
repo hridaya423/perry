@@ -205,7 +205,7 @@ final class InteractivePanelTests: XCTestCase {
         activity.apply(sessionState: session.state)
 
         XCTAssertEqual(activity.phase, .confirming)
-        XCTAssertEqual(activity.title, "Approval needed")
+        XCTAssertEqual(activity.title, "Needs your OK")
         XCTAssertEqual(activity.detail, "Send the renamed file")
         XCTAssertEqual(activity.progress, 0.5)
         XCTAssertEqual(activity.tier, .orange)

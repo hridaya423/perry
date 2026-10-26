@@ -34,7 +34,7 @@ struct RoutineOfferView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Show me one thing you do often.")
                 .font(.headline)
-            Text("Do it once while I watch. I will write down the steps. You check them before I save anything.")
+            Text("Do it once while I watch. I’ll write down the steps. You check them before I save anything.")
                 .font(.callout)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -47,7 +47,7 @@ struct RoutineOfferView: View {
                     .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
-            Text("Works best for steps inside one app window. I cannot see passwords.")
+            Text("Works best for steps inside one app window. I can’t see passwords.")
                 .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -3,7 +3,7 @@ import PerryGuide
 
 enum RoutineRunCopy {
     static func success(priorVerifiedRuns: Int) -> String? {
-        priorVerifiedRuns == 0 ? "Done. That worked. I will remember it." : nil
+        priorVerifiedRuns == 0 ? "Done. I’ll remember this routine." : nil
     }
 
     static func step(of error: RoutineReplayError) -> Int? {
@@ -21,9 +21,9 @@ enum RoutineRunCopy {
         let head = "I stopped at step \(step + 1)."
         switch error {
         case .targetNotFound:
-            return label.map { "\(head) I could not find '\($0)'." } ?? "\(head) I could not find that control."
+            return label.map { "\(head) I couldn’t find “\($0)”." } ?? "\(head) I couldn’t find that control."
         case .ambiguousTarget:
-            return label.map { "\(head) More than one control looks like '\($0)'." } ?? "\(head) More than one control looks right."
+            return label.map { "\(head) More than one control looks like “\($0)”." } ?? "\(head) More than one control looks right."
         default:
             return "\(head) \(sentence(reason))"
         }

@@ -11,6 +11,7 @@ final class IntentCardWindow {
     private static var active: IntentCardWindow?
     private var finished = false
     private var content: AnyView = AnyView(EmptyView())
+    private let card: IntentCard
     private let presentation: NotchPresentation
     private var previousFrontmostApplication: NSRunningApplication?
 
@@ -26,6 +27,7 @@ final class IntentCardWindow {
         completion: @escaping (PlanDecision) -> Void
     ) {
         self.approvalID = approvalID
+        self.card = card
         self.completion = completion
         self.presentation = presentation ?? .shared
         content = AnyView(IntentCardView(
@@ -42,7 +44,7 @@ final class IntentCardWindow {
         Self.active = self
         let frontmost = NSWorkspace.shared.frontmostApplication
         previousFrontmostApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
-        presentation.present(id: approvalID, priority: .approval, content: content, onDismiss: { [weak self] in self?.cancel() })
+        presentation.present(id: approvalID, priority: .approval, title: card.title, content: content, onDismiss: { [weak self] in self?.cancel() })
     }
 
     func cancel() { finish(.cancel) }
@@ -92,12 +94,12 @@ struct IntentCardView: View {
             if !card.targetSummary.isEmpty || card.reversible != nil {
             VStack(alignment: .leading, spacing: 4) {
                 if !card.targetSummary.isEmpty {
-                    labeledRow("Target", value: card.targetSummary)
+                    labeledRow("Affects", value: card.targetSummary)
                 }
                 if let reversible = card.reversible {
                     labeledRow(
-                        "Reversible",
-                        value: reversible ? "Yes" : "No. This cannot be undone.",
+                        "Undo",
+                        value: reversible ? "Yes" : "No. This can’t be undone.",
                         valueColor: reversible ? PerryTheme.Colors.textSecondary : PerryTheme.Colors.danger
                     )
                 }
@@ -127,36 +129,36 @@ struct IntentCardView: View {
             }
 
             if card.tier >= .red {
-                Text("This one needs real attention. Type \"\(card.redPhrase)\" exactly; I won’t take a voice yes for this.")
+                Text("Type “\(card.redPhrase)” to confirm. Voice can’t approve this.")
                     .font(PerryTheme.Typography.settingsStatus)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Text(card.redPhrase)
                     .font(PerryTheme.Typography.mono)
                     .foregroundStyle(PerryTheme.Colors.danger)
-                TextField("Type it here to confirm", text: $typedConfirmation)
+                TextField("Type the phrase", text: $typedConfirmation)
                     .textFieldStyle(.roundedBorder)
                     .font(PerryTheme.Typography.settingsStatus)
                     .focused($confirmationFocused)
                     .accessibilityLabel("Confirmation phrase")
-                    .accessibilityHint("Type the displayed target exactly to allow this action")
+                    .accessibilityHint("Type the phrase shown to approve this action")
             }
 
             HStack(spacing: 8) {
                 if allowsStepThrough {
                     HStack(spacing: 14) {
-                        Button("Edit") { onAnswer(.edit) }
+                        Button("Edit goal") { onAnswer(.edit) }
                             .keyboardShortcut("e", modifiers: .command)
-                            .accessibilityHint("Send the goal back to revise it")
-                        Button("Replay") { onAnswer(.replay) }
+                            .accessibilityHint("Send the goal back so you can change it")
+                        Button("Preview again") { onAnswer(.replay) }
                             .keyboardShortcut("r", modifiers: .command)
-                            .accessibilityHint("Re-observe the targets and show the preview again")
+                            .accessibilityHint("Look at the screen again and show the preview")
                     }
                     .buttonStyle(.plain)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 Spacer()
-                Button("Don’t allow") { onAnswer(.cancel) }
+                Button("Deny") { onAnswer(.cancel) }
                     .keyboardShortcut(.cancelAction)
                 if allowsStepThrough {
                     Button("Step through") {
@@ -168,14 +170,14 @@ struct IntentCardView: View {
                     }
                     .keyboardShortcut("s", modifiers: .command)
                     .disabled(!isTypedConfirmationValid)
-                    .accessibilityHint("Run the plan one action at a time, confirming each step")
+                    .accessibilityHint("Run the plan one step at a time, and confirm each step")
                 }
                 if let alwaysAllowLabel, let onAlwaysAllow, card.tier < .red {
                     Button(alwaysAllowLabel) {
                         onAlwaysAllow()
                         onAnswer(.run)
                     }
-                    .accessibilityHint("Approve this and future calls of the same tool for this thread")
+                    .accessibilityHint("Approve this and every later request like it in this conversation")
                 }
                 Button(approveButtonTitle) {
                     guard isTypedConfirmationValid else {
@@ -229,9 +231,9 @@ struct IntentCardView: View {
 
     private var tierLabel: String {
         switch card.tier {
-        case .green: "Read only"
+        case .green: "Reads only"
         case .yellow: "Small change"
-        case .orange: "Needs your OK"
+        case .orange: "Bigger change"
         case .red: "High stakes"
         }
     }

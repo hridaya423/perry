@@ -65,11 +65,11 @@ final class AgentActivityStripState: ObservableObject {
             return
         case .invoking:
             phase = .starting
-            title = "Starting safely"
-            detail = "Preparing your request"
+            title = "Starting"
+            detail = "Getting ready"
         case .guiding:
             phase = .working
-            title = "Perry is guiding"
+            title = "Guiding you"
             detail = "Waiting for the next step"
         case .asking(let ask):
             phase = .working
@@ -101,65 +101,65 @@ final class AgentActivityStripState: ObservableObject {
                 switch finalizationOutcome {
                 case .completed:
                     phase = .reporting
-                    title = "Task finished"
-                    detail = "Saving your report"
+                    title = "Done"
+                    detail = "Saving to History"
                 case .blocked:
                     phase = .reporting
-                    title = "Task stopped"
-                    detail = "Saving your report"
+                    title = "Stopped"
+                    detail = "Saving to History"
                 case .failed:
                     phase = .failed
-                    title = "Task failed"
-                    detail = "Saving your report"
+                    title = "Failed"
+                    detail = "Saving to History"
                 }
             } else {
                 switch execution.lifecycle {
                 case .starting:
                     phase = .starting
-                    title = "Starting safely"
+                    title = "Starting"
                     detail = "You have 5 seconds to stop"
                 case .running:
                     phase = .working
-                    title = "Perry is working"
+                    title = "Working"
                     if let step = execution.stepEvidence.last {
                         title = "Step \(step.index + 1) of \(max(execution.totalSteps, step.index + 1))"
                         detail = step.summary
                     } else {
-                        detail = "Sandboxed and supervised"
+                        detail = "Starting the first step"
                     }
                 case .paused:
                     phase = .paused
-                    title = "Task paused"
+                    title = "Paused"
                     detail = "Resume or stop when ready"
                 case .awaitingApproval(let approval):
                     phase = .confirming
-                    title = "Approval needed"
+                    title = "Needs your OK"
                     detail = approval.actionSummary
                 case .verifying:
                     phase = .verifying
-                    title = "Task finished"
-                    detail = "Preparing your report"
+                    title = "Done"
+                    detail = "Checking the result"
                 case .stopping:
                     phase = .reporting
-                    title = "Task stopped"
-                    detail = "Stopping safely…"
+                    title = "Stopped"
+                    detail = "Stopping…"
                 case .finalizing(.verifying):
                     phase = .verifying
-                    title = "Task finished"
-                    detail = "Preparing your report"
+                    title = "Done"
+                    detail = "Checking the result"
                 case .finalizing(.stopping):
                     phase = .reporting
-                    title = "Task stopped"
-                    detail = "Stopping safely…"
+                    title = "Stopped"
+                    detail = "Stopping…"
                 }
             }
         case .reporting(let report):
             phase = .reporting
-            title = report.outcome == .completed ? "Task complete" : "Task stopped"
+            title = report.outcome == .completed ? "Done" : "Stopped"
             detail = report.summary
         case .failed(let failure):
             phase = .failed
-            title = "Task failed"
+            title = "Failed"
             detail = failure.message
             canRetry = failure.goal != nil
         }
@@ -182,7 +182,7 @@ final class AgentActivityStripState: ObservableObject {
     private static func verificationLabel(for evidence: ExecutionVerificationEvidence?) -> String? {
         guard let evidence else { return nil }
         if evidence.verified {
-            return evidence.evidence.map { "Verified: \($0)" } ?? "Verified"
+            return evidence.evidence.map { "Checked: \($0)" } ?? "Checked"
         }
         return evidence.warning.map { "Needs checking: \($0)" } ?? "Needs checking"
     }
@@ -336,7 +336,7 @@ struct AgentActivityStripView: View {
                 stepsDetails
             }
             if let verification = state.verification {
-                Text("Read-back: \(verification)")
+                Text(verification)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -367,13 +367,13 @@ struct AgentActivityStripView: View {
                             Text(step.summary)
                                 .font(PerryTheme.Scale.chip)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("\(step.reversible ? "Reversible" : "One-way") · Trust tier \(step.tier.rawValue)")
+                            Text(step.reversible ? "Can be undone" : "Can’t be undone")
                                 .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             if let verification = step.verification {
-                                Text("Outcome: \(verification)")
+                                Text(verification)
                                     .font(PerryTheme.Scale.chip)
-                                    .foregroundStyle(verification.hasPrefix("Verified") ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
+                                    .foregroundStyle(verification.hasPrefix("Checked") ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
                             }
                         }
                     }
@@ -415,7 +415,7 @@ struct AgentActivityStripView: View {
                         .disabled(steeringIsEmpty)
                         .keyboardShortcut(.defaultAction)
                         .accessibilityLabel("Send steering instruction")
-                        .accessibilityHint("Send this instruction before Perry's next task step")
+                        .accessibilityHint("Send this instruction before my next step")
                 }
                 .padding(.top, PerryTheme.Spacing.tight)
             } label: {
@@ -439,7 +439,7 @@ struct AgentActivityStripView: View {
                 Button { onResume() } label: {
                     Label("Resume", systemImage: "play")
                 }
-                .accessibilityLabel(state.handedToHuman ? "Continue with Perry" : "Resume task")
+                .accessibilityLabel(state.handedToHuman ? "Continue" : "Resume task")
                 .help(state.handedToHuman ? "Replan the remaining work from the current screen" : "Resume the task")
             }
             if state.takeOverIsAvailable {
@@ -453,7 +453,7 @@ struct AgentActivityStripView: View {
                 Button("Try again") { onRetry() }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
-                    .accessibilityLabel("Retry task")
+                    .accessibilityLabel("Try again")
                     .help("Run the task again")
             }
             if state.stopIsAvailable {
@@ -488,7 +488,7 @@ struct AgentActivityStripView: View {
 
     private var emptyStepsLabel: String {
         state.phase == .failed || state.phase == .reporting
-            ? "Perry didn’t change anything."
+            ? "I didn’t change anything."
             : "Waiting for the first step."
     }
 
@@ -510,11 +510,10 @@ struct AgentActivityStripView: View {
     private func stepAccessibilityValue(_ step: AgentActivityStep) -> String {
         var parts = [
             step.summary,
-            step.reversible ? "Reversible" : "One-way",
-            "Trust tier \(step.tier.rawValue)"
+            step.reversible ? "Can be undone" : "Can’t be undone"
         ]
         if let verification = step.verification {
-            parts.append("Outcome: \(verification)")
+            parts.append(verification)
         }
         return parts.joined(separator: ". ")
     }
@@ -545,9 +544,9 @@ private extension AgentActivityPhase {
         case .starting: return "Starting"
         case .working: return "In progress"
         case .paused: return "Paused"
-        case .confirming: return "Awaiting approval"
-        case .verifying: return "Verifying"
-        case .reporting: return "Reporting"
+        case .confirming: return "Needs your OK"
+        case .verifying: return "Checking"
+        case .reporting: return "Saving"
         case .failed: return "Failed"
         }
     }

@@ -1,0 +1,9 @@
+{"captured_at":"2026-10-24T22:57:47.792Z","name":"ptt.capture.eventtap"}
+{"captured_at":"2026-10-24T22:57:47.867Z","name":"sound.warmup"}
+{"captured_at":"2026-10-24T22:57:51.763Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:57:51.773Z","name":"wake.pinned"}
+{"captured_at":"2026-10-24T22:57:51.774Z","name":"wake.overlay"}
+{"captured_at":"2026-10-24T22:57:51.813Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T22:57:51.873Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-24T22:57:53.561Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T22:57:53.561Z","name":"notch.workspace.opened"}

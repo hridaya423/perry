@@ -73,7 +73,7 @@ final class ExecutionFinalizerTests: XCTestCase {
         )
 
         XCTAssertEqual(completion.transcript.steps, ["Rename the file", "Rename the file"])
-        XCTAssertEqual(completion.summary, "Finished 2 steps.")
+        XCTAssertEqual(completion.summary, "Done. I ran 2 steps.")
         XCTAssertEqual(completion.transcript.verified, true)
         XCTAssertEqual(completion.notification.kind, .completed)
     }
@@ -83,17 +83,17 @@ final class ExecutionFinalizerTests: XCTestCase {
             execution: execution(),
             outcome: .completed(stepsRun: 2),
             finishedAt: finishedAt,
-            headline: "Done. That worked. I will remember it."
+            headline: "Done. I’ll remember this routine."
         )
-        XCTAssertEqual(success.summary, "Done. That worked. I will remember it.")
+        XCTAssertEqual(success.summary, "Done. I’ll remember this routine.")
 
         let failure = ExecutionFinalizer.completion(
             execution: execution(),
             outcome: .failed(stepSummary: "Click Export", reason: "gone"),
             finishedAt: finishedAt,
-            headline: "I stopped at step 3. I could not find 'Export'."
+            headline: "I stopped at step 3. I couldn’t find “Export”."
         )
-        XCTAssertTrue(failure.summary.hasPrefix("I stopped at step 3. I could not find 'Export'. "))
+        XCTAssertTrue(failure.summary.hasPrefix("I stopped at step 3. I couldn’t find “Export”. "))
         XCTAssertFalse(failure.summary.contains("Stopped at Click Export"))
     }
 
@@ -150,8 +150,8 @@ final class ExecutionFinalizerTests: XCTestCase {
             finishedAt: finishedAt
         )
 
-        XCTAssertTrue(completion.summary.contains("nothing was changed"))
-        XCTAssertTrue(completion.summary.contains("Safe next step"))
+        XCTAssertTrue(completion.summary.contains("I didn’t change anything"))
+        XCTAssertTrue(completion.summary.contains("try again"))
     }
 
     func testFailedSummaryReportsPartialProgressUncertaintyAndNextStep() {
@@ -163,10 +163,10 @@ final class ExecutionFinalizerTests: XCTestCase {
             finishedAt: finishedAt
         )
 
-        XCTAssertTrue(completion.summary.contains("1 verified"))
-        XCTAssertTrue(completion.summary.contains("uncertain"))
-        XCTAssertTrue(completion.summary.contains("left untouched"))
-        XCTAssertTrue(completion.summary.contains("Safe next step"))
+        XCTAssertTrue(completion.summary.contains("checked 1 of them"))
+        XCTAssertTrue(completion.summary.contains("can’t tell whether step 2"))
+        XCTAssertTrue(completion.summary.contains("didn’t touch the rest"))
+        XCTAssertTrue(completion.summary.contains("try again"))
     }
 
     private func execution(

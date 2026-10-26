@@ -77,7 +77,7 @@ final class SessionControllerTests: XCTestCase {
         let reported = AgentActivityStripState()
         reported.apply(sessionState: controller.state)
         XCTAssertEqual(reported.phase, .reporting)
-        XCTAssertEqual(reported.title, "Task complete")
+        XCTAssertEqual(reported.title, "Done")
         XCTAssertEqual(reported.detail, "Renamed and verified the file")
     }
 

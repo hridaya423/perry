@@ -51,15 +51,19 @@ final class IntentCardPresenter {
 struct InteractiveConfirmer: Confirmer {
     weak var controller: AppController?
 
+    static func question(_ summary: String) -> String {
+        let text = summary.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".?")))
+        return text.prefix(1).uppercased() + text.dropFirst() + "?"
+    }
+
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
         guard let controller = await MainActor.run(body: { controller }) else { return false }
         let card = IntentCard(
-            title: "About to \(request.actionSummary)",
+            title: Self.question(request.actionSummary),
             detail: request.reason,
             tier: request.tier,
             targetSummary: request.targetSummary ?? request.actionSummary,
             requiredPhrase: request.requiredText,
-            approveLabel: request.actionSummary,
             reversible: request.reversible
         )
         SoundPlayer.play(.receive)
@@ -70,7 +74,7 @@ struct InteractiveConfirmer: Confirmer {
     func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
         guard let controller = await MainActor.run(body: { controller }) else { return .cancel }
         let card = IntentCard(
-            title: "About to \(request.actionSummary)",
+            title: Self.question(request.actionSummary),
             detail: request.reason,
             tier: request.tier,
             targetSummary: request.targetSummary ?? request.actionSummary,

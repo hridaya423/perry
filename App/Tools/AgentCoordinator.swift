@@ -473,10 +473,10 @@ extension AgentFinish {
     var failureReason: String? {
         switch self {
         case .completed: nil
-        case .interrupted: "Stopped. Review any changes before trying again."
-        case .paused: "Paused."
-        case .budgetToolCalls: "Stopped at the action limit. Review the result before continuing."
-        case .budgetTime: "Stopped at the time limit. Review the result before continuing."
+        case .interrupted: "I stopped. Check for changes before you try again."
+        case .paused: "I paused."
+        case .budgetToolCalls: "I stopped at the \(AgentLoop.Budgets().maxToolCalls)-action limit. Check the result before you continue."
+        case .budgetTime: "I stopped after \(Int(AgentLoop.Budgets().wallClock / 60)) minutes. Check the result before you continue."
         case .providerError(let message), .failed(let message): message
         }
     }

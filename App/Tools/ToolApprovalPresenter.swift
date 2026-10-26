@@ -43,12 +43,12 @@ enum ToolApprovalPresenter {
                     tier: spec.tier,
                     targetSummary: "",
                     requiredPhrase: spec.tier >= .red ? (target ?? call.name) : nil,
-                    approveLabel: "Allow"
+                    approveLabel: "Approve"
                 )
                 let window = IntentCardWindow(
                     card: card,
                     allowsStepThrough: false,
-                    alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always allow" : nil,
+                    alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always approve" : nil,
                     onAlwaysAllow: consentScope.map { scope in
                         { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
                     }
@@ -87,13 +87,13 @@ enum ToolApprovalPresenter {
         case "files.trash": return "Move \(file ?? "this file") to the Trash?"
         case "files.mkdir": return file.map { "Create the folder \($0)?" } ?? "Create a folder?"
         case "memory.write": return "Remember this?"
-        case "perry.createPerry": return "Make a new Perry?"
+        case "perry.createPerry": return "Make a new helper?"
         case "perry.schedule": return "Schedule this?"
         case "integrations.write": return "Make a change in a connected app?"
         default:
             let parts = call.name.split(separator: ".")
             if parts.first == "mcp", parts.count >= 3 { return "Use \(parts[1])’s \(parts[2...].joined(separator: "."))?" }
-            return "Allow \(call.name)?"
+            return "Approve this step?"
         }
     }
 

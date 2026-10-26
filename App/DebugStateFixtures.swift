@@ -62,7 +62,7 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         case .paused:
             return "Paused — resume when you're ready."
         case .verified:
-            return "Verified: both files moved and contents unchanged."
+            return "Checked: both files moved and contents unchanged."
         case .unverified:
             return "Finished, but I couldn't verify the result — check before relying on it."
         case .failed:
@@ -102,7 +102,7 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         case .verified:
             return .reporting(ReportState(
                 taskID: Self.fixtureTaskID,
-                summary: "Verified: both files moved and contents unchanged."
+                summary: "Checked: both files moved and contents unchanged."
             ))
         case .unverified:
             return .reporting(ReportState(
@@ -133,21 +133,21 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         case .approvalOrange:
             return IntentCard(
                 id: Self.fixtureApprovalID,
-                title: "About to move 2 files into Archive",
+                title: "Move 2 files into Archive?",
                 detail: "Both files keep their contents; nothing else changes.",
                 tier: .orange,
                 targetSummary: "draft-a.txt, draft-b.txt → ~/Documents/Archive",
-                approveLabel: "Move 2 files into Archive",
+                approveLabel: "Move files",
                 reversible: true
             )
         case .approvalRed:
             return IntentCard(
                 id: Self.fixtureApprovalID,
-                title: "About to empty the Trash",
-                detail: "This cannot be undone from inside Perry.",
+                title: "Empty the Trash?",
+                detail: "Perry can’t undo this.",
                 tier: .red,
                 targetSummary: "Trash — 34 items",
-                approveLabel: "Empty the Trash",
+                approveLabel: "Empty Trash",
                 reversible: false
             )
         default:
@@ -234,7 +234,7 @@ extension PerryDebugLaunchSurface {
                 sessionID: UUID(uuidString: "00000000-0000-0000-0000-0000000000F1")!,
                 request: "Move the two named files into Archive",
                 appBundleID: "com.apple.finder",
-                summary: "Verified: both files moved and contents unchanged.",
+                summary: "Checked: both files moved and contents unchanged.",
                 outcome: .completed,
                 startedAt: day.addingTimeInterval(-300),
                 finishedAt: day.addingTimeInterval(-280),

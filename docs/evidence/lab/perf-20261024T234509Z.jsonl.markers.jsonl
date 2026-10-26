@@ -1,0 +1,11 @@
+{"captured_at":"2026-10-24T23:45:09.793Z","name":"ptt.capture.eventtap"}
+{"captured_at":"2026-10-24T23:45:09.869Z","name":"sound.warmup"}
+{"captured_at":"2026-10-24T23:45:13.351Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T23:45:13.361Z","name":"wake.pinned"}
+{"captured_at":"2026-10-24T23:45:13.362Z","name":"wake.overlay"}
+{"captured_at":"2026-10-24T23:45:13.397Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T23:45:13.457Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-24T23:45:17.057Z","name":"home.question.sent"}
+{"captured_at":"2026-10-24T23:45:19.157Z","name":"home.answer.first_text"}
+{"captured_at":"2026-10-24T23:45:19.428Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T23:45:21.627Z","name":"guide.resolve.begin"}

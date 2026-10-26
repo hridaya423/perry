@@ -1,0 +1,10 @@
+{"captured_at":"2026-10-24T22:49:05.950Z","name":"ptt.capture.eventtap"}
+{"captured_at":"2026-10-24T22:49:05.996Z","name":"sound.warmup"}
+{"captured_at":"2026-10-24T22:49:10.657Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:49:10.665Z","name":"wake.pinned"}
+{"captured_at":"2026-10-24T22:49:10.666Z","name":"wake.overlay"}
+{"captured_at":"2026-10-24T22:49:10.707Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T22:49:10.780Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-24T22:49:14.255Z","name":"home.question.sent"}
+{"captured_at":"2026-10-24T22:49:16.831Z","name":"home.answer.first_text"}
+{"captured_at":"2026-10-24T22:51:29.128Z","name":"talk.cancel.session"}

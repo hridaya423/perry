@@ -12,18 +12,18 @@ final class RoutineRunCopyTests: XCTestCase {
     }
 
     func testTheFirstSuccessfulRunSaysItWorked() {
-        XCTAssertEqual(RoutineRunCopy.success(priorVerifiedRuns: 0), "Done. That worked. I will remember it.")
+        XCTAssertEqual(RoutineRunCopy.success(priorVerifiedRuns: 0), "Done. I’ll remember this routine.")
         XCTAssertNil(RoutineRunCopy.success(priorVerifiedRuns: 1))
     }
 
     func testAMissingControlNamesTheStepAndTheControl() throws {
         let copy = RoutineRunCopy.stopped(routine: try routine(), step: 2, error: .targetNotFound(step: 2), reason: "ignored")
-        XCTAssertEqual(copy, "I stopped at step 3. I could not find 'Export'.")
+        XCTAssertEqual(copy, "I stopped at step 3. I couldn’t find “Export”.")
     }
 
     func testAnAmbiguousControlNamesTheStepAndTheControl() throws {
         let copy = RoutineRunCopy.stopped(routine: try routine(), step: 1, error: .ambiguousTarget(step: 1), reason: "ignored")
-        XCTAssertEqual(copy, "I stopped at step 2. More than one control looks like 'Edit'.")
+        XCTAssertEqual(copy, "I stopped at step 2. More than one control looks like “Edit”.")
     }
 
     func testAnyOtherFailureStillNamesTheStep() throws {

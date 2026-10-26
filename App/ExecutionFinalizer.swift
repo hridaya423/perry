@@ -79,14 +79,14 @@ struct ExecutionFinalizer: Sendable {
         case .completed(let steps):
             transcriptOutcome = .completed
             summary = execution.warnings.isEmpty
-                ? headline ?? "Finished \(steps) step\(steps == 1 ? "" : "s")."
-                : "Finished, but Perry could not independently verify: \(execution.warnings.joined(separator: "; "))."
+                ? headline ?? "Done. I ran \(steps) step\(steps == 1 ? "" : "s")."
+                : "Done, but I couldn’t confirm it worked: \(execution.warnings.joined(separator: "; "))."
         case .blocked(let reason):
             transcriptOutcome = .stopped
-            summary = recoverySummary(headline: "Stopped: \(reason).", execution: execution, pendingMayHaveApplied: false)
+            summary = recoverySummary(headline: "I stopped: \(reason).", execution: execution, pendingMayHaveApplied: false)
         case .failed(let step, let reason):
             transcriptOutcome = .failed
-            summary = recoverySummary(headline: headline ?? "Stopped at \(step): \(reason).", execution: execution, pendingMayHaveApplied: true)
+            summary = recoverySummary(headline: headline ?? "I stopped at \(step): \(reason).", execution: execution, pendingMayHaveApplied: true)
         }
 
         let verified: Bool?
@@ -120,7 +120,7 @@ struct ExecutionFinalizer: Sendable {
         let notificationKind: TaskNotification.Kind = transcriptOutcome == .completed ? .completed : .stopped
         let notification = TaskNotification(
             kind: notificationKind,
-            title: "Perry task (\(transcriptOutcome.rawValue))",
+            title: execution.goal,
             body: summary
         )
         return ExecutionCompletion(
@@ -135,16 +135,14 @@ struct ExecutionFinalizer: Sendable {
     private static func recoverySummary(headline: String, execution: ExecutionSessionState, pendingMayHaveApplied: Bool) -> String {
         let finished = execution.steps.count
         guard finished > 0 else {
-            return "\(headline) No actions ran, so nothing was changed. Safe next step: adjust the goal and try again."
+            return "\(headline) I didn’t change anything. Rephrase the task and try again."
         }
         let verifiedCount = execution.verificationResults.filter { $0 }.count
-        var sentence = "\(headline) \(finished) of \(max(execution.totalSteps, finished)) actions finished"
-        sentence += verifiedCount == finished
-            ? " and were verified"
-            : " (\(verifiedCount) verified)"
-        sentence += pendingMayHaveApplied
-            ? "; the stopped action's effect is uncertain, and everything after it was left untouched."
-            : "; everything after that point was left untouched."
-        return "\(sentence) Safe next step: review what changed, then retry the goal."
+        var sentence = "\(headline) I finished \(finished) of \(max(execution.totalSteps, finished)) steps and checked "
+        sentence += verifiedCount == finished ? "each one." : "\(verifiedCount) of them."
+        if pendingMayHaveApplied {
+            sentence += " I can’t tell whether step \(finished + 1) took effect."
+        }
+        return "\(sentence) I didn’t touch the rest. Check what changed, then try again."
     }
 }

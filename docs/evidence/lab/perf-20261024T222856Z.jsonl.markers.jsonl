@@ -1,0 +1,15 @@
+{"captured_at":"2026-10-24T22:28:57.122Z","name":"ptt.capture.eventtap"}
+{"captured_at":"2026-10-24T22:28:57.168Z","name":"sound.warmup"}
+{"captured_at":"2026-10-24T22:29:02.854Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:29:02.862Z","name":"wake.pinned"}
+{"captured_at":"2026-10-24T22:29:02.863Z","name":"wake.overlay"}
+{"captured_at":"2026-10-24T22:29:02.904Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T22:29:02.966Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-24T22:29:05.816Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:29:06.908Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:29:06.910Z","name":"wake.pinned"}
+{"captured_at":"2026-10-24T22:29:06.911Z","name":"wake.overlay"}
+{"captured_at":"2026-10-24T22:29:06.925Z","name":"panel.visible"}
+{"captured_at":"2026-10-24T22:29:06.972Z","name":"sound.cue.wake"}
+{"captured_at":"2026-10-24T22:29:09.692Z","name":"invoke.keydown"}
+{"captured_at":"2026-10-24T22:29:43.448Z","name":"talk.cancel.session"}

@@ -53,9 +53,9 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
     public var spokenLine: String {
         switch tier {
         case .orange:
-            return "\(title). Approve or stop."
+            return "\(title) Approve or deny."
         case .red:
-            return "This one needs real attention. \(title). Confirm on screen; I won't take a voice yes for this."
+            return "\(title) Confirm on screen. I can’t take a voice yes for this."
         default:
             return title
         }
