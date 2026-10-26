@@ -67,7 +67,9 @@ public enum CapabilityResolver {
         case .chat:
             return .available
         case .screen:
-            guard capabilities.contains(.vision) else { return .blocked(reason: "This model cannot see images.", fix: chooseCloudModel) }
+            guard capabilities.contains(.vision) else {
+                return snapshot.accessibility ? .available : .blocked(reason: "Accessibility is off.", fix: grantAccessibility)
+            }
             return screenAccess(snapshot)
         case .act:
             guard capabilities.isSuperset(of: [.vision, .tools]) else { return .blocked(reason: "This model cannot use Perry's tools.", fix: chooseCloudModel) }
@@ -226,10 +228,13 @@ public enum PromptAssembler {
         if capabilities.contains(.local) {
             sentences.append("Right now I'm running privately on your Mac with \(name).")
         }
-        if status[.screen] == .available {
+        if status[.screen] == .available, capabilities.contains(.vision) {
             sentences.append("I can see your screen, answer questions about it, and walk you through any app step by step.")
         } else {
             sentences.append("I can chat, explain things, and help you write or think something through.")
+            if status[.screen] == .available {
+                sentences.append("I can also read the window you're in and explain what's there.")
+            }
         }
         if status[.act] == .available {
             sentences.append("Say “do this for me” and I'll do the task myself.")
@@ -239,6 +244,8 @@ public enum PromptAssembler {
         }
         if case .blocked(_, let fix) = status[.screen] {
             sentences.append("To let me see your screen and guide you: \(fix)")
+        } else if case .blocked(_, let fix) = status[.act] {
+            sentences.append("To have me do tasks for you: \(fix)")
         }
         sentences.append("What are you working on?")
         return sentences.joined(separator: " ")
@@ -247,7 +254,11 @@ public enum PromptAssembler {
     private static func summary(of verb: Capability.Verb, snapshot: CapabilitySnapshot) -> String {
         switch verb {
         case .chat: return "chat, explain things, and help the user write or think something through"
-        case .screen: return "look at the user's screen, point at things, and teach the steps in any app"
+        case .screen:
+            guard snapshot.capabilities.contains(.vision) else {
+                return "read the text of the window the user is in, point at its controls, and explain what is there; you get text, not images"
+            }
+            return "look at the user's screen, point at things, and teach the steps in any app"
         case .act: return "do tasks on the screen when the user asks; risky steps wait for their approval"
         case .files: return "read and organise files in Perry's workspace folder"
         case .apps: return "use the connected apps: " + snapshot.connectedApps.joined(separator: ", ")

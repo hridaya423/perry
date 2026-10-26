@@ -248,7 +248,13 @@ final class AgentCoordinator: ObservableObject {
                     ), runID: runID)
                 }
                 let capabilities: ModelCapabilities = spatialContext != nil ? [.vision, .streaming] : (surface == .suggestions || unattended ? [.tools] : [.streaming])
-                let selected = try await provider(RouteRequirement(capabilities: capabilities, tier: tier))
+                let hasWindowText = spatialContext?.observation.observedElements.isEmpty == false
+                let selected: any ModelProvider
+                do {
+                    selected = try await provider(RouteRequirement(capabilities: capabilities, tier: tier))
+                } catch where hasWindowText {
+                    selected = try await provider(RouteRequirement(capabilities: [.streaming], tier: tier))
+                }
                 try Task.checkCancellation()
                 let system = await systemPrompt(for: thread, provider: selected, mode: mode)
                 // Spatial payload and window metadata are turn input, not
@@ -298,7 +304,7 @@ final class AgentCoordinator: ObservableObject {
                 let loop = AgentLoop(provider: selected, host: host)
                 loops[threadID] = loop
                 var parts: [ModelContentPart] = [.text(goal)]
-                if let observation = spatialContext?.observation, let screenshot = observation.screenshotData {
+                if selected.capabilities.contains(.vision), let observation = spatialContext?.observation, let screenshot = observation.screenshotData {
                     parts.append(.image(data: screenshot, mimeType: observation.screenshotMIMEType))
                 }
                 let prepared = try await loop.prepareConversation(

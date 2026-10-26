@@ -358,6 +358,33 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertEqual(none.last, .finished(.completed))
     }
 
+    func testTextOnlyModelAnswersAskFromTheWindowText() async throws {
+        let provider = ConversationTestProvider(capabilities: [.local, .streaming])
+        let coordinator = AgentCoordinator(
+            provider: { requirement in
+                guard !requirement.capabilities.contains(.vision) else {
+                    throw ModelProviderError(kind: .notConfigured, provider: "router", message: "no vision")
+                }
+                return provider
+            }, host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: try directory()), consent: ToolConsentStore(directory: nil)
+        )
+        let observation = GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.fixture", windowTitle: "Fixture", elements: [
+            AXElement(stableID: "project", role: .button, label: "Orchid-73", frame: AXElementFrame(x: 100, y: 100, width: 120, height: 30), isActionable: true)
+        ]), screenshotData: Data([1, 2, 3]))
+        let events = await collect(coordinator.run(
+            threadID: UUID(), goal: "What is this button?", spatialContext: .init(observation: observation, bindings: [], skill: nil)
+        ))
+        XCTAssertEqual(events.last, .finished(.completed))
+        let messages = try XCTUnwrap(provider.requests.first?.messages)
+        let parts = messages.flatMap { message -> [ModelContentPart] in
+            if case .user(let parts) = message { return parts }
+            return []
+        }
+        XCTAssertTrue(parts.contains { if case .text(let text) = $0 { return text.contains("\"Orchid-73\"") }; return false })
+        XCTAssertFalse(parts.contains { if case .image = $0 { return true }; return false })
+    }
+
     func testRunIdentityIsDurableBeforeProviderWorkStarts() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
