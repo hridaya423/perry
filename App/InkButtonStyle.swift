@@ -78,6 +78,29 @@ struct InkButtonStyle: ButtonStyle {
     }
 }
 
+struct ControlFeedback<S: InsettableShape>: ViewModifier {
+    let shape: S
+    var hover = 0.06
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.isFocused) private var isFocused
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay { shape.fill(Color.white.opacity(hovering && isEnabled ? hover : 0)) }
+            .overlay { if isFocused { shape.strokeBorder(PerryTheme.Colors.accent, lineWidth: 2) } }
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+            .animation(PerryTheme.Motion.snap, value: hovering)
+    }
+}
+
+extension View {
+    func controlFeedback<S: InsettableShape>(_ shape: S, hover: Double = 0.06) -> some View {
+        modifier(ControlFeedback(shape: shape, hover: hover))
+    }
+}
+
 struct InkChoiceStyle: ButtonStyle {
     var isDefault = false
 
@@ -88,6 +111,7 @@ struct InkChoiceStyle: ButtonStyle {
     private struct ChoiceRow: View {
         let configuration: ButtonStyleConfiguration
         let isDefault: Bool
+        @Environment(\.isFocused) private var isFocused
         @State private var hovering = false
 
         var body: some View {
@@ -112,7 +136,7 @@ struct InkChoiceStyle: ButtonStyle {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isDefault ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+                    .strokeBorder(isFocused ? PerryTheme.Colors.accent : isDefault ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator, lineWidth: isFocused ? 2 : 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .onHover { hovering = $0 }

@@ -59,7 +59,7 @@ struct WorkspaceComposer: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .background(PerryTheme.Colors.primaryAction, in: Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RailRowStyle(cornerRadius: 14))
                 .disabled(!canSend)
                 .keyboardShortcut(.return, modifiers: .command)
                 .accessibilityLabel("Send")
@@ -73,7 +73,7 @@ struct WorkspaceComposer: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RailRowStyle())
                 .accessibilityLabel("Talk to Perry")
                 .help(TalkGesture.talk)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -122,6 +122,7 @@ struct ChipStyle: ButtonStyle {
             .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.1 : 0.05)))
             .overlay(Capsule().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
             .clipShape(Capsule())
+            .controlFeedback(Capsule())
     }
 }
 

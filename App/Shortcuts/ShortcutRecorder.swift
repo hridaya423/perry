@@ -309,5 +309,6 @@ private struct PresetChipStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .frame(height: 24)
             .background(Capsule().fill(selected ? PerryTheme.Colors.accent : PerryTheme.Colors.chip.opacity(configuration.isPressed ? 0.7 : 1)))
+            .controlFeedback(Capsule())
     }
 }

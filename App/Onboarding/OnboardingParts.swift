@@ -78,18 +78,27 @@ struct OnboardingFooter<Leading: View, Primary: View, Trailing: View>: View {
 }
 
 struct OnboardingLinkStyle: ButtonStyle {
-    @State private var hovering = false
-
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(hovering ? PerryTheme.Colors.text : PerryTheme.Colors.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .opacity(configuration.isPressed ? 0.6 : 1)
-            .onHover { hovering = $0 }
-            .animation(PerryTheme.Motion.snap, value: hovering)
+        LinkBody(configuration: configuration)
+    }
+
+    private struct LinkBody: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isFocused) private var isFocused
+        @State private var hovering = false
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(hovering ? PerryTheme.Colors.text : PerryTheme.Colors.textSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .overlay { if isFocused { Capsule().strokeBorder(PerryTheme.Colors.accent, lineWidth: 2) } }
+                .contentShape(Rectangle())
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .onHover { hovering = $0 }
+                .animation(PerryTheme.Motion.snap, value: hovering)
+        }
     }
 }
 
@@ -154,6 +163,7 @@ struct RowButtonStyle: ButtonStyle {
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(prominent ? PerryTheme.Colors.primaryAction : Color.white.opacity(0.08), in: Capsule())
+            .controlFeedback(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
     }

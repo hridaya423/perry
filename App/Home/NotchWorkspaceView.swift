@@ -601,7 +601,7 @@ struct WindowControlButton: View {
     }
 }
 
-private struct RailRowStyle: ButtonStyle {
+struct RailRowStyle: ButtonStyle {
     var cornerRadius: CGFloat = 8
 
     func makeBody(configuration: Configuration) -> some View {
@@ -611,6 +611,7 @@ private struct RailRowStyle: ButtonStyle {
     private struct RailRowBody: View {
         let configuration: ButtonStyleConfiguration
         let cornerRadius: CGFloat
+        @Environment(\.isFocused) private var isFocused
         @State private var hovering = false
 
         var body: some View {
@@ -619,6 +620,9 @@ private struct RailRowStyle: ButtonStyle {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(Color.white.opacity(configuration.isPressed ? 0.1 : hovering ? 0.05 : 0))
                 )
+                .overlay {
+                    if isFocused { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(PerryTheme.Colors.accent, lineWidth: 2) }
+                }
                 .onHover { hovering = $0 }
                 .animation(PerryTheme.Motion.snap, value: hovering)
         }
