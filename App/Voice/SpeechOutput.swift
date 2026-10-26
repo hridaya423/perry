@@ -88,16 +88,20 @@ extension VoiceController {
         case silent
     }
 
-    static func speechRoute(for languageIdentifier: String? = nil, engine: SpeechEngineChoice = .current, defaults: UserDefaults = .standard) -> SpeechRoute {
+    static func speechRoute(for languageIdentifier: String? = nil, engine: SpeechEngineChoice = .current, voiceID: String? = nil,
+                            defaults: UserDefaults = .standard) -> SpeechRoute {
         let rate = currentSpeechPreferences(defaults: defaults).rateMultiplier
         switch engine {
         case .cloud(let provider):
             if let key = provider.storedKey() {
-                let voiceID = defaults.string(forKey: provider.voicePreferenceKey) ?? provider.defaultVoice.id
+                let voiceID = voiceID ?? defaults.string(forKey: provider.voicePreferenceKey) ?? provider.defaultVoice.id
                 return .neural(CloudVoice(provider: provider, voiceID: voiceID, key: key, speed: rate))
             }
         case .kokoro:
-            if let kokoro = KokoroVoice.installed(speed: rate) { return .neural(kokoro) }
+            if var kokoro = KokoroVoice.installed(speed: rate) {
+                if let voiceID { kokoro = KokoroVoice(voice: voiceID, speed: rate) }
+                return .neural(kokoro)
+            }
         case .system:
             break
         }
@@ -317,13 +321,13 @@ extension VoiceController {
         speak(cleaned, guideSpeechIdentity: guideSpeechIdentity, copiesReplyWhenMuted: true)
     }
 
-    func preview(_ text: String, engine: SpeechEngineChoice) {
+    func preview(_ text: String, engine: SpeechEngineChoice, voiceID: String? = nil) {
         guard AudioRouteMonitor.defaultOutputAvailable(), !AudioRouteMonitor.defaultOutputMuted() else {
             hooks.setStatus("Audio output is unavailable. Turn the sound on to hear the voice.")
             return
         }
         stopSpeech(at: .immediate)
-        play(text, route: Self.speechRoute(engine: engine), rate: Self.currentSpeechPreferences().rateMultiplier)
+        play(text, route: Self.speechRoute(engine: engine, voiceID: voiceID), rate: Self.currentSpeechPreferences().rateMultiplier)
     }
 
     func previewSpeechVoice(_ voice: AVSpeechSynthesisVoice) {

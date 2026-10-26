@@ -1,6 +1,8 @@
 import AppKit
 import AVFoundation
+import PerryBrain
 import PerryCore
+import PerryGuide
 import PerryOverlay
 import SwiftUI
 
@@ -9,8 +11,17 @@ struct VoiceSettingsPage: View {
     @AppStorage(PerryPreferences.$speechOutputEnabled.key) private var speechOutputEnabled = true
     @AppStorage(PerryPreferences.$speechRate.key) private var speechRate = 1.0
     @AppStorage(PerryPreferences.$speechVoiceIdentifier.key) private var speechVoiceIdentifier = ""
+    @AppStorage(PerryPreferences.$speechEngine.key) private var engineRaw = ""
     @AppStorage(PerryPreferences.$voiceResponseCaptionOpacity.key) private var captionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
+    @StateObject private var keyCapture = VoiceKeyCapture()
+    @State private var cloudVoices: [VoiceService: [CloudVoiceOption]] = [:]
+    @State private var pastedKey = ""
+    @State private var installing = false
+    @State private var refresh = 0
     @State private var error: String?
+
+    private var engine: SpeechEngineChoice { SpeechEngineChoice(rawValue: engineRaw) ?? .system }
+    private var sample: String { SetupFactsProbe.sample(name: controller.memoryFiles?.profileField("Name") ?? SetupFactsProbe.firstName) }
 
     var body: some View {
         SettingsScroll {
@@ -18,17 +29,16 @@ struct VoiceSettingsPage: View {
                 Toggle("Speak replies", isOn: $speechOutputEnabled)
                     .settingsRowPadding()
                     .onChange(of: speechOutputEnabled) { _, _ in save() }
-                    .onChange(of: speechVoiceIdentifier) { _, _ in save() }
-                ForEach(voices, id: \.identifier) { voice in
-                    SettingsDivider()
-                    VoiceChoiceRow(
-                        voice: voice,
-                        isSelected: voice.identifier == (speechVoiceIdentifier.isEmpty ? VoiceController.speakingVoice?.identifier : speechVoiceIdentifier),
-                        select: { speechVoiceIdentifier = voice.identifier },
-                        preview: { controller.voice.previewSpeechVoice(voice) }
-                    )
-                    .settingsRowPadding()
+                SettingsDivider()
+                SettingsPicker(title: "Voice", detail: engineDetail, selection: Binding(get: { engine.rawValue }, set: { engineRaw = $0 })) {
+                    Text("Natural voice on this Mac").tag(SpeechEngineChoice.kokoro.rawValue)
+                    Text("Apple voice").tag(SpeechEngineChoice.system.rawValue)
+                    Divider()
+                    ForEach(VoiceService.allCases) { service in
+                        Text(service.name).tag(SpeechEngineChoice.cloud(service).rawValue)
+                    }
                 }
+                engineRows
                 SettingsDivider()
                 SettingsRow(title: "Speed") {
                     InkSlider(value: $speechRate, range: 0.5...1.5, step: 0.1, label: "Speech speed")
@@ -38,14 +48,8 @@ struct VoiceSettingsPage: View {
                         .font(PerryTheme.Typography.value)
                         .frame(width: PerryTheme.Sizing.speechRateValueWidth, alignment: .trailing)
                 }
-                SettingsDivider()
-                SettingsRow(title: "More voices", detail: soundsRobotic ? "Enhanced and Premium voices sound more natural and are free in System Settings." : "Download Enhanced and Premium voices in System Settings.") {
-                    Button("Open…") {
-                        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
-                        NSWorkspace.shared.open(url)
-                    }
-                }
             }
+            PronunciationsCard(controller: controller)
             SettingsCard(title: "Captions") {
                 SettingsRow(title: "Caption opacity") {
                     InkSlider(value: $captionOpacity, range: 0.55...1.0, step: 0.05, label: "Caption opacity")
@@ -60,17 +64,158 @@ struct VoiceSettingsPage: View {
             }
         }
         .settingsErrorDialog($error)
+        .onAppear {
+            keyCapture.onSaved = { service in
+                engineRaw = SpeechEngineChoice.cloud(service).rawValue
+                Task { await loadVoices(service) }
+                controller.voice.preview(sample, engine: .cloud(service))
+            }
+        }
+        .onDisappear { keyCapture.stop() }
+        .onReceive(NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)) { _ in refresh += 1 }
+        .task(id: engineRaw) {
+            if case .cloud(let service) = engine, service.hasKey, cloudVoices[service] == nil { await loadVoices(service) }
+        }
     }
 
-    private var voices: [AVSpeechSynthesisVoice] {
-        let recommended = VoiceController.recommendedSpeechVoices()
-        guard let chosen = AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier),
-              !recommended.contains(where: { $0.identifier == chosen.identifier }) else { return recommended }
-        return [chosen] + recommended
+    private var engineDetail: String {
+        switch engine {
+        case .kokoro: "Private and free. Runs on this Mac."
+        case .system: "Private and free. Premium voices sound best."
+        case .cloud(let service): "\(service.name) speaks your replies. Uses your own key."
+        }
     }
 
-    private var soundsRobotic: Bool {
-        (AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice)?.quality == .default
+    @ViewBuilder
+    private var engineRows: some View {
+        switch engine {
+        case .kokoro:
+            if KokoroVoice.isInstalled {
+                ForEach(KokoroVoice.voices) { option in
+                    SettingsDivider()
+                    VoiceOptionRow(name: option.name, detail: option.detail,
+                                   isSelected: (UserDefaults.standard.string(forKey: KokoroVoice.voicePreferenceKey) ?? KokoroVoice.defaultVoice) == option.id,
+                                   select: {
+                                       UserDefaults.standard.set(option.id, forKey: KokoroVoice.voicePreferenceKey)
+                                       refresh += 1
+                                   },
+                                   preview: { controller.voice.preview(sample, engine: .kokoro, voiceID: option.id) })
+                }
+                .id(refresh)
+            } else {
+                SettingsDivider()
+                SettingsRow(title: "Download the natural voice", detail: "About 380 MB. It never leaves this Mac.") {
+                    if installing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Download") { installKokoro() }
+                    }
+                }
+            }
+        case .system:
+            let voices = VoiceController.recommendedSpeechVoices(limit: 6)
+            if voices.isEmpty {
+                SettingsDivider()
+                SettingsRow(title: "No natural Apple voice yet",
+                            detail: "In Spoken Content, open Manage Voices and download Ava (Premium). Perry switches when it arrives.") {
+                    Button("Open…", action: openVoiceManager)
+                }
+            } else {
+                ForEach(voices, id: \.identifier) { voice in
+                    SettingsDivider()
+                    VoiceOptionRow(name: voice.name, detail: voice.quality == .premium ? "Premium" : "Enhanced",
+                                   isSelected: voice.identifier == (speechVoiceIdentifier.isEmpty ? VoiceController.speakingVoice?.identifier : speechVoiceIdentifier),
+                                   select: {
+                                       speechVoiceIdentifier = voice.identifier
+                                       save()
+                                   },
+                                   preview: { controller.voice.previewSpeechVoice(voice) })
+                }
+                .id(refresh)
+                SettingsDivider()
+                SettingsRow(title: "More voices", detail: "Premium voices are free in System Settings.") {
+                    Button("Open…", action: openVoiceManager)
+                }
+            }
+        case .cloud(let service):
+            if service.hasKey {
+                ForEach(cloudVoices[service] ?? [], id: \.id) { option in
+                    SettingsDivider()
+                    VoiceOptionRow(name: option.name, detail: option.detail,
+                                   isSelected: (UserDefaults.standard.string(forKey: service.voicePreferenceKey) ?? service.defaultVoice.id) == option.id,
+                                   select: {
+                                       UserDefaults.standard.set(option.id, forKey: service.voicePreferenceKey)
+                                       refresh += 1
+                                   },
+                                   preview: { controller.voice.preview(sample, engine: .cloud(service), voiceID: option.id) })
+                }
+                .id(refresh)
+                SettingsDivider()
+                SettingsRow(title: "\(service.name) key", detail: "Saved in your Keychain.") {
+                    Button("Remove") {
+                        try? KeychainStore().deleteChecked(account: service.keyAccount)
+                        cloudVoices[service] = nil
+                        refresh += 1
+                    }
+                }
+            } else {
+                SettingsDivider()
+                SettingsRow(title: "Get your \(service.name) key", detail: keyDetail(service)) {
+                    Button("Get key") { keyCapture.getKey(for: service) }
+                }
+                SettingsDivider()
+                HStack(spacing: 8) {
+                    SecureField("Or paste a key", text: $pastedKey)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(submitKey)
+                    Button("Save", action: submitKey)
+                        .disabled(pastedKey.isEmpty)
+                }
+                .settingsRowPadding()
+            }
+        }
+    }
+
+    private func keyDetail(_ service: VoiceService) -> String {
+        switch keyCapture.state {
+        case .waiting(let waiting) where waiting == service: "Sign in, press Create key, then Copy. Perry picks it up."
+        case .checking: "Checking the key…"
+        case .failed(let message): message
+        default: "Perry opens the page and picks up the key when you copy it."
+        }
+    }
+
+    private func submitKey() {
+        keyCapture.submit(pastedKey)
+        pastedKey = ""
+    }
+
+    private func loadVoices(_ service: VoiceService) async {
+        guard let key = service.storedKey() else { return }
+        do {
+            cloudVoices[service] = try await service.verify(key: key)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func installKokoro() {
+        installing = true
+        Task {
+            do {
+                try await KokoroVoice.install { _ in }
+                controller.voice.preview(sample, engine: .kokoro)
+            } catch {
+                self.error = error.localizedDescription
+            }
+            installing = false
+            refresh += 1
+        }
+    }
+
+    private func openVoiceManager() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func save() {
@@ -84,8 +229,9 @@ struct VoiceSettingsPage: View {
     }
 }
 
-private struct VoiceChoiceRow: View {
-    let voice: AVSpeechSynthesisVoice
+private struct VoiceOptionRow: View {
+    let name: String
+    let detail: String?
     let isSelected: Bool
     let select: () -> Void
     let preview: () -> Void
@@ -99,44 +245,82 @@ private struct VoiceChoiceRow: View {
                     .background(PerryTheme.Colors.chip, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Preview \(voice.name)")
+            .accessibilityLabel("Preview \(name)")
             Button(action: select) {
                 HStack(spacing: 8) {
-                    Text(voice.name)
+                    Text(name)
                         .font(PerryTheme.Scale.body)
                         .foregroundStyle(PerryTheme.Colors.text)
-                    if let region {
-                        Text(region)
+                    if let detail {
+                        Text(detail)
                             .font(PerryTheme.Scale.body)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    }
-                    if let quality {
-                        Text(quality)
-                            .font(PerryTheme.Scale.meta)
-                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                            .lineLimit(1)
                     }
                     Spacer()
-                    if isSelected {
-                        StatusMark(.ok)
-                    }
+                    if isSelected { StatusMark(.ok) }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(voice.name)
+            .accessibilityLabel(name)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
+        .settingsRowPadding()
     }
+}
 
-    private var region: String? {
-        Locale(identifier: voice.language).region.flatMap { Locale.current.localizedString(forRegionCode: $0.identifier) }
-    }
+private struct PronunciationsCard: View {
+    let controller: AppController
+    @State private var entries: [Pronunciation] = []
+    @State private var written = ""
+    @State private var spoken = ""
 
-    private var quality: String? {
-        switch voice.quality {
-        case .premium: "Premium"
-        case .enhanced: "Enhanced"
-        default: nil
+    private var store: PronunciationStore { PronunciationStore(directory: controller.storageDirectory) }
+
+    var body: some View {
+        SettingsCard(title: "Pronunciations", footer: "Perry says these names your way and hears them better too.") {
+            ForEach(entries) { entry in
+                HStack(spacing: 10) {
+                    Button { controller.voice.speak(entry.written) } label: {
+                        Image(systemName: "play.fill")
+                            .font(PerryTheme.Icon.utility).imageScale(.small)
+                            .frame(width: 24, height: 24)
+                            .background(PerryTheme.Colors.chip, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Say \(entry.written)")
+                    Text(entry.written).font(PerryTheme.Scale.body)
+                    Text("says “\(entry.spoken)”").font(PerryTheme.Scale.body).foregroundStyle(PerryTheme.Colors.textSecondary)
+                    Spacer()
+                    Button {
+                        try? store.remove(written: entry.written)
+                        entries = store.entries()
+                    } label: { Image(systemName: "minus.circle") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PerryTheme.Colors.icon)
+                    .accessibilityLabel("Remove \(entry.written)")
+                }
+                .settingsRowPadding()
+                SettingsDivider()
+            }
+            HStack(spacing: 8) {
+                TextField("Name", text: $written).textFieldStyle(.roundedBorder)
+                TextField("Say it like", text: $spoken).textFieldStyle(.roundedBorder)
+                    .onSubmit(add)
+                Button("Add", action: add)
+                    .disabled(written.isEmpty || spoken.isEmpty)
+            }
+            .settingsRowPadding()
         }
+        .onAppear { entries = store.entries() }
+    }
+
+    private func add() {
+        try? store.set(Pronunciation(written: written, spoken: spoken))
+        entries = store.entries()
+        controller.voice.speak(written)
+        written = ""
+        spoken = ""
     }
 }

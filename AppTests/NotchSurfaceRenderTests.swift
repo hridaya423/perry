@@ -186,6 +186,13 @@ final class NotchSurfaceRenderTests: XCTestCase {
             UserDefaults.standard.set(page.rawValue, forKey: PerryPreferences.$settingsTab.key)
             try await render(openNotch(controller), name: "settings-\(page.rawValue)", size: NSSize(width: 892, height: 552))
         }
+        let previousEngine = PerryPreferences.speechEngine
+        defer { PerryPreferences.speechEngine = previousEngine }
+        UserDefaults.standard.set(SettingsPage.voice.rawValue, forKey: PerryPreferences.$settingsTab.key)
+        for engine in ["kokoro", "elevenLabs"] {
+            PerryPreferences.speechEngine = engine
+            try await render(openNotch(controller), name: "settings-voice-\(engine)", size: NSSize(width: 892, height: 552))
+        }
         model.routines = [try LearnedRoutine(name: "Prepare project notes", appBundleIDs: ["com.apple.Notes"], steps: [
             RoutineStep(summary: "Open a new note", action: .click),
             RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))
