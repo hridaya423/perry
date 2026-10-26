@@ -17,8 +17,10 @@ struct HomeOnboardingView: View {
                 name: OnboardingDirector.suggestedName(saved: model.deps.controller?.memoryFiles?.profileField("Name"), fullName: NSFullUserName())
             )
         case .brain:
-            if let brain {
-                BrainBeat(director: director, brain: brain, catalog: model.deps.controller?.runtimes, openSettings: openSettings)
+            if let brain, let controller = model.deps.controller {
+                SetupBeat(director: director, brain: brain, voice: controller.voice,
+                          name: controller.memoryFiles?.profileField("Name") ?? SetupFactsProbe.firstName,
+                          catalog: controller.runtimes, openSettings: openSettings)
             }
         case .access:
             AccessBeat(director: director)

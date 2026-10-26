@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import Speech
+import PerryBrain
 import PerryCapture
 import PerryCore
 import PerryGuide
@@ -33,33 +34,32 @@ extension VoiceController {
     }
 
     private static func resolveSpeakingVoice(for languageIdentifier: String?, preferences: SpeechPreferences) -> AVSpeechSynthesisVoice? {
+        let natural = naturalVoices()
         if let identifier = preferences.voiceIdentifier,
-           let selected = AVSpeechSynthesisVoice(identifier: identifier) {
+           let selected = natural.first(where: { $0.identifier == identifier }) {
             return selected
         }
-        if let languageIdentifier,
-           let languageCode = Locale(identifier: languageIdentifier).language.languageCode,
-           let detectedVoice = availableSpeechVoices().first(where: {
-               Locale(identifier: $0.language).language.languageCode == languageCode
-           }) {
-            return detectedVoice
-        }
-        let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
-        return english.first { $0.quality == .premium }
-            ?? english.first { $0.quality == .enhanced }
-            ?? AVSpeechSynthesisVoice(language: "en-US")
+        let languageCode = languageIdentifier.flatMap { Locale(identifier: $0).language.languageCode?.identifier }
+        return recommendedSpeechVoices(from: natural, languageCode: languageCode ?? "en", limit: 1).first
     }
 
     static var speakingVoice: AVSpeechSynthesisVoice? {
         speakingVoice(for: nil)
     }
 
-    static func availableSpeechVoices() -> [AVSpeechSynthesisVoice] {
-        AVSpeechSynthesisVoice.speechVoices().sorted {
-            let left = "\($0.language) \($0.name)"
-            let right = "\($1.language) \($1.name)"
-            return left.localizedCaseInsensitiveCompare(right) == .orderedAscending
-        }
+    static func isNaturalVoice(_ voice: AVSpeechSynthesisVoice) -> Bool {
+        isNatural(identifier: voice.identifier, quality: voice.quality)
+    }
+
+    static func isNatural(identifier: String, quality: AVSpeechSynthesisVoiceQuality) -> Bool {
+        let identifier = identifier.lowercased()
+        return (quality == .premium || quality == .enhanced)
+            && !identifier.contains("siri") && !identifier.contains("eloquence")
+            && !identifier.contains("speech.synthesis") && !identifier.contains("compact")
+    }
+
+    static func naturalVoices(from voices: [AVSpeechSynthesisVoice] = AVSpeechSynthesisVoice.speechVoices()) -> [AVSpeechSynthesisVoice] {
+        voices.filter(isNaturalVoice)
     }
 
     static func recommendedSpeechVoices(
@@ -67,16 +67,41 @@ extension VoiceController {
         languageCode: String = Locale.current.language.languageCode?.identifier ?? "en",
         limit: Int = 5
     ) -> [AVSpeechSynthesisVoice] {
-        let natural = voices.filter { voice in
-            !voice.identifier.contains("speech.synthesis") && !voice.identifier.contains("eloquence")
-                && Locale(identifier: voice.language).language.languageCode?.identifier == languageCode
+        let region = Locale.current.region?.identifier
+        let natural = naturalVoices(from: voices).filter {
+            Locale(identifier: $0.language).language.languageCode?.identifier == languageCode
         }
         let ranked = natural.sorted { left, right in
             if left.quality != right.quality { return left.quality.rawValue > right.quality.rawValue }
+            let leftLocal = Locale(identifier: left.language).region?.identifier == region
+            let rightLocal = Locale(identifier: right.language).region?.identifier == region
+            if leftLocal != rightLocal { return leftLocal }
             return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
         }
         var seenNames = Set<String>()
         return Array(ranked.filter { seenNames.insert($0.name).inserted }.prefix(limit))
+    }
+
+    enum SpeechRoute {
+        case system(AVSpeechSynthesisVoice)
+        case neural(any NeuralVoice)
+        case silent
+    }
+
+    static func speechRoute(for languageIdentifier: String? = nil, engine: SpeechEngineChoice = .current, defaults: UserDefaults = .standard) -> SpeechRoute {
+        let rate = currentSpeechPreferences(defaults: defaults).rateMultiplier
+        switch engine {
+        case .cloud(let provider):
+            if let key = provider.storedKey() {
+                let voiceID = defaults.string(forKey: provider.voicePreferenceKey) ?? provider.defaultVoice.id
+                return .neural(CloudVoice(provider: provider, voiceID: voiceID, key: key, speed: rate))
+            }
+        case .kokoro:
+            if let kokoro = KokoroVoice.installed(speed: rate) { return .neural(kokoro) }
+        case .system:
+            break
+        }
+        return speakingVoice(for: languageIdentifier).map(SpeechRoute.system) ?? .silent
     }
 
     static func speechIsAudible() -> Bool {
@@ -107,7 +132,8 @@ extension VoiceController {
         let inputDeviceID = PerryPreferences.dictationInputDeviceID.map { UInt32(truncatingIfNeeded: $0) }
         return DictationPreferences(
             language: language,
-            customWords: Array(dictionary.keys) + Array(dictionary.values),
+            customWords: Array(dictionary.keys) + Array(dictionary.values)
+                + PronunciationStore(directory: supportDirectory()).entries().map(\.written),
             inputDeviceID: inputDeviceID
         )
     }
@@ -163,18 +189,32 @@ extension VoiceController {
 
     /// Whether the shared speech engine is mid-utterance — Talk barge-in and
     /// the output adapter read this so every feature's speech is observed.
-    var isSpeaking: Bool { synthesizer.isSpeaking }
+    var isSpeaking: Bool { synthesizer.isSpeaking || neuralSpeech.isSpeaking }
 
-    /// Global barge-in. All speech routes through this one synthesizer, so a
-    /// single immediate stop silences Talk, Guide, and announcements alike.
     func shutUp() {
-        synthesizer.stopSpeaking(at: .immediate)
+        stopSpeech(at: .immediate)
         currentSpeechText = nil
     }
 
-    /// Queued speech for Talk's sentence-chunked answers — unlike `speak`,
-    /// which announces by interrupting, this appends to the synthesizer queue
-    /// so streamed sentences play back-to-back.
+    func stopSpeech(at boundary: AVSpeechBoundary) {
+        synthesizer.stopSpeaking(at: boundary)
+        neuralSpeech.stop()
+        speechStream = SpeechText.Stream()
+        if let identity = pendingGuideIdentity {
+            pendingGuideIdentity = nil
+            hooks.guideSpeechFinished(identity)
+        }
+    }
+
+    func neuralSpeechFinished() {
+        if !dictation.isRunning { overlayState.voiceState = .idle }
+        overlayState.expireTaskBubble(after: 1.5)
+        if let identity = pendingGuideIdentity {
+            pendingGuideIdentity = nil
+            hooks.guideSpeechFinished(identity)
+        }
+    }
+
     func enqueueSpeech(_ text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
@@ -188,15 +228,10 @@ extension VoiceController {
             hooks.setStatus(outputAvailable ? "Audio output is muted." : "No audio output is available.")
             return
         }
-        overlayState.voiceState = .responding
-        let utterance = AVSpeechUtterance(string: cleaned)
-        utterance.voice = Self.speakingVoice(for: lastDictationLanguageIdentifier)
-        utterance.rate = Self.speechRate(for: preferences.rateMultiplier)
-        synthesizer.speak(utterance)
+        if !isSpeaking { speechStream = SpeechText.Stream() }
+        play(cleaned, route: Self.speechRoute(for: lastDictationLanguageIdentifier), rate: preferences.rateMultiplier)
     }
 
-    /// `copiesReplyWhenMuted` is reserved for reply content — acknowledgments
-    /// and prompts must never clobber the user's clipboard.
     func speak(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil, copiesReplyWhenMuted: Bool = false) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
@@ -225,17 +260,46 @@ extension VoiceController {
             }
             return
         }
-        synthesizer.stopSpeaking(at: .immediate)
+        stopSpeech(at: .immediate)
         currentSpeechText = cleaned
-        overlayState.voiceState = .responding
-        let utterance = AVSpeechUtterance(string: cleaned)
-        utterance.voice = Self.speakingVoice(for: lastDictationLanguageIdentifier)
-        utterance.rate = Self.speechRate(for: preferences.rateMultiplier)
-        if let guideSpeechIdentity {
-            guideSpeechIdentities[ObjectIdentifier(utterance)] = guideSpeechIdentity
+        let route = Self.speechRoute(for: lastDictationLanguageIdentifier)
+        if case .system = route, let guideSpeechIdentity {
+            play(cleaned, route: route, rate: preferences.rateMultiplier) { utterance in
+                self.guideSpeechIdentities[ObjectIdentifier(utterance)] = guideSpeechIdentity
+            }
+        } else {
+            play(cleaned, route: route, rate: preferences.rateMultiplier)
+            if let guideSpeechIdentity {
+                if case .neural = route { pendingGuideIdentity = guideSpeechIdentity } else { hooks.guideSpeechFinished(guideSpeechIdentity) }
+            }
         }
-        synthesizer.speak(utterance)
         PerfMark.mark("talk.speak.start")
+    }
+
+    private func respelled(_ text: String) -> String {
+        PronunciationStore.respell(text, with: PronunciationStore(directory: supportDirectory()).entries())
+    }
+
+    private func play(_ text: String, route: SpeechRoute, rate: Double, prepare: (AVSpeechUtterance) -> Void = { _ in }) {
+        switch route {
+        case .system(let voice):
+            let spoken = respelled(speechStream.next(text))
+            guard !spoken.isEmpty else { return }
+            overlayState.voiceState = .responding
+            let utterance = AVSpeechUtterance(string: spoken)
+            utterance.voice = voice
+            utterance.rate = Self.speechRate(for: rate)
+            prepare(utterance)
+            synthesizer.speak(utterance)
+        case .neural(let voice):
+            let spoken = respelled(speechStream.next(text, spellNumbers: voice.spellsNumbers))
+            guard !spoken.isEmpty else { return }
+            overlayState.voiceState = .responding
+            neuralSpeech.enqueue(spoken, voice: voice)
+        case .silent:
+            overlayState.voiceState = .idle
+            hooks.setStatus("Perry has no natural voice yet, so replies stay in text. Choose one in Settings > Voice.")
+        }
     }
 
     func deliverVoiceReply(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil) {
@@ -251,6 +315,15 @@ extension VoiceController {
             }
         }
         speak(cleaned, guideSpeechIdentity: guideSpeechIdentity, copiesReplyWhenMuted: true)
+    }
+
+    func preview(_ text: String, engine: SpeechEngineChoice) {
+        guard AudioRouteMonitor.defaultOutputAvailable(), !AudioRouteMonitor.defaultOutputMuted() else {
+            hooks.setStatus("Audio output is unavailable. Turn the sound on to hear the voice.")
+            return
+        }
+        stopSpeech(at: .immediate)
+        play(text, route: Self.speechRoute(engine: engine), rate: Self.currentSpeechPreferences().rateMultiplier)
     }
 
     func previewSpeechVoice(_ voice: AVSpeechSynthesisVoice) {

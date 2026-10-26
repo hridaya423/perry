@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import Speech
+import PerryBrain
 import PerryCapture
 import PerryCore
 import PerryGuide
@@ -33,8 +34,11 @@ final class VoiceController: NSObject, ObservableObject {
     let hooks: Hooks
 
     let synthesizer = AVSpeechSynthesizer()
+    let neuralSpeech = NeuralSpeechPlayer()
+    var speechStream = SpeechText.Stream()
     var currentSpeechText: String?
     var guideSpeechIdentities: [ObjectIdentifier: GuideSpeechIdentity] = [:]
+    var pendingGuideIdentity: GuideSpeechIdentity?
     var realtimeVoiceSession: RealtimeVoiceSession?
     private var realtimeTranscriptBuffer = ""
     private var realtimeCommandDispatched = false
@@ -166,6 +170,8 @@ final class VoiceController: NSObject, ObservableObject {
         self.hooks = hooks
         super.init()
         synthesizer.delegate = self
+        neuralSpeech.onIdle = { [weak self] in self?.neuralSpeechFinished() }
+        neuralSpeech.onError = { [weak self] message in self?.hooks.setStatus(message) }
     }
 
     /// Starts the global input listeners once the app is up.
@@ -191,7 +197,7 @@ final class VoiceController: NSObject, ObservableObject {
             switch realtimeVoiceSession.state {
             case .connecting, .listening, .responding:
                 wakeWordListener.stop()
-                synthesizer.stopSpeaking(at: .immediate)
+                stopSpeech(at: .immediate)
                 realtimeTranscriptBuffer = ""
                 realtimeCommandDispatched = false
                 realtimeVoiceSession.beginInput()
@@ -226,7 +232,7 @@ final class VoiceController: NSObject, ObservableObject {
             }
             if let apiKey, !apiKey.isEmpty {
                 wakeWordListener.stop()
-                synthesizer.stopSpeaking(at: .word)
+                stopSpeech(at: .word)
                 lastDictationLanguageIdentifier = nil
                 hooks.setStatus("Connecting to realtime voice…")
                 let session = makeRealtimeVoiceSession(configuration, apiKey) { [weak self] event in
@@ -245,7 +251,7 @@ final class VoiceController: NSObject, ObservableObject {
         overlayState.buddyState = .idle
         hooks.setStatus("Getting the microphone ready…")
         wakeWordListener.stop()
-        synthesizer.stopSpeaking(at: .word)
+        stopSpeech(at: .word)
         lastDictationLanguageIdentifier = nil
         do {
             dictation.configure(try currentDictationPreferences())
@@ -445,7 +451,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     private func handleAudioRouteChange(_ deviceName: String) {
         realtimeVoiceSession?.refreshAudioRoute()
-        guard synthesizer.isSpeaking else { return }
+        guard isSpeaking else { return }
         let preroll = Self.bluetoothPrerollDelay(
             isBluetooth: AudioRouteMonitor.defaultOutputIsBluetooth()
         )
@@ -460,20 +466,20 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     private func announceRouteSwitch(_ deviceName: String) {
-        guard synthesizer.isSpeaking else { return }
+        guard isSpeaking else { return }
         let reply = currentSpeechText
         let routeMessage = "I switched the reply to \(deviceName)."
         hooks.setStatus("Audio moved to \(deviceName).")
         speak(routeMessage)
         guard let reply else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            guard let self, self.synthesizer.isSpeaking, self.currentSpeechText == routeMessage else { return }
+            guard let self, self.isSpeaking, self.currentSpeechText == routeMessage else { return }
             self.speak(reply)
         }
     }
 
     private func handleMutedOutput() {
-        guard synthesizer.isSpeaking, let currentSpeechText else { return }
+        guard isSpeaking, let currentSpeechText else { return }
         copyReplyToClipboard(
             currentSpeechText,
             status: "Audio output was muted; the reply is on your clipboard."

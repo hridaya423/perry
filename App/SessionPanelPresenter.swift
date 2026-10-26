@@ -205,6 +205,7 @@ extension AppController {
         case .requestingPermission:
             break
         case .listening:
+            if SpeechEngineChoice.current == .kokoro, KokoroVoice.isInstalled { KokoroHelper.shared.warm() }
             overlayState.buddyState = .listening
             overlayState.voiceState = .listening
             overlayState.taskBubbleText = nil

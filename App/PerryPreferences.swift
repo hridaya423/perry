@@ -1,4 +1,5 @@
 import Foundation
+import PerryBrain
 import PerryOverlay
 
 @propertyWrapper
@@ -123,6 +124,9 @@ enum PerryPreferences {
     @Preference("perry.speech.outputEnabled") static var speechOutputEnabled = true
     @Preference("perry.speech.rate") static var speechRate = 1.0
     @Preference("perry.speech.voiceIdentifier") static var speechVoiceIdentifier: String? = nil
+    @Preference("perry.speech.engine") static var speechEngine = ""
+    @Preference("perry.setup.priority") static var setupPriority = SetupPriority.recommended
+    @Preference("perry.privacy.hidePersonalDetails") static var hidePersonalDetails = false
     @Preference("perry.dictation.language") static var dictationLanguage = "automatic"
     @Preference("perry.dictation.inputDeviceID") static var dictationInputDeviceID: Int? = nil
     @Preference("perry.gesture.talk") static var talkGesture = Gesture.defaultTalk

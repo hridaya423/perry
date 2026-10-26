@@ -25,6 +25,8 @@ Owner direction (2026-10-26): never ship a bad voice. Make the brain, voice and 
 | Hearing | engine + why | "On this Mac · fast and private" |
 | Privacy | only when the brain is cloud | "Hide personal details · on" |
 
+A three-way control sits above the rows: **Recommended** (the default), **Best quality** and **Most private**. Recommended keeps hearing local, uses a cloud voice only when a key already exists, and hides personal details from a cloud brain. Best quality asks for an ElevenLabs key and leaves details unredacted. Most private keeps every part on the Mac that can run there.
+
 There is one primary button, "Looks good". Each row has its own local/cloud switch and a "Change" link with the trade-off in one line. Any mix is valid, for example local hearing with everything else in the cloud. A small "Keep everything on this Mac" link sets every row to local at once.
 
 **Getting a voice key without friction.** Typing "add an API key" is a dead end for most people. The flow:

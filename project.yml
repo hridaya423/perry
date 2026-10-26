@@ -16,6 +16,9 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     revision: b6496a74a087257ef5e6da1c5b29a447a60f5bd7
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    exactVersion: 0.17.7
   PerryCore:
     path: Packages/PerryCore
   PerryRuntimes:
@@ -57,6 +60,10 @@ targets:
       - package: PerryBrain
         product: PerryBrain
       - target: perry-mcp
+        embed: true
+        copy:
+          destination: executables
+      - target: perry-voice
         embed: true
         copy:
           destination: executables
@@ -105,6 +112,20 @@ targets:
     dependencies:
       - package: PerryBrain
         product: PerryBrain
+  perry-voice:
+    type: tool
+    platform: macOS
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: ""
+        PRODUCT_NAME: perry-voice
+        PRODUCT_BUNDLE_IDENTIFIER: dev.perry.perry-voice
+        SWIFT_VERSION: "5.0"
+    sources:
+      - path: Helpers/perry-voice
+    dependencies:
+      - package: FluidAudio
+        product: FluidAudio
   PerryTests:
     type: bundle.unit-test
     platform: macOS

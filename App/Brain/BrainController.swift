@@ -294,6 +294,13 @@ final class BrainController: ObservableObject {
         }
     }
 
+    var localTaskCapable: Bool {
+        localChecks.values.contains {
+            if case .checked(_, let result) = $0 { return result.text == .passed && result.capabilities.contains(.tools) }
+            return false
+        }
+    }
+
     func reopenAdmission() {
         if codex == nil { codex = codexFactory() }
         acceptsSetup = true
