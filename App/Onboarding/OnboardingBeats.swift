@@ -18,7 +18,7 @@ struct HomeOnboardingView: View {
             )
         case .brain:
             if let brain {
-                BrainChoiceBeat(director: director, brain: brain, openSettings: openSettings)
+                BrainBeat(director: director, brain: brain, catalog: model.deps.controller?.runtimes, openSettings: openSettings)
             }
         case .access:
             AccessBeat(director: director)
@@ -149,64 +149,67 @@ private struct AccessBeat: View {
     }
 }
 
-private struct BrainChoiceBeat: View {
+struct BrainBeat: View {
+    enum Route: Equatable {
+        case cloud, local
+    }
+
+    static func initialRoute(saved: BrainController.ModelChoice?, cloudReady: Bool, localReady: Bool) -> Route {
+        if saved == .local, localReady { return .local }
+        return cloudReady || !localReady ? .cloud : .local
+    }
+
+    static func isReady(_ row: CloudBrainList.Row, states: [BrainController.ModelChoice: SetupState], hasProfile: Bool) -> Bool {
+        if row == .apiKey { return hasProfile }
+        if case .ready = states[row.choice] { return true }
+        return false
+    }
+
     @ObservedObject var director: OnboardingDirector
     @ObservedObject var brain: BrainController
+    let catalog: RuntimeCatalog?
     let openSettings: () -> Void
+    @State private var route: Route?
 
-    private var choice: BrainController.ModelChoice { brain.modelChoice }
-    private var signedIn: Bool { if case .signedIn = brain.account { return true }; return false }
-    private var ready: Bool {
-        switch choice {
-        case .local: brain.onDeviceRouteAvailable
-        case .chatGPT: signedIn
-        case .claudeCode: brain.claudeCodeAvailable
-        case .acp: brain.acpAgentAvailable
-        case .direct: true
-        }
+    private var cloudRow: CloudBrainList.Row {
+        let rows = CloudBrainList.rows(claudeCodeInstalled: brain.claudeCodeAvailable, agents: CloudBrainList.installedAgents(saved: brain.acpAgent))
+        return CloudBrainList.preselected(
+            saved: brain.hasSavedChoice ? brain.modelChoice : nil,
+            savedAgent: brain.acpAgent,
+            rows: rows,
+            states: brain.setupStates,
+            hasProfile: brain.activeProfile != nil
+        ) ?? .chatGPT
+    }
+
+    private var cloudReady: Bool { Self.isReady(cloudRow, states: brain.setupStates, hasProfile: brain.activeProfile != nil) }
+    private var localReady: Bool { brain.onDeviceRouteAvailable }
+    private var selected: Route {
+        route ?? Self.initialRoute(saved: brain.hasSavedChoice ? brain.modelChoice : nil, cloudReady: cloudReady, localReady: localReady)
     }
 
     var body: some View {
-        OnboardingBeatLayout(
-            title: "Choose how I think.",
-            message: "Start on this Mac or connect ChatGPT. Switch any time in Settings."
-        ) {
-            ChoiceSketch(local: choice == .local)
-                .scaleEffect(0.76)
-                .modifier(InkDrawOn())
+        OnboardingBeatLayout(title: "How should I think?", artHeight: 40) {
+            Color.clear
         } detail: {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    option(.local, title: "On this Mac", detail: brain.onDeviceRouteAvailable ? "Private and offline" : "Not on this Mac", icon: "laptopcomputer")
-                        .disabled(!brain.onDeviceRouteAvailable)
-                    option(.chatGPT, title: "ChatGPT", detail: signedIn ? "Signed in" : "Uses your account", icon: "cloud")
+                    card(.cloud, title: cloudRow == .apiKey ? "Your API key" : cloudRow.title, detail: cloudDetail, icon: "cloud", status: cloudReady ? readyDetail : nil)
+                    card(.local, title: "On this Mac", detail: "Private and offline. Simpler answers.", icon: "laptopcomputer",
+                         status: localReady ? nil : "Set up later in Settings")
+                        .disabled(!localReady)
                 }
-                if let error = brain.signInError {
-                    Text(error)
-                        .font(.system(size: 12))
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                }
+                Text(brain.signInError ?? "You can switch in Settings.")
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textTertiary)
             }
         } actions: {
             OnboardingFooter {
-                if !brain.isSigningIn { Button("Other models", action: openSettings) }
+                EmptyView()
             } primary: {
-                Group {
-                    if brain.isSigningIn {
-                        Button {} label: { OnboardingPrimaryLabel(title: "Waiting for sign-in…") }
-                            .disabled(true)
-                    } else if ready {
-                        Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
-                            .keyboardShortcut(.defaultAction)
-                    } else {
-                        Button {
-                            brain.signInWithChatGPT { connected in if connected { director.skip() } }
-                        } label: { OnboardingPrimaryLabel(title: "Connect ChatGPT") }
-                            .keyboardShortcut(.defaultAction)
-                    }
-                }
-                .buttonStyle(InkButtonStyle())
-                .controlSize(.large)
+                primary
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.large)
             } trailing: {
                 if brain.isSigningIn {
                     Button("Cancel") { brain.cancelSignIn() }
@@ -215,39 +218,99 @@ private struct BrainChoiceBeat: View {
                 }
             }
         }
-        .task { await brain.refresh() }
+        .task {
+            if let catalog { await brain.refreshSetupStates(using: catalog) }
+            await brain.refresh()
+        }
     }
 
-    private func option(_ value: BrainController.ModelChoice, title: String, detail: String, icon: String) -> some View {
-        let selected = choice == value
-        return Button { brain.modelChoice = value } label: {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 15))
-                    .foregroundStyle(selected ? PerryTheme.Colors.accent : PerryTheme.Colors.text)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(PerryTheme.Colors.text)
-                    Text(detail).font(.system(size: 12)).foregroundStyle(PerryTheme.Colors.textSecondary).lineLimit(1)
+    private var cloudDetail: String {
+        switch cloudRow {
+        case .chatGPT: "Sharper answers. Uses your ChatGPT account."
+        case .apiKey: "Sharper answers. Your provider bills you."
+        default: "Sharper answers. Uses \(cloudRow.title)."
+        }
+    }
+
+    private var readyDetail: String? {
+        if case .ready(let detail) = brain.setupStates[cloudRow.choice] { return detail }
+        return brain.activeProfile?.displayName
+    }
+
+    @ViewBuilder
+    private var primary: some View {
+        if brain.isSigningIn {
+            Button {} label: { OnboardingPrimaryLabel(title: "Waiting for sign-in…") }
+                .disabled(true)
+        } else if selected == .local {
+            Button {
+                brain.modelChoice = .local
+                director.skip()
+            } label: { OnboardingPrimaryLabel(title: "Continue") }
+                .keyboardShortcut(.defaultAction)
+        } else if cloudReady {
+            Button {
+                if case .agent(let agent) = cloudRow { brain.setAcpAgent(agent) } else { brain.modelChoice = cloudRow.choice }
+                director.skip()
+            } label: { OnboardingPrimaryLabel(title: "Continue") }
+                .keyboardShortcut(.defaultAction)
+        } else if cloudRow == .chatGPT {
+            Button {
+                brain.signInWithChatGPT { connected in
+                    guard connected else { return }
+                    brain.modelChoice = .chatGPT
+                    director.skip()
                 }
-                Spacer(minLength: 4)
-                Circle()
-                    .strokeBorder(selected ? PerryTheme.Colors.accent : PerryTheme.Colors.text.opacity(0.3), lineWidth: 1.5)
-                    .frame(width: 16, height: 16)
-                    .overlay { if selected { Circle().fill(PerryTheme.Colors.accent).frame(width: 8, height: 8) } }
+            } label: { OnboardingPrimaryLabel(title: "Connect ChatGPT") }
+                .keyboardShortcut(.defaultAction)
+        } else {
+            Button(action: openSettings) { OnboardingPrimaryLabel(title: "Open Settings") }
+                .keyboardShortcut(.defaultAction)
+        }
+    }
+
+    private func card(_ value: Route, title: String, detail: String, icon: String, status: String?) -> some View {
+        let isSelected = selected == value
+        return Button { route = value } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(PerryTheme.Icon.row)
+                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.textSecondary)
+                    Spacer()
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .font(PerryTheme.Icon.row)
+                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
+                }
+                .padding(.bottom, 4)
+                Text(title)
+                    .font(PerryTheme.Scale.rowTitle)
+                    .foregroundStyle(PerryTheme.Colors.text)
+                Text(detail)
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let status {
+                    Text(status)
+                        .font(PerryTheme.Scale.meta)
+                        .foregroundStyle(PerryTheme.Colors.textTertiary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
             .multilineTextAlignment(.leading)
-            .padding(.horizontal, 14)
-            .frame(width: 214, height: 56)
-            .background(PerryTheme.Colors.surface.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(14)
+            .frame(width: 204, height: 112, alignment: .topLeading)
+            .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+                    .strokeBorder(isSelected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

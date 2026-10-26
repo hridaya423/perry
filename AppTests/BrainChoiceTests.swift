@@ -32,6 +32,21 @@ final class BrainChoiceTests: XCTestCase {
         XCTAssertNil(CloudBrainList.preselected(saved: nil, savedAgent: nil, rows: rows, states: states, hasProfile: false))
     }
 
+    func testOnboardingHighlightsTheRouteThatIsReadyNow() {
+        XCTAssertEqual(BrainBeat.initialRoute(saved: nil, cloudReady: false, localReady: false), .cloud)
+        XCTAssertEqual(BrainBeat.initialRoute(saved: nil, cloudReady: false, localReady: true), .local)
+        XCTAssertEqual(BrainBeat.initialRoute(saved: nil, cloudReady: true, localReady: true), .cloud)
+        XCTAssertEqual(BrainBeat.initialRoute(saved: .local, cloudReady: true, localReady: true), .local)
+        XCTAssertEqual(BrainBeat.initialRoute(saved: .local, cloudReady: false, localReady: false), .cloud)
+    }
+
+    func testAnAPIKeyCountsAsReadyOnlyWithASavedProfile() {
+        XCTAssertFalse(BrainBeat.isReady(.apiKey, states: [:], hasProfile: false))
+        XCTAssertTrue(BrainBeat.isReady(.apiKey, states: [:], hasProfile: true))
+        XCTAssertFalse(BrainBeat.isReady(.chatGPT, states: [.chatGPT: .needsSignIn], hasProfile: true))
+        XCTAssertTrue(BrainBeat.isReady(.chatGPT, states: [.chatGPT: .ready(detail: "a@b.c")], hasProfile: false))
+    }
+
     func testNoCloudRowSellsVoice() {
         for row in CloudBrainList.rows(claudeCodeInstalled: true, agents: [cursor]) {
             XCTAssertFalse(row.capability.lowercased().contains("voice"), row.title)
