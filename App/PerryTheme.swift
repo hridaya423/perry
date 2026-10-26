@@ -4,22 +4,22 @@ import SwiftUI
 
 enum PerryTheme {
     enum Colors {
-        static let canvas = color(light: 0xF5F3EE, dark: 0x000000)
-        static let surface = color(light: 0xFFFEFA, dark: 0x161618)
-        static let chip = color(light: 0xEDEAE3, dark: 0x232326)
+        static let canvas = color(light: 0xF5F3EE, dark: 0x1B1B1A)
+        static let surface = color(light: 0xFFFEFA, dark: 0x252524)
+        static let chip = color(light: 0xEDEAE3, dark: 0x30302E)
         static let text = color(light: 0x202420, dark: 0xF5F2EA)
         static let textSecondary = color(light: 0x666D66, dark: 0xA6A59F)
         static let textTertiary = color(light: 0x6E736E, dark: 0x8B8A85)
-        static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x2A2A2D)
+        static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x343432)
         static let primaryAction = color(light: 0x202420, dark: 0xF5F2EA)
         static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
         static let crown = Color.black
         static let eye = color(light: 0xF4F1E8, dark: 0xF4F1E8)
-        static let accent = color(light: 0x3C7765, dark: 0x7BE3BD)
+        static let accent = color(light: 0x1D7D3E, dark: 0x5EDB81)
         static let onAccent = color(light: 0xFFFEFA, dark: 0x0C0D0E)
-        static let success = color(light: 0x248A3D, dark: 0x5FD38D)
-        static let caution = color(light: 0xA05A00, dark: 0xFFB020)
-        static let warning = Color(nsColor: .systemOrange)
+        static let success = color(light: 0x1D7D3E, dark: 0x5EDB81)
+        static let caution = color(light: 0xA05A00, dark: 0xFF9F0A)
+        static let warning = caution
         static let danger = color(light: 0xD70015, dark: 0xFF6B63)
         static let active = Color(nsColor: .systemBlue)
 

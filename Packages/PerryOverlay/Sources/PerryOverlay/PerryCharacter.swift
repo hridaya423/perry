@@ -324,7 +324,7 @@ public struct PerryCharacterView: View {
         self.size = size
     }
 
-    static let sage = Color(red: 0.612, green: 0.796, blue: 0.714)
+    static let fern = Color(red: 0.369, green: 0.859, blue: 0.506)
     static let carbon = Color(red: 0.047, green: 0.051, blue: 0.055)
     static let amber = Color(red: 0.98, green: 0.70, blue: 0.20)
 
@@ -356,7 +356,7 @@ public struct PerryCharacterView: View {
         var shadowed = context
         shadowed.addFilter(.shadow(color: .black.opacity(0.3), radius: 0.045, x: 0, y: 0.025))
         shadowed.stroke(shape, with: .color(.white), style: StrokeStyle(lineWidth: 0.15, lineJoin: .miter, miterLimit: 3))
-        context.fill(shape, with: .color(Self.sage))
+        context.fill(shape, with: .color(Self.fern))
         context.stroke(shape, with: .color(Self.carbon), style: StrokeStyle(lineWidth: 0.055, lineJoin: .miter, miterLimit: 3))
         let face = PerryBodyShape.faceCenter
         let look = CGPoint(x: pose.gaze.dx * 0.035, y: pose.gaze.dy * 0.03)
@@ -395,7 +395,7 @@ public struct PerryCharacterView: View {
                 let wave = 0.5 + 0.5 * sin(phase * 9 + Double(i) * 2.1)
                 let h = 0.08 + (0.06 + 0.12 * level) * (i == 1 ? 1 : 0.7) * (0.45 + 0.55 * wave)
                 let x = CGFloat(i - 1) * 0.115
-                chip.fill(Path(roundedRect: CGRect(x: x - 0.04, y: -h / 2, width: 0.08, height: h), cornerRadius: 0.04), with: .color(Self.sage))
+                chip.fill(Path(roundedRect: CGRect(x: x - 0.04, y: -h / 2, width: 0.08, height: h), cornerRadius: 0.04), with: .color(Self.fern))
             }
         case .thinking(let phase):
             let dots: [(CGPoint, CGFloat)] = [(CGPoint(x: -0.07, y: 0.06), 0.09), (CGPoint(x: 0.035, y: -0.05), 0.125), (CGPoint(x: 0.17, y: -0.19), 0.17)]
@@ -410,14 +410,14 @@ public struct PerryCharacterView: View {
             plate(&chip, width: 0.42, height: 0.42, fill: Self.carbon)
             var arc = Path()
             arc.addArc(center: .zero, radius: 0.105, startAngle: .radians(phase * 2 * .pi), endAngle: .radians(phase * 2 * .pi + 4.2), clockwise: false)
-            chip.stroke(arc, with: .color(Self.sage), style: StrokeStyle(lineWidth: 0.065, lineCap: .round))
+            chip.stroke(arc, with: .color(Self.fern), style: StrokeStyle(lineWidth: 0.065, lineCap: .round))
         case .done(let progress):
             plate(&chip, width: 0.42, height: 0.42, fill: Self.carbon)
             var tick = Path()
             tick.move(to: CGPoint(x: -0.09, y: 0.0))
             tick.addLine(to: CGPoint(x: -0.025, y: 0.065))
             tick.addLine(to: CGPoint(x: 0.095, y: -0.075))
-            chip.stroke(tick.trimmedPath(from: 0, to: min(progress * 2.6, 1)), with: .color(Self.sage), style: StrokeStyle(lineWidth: 0.075, lineCap: .round, lineJoin: .round))
+            chip.stroke(tick.trimmedPath(from: 0, to: min(progress * 2.6, 1)), with: .color(Self.fern), style: StrokeStyle(lineWidth: 0.075, lineCap: .round, lineJoin: .round))
         case .needsYou(let pulse):
             chip.scaleBy(x: 1 + 0.07 * pulse, y: 1 + 0.07 * pulse)
             plate(&chip, width: 0.42, height: 0.42, fill: Self.amber)

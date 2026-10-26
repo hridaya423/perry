@@ -40,13 +40,13 @@ extension NotchShape {
     func surface(crown: CGFloat, lifted: Bool = true) -> some View {
         fill(PerryTheme.Colors.canvas)
             .overlay(alignment: .top) {
-                LinearGradient(stops: [.init(color: PerryTheme.Colors.crown, location: crown / (crown + 48)),
+                LinearGradient(stops: [.init(color: PerryTheme.Colors.crown, location: crown / (crown + 80)),
                                        .init(color: PerryTheme.Colors.crown.opacity(0), location: 1)],
                                startPoint: .top, endPoint: .bottom)
-                    .frame(height: crown + 48)
+                    .frame(height: crown + 80)
             }
             .clipShape(self)
-            .overlay(stroke(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.1)],
+            .overlay(stroke(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.16)],
                                            startPoint: .top, endPoint: .bottom), lineWidth: 1))
             .shadow(color: .black.opacity(lifted ? 0.35 : 0), radius: 2, y: 1)
             .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: 18, y: 8)

@@ -11,7 +11,7 @@ enum Palette {
     static let paper = Color(red: 0.953, green: 0.941, blue: 0.910)
     static let ink = Color(red: 0.047, green: 0.051, blue: 0.055)
     static let secondary = Color(red: 0.30, green: 0.33, blue: 0.31)
-    static let sage = Color(red: 0.612, green: 0.796, blue: 0.714)
+    static let fern = Color(red: 0.369, green: 0.859, blue: 0.506)
 }
 
 struct Grain: View {
@@ -67,8 +67,8 @@ struct NotchBezel: View {
                 .fill(Palette.ink)
                 .frame(width: 176, height: 38)
             HStack(spacing: 7) {
-                Capsule().fill(Palette.sage).frame(width: 6, height: 13)
-                Capsule().fill(Palette.sage).frame(width: 6, height: 13)
+                Capsule().fill(Palette.fern).frame(width: 6, height: 13)
+                Capsule().fill(Palette.fern).frame(width: 6, height: 13)
             }
             .offset(y: 17)
         }
