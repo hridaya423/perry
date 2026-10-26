@@ -1,0 +1,149 @@
+import AppKit
+import PerryBrain
+import SwiftUI
+import XCTest
+@testable import Perry
+
+@MainActor
+final class InterviewModelTests: XCTestCase {
+    private func model(complete: ((String) async throws -> String)? = nil, saved: @escaping (InterviewModel.Facts) -> Void = { _ in }) -> InterviewModel {
+        InterviewModel(name: "Ada", effects: .init(complete: complete, save: saved))
+    }
+
+    func testExtractionFillsTheChipsAfterTheLastAnswer() async throws {
+        let interview = model(complete: { prompt in
+            prompt.contains("Reply with JSON only")
+                ? #"{"work":"Product designer","apps":["Figma","Notion"],"learningGoal":"Spanish"}"#
+                : "Designing apps, nice."
+        })
+        interview.begin()
+        interview.answer("I'm a product designer at a small studio")
+        interview.answer("figma, notion")
+        interview.answer("I want to learn Spanish")
+        XCTAssertEqual(interview.step, .review)
+        XCTAssertEqual(interview.facts, .init(name: "Ada", work: "I'm a product designer at a small studio", apps: "figma, notion", goal: "I want to learn Spanish"))
+        for _ in 0..<200 where interview.extracting { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(interview.facts, .init(name: "Ada", work: "Product designer", apps: "Figma, Notion", goal: "Spanish"))
+    }
+
+    func testAReactionNamesTheAnswerUnderTheNextQuestion() async throws {
+        let interview = model(complete: { _ in "Chemistry teacher, so lab safety is your world." })
+        interview.begin()
+        interview.answer("I teach chemistry")
+        XCTAssertEqual(interview.step, .question(1))
+        for _ in 0..<200 where interview.reaction == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(interview.reaction, "Chemistry teacher, so lab safety is your world.")
+        interview.answer(nil)
+        XCTAssertNil(interview.reaction)
+    }
+
+    func testWithoutABrainTheTypedAnswersAreTheChips() {
+        let interview = model()
+        interview.begin()
+        interview.answer("Student")
+        interview.answer(nil)
+        interview.answer("  options trading ")
+        XCTAssertEqual(interview.step, .review)
+        XCTAssertFalse(interview.extracting)
+        XCTAssertEqual(interview.facts, .init(name: "Ada", work: "Student", apps: "", goal: "options trading"))
+    }
+
+    func testCancellingSavesNothing() {
+        var saves = 0
+        let interview = model(complete: { _ in "" }, saved: { _ in saves += 1 })
+        interview.begin()
+        interview.answer("Founder")
+        interview.cancel()
+        XCTAssertEqual(interview.step, .done)
+        interview.confirm()
+        XCTAssertEqual(saves, 0)
+    }
+
+    func testSkippingEveryQuestionSavesNothing() {
+        var saves = 0
+        let interview = model(complete: { _ in "" }, saved: { _ in saves += 1 })
+        interview.begin()
+        for _ in ProfileExtraction.questions { interview.answer(nil) }
+        XCTAssertEqual(interview.step, .done)
+        XCTAssertEqual(saves, 0)
+    }
+
+    func testConfirmingWritesThePinnedProfileAndTurnsMemoryOn() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        defer { controller.notchPresence.stop() }
+        let before = await controller.currentMemoryConfiguration()
+        XCTAssertFalse(before.enabled)
+        await controller.saveInterview(.init(name: "Ada", work: "Designer", apps: "Figma, Notion", goal: ""))
+        let files = try XCTUnwrap(controller.memoryFiles)
+        XCTAssertEqual(files.profileField("Name"), "Ada")
+        XCTAssertEqual(files.profileField("Work"), "Designer")
+        XCTAssertEqual(files.profileField("Apps"), "Figma, Notion")
+        XCTAssertNil(files.profileField("Learning goal"))
+        let after = await controller.currentMemoryConfiguration()
+        XCTAssertTrue(after.enabled)
+    }
+
+    func testTheConsentLineNamesACloudBrainOnly() {
+        XCTAssertNil(InterviewModel.cloudLine(choice: .local, hasSavedChoice: true))
+        XCTAssertNil(InterviewModel.cloudLine(choice: .chatGPT, hasSavedChoice: false))
+        XCTAssertEqual(InterviewModel.cloudLine(choice: .chatGPT, hasSavedChoice: true), "I send these notes with your questions to ChatGPT.")
+    }
+
+    func testAppChipsComeFromInstalledApps() {
+        let chips = InterviewModel.appChips { ["Figma", "Xcode", "Slack"].contains($0) }
+        XCTAssertEqual(chips, ["Figma", "Xcode", "Slack"])
+    }
+
+    func testRenderEveryInterviewStep() async throws {
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/onboarding-evidence")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let director = OnboardingDirector()
+        director.start(resume: false)
+        while director.beat != .interview { director.skip() }
+        defer { director.stop() }
+        let interview = model(complete: { _ in "Teaching chemistry, so labs fill your week." })
+        let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: 380)
+        let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        defer { window.close() }
+        let host = NSHostingView(rootView: InterviewBeat(
+            director: director,
+            model: interview,
+            cloudLine: "I send these notes with your questions to ChatGPT.",
+            appChips: ["Notion", "Figma", "Xcode"]
+        )
+        .padding(.horizontal, 24)
+        .padding(.bottom, 14)
+        .frame(width: frame.width, height: frame.height)
+        .background(PerryTheme.Colors.canvas)
+        .foregroundStyle(PerryTheme.Colors.text)
+        .environment(\.colorScheme, .dark))
+        window.contentView = host
+        host.frame = frame
+        window.orderFrontRegardless()
+        func shot(_ name: String) async throws {
+            try await Task.sleep(for: .milliseconds(500))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: destination.appendingPathComponent("interview-\(name).png"))
+        }
+        try await shot("1-consent")
+        interview.begin()
+        try await shot("2-work")
+        interview.answer("I teach chemistry")
+        interview.draft = "Notion, Figma"
+        try await shot("3-apps-with-reaction")
+        interview.answer(interview.draft)
+        try await shot("4-goal")
+        interview.answer("How options trading works")
+        try await shot("5-review")
+    }
+}

@@ -27,7 +27,20 @@ struct HomeOnboardingView: View {
                 ShortcutsBeat(director: director, controller: controller, check: controller.shortcutCheck)
             }
         case .interview:
-            PendingBeat(director: director, title: "About you")
+            if let controller = model.deps.controller {
+                InterviewBeat(
+                    director: director,
+                    model: InterviewModel(
+                        name: controller.memoryFiles?.profileField("Name") ?? OnboardingDirector.suggestedName(saved: nil, fullName: NSFullUserName()),
+                        effects: .init(
+                            complete: controller.brain.hasSavedChoice ? { try await controller.brain.completeText($0) } : nil,
+                            save: { facts in Task { await controller.saveInterview(facts) } }
+                        )
+                    ),
+                    cloudLine: InterviewModel.cloudLine(choice: controller.brain.modelChoice, hasSavedChoice: controller.brain.hasSavedChoice),
+                    appChips: InterviewModel.appChips()
+                )
+            }
         case .apps:
             PendingBeat(director: director, title: "Your apps")
         case .firstGoal:

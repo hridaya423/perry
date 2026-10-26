@@ -193,7 +193,7 @@ private struct PeekSpinner: View {
     }
 }
 
-private struct PeekChipStyle: ButtonStyle {
+struct PeekChipStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(PerryTheme.Scale.chip)
