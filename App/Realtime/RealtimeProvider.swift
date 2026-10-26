@@ -61,8 +61,8 @@ struct RealtimeProvider: Equatable, Sendable {
     }
 
     static var current: RealtimeProvider? {
-        if let raw = PerryPreferences.realtimeVoiceProvider, let id = RealtimeProviderID(rawValue: raw) {
-            return RealtimeProvider(id)
+        if let raw = PerryPreferences.realtimeVoiceProvider {
+            return RealtimeProviderID(rawValue: raw).map(RealtimeProvider.init)
         }
         guard let host = storedEndpoint?.host else { return nil }
         if host.contains("api.openai.com") { return RealtimeProvider(.openAI) }

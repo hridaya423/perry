@@ -43,12 +43,6 @@ struct SettingsView: View {
     @AppStorage(PerryPreferences.$dictationLanguage.key) private var dictationLanguageRaw = "automatic"
     @AppStorage(PerryPreferences.$dictationInputDeviceID.key) private var dictationInputDeviceRaw = 0
     @AppStorage(PerryPreferences.$cuaDriverPath.key) private var cuaDriverPath = ""
-    @AppStorage(PerryPreferences.$realtimeVoiceEndpoint.key) private var realtimeVoiceEndpoint = ""
-    @AppStorage(PerryPreferences.$realtimeVoiceModel.key) private var realtimeVoiceModel = ""
-    @AppStorage(PerryPreferences.$realtimeVoiceVoice.key) private var realtimeVoiceVoice = "marin"
-    @AppStorage(PerryPreferences.$realtimeVoiceSpeed.key) private var realtimeVoiceSpeed = 1.0
-    @AppStorage(PerryPreferences.$realtimeVoiceInstructions.key) private var realtimeVoiceInstructions = PerryPreferences.$realtimeVoiceInstructions.fallback
-    @AppStorage(PerryPreferences.$realtimeVoiceProtocol.key) private var realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
     @AppStorage(PerryPreferences.$voiceResponseCaptionOpacity.key) private var captionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
     @State private var memoryEnabled = false
     @State private var memoryCategoryToggles: [MemoryRecord.Category: Bool] = MemoryRecord.Category.allCases.reduce(into: [:]) { result, category in
@@ -63,7 +57,6 @@ struct SettingsView: View {
     @State private var newSpokenWord = ""
     @State private var newReplacement = ""
     @State private var copiedRuntimeCommand: String?
-    @State private var realtimeVoiceKey = ""
     @State private var settingsError: String?
     @State private var showReportProblem = false
     @State private var permissions: PerryPermissionSnapshot?
@@ -339,50 +332,7 @@ struct SettingsView: View {
                 }
             }
             dictationSettings
-            Section("Realtime voice (bring your own key)") {
-                DisclosureGroup("Configure realtime voice") {
-                    TextField("WebSocket endpoint", text: $realtimeVoiceEndpoint)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Realtime voice model", text: $realtimeVoiceModel)
-                        .textFieldStyle(.roundedBorder)
-                    HStack(spacing: PerryTheme.Spacing.inline) {
-                        TextField("Voice name", text: $realtimeVoiceVoice)
-                            .textFieldStyle(.roundedBorder)
-                        Picker("Protocol", selection: $realtimeVoiceProtocolRaw) {
-                            ForEach(RealtimeVoiceProtocolMode.allCases, id: \.rawValue) { mode in
-                                Text(mode.title).tag(mode.rawValue)
-                            }
-                        }
-                        .frame(width: PerryTheme.Sizing.protocolPickerWidth)
-                    }
-                    HStack(spacing: PerryTheme.Spacing.inline) {
-                        Text("Response speed")
-                        InkSlider(value: $realtimeVoiceSpeed, range: 0.25...1.5, step: 0.05, label: "Response speed")
-                        Text("\(realtimeVoiceSpeed, specifier: "%.2f")×")
-                            .font(PerryTheme.Typography.value)
-                            .frame(width: PerryTheme.Sizing.realtimeRateValueWidth, alignment: .trailing)
-                    }
-                    TextField("Voice instructions", text: $realtimeVoiceInstructions, axis: .vertical)
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(2...4)
-                    SecureField("Realtime voice API key", text: $realtimeVoiceKey)
-                        .textFieldStyle(.roundedBorder)
-                    HStack(spacing: PerryTheme.Spacing.inline) {
-                        Button("Use OpenAI Realtime defaults") {
-                            realtimeVoiceEndpoint = "wss://api.openai.com/v1/realtime"
-                            if realtimeVoiceModel.isEmpty || RealtimeVoiceConfiguration.retiredOpenAIModels.contains(realtimeVoiceModel) { realtimeVoiceModel = RealtimeVoiceConfiguration.openAIModel }
-                            realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
-                        }
-                        Button("Save realtime voice API key") {
-                            saveSecret(realtimeVoiceKey, account: (RealtimeProvider.current ?? RealtimeProvider(.custom)).keychainAccount) {
-                                realtimeVoiceKey = ""
-                            }
-                        }
-                    }
-                }
-                Text("When configured, audio and responses stream through your realtime provider under its data policies.")
-                    .settingNote()
-            }
+            RealtimeVoiceSection(onError: { settingsError = $0 })
         }
         .formStyle(.grouped)
         .onAppear {
@@ -787,17 +737,6 @@ struct SettingsView: View {
             "com.lastpass.LastPass": "LastPass",
         ]
         return (bundleID: bundleID, name: names[bundleID] ?? bundleID)
-    }
-
-    private func saveSecret(_ value: String, account: String, onSuccess: () -> Void) {
-        let secret = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !secret.isEmpty else { return }
-        do {
-            try KeychainStore().save(secret, account: account)
-            onSuccess()
-        } catch {
-            settingsError = error.localizedDescription
-        }
     }
 
     private func saveSpeechPreferences() {
