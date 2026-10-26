@@ -19,9 +19,9 @@ struct SuggestionsView: View {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("A head start on your day")
-                            .font(.title3.weight(.semibold))
+                            .font(PerryTheme.Scale.title)
                         Text("Each morning Perry reads recent activity in your connected apps and suggests a few useful tasks. It never watches your screen.")
-                            .font(.callout)
+                            .font(PerryTheme.Scale.body)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -66,11 +66,11 @@ struct SuggestionsView: View {
     private func suggestionCard(_ card: SuggestionCard, example: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(example ? "Example" : card.sourceServiceName.map { "From \($0)" } ?? "Suggestion")
-                .font(.caption)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
-            Text(card.title).font(.headline)
+            Text(card.title).font(PerryTheme.Scale.rowTitle)
             Text(card.body)
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 16) {
@@ -83,7 +83,7 @@ struct SuggestionsView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
-            .font(.callout)
+            .font(PerryTheme.Scale.body)
             .padding(.top, 6)
             .disabled(example)
         }
@@ -100,8 +100,8 @@ private struct SuggestionEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Adjust suggestion").font(.title3.weight(.semibold))
-            Text(card.title).font(.headline)
+            Text("Adjust suggestion").font(PerryTheme.Scale.title)
+            Text(card.title).font(PerryTheme.Scale.rowTitle)
             if let source = card.sourceServiceName {
                 Text("From \(source)").foregroundStyle(.secondary)
             }
@@ -110,7 +110,7 @@ private struct SuggestionEditor: View {
                 .frame(minHeight: 120)
                 .border(.separator)
             Text("Saving changes the suggestion. Choose Do it when you’re ready to run it.")
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .foregroundStyle(.secondary)
             HStack {
                 Spacer()
@@ -168,7 +168,7 @@ struct RoutinesView: View {
                                         .lineLimit(2)
                                         .multilineTextAlignment(.leading)
                                 }
-                                    .font(.callout)
+                                    .font(PerryTheme.Scale.body)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 8)
@@ -183,7 +183,7 @@ struct RoutinesView: View {
                     }
                     .padding(12)
                 }
-                .frame(width: 220)
+                .frame(width: 160)
 
                 Rectangle()
                     .fill(PerryTheme.Colors.subtleSeparator)
@@ -194,13 +194,13 @@ struct RoutinesView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(routine.name)
-                                    .font(.title2.weight(.semibold))
+                                    .font(PerryTheme.Scale.heading)
                                 HStack(spacing: 6) {
                                     ForEach(routine.appBundleIDs, id: \.self) { bundleID in
                                         appIcon(bundleID)
                                     }
                                     Text(([routine.appBundleIDs.map(appName).joined(separator: ", ")] + ["\(routine.steps.count) \(routine.steps.count == 1 ? "step" : "steps")"]).filter { !$0.isEmpty }.joined(separator: " · "))
-                                        .font(.callout)
+                                        .font(PerryTheme.Scale.body)
                                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 }
                             }
@@ -208,17 +208,17 @@ struct RoutinesView: View {
                                 ForEach(Array(routine.steps.enumerated()), id: \.offset) { index, step in
                                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                                         Text("\(index + 1)")
-                                            .font(.caption.weight(.semibold))
+                                            .font(PerryTheme.Scale.section)
                                             .monospacedDigit()
                                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                                             .frame(width: 20, height: 20)
                                             .background(PerryTheme.Colors.surface, in: Circle())
                                             .alignmentGuide(.firstTextBaseline) { $0[.firstTextBaseline] }
                                         Text(step.summary)
-                                            .font(.callout)
+                                            .font(PerryTheme.Scale.body)
                                         if step.requiresHuman {
                                             Text("You do this one")
-                                                .font(.caption)
+                                                .font(PerryTheme.Scale.secondary)
                                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                                         }
                                     }
@@ -226,7 +226,7 @@ struct RoutinesView: View {
                             }
                             if routine.provenance != .tested {
                                 Text("Perry checks the current app before each step.")
-                                    .font(.caption)
+                                    .font(PerryTheme.Scale.secondary)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                             }
                             HStack(spacing: 14) {
@@ -239,7 +239,7 @@ struct RoutinesView: View {
                                     Label("Delete…", systemImage: "trash")
                                 }
                                 .buttonStyle(.plain)
-                                .font(.callout)
+                                .font(PerryTheme.Scale.body)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             }
                             .padding(.top, 4)
@@ -349,7 +349,7 @@ struct FilesPage: View {
                     let files = entry.files
                     if !files.isEmpty {
                         Text(pile.label)
-                            .font(.headline)
+                            .font(PerryTheme.Scale.rowTitle)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 90), alignment: .top)], spacing: 12) {
                             ForEach(files, id: \.path) { url in
                                 FilePileItem(url: url)
@@ -373,7 +373,7 @@ struct FilePileItem: View {
                 .resizable()
                 .frame(width: 40, height: 40)
             Text(url.lastPathComponent)
-                .font(.caption)
+                .font(PerryTheme.Scale.secondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
         }
@@ -439,16 +439,16 @@ struct UnsavedInputRecoveryView: View {
         if !model.unsavedInputs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Requests not saved", systemImage: "exclamationmark.triangle")
-                    .font(.headline)
+                    .font(PerryTheme.Scale.rowTitle)
                 Text("Keep Perry open or copy your text. Saving again won’t send it.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(PerryTheme.Scale.body).foregroundStyle(.secondary)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         ForEach(model.unsavedInputs) { input in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(input.request.text).textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                Text(input.error).font(.caption).foregroundStyle(.secondary)
+                                Text(input.error).font(PerryTheme.Scale.secondary).foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                                 HStack {
                                     Button(model.savingInputs.contains(input.id) ? "Saving…" : "Save again") {

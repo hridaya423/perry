@@ -64,7 +64,7 @@ struct HistoryView: View {
                 HStack {
                     if let message {
                         Text(message)
-                            .font(PerryTheme.Typography.note)
+                            .font(PerryTheme.Scale.secondary)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                     }
                     Spacer()
@@ -191,21 +191,21 @@ private struct HistoryRow: View {
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 3) {
                 Text(entry.request)
-                    .font(.body.weight(.medium))
+                    .font(PerryTheme.Scale.body.weight(.medium))
                 Text(entry.summary)
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 if undoable || entry.verified != nil {
                     HStack(spacing: 8) {
                         if undoable {
                             Label("Undo available", systemImage: "arrow.uturn.backward.circle")
-                                .font(PerryTheme.Typography.panelMetadata)
+                                .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(secondaryText)
                         }
                         if let verified = entry.verified {
                             Label(verified ? "Verified" : "Check needed", systemImage: verified ? "checkmark.seal" : "exclamationmark.triangle")
-                                .font(PerryTheme.Typography.panelMetadata)
+                                .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
                         }
                     }
@@ -215,7 +215,7 @@ private struct HistoryRow: View {
                     entry.providerRoute,
                     entry.finishedAt.formatted(date: .abbreviated, time: .shortened)
                 ].compactMap { $0 }.joined(separator: " · "))
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

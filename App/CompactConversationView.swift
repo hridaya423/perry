@@ -59,7 +59,7 @@ struct CompactConversationView: View {
                         controller.showPanel()
                     }.buttonStyle(.borderless)
                 }
-                .font(.caption)
+                .font(PerryTheme.Scale.secondary)
                 .padding(.top, 8)
             }
         }
@@ -148,7 +148,7 @@ struct CompactTargetChooser: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choose an app or window").font(.headline)
+            Text("Choose an app or window").font(PerryTheme.Scale.rowTitle)
             if targets.isEmpty {
                 Text("Open the app you want to work with, then refresh this list.")
                     .foregroundStyle(.secondary)
@@ -162,7 +162,7 @@ struct CompactTargetChooser: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(Self.targetName(item)).foregroundStyle(.primary)
-                                Text(item.windowID == nil ? "Application" : Self.applicationName(item)).font(.caption).foregroundStyle(.secondary)
+                                Text(item.windowID == nil ? "Application" : Self.applicationName(item)).font(PerryTheme.Scale.secondary).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                         }

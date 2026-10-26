@@ -27,11 +27,11 @@ struct BackgroundTasksView: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Tasks are saved on this Mac. Perry resumes them only between steps.")
-                            .font(PerryTheme.Typography.note)
+                            .font(PerryTheme.Scale.secondary)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                         if hasLoaded, backgroundTasks.persistenceError == nil {
                             Text("\(backgroundTasks.runningCount) active · \(backgroundTasks.records.count) saved")
-                                .font(PerryTheme.Typography.note)
+                                .font(PerryTheme.Scale.secondary)
                                 .monospacedDigit()
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                         }
@@ -52,12 +52,12 @@ struct BackgroundTasksView: View {
                             if let issue = backgroundTasks.persistenceError {
                                 VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
                                     Label("Task storage needs attention", systemImage: "exclamationmark.triangle")
-                                        .font(.headline)
+                                        .font(PerryTheme.Scale.rowTitle)
                                         .accessibilityAddTraits(.isHeader)
                                     Text("Resolve the storage issue shown below, then reopen Perry. Keep the task files for recovery.")
-                                        .font(PerryTheme.Typography.note)
+                                        .font(PerryTheme.Scale.secondary)
                                     Text(issue.localizedDescription)
-                                        .font(PerryTheme.Typography.note)
+                                        .font(PerryTheme.Scale.secondary)
                                         .textSelection(.enabled)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
@@ -77,7 +77,7 @@ struct BackgroundTasksView: View {
                 }
 
                 Text("Paused tasks may need your approval or their original app before they can continue.")
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
@@ -108,12 +108,12 @@ private struct BackgroundTaskRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: iconName)
-                .font(.headline.weight(.semibold))
+                .font(PerryTheme.Scale.rowTitle)
                 .foregroundStyle(iconColor)
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.goal)
-                    .font(.body.weight(.medium))
+                    .font(PerryTheme.Scale.body.weight(.medium))
                     .fixedSize(horizontal: false, vertical: true)
                 Group {
                     if case .agent = record.plan {
@@ -122,12 +122,12 @@ private struct BackgroundTaskRow: View {
                         Text("\(record.state.rawValue.capitalized) · step \(min(record.checkpoint.nextStepIndex + 1, max(record.plan.actionCount, 1))) of \(record.plan.actionCount)")
                     }
                 }
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .monospacedDigit()
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 if case .legacy(let plan) = record.plan {
                     Text("Agent: \(runtimes.name(for: plan.runtimeID))")
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
@@ -136,12 +136,12 @@ private struct BackgroundTaskRow: View {
                 } else if record.checkpoint.isAwaitingApproval,
                    record.plan.actionSummaries.indices.contains(record.checkpoint.nextStepIndex) {
                     Text("Approval required: \(record.plan.actionSummaries[record.checkpoint.nextStepIndex])")
-                        .font(PerryTheme.Typography.note.weight(.medium))
+                        .font(PerryTheme.Scale.meta)
                         .foregroundStyle(PerryTheme.Colors.warning)
                 }
                 if recoveryNotice == nil, let message = backgroundTasks.message(for: record.id) {
                     Text(message)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .lineLimit(2)
                 }
@@ -287,20 +287,20 @@ private struct WorkspaceTaskApprovalView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
             Text("Create this file?")
-                .font(PerryTheme.Typography.panelTitle)
+                .font(PerryTheme.Scale.title)
             if let action = record.workspaceActionToApprove,
                case .transform(let workspace, .createUTF8File(let path, let contents)) = action.operation {
                 Text("Perry will create one file in this task’s workspace. An existing file will not be overwritten.")
-                    .font(PerryTheme.Typography.panelBody)
+                    .font(PerryTheme.Scale.body)
                 Text(workspace.appendingPathComponent(path).path)
-                    .font(PerryTheme.Typography.mono)
+                    .font(PerryTheme.Scale.code)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("File contents · \(contents.utf8.count) bytes")
-                    .font(PerryTheme.Typography.panelMetadata)
+                    .font(PerryTheme.Scale.meta)
                 ScrollView {
                     Text(contents.isEmpty ? "This file will be empty." : contents)
-                        .font(PerryTheme.Typography.mono)
+                        .font(PerryTheme.Scale.code)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -332,9 +332,9 @@ struct BackgroundTaskRecoveryNoticeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
             Text(notice.title)
-                .font(PerryTheme.Typography.note.weight(.semibold))
+                .font(PerryTheme.Scale.section)
             Text(notice.message)
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
         }
         .foregroundStyle(PerryTheme.Colors.text)
         .fixedSize(horizontal: false, vertical: true)

@@ -215,7 +215,7 @@ struct NotchEyesView: View {
     private var glyph: some View {
         if active {
             Image(systemName: model.mood == .listening ? "waveform" : model.mood == .needsYou ? "exclamationmark" : "ellipsis")
-                .font(.system(size: 11, weight: .semibold))
+                .font(PerryTheme.Icon.inline)
                 .foregroundStyle(model.mood == .needsYou ? PerryTheme.Colors.caution : PerryTheme.Colors.accent)
                 .frame(height: height)
         }

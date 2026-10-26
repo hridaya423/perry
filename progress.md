@@ -59,9 +59,13 @@
   - Deleted with the panel: the legacy SessionPanel render test, the "Guide request" box shown during an ask, and typed-text intent parsing that switched the mode automatically. The chip is now an explicit choice.
   - Open: the routine review is taller than the 320 pt focused cap, so Discard and Save scroll below the fold. Revisit in 3.12.
 
+- 3.10 Done: `PerryTheme.Scale` holds the r6 type scale: title 15 semibold, row title 14 semibold, body 13, chip 13 medium, secondary 12.5, meta 11 medium with monospaced digits, section 11 semibold, plus display, heading, wordmark, input, keycap and code. `PerryTheme.Icon` holds three icon sizes: toolbar 13 medium, row 15 medium, inline 11 semibold. All 111 `.font(` calls in `App/Notch`, `App/Home` and `CompactConversationView` now use these. The macOS `.caption` and `.callout` styles they replace rendered at 10–12 pt. Three icon fixes: the new-conversation button is `square.and.pencil` without a filled circle; the composer mic and the peek's expand button lost their filled circles, so only Send keeps one; the status strip uses `gearshape` and 11 pt semibold glyphs. The type and palette lints moved from `SemanticTypographyTests` (deleted) to a grep in `scripts/ci.sh`.
+  - Verified: 655/0 on the mini (657 minus the two lint tests), with 0 constraint-loop lines. The guard passes on the tree and fails on a planted `.font(.system(size: 9))`. Renders inspected in `docs/evidence/first-impressions/3.10/`. The first renders showed two defects, now fixed: the model chip wrapped to two lines (now shows the model name, with "Model" in its help and accessibility label), and the routine detail column wrapped its title to three lines (list column 220 → 160).
+  - Open: the rail's "Recent" label clips above the Apps footer. That predates this task; take it in 3.12.
+
 ## Next
 
-- 3.10 icons and type: ci.sh grep lint, move the typography lint out of SemanticTypographyTests.
+- 3.11 an animated mascot in the notch.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

@@ -17,23 +17,23 @@ struct WhatsNewView: View {
                 PerryCharacterView(pose: { var pose = PerryCharacterPose(); pose.face = .happy; return pose }(), size: 32)
                     .accessibilityHidden(true)
                 Text("What’s new in Perry")
-                    .font(.system(.title2, design: .serif, weight: .semibold))
+                    .font(PerryTheme.Scale.heading)
             }
 
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(changes, id: \.title) { change in
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: change.symbol)
-                            .font(.body.weight(.medium))
+                            .font(PerryTheme.Scale.body.weight(.medium))
                             .foregroundStyle(PerryTheme.Colors.accent)
                             .frame(width: 30, height: 30)
                             .background(PerryTheme.Colors.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(change.title)
-                                .font(.body.weight(.semibold))
+                                .font(PerryTheme.Scale.body.weight(.semibold))
                             Text(change.detail)
-                                .font(.callout)
+                                .font(PerryTheme.Scale.body)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -52,7 +52,7 @@ struct WhatsNewView: View {
                     NSWorkspace.shared.open(url)
                 }
                 .buttonStyle(.plain)
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }

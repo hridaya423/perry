@@ -8,7 +8,7 @@ struct Keycap: View {
 
     var body: some View {
         Text(keys)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(PerryTheme.Scale.keycap)
             .foregroundStyle(PerryTheme.Colors.text)
             .padding(.horizontal, 6)
             .frame(minWidth: 22, minHeight: 20)
@@ -40,7 +40,7 @@ struct WorkspaceComposer: View {
         HStack(alignment: .bottom, spacing: 10) {
             TextField(placeholder, text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 15))
+                .font(PerryTheme.Scale.input)
                 .lineLimit(1...6)
                 .focused($focused)
                 .onSubmit { if hasText && canSend { send() } }
@@ -54,7 +54,7 @@ struct WorkspaceComposer: View {
             if hasText {
                 Button(action: send) {
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(PerryTheme.Icon.toolbar)
                         .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
                         .frame(width: 28, height: 28)
                         .background(PerryTheme.Colors.primaryAction, in: Circle())
@@ -68,10 +68,10 @@ struct WorkspaceComposer: View {
             } else if let onVoice {
                 Button(action: onVoice) {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(PerryTheme.Colors.text)
+                        .font(PerryTheme.Icon.toolbar)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .frame(width: 28, height: 28)
-                        .background(PerryTheme.Colors.subtleSeparator.opacity(0.7), in: Circle())
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Talk to Perry")
@@ -113,7 +113,8 @@ struct ContextChipStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption)
+            .font(PerryTheme.Scale.chip)
+            .lineLimit(1)
             .labelStyle(ChipLabelStyle(iconOnly: iconOnly))
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .padding(.horizontal, 9)
@@ -153,9 +154,9 @@ struct WorkspaceEmptyState: View {
                 .padding(.bottom, 4)
                 .accessibilityHidden(true)
             Text(title)
-                .font(.system(.title2, design: .serif, weight: .semibold))
+                .font(PerryTheme.Scale.heading)
             Text(message)
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 300)

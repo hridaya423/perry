@@ -65,7 +65,7 @@ struct PerryEditorView: View {
             if perry != nil {
                 Section("Memory") {
                     TextEditor(text: $memory)
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                         .frame(minHeight: 80)
                     Text("Notes this Perry keeps between runs. Perry uses them only when memory is on in Settings.").settingNote()
                 }

@@ -49,6 +49,28 @@ enum PerryTheme {
         static let value = Font.callout.monospacedDigit()
     }
 
+    enum Scale {
+        static let display = Font.system(size: 26, weight: .semibold, design: .serif)
+        static let heading = Font.system(size: 20, weight: .semibold, design: .serif)
+        static let wordmark = Font.system(size: 18, weight: .semibold, design: .rounded)
+        static let input = Font.system(size: 15)
+        static let title = Font.system(size: 15, weight: .semibold)
+        static let rowTitle = Font.system(size: 14, weight: .semibold)
+        static let body = Font.system(size: 13)
+        static let chip = Font.system(size: 13, weight: .medium)
+        static let secondary = Font.system(size: 12.5)
+        static let keycap = Font.system(size: 12, weight: .medium, design: .rounded)
+        static let code = Font.system(size: 12, design: .monospaced)
+        static let meta = Font.system(size: 11, weight: .medium).monospacedDigit()
+        static let section = Font.system(size: 11, weight: .semibold)
+    }
+
+    enum Icon {
+        static let toolbar = Font.system(size: 13, weight: .medium)
+        static let row = Font.system(size: 15, weight: .medium)
+        static let inline = Font.system(size: 11, weight: .semibold)
+    }
+
     enum Spacing {
         static let label = CGFloat(1)
         static let tight = CGFloat(2)

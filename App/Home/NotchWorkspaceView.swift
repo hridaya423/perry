@@ -82,7 +82,7 @@ struct NotchWorkspaceView: View {
                 HStack(spacing: 8) {
                     PerryCharacterView(pose: PerryCharacterPose(), size: 20)
                     Text("perry")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        .font(PerryTheme.Scale.wordmark)
                 }
                 .contentShape(Rectangle())
             }
@@ -110,12 +110,13 @@ struct NotchWorkspaceView: View {
                     model.sidebarSelection = nil
                     focusComposer = true
                 } label: {
-                    Image(systemName: "plus")
-                        .font(.callout.weight(.medium))
-                        .frame(width: 27, height: 27)
-                        .background(PerryTheme.Colors.surface, in: Circle())
+                    Image(systemName: "square.and.pencil")
+                        .font(PerryTheme.Icon.toolbar)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RailRowStyle(cornerRadius: 7))
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New conversation")
                 .help("New conversation (⌘N)")
@@ -138,14 +139,14 @@ struct NotchWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text("Perrys")
-                                .font(.caption.weight(.medium))
+                                .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             Spacer()
                             Button {
                                 searchFocused = false
                                 model.sidebarSelection = .perryEditor(nil)
                             } label: {
-                                Image(systemName: "plus").font(.caption.weight(.semibold))
+                                Image(systemName: "plus").font(PerryTheme.Scale.section)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("New Perry")
@@ -159,7 +160,7 @@ struct NotchWorkspaceView: View {
                                 model.sidebarSelection = .perryEditor(nil)
                             } label: {
                                 Text("Make a helper for a job you repeat")
-                                    .font(.caption)
+                                    .font(PerryTheme.Scale.secondary)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 8)
@@ -176,10 +177,10 @@ struct NotchWorkspaceView: View {
                                     PerryCharacterView(pose: PerryCharacterPose(), size: 22)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(perry.name)
-                                            .font(.callout.weight(.medium))
+                                            .font(PerryTheme.Scale.chip)
                                             .lineLimit(1)
                                         Text(perry.job)
-                                            .font(.caption)
+                                            .font(PerryTheme.Scale.secondary)
                                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                                             .lineLimit(1)
                                     }
@@ -199,7 +200,7 @@ struct NotchWorkspaceView: View {
 
                     LazyVStack(alignment: .leading, spacing: 2) {
                         Text("Recent")
-                            .font(.caption.weight(.medium))
+                            .font(PerryTheme.Scale.meta)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                             .padding(.horizontal, 8)
                             .padding(.bottom, 2)
@@ -214,10 +215,10 @@ struct NotchWorkspaceView: View {
                                         .accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(thread.title.isEmpty ? "Untitled" : thread.title)
-                                            .font(.callout)
+                                            .font(PerryTheme.Scale.body)
                                             .lineLimit(1)
                                         Text(thread.updatedAt.formatted(.relative(presentation: .named)))
-                                            .font(.caption)
+                                            .font(PerryTheme.Scale.secondary)
                                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                                     }
                                     Spacer(minLength: 0)
@@ -233,12 +234,12 @@ struct NotchWorkspaceView: View {
                         }
                         if model.threads.isEmpty {
                             Text("No conversations yet")
-                                .font(.caption)
+                                .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 .padding(.horizontal, 8)
                         } else if !model.search.isEmpty, model.filteredThreads.isEmpty {
                             Text("No matches")
-                                .font(.caption)
+                                .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 .padding(.horizontal, 8)
                         }
@@ -272,7 +273,7 @@ struct NotchWorkspaceView: View {
                     openSettingsTab(.integrations)
                 } label: {
                     Label("Apps", systemImage: "square.grid.2x2")
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Open connected apps settings")
@@ -282,7 +283,7 @@ struct NotchWorkspaceView: View {
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                         .labelStyle(.iconOnly)
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
@@ -306,7 +307,7 @@ struct NotchWorkspaceView: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(greeting)
-                            .font(.system(size: 26, weight: .semibold, design: .serif))
+                            .font(PerryTheme.Scale.display)
                         GestureHint()
                     }
                 }
@@ -347,7 +348,7 @@ struct NotchWorkspaceView: View {
                 UnsavedInputRecoveryButton(model: model)
                 if let error = model.storageError {
                     Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -384,11 +385,11 @@ struct NotchWorkspaceView: View {
                     .frame(width: 18)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                 Spacer(minLength: 0)
                 if count > 0 {
                     Text("\(count)")
-                        .font(.caption.weight(.semibold))
+                        .font(PerryTheme.Scale.section)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .contentTransition(.numericText(value: Double(count)))
@@ -430,7 +431,7 @@ struct NotchWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Text(pageTitle)
-                    .font(.title3.weight(.semibold))
+                    .font(PerryTheme.Scale.title)
                     .lineLimit(1)
                     .help(pageTitle)
                     .accessibilityAddTraits(.isHeader)
@@ -575,7 +576,7 @@ private struct WorkspaceVoiceStatus: View {
         case .failed:
             VStack(spacing: 8) {
                 Label(voice.error ?? "Voice failed.", systemImage: "exclamationmark.circle")
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.warning)
                     .textSelection(.enabled)
                 Button("Dismiss") { voice.resetConversation() }
@@ -591,7 +592,7 @@ private struct WorkspaceVoiceStatus: View {
             Image(systemName: "waveform")
                 .foregroundStyle(PerryTheme.Colors.accent)
             Text(text)
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .lineLimit(2)
             Button("Stop") { voice.cancel() }
                 .controlSize(.small)
@@ -609,7 +610,7 @@ private struct GestureHint: View {
             Keycap("⌃")
             Text("to type")
         }
-        .font(.callout)
+        .font(PerryTheme.Scale.body)
         .foregroundStyle(PerryTheme.Colors.textSecondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(TalkGesture.talk). \(TalkGesture.type).")
@@ -624,7 +625,7 @@ struct WindowControlButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(PerryTheme.Icon.toolbar)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }

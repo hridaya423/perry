@@ -23,6 +23,20 @@ if grep -rnE 'UserDefaults\.standard|AppStorage\("perry\.|forKey: *"perry\.' App
     exit 1
 fi
 
+echo "== type and palette guard =="
+if grep -rn '\.system(size:' App/Notch App/Home App/CompactConversationView.swift; then
+    echo "ci: fixed font size in a notch view; use PerryTheme.Scale or PerryTheme.Icon" >&2
+    exit 1
+fi
+if grep -n '\.font(\.system(size:' App/AgentActivityStrip.swift App/IntegrationRow.swift App/IntentCardWindow.swift App/SettingsView.swift; then
+    echo "ci: fixed font size outside the theme; use a PerryTheme token" >&2
+    exit 1
+fi
+if grep -rnE '\b(NS)?Color\.black\b' App/Notch App/Home App/CompactConversationView.swift; then
+    echo "ci: notch view paints black directly; use PerryTheme.Colors.crown or a palette token" >&2
+    exit 1
+fi
+
 echo "== build (Debug arm64) =="
 xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
     -derivedDataPath "$DERIVED" -destination "$DESTINATION" 2>&1 | tail -3

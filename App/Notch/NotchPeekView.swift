@@ -98,16 +98,7 @@ struct NotchPeekView: View {
                 }
                 Button("History", systemImage: "clock.arrow.circlepath") { model.sidebarSelection = .history }
                 Spacer(minLength: 0)
-                Button(action: onExpand) {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .background(PerryTheme.Colors.chip, in: Circle())
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open the workspace")
-                .help("Open the workspace")
+                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open the workspace", action: onExpand)
             }
             .buttonStyle(PeekChipStyle())
         }
@@ -127,10 +118,10 @@ private struct PeekRowView: View {
                 lead.frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(PerryTheme.Scale.rowTitle)
                         .lineLimit(1)
                     Text(row.status)
-                        .font(.system(size: 12.5))
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -138,7 +129,7 @@ private struct PeekRowView: View {
                 Spacer(minLength: 8)
                 if row.kind == .needsYou {
                     Text("Review")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(PerryTheme.Scale.chip)
                         .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
                         .padding(.horizontal, 12)
                         .frame(height: 26)
@@ -160,13 +151,13 @@ private struct PeekRowView: View {
         switch row.kind {
         case .needsYou:
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 17, weight: .medium))
+                .font(PerryTheme.Icon.row)
                 .foregroundStyle(PerryTheme.Colors.caution)
         case .task, .perry:
             PerryCharacterView(pose: PerryCharacterPose(), size: 22)
         case .suggestion:
             Image(systemName: "lightbulb")
-                .font(.system(size: 15, weight: .medium))
+                .font(PerryTheme.Icon.row)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
@@ -175,7 +166,7 @@ private struct PeekRowView: View {
 private struct PeekChipStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .font(PerryTheme.Scale.chip)
             .labelStyle(PeekChipLabelStyle())
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .padding(.horizontal, 10)
@@ -187,7 +178,7 @@ private struct PeekChipStyle: ButtonStyle {
 private struct PeekChipLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 5) {
-            configuration.icon.font(.system(size: 11, weight: .semibold))
+            configuration.icon.font(PerryTheme.Icon.inline)
             configuration.title
         }
     }
@@ -196,7 +187,7 @@ private struct PeekChipLabelStyle: LabelStyle {
 private struct PeekGestureLine: View {
     var body: some View {
         Text("\(TalkGesture.talk), or type below.")
-            .font(.system(size: 12.5))
+            .font(PerryTheme.Scale.secondary)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 6)

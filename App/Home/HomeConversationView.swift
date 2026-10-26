@@ -22,7 +22,7 @@ struct HomeConversationView: View {
                         let turn = turns[index]
                         VStack(alignment: .leading, spacing: 14) {
                             Text(turn.question)
-                                .font(.body)
+                                .font(PerryTheme.Scale.body)
                                 .textSelection(.enabled)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
@@ -35,7 +35,7 @@ struct HomeConversationView: View {
                             }
                             if let reason = turn.failureReason {
                                 Label(reason, systemImage: "exclamationmark.circle")
-                                    .font(.callout)
+                                    .font(PerryTheme.Scale.body)
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -51,7 +51,7 @@ struct HomeConversationView: View {
                     if thread.pendingTurn != nil && !isWorking {
                         VStack(alignment: .leading, spacing: 12) {
                             Label("This task was interrupted. Review any changes in the affected app before continuing. Perry will not repeat the task automatically.", systemImage: "pause.circle")
-                                .font(.callout)
+                                .font(PerryTheme.Scale.body)
                                 .foregroundStyle(.secondary)
                             Button("I’ve reviewed the changes") { model.onResolveInterrupted?(thread.id) }
                         }
@@ -87,7 +87,7 @@ struct HomeConversationView: View {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(model.stoppingThreads.contains(thread.id) ? "Stopping…" : "Working on it")
-                            .font(.callout)
+                            .font(PerryTheme.Scale.body)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Stop", systemImage: "stop.fill") { model.onStop?(thread.id) }
@@ -96,7 +96,7 @@ struct HomeConversationView: View {
                     }
                 } else if let error = model.threadErrors[thread.id], error != thread.turns.last?.failureReason {
                     Label(error, systemImage: "exclamationmark.circle")
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
@@ -138,9 +138,9 @@ struct WaitingInputRecoveryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Label("Saved requests", systemImage: "tray")
-                .font(.headline)
+                .font(PerryTheme.Scale.rowTitle)
             Text("These requests haven’t started. Review one in the composer when you’re ready.")
-                .font(.callout)
+                .font(PerryTheme.Scale.body)
                 .foregroundStyle(.secondary)
             ForEach(inputs) { input in
                 VStack(alignment: .leading, spacing: 8) {
@@ -172,15 +172,15 @@ struct HomeConnectionView: View {
         VStack(alignment: .leading, spacing: 10) {
             if brain.modelChoice != .chatGPT {
                 Text("\(brain.modelChoice.title) selected")
-                    .font(.headline)
+                    .font(PerryTheme.Scale.rowTitle)
                 Text("You can change this choice in model settings.")
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Button("Model settings", action: openSettings).buttonStyle(.borderless)
             } else if case .signedIn(let email, _) = brain.account {
                 HStack {
                     Label(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", systemImage: "checkmark.circle")
-                        .font(.callout)
+                        .font(PerryTheme.Scale.body)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                     Spacer()
                     Button("Sign out") { Task { await brain.signOut() } }
@@ -189,9 +189,9 @@ struct HomeConnectionView: View {
                 }
             } else {
                 Text("Connect your ChatGPT account")
-                    .font(.headline)
+                    .font(PerryTheme.Scale.rowTitle)
                 Text("Use your existing account to talk with Perry. You can switch models any time.")
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 HStack {
                     Button(brain.isSigningIn ? "Waiting for sign-in…" : "Connect ChatGPT") {
@@ -213,7 +213,7 @@ struct HomeConnectionView: View {
             }
             if let error = brain.signInError {
                 Label(error, systemImage: "exclamationmark.circle")
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
@@ -230,14 +230,17 @@ struct ModelSettingsButton: View {
     private var title: String {
         let choice = brain.modelChoice
         if choice == .chatGPT, case .signedOut = brain.account { return "Connect ChatGPT" }
-        return "Model: \(choice.title)"
+        return choice.title
     }
 
     var body: some View {
         Button(action: openSettings) {
             Label(title, systemImage: "cpu")
         }
+        .fixedSize()
+        .accessibilityLabel("Model: \(title)")
         .accessibilityHint("Open model settings")
+        .help("Model")
     }
 }
 
@@ -401,7 +404,7 @@ struct ConversationAnswer: View {
             if let kind = components.first?.kind {
                 switch kind {
                 case .header(let level):
-                    fragment.font = level == 1 ? .title2.bold() : .headline
+                    fragment.font = level == 1 ? PerryTheme.Scale.title : PerryTheme.Scale.rowTitle
                 case .codeBlock:
                     fragment.font = .system(.body, design: .monospaced)
                 default:
@@ -421,7 +424,7 @@ private struct CodeBlock: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Text(code)
-                .font(.system(size: 13, design: .monospaced))
+                .font(PerryTheme.Scale.code)
                 .lineSpacing(2)
                 .fixedSize()
                 .padding(.vertical, 12)
@@ -437,7 +440,7 @@ private struct CodeBlock: View {
                 copied = true
             } label: {
                 Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.caption)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
             .buttonStyle(.borderless)

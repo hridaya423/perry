@@ -188,14 +188,14 @@ final class NotchStatusController {
         controller.separator.textColor = .secondaryLabelColor
         controller.wakeSeparator.textColor = .secondaryLabelColor
         controller.wakeIcon.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         controller.wakeIcon.contentTintColor = NSColor(PerryTheme.Colors.accent)
         controller.separator2.textColor = .secondaryLabelColor
-        controller.gear.image = NSImage(systemSymbolName: "gearshape.2", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
+        controller.gear.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         controller.gear.contentTintColor = .labelColor
         controller.reviewIcon.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 10, weight: .medium))
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold))
         controller.reviewIcon.contentTintColor = .labelColor
 
         let stack = NSStackView(views: [
