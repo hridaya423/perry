@@ -60,10 +60,8 @@ struct OnboardingNotchView: View {
             maxHeight: PerryTheme.Sizing.onboardingContentHeight,
             alignment: .top
         )
-        .clipped()
         .foregroundStyle(PerryTheme.Colors.text)
         .background { SketchbookGrain() }
-        .background(PerryTheme.Colors.crown)
         .tint(PerryTheme.Colors.accent)
         .animation(reduceMotion ? .easeOut(duration: 0.2) : OnboardingStyle.enter, value: director.beat)
         .onAppear { director.resumePermissionPolling() }

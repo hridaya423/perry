@@ -14,26 +14,15 @@ final class SessionPanelPresenter {
         self.makeContent = makeContent
     }
 
-    var frame: CGRect? { isVisible ? panel?.frame : nil }
-    var isVisible: Bool { panel?.isVisible == true && !hiding }
+    var frame: CGRect? { isVisible ? visibleFrame : nil }
+    var isVisible: Bool { panel?.isVisible == true }
     var isKey: Bool { panel?.isKeyWindow == true }
     var screen: NSScreen?
-    var keyboardInitiated = false
-    private var hiding = false
-    private var instant: Bool { keyboardInitiated || NSApp.currentEvent?.type == .keyDown }
+    private var visibleFrame: CGRect?
 
-    private static let curve = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
-    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
-
-    func show(frame: NSRect, activate: Bool) {
+    func show(window: NSRect, visible: NSRect, activate: Bool) {
         let panel = ensurePanel()
-        let wasVisible = isVisible
-        if hiding {
-            hiding = false
-            panel.contentView?.layer?.mask = nil
-            panel.contentView?.layer?.removeAnimation(forKey: "collapseFade")
-        }
-        place(frame)
+        place(window: window, visible: visible)
         if activate {
             let ownPID = ProcessInfo.processInfo.processIdentifier
             if let frontmost = NSWorkspace.shared.frontmostApplication,
@@ -45,68 +34,13 @@ final class SessionPanelPresenter {
         } else {
             panel.orderFrontRegardless()
         }
-        if !wasVisible, !instant { morph(panel, growing: true) }
         PerfMark.mark("panel.visible")
     }
 
-    private func morph(_ panel: NSPanel, growing: Bool, completion: (() -> Void)? = nil) {
-        guard !reduceMotion, let content = panel.contentView, let screen = panel.screen else {
-            completion?()
-            return
-        }
-        content.wantsLayer = true
-        guard let layer = content.layer else {
-            completion?()
-            return
-        }
-        let bounds = content.bounds
-        let notchWidth = screen.frame.width - (screen.auxiliaryTopLeftArea?.width ?? 0) - (screen.auxiliaryTopRightArea?.width ?? 0)
-        let notchHeight = max(screen.safeAreaInsets.top, 24)
-        let width = min(max(notchWidth, 160), bounds.width)
-        let notch = CGRect(x: bounds.midX - width / 2, y: layer.isGeometryFlipped || content.isFlipped ? 0 : bounds.maxY - notchHeight, width: width, height: notchHeight)
-        let notchPath = CGPath(roundedRect: notch, cornerWidth: 10, cornerHeight: 10, transform: nil)
-        let fullPath = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
-        let mask = CAShapeLayer()
-        mask.frame = bounds
-        mask.path = growing ? CGPath(rect: bounds, transform: nil) : notchPath
-        layer.mask = mask
-        let animation = CABasicAnimation(keyPath: "path")
-        animation.fromValue = growing ? notchPath : fullPath
-        animation.toValue = growing ? fullPath : notchPath
-        animation.duration = growing ? 0.34 : 0.22
-        animation.timingFunction = growing ? Self.curve : CAMediaTimingFunction(controlPoints: 0.4, 0, 0.6, 1)
-        CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak layer, weak mask] in
-            if growing, layer?.mask === mask { layer?.mask = nil }
-            completion?()
-            layer?.removeAnimation(forKey: "collapseFade")
-        }
-        mask.add(animation, forKey: growing ? "grow" : "collapse")
-        if !growing {
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
-            fade.toValue = 0
-            fade.duration = animation.duration
-            fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            fade.fillMode = .forwards
-            fade.isRemovedOnCompletion = false
-            layer.add(fade, forKey: "collapseFade")
-        }
-        CATransaction.commit()
-    }
-
-    func place(_ frame: NSRect) {
-        guard let panel, panel.frame != frame else { return }
-        let sameScreen = panel.screen.map { $0.frame.intersects(frame) } ?? false
-        guard isVisible, sameScreen, !reduceMotion else {
-            panel.setFrame(frame, display: true)
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
-            context.timingFunction = Self.curve
-            panel.animator().setFrame(frame, display: true)
-        }
+    func place(window: NSRect, visible: NSRect) {
+        visibleFrame = visible
+        guard let panel, panel.frame != window else { return }
+        panel.setFrame(window, display: true)
     }
 
     /// Pays the one-time render cost so a first invocation only orders an
@@ -117,17 +51,7 @@ final class SessionPanelPresenter {
 
     func hide() {
         guard let panel, isVisible else { return }
-        if instant {
-            panel.orderOut(nil)
-        } else {
-            hiding = true
-            morph(panel, growing: false) { [weak self, weak panel] in
-                guard let self, self.hiding, let panel else { return }
-                self.hiding = false
-                panel.orderOut(nil)
-                panel.contentView?.layer?.mask = nil
-            }
-        }
+        panel.orderOut(nil)
         let ownPID = ProcessInfo.processInfo.processIdentifier
         if NSApp.isActive,
            NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
@@ -179,31 +103,18 @@ extension AppController {
         notchPresence.setConversationVisible(true)
         notchStatus.setConversationVisible(true)
         if !sessionPanel.isVisible { sessionPanel.screen = NotchPresence.screenUnderPointer() }
-        sessionPanel.show(frame: notchPanelFrame(), activate: activate)
+        let layout = notchLayout()
+        sessionPanel.show(window: layout.window, visible: layout.visible, activate: activate)
         overlayState.panelScreenFrame = sessionPanel.frame
     }
 
-    /// Size follows what the notch is showing: a focused stage (onboarding,
-    /// an approval, a guide step) stays narrow; the workspace opens wide.
-    private func notchPanelFrame() -> NSRect {
-        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return .zero }
+    private func notchLayout() -> (window: NSRect, visible: NSRect) {
+        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return (.zero, .zero) }
         let presentation = NotchPresentation.shared
-        let model = homeController.homeModel
-        let focused = (model.onboarding != nil && model.sidebarSelection != .settings)
-            || (presentation.current != nil && presentation.showsInteraction)
-        let interaction = presentation.showsInteraction ? presentation.current : nil
-        let contentHeight = interaction?.contentHeight.map { max(220, $0 + 136) } ?? (focused ? 460 : 520)
-        let size = NSSize(
-            width: min(focused ? 592 : 892, screen.frame.width - 32),
-            height: min(contentHeight + max(24, screen.safeAreaInsets.top), screen.frame.height - 64)
-        )
-        let frame = NotchPresence.notchPanelFrame(
-            size: size,
-            screenFrame: screen.frame,
-            centerX: NotchPresence.zoneRect(for: screen).midX
-        )
-        presentation.frame = frame
-        return frame
+        let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchPresence.zoneRect(for: screen).midX)
+        let size = NotchLayout.size(NotchLayout.mode(presentation), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
+        presentation.frame = NotchLayout.visibleFrame(size, in: window)
+        return (window, presentation.frame)
     }
 
     func presentConversationVoice(_ state: VoiceConversationController.State) {
@@ -242,7 +153,8 @@ extension AppController {
     func refreshNotchLayout() {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.sessionPanel.isVisible else { return }
-            self.sessionPanel.place(self.notchPanelFrame())
+            let layout = self.notchLayout()
+            self.sessionPanel.place(window: layout.window, visible: layout.visible)
             self.overlayState.panelScreenFrame = self.sessionPanel.frame
         }
     }
@@ -262,7 +174,10 @@ extension AppController {
 
     func handleScreenLayoutChanged() {
         guard !isUnderMaintenance else { return }
-        if sessionPanel.isVisible { sessionPanel.place(notchPanelFrame()) }
+        if sessionPanel.isVisible {
+            let layout = notchLayout()
+            sessionPanel.place(window: layout.window, visible: layout.visible)
+        }
         overlayState.panelScreenFrame = sessionPanel.frame
         notchPresence.screenLayoutChanged()
         notchStatus.repositionIfVisible()

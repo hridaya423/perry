@@ -16,24 +16,31 @@ struct CompactConversationView: View {
     @ObservedObject var controller: AppController
     @ObservedObject private var model: HomeModel
     @ObservedObject private var presentation = NotchPresentation.shared
-    @State private var cameraInset: CGFloat = 32
+    @State private var cameraInset: CGFloat
+    @State private var screenSize: CGSize
     @State private var showsGuide = false
 
     init(controller: AppController) {
         self.controller = controller
         self.model = controller.homeController.homeModel
+        let screen = controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()
+        _cameraInset = State(initialValue: max(24, screen?.safeAreaInsets.top ?? 0))
+        _screenSize = State(initialValue: screen?.frame.size ?? .zero)
+    }
+
+    private var size: CGSize {
+        NotchLayout.size(NotchLayout.mode(presentation), cameraInset: cameraInset, screen: screenSize)
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            PerryTheme.Colors.crown.frame(height: cameraInset)
+            Color.clear.frame(height: cameraInset)
             NotchInteractionHost(presentation: presentation,
                                  onWorkspace: controller.showWorkspace,
                                  onCollapse: controller.collapseNotch) {
                 workspace
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, NotchShape.open.topRadius)
             if presentation.current != nil, !presentation.showsInteraction {
                 HStack {
                     Spacer()
@@ -43,13 +50,15 @@ struct CompactConversationView: View {
                     }.buttonStyle(.borderless)
                 }
                 .font(.caption)
-                .padding(.horizontal, 36)
-                .padding(.bottom, 12)
-            } else {
-                Color.clear.frame(height: 16)
+                .padding(.top, 8)
             }
         }
-        .background(NotchShape.open.surface)
+        .padding(.horizontal, NotchShape.open.topRadius)
+        .padding(.bottom, NotchLayout.bottomInset)
+        .frame(width: size.width, height: size.height)
+        .background(NotchShape.open.surface(crown: cameraInset + 8))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.spring(response: 0.32, dampingFraction: 0.9), value: size)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)
@@ -93,6 +102,7 @@ struct CompactConversationView: View {
     private func updateCameraInset() {
         let screen = controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()
         cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
+        screenSize = screen?.frame.size ?? .zero
     }
 
     private func consumePrompt() {
@@ -187,6 +197,7 @@ struct NotchInteractionHost<Workspace: View>: View {
     let onWorkspace: () -> Void
     let onCollapse: () -> Void
     @ViewBuilder var workspace: () -> Workspace
+    @State private var viewport: CGFloat = 0
 
     private var showsInteraction: Bool {
         presentation.current != nil && presentation.showsInteraction
@@ -205,7 +216,7 @@ struct NotchInteractionHost<Workspace: View>: View {
                     .disabled(showsInteraction)
             }
             if let entry = presentation.current, presentation.showsInteraction {
-                VStack(spacing: 16) {
+                VStack(spacing: NotchLayout.headerGap) {
                     HStack {
                         Button("Workspace", systemImage: "chevron.left") { onWorkspace() }
                             .buttonStyle(.borderless)
@@ -214,15 +225,29 @@ struct NotchInteractionHost<Workspace: View>: View {
                             .labelStyle(.iconOnly)
                             .buttonStyle(.borderless)
                     }
+                    .frame(height: NotchLayout.headerHeight)
                     ScrollView {
                         entry.content
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                             .fixedSize(horizontal: false, vertical: true)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                presentation.measure(entry.id, height: height)
+                                var transaction = Transaction()
+                                transaction.disablesAnimations = entry.contentHeight == nil
+                                withTransaction(transaction) { presentation.measure(entry.id, height: height) }
                             }
                     }
-                }.padding(24)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
+                    .mask {
+                        VStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.white, (entry.contentHeight ?? 0) > viewport + 1 ? .clear : .white],
+                                           startPoint: .top, endPoint: .bottom)
+                                .frame(height: 16)
+                        }
+                    }
+                }
+                .padding(.top, NotchLayout.topInset)
+                .padding(.horizontal, NotchLayout.contentInset)
             }
         }
     }

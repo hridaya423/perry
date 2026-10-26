@@ -18,7 +18,7 @@ struct NotchWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             rail
-                .frame(width: 210)
+                .frame(width: 148)
             Rectangle()
                 .fill(PerryTheme.Colors.subtleSeparator)
                 .frame(width: 1)
@@ -66,8 +66,7 @@ struct NotchWorkspaceView: View {
             }
         }
         .tint(PerryTheme.Colors.accent)
-        .frame(minWidth: 560, idealWidth: 860, maxWidth: .infinity,
-               minHeight: 380, idealHeight: 500, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: choosesTarget) { _, choosing in
             searchFocused = false
             targetBackFocused = choosing
@@ -282,9 +281,11 @@ struct NotchWorkspaceView: View {
                     model.sidebarSelection = .settings
                 } label: {
                     Label("Settings", systemImage: "gearshape")
+                        .labelStyle(.iconOnly)
                         .font(.callout)
                 }
                 .buttonStyle(.plain)
+                .help("Settings")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)

@@ -200,6 +200,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         var shortHeight: CGFloat = 0
+        var windowFrame: NSRect?
         for isLong in [false, true] {
             let detail = isLong ? Array(repeating: "Review this document before saving changes to the selected folder.", count: 45).joined(separator: "\n") : "Both files keep their contents; nothing else changes."
             let card = IntentCard(title: "Move two files into Archive", detail: detail, tier: .orange, targetSummary: "draft-a.txt, draft-b.txt → Archive")
@@ -208,16 +209,17 @@ final class NotchSurfaceRenderTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(500))
             let window = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "perry.session" && $0.isVisible })
             let screen = try XCTUnwrap(window.screen)
-            let settledFrame = window.frame
-            try await Task.sleep(for: .milliseconds(250))
-            XCTAssertEqual(window.frame, settledFrame)
-            XCTAssertEqual(window.frame.maxY, screen.frame.maxY, accuracy: 1)
+            let visible = try XCTUnwrap(controller.sessionPanel.frame)
+            XCTAssertEqual(window.frame, windowFrame ?? window.frame, "the window never resizes")
+            windowFrame = window.frame
+            XCTAssertTrue(window.frame.contains(visible))
+            XCTAssertEqual(visible.maxY, screen.frame.maxY, accuracy: 1)
             if isLong {
-                XCTAssertGreaterThan(window.frame.height, shortHeight)
-                XCTAssertLessThanOrEqual(window.frame.height, screen.frame.height - 64)
+                XCTAssertGreaterThan(visible.height, shortHeight)
+                XCTAssertLessThanOrEqual(visible.height, NotchLayout.cap(screen: screen.frame.size).height)
             } else {
-                shortHeight = window.frame.height
-                XCTAssertLessThan(shortHeight, 460)
+                shortHeight = visible.height
+                XCTAssertLessThan(shortHeight, 320)
             }
             let host = try XCTUnwrap(window.contentView)
             let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
@@ -410,7 +412,34 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await render(list, name: "acp-registry", size: NSSize(width: 640, height: 320))
     }
 
-    private func render<Content: View>(_ content: Content, name: String, size: NSSize, wait: Double = 0.2, folder: String = "notch-rebuild-evidence") async throws {
+    func testFocusedNotchHugsItsContent() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        let id = UUID()
+        defer {
+            presentation.remove(id)
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        presentation.present(id: id, priority: .approval, content: Rectangle().fill(Color(red: 1, green: 0, blue: 0)).frame(height: 100), reveal: false)
+        presentation.showsInteraction = true
+        let bitmap = try await render(CompactConversationView(controller: controller), name: "hug-100", size: NSSize(width: 696, height: 488), wait: 0.6)
+        let scale = CGFloat(bitmap.pixelsHigh) / 488
+        let screen = NotchPresence.screenUnderPointer()
+        let column = bitmap.pixelsWide / 2
+        let rows = (0..<bitmap.pixelsHigh).map { bitmap.colorAt(x: column, y: $0)?.usingColorSpace(.sRGB) }
+        let red = rows.indices.filter { rows[$0].map { $0.redComponent > 0.8 && $0.greenComponent < 0.3 && $0.blueComponent < 0.3 } ?? false }
+        let shapeBottom = try XCTUnwrap(rows.indices.last { rows[$0].map { $0.alphaComponent > 0.9 } ?? false })
+        XCTAssertEqual(CGFloat(red.count) / scale, 100, accuracy: 1, "content is clipped")
+        XCTAssertEqual(CGFloat(shapeBottom - (red.last ?? 0)) / scale, NotchLayout.bottomInset, accuracy: 2, "slack under the content")
+        XCTAssertEqual(CGFloat(shapeBottom + 1) / scale, NotchLayout.size(.focused(content: 100), cameraInset: max(24, screen?.safeAreaInsets.top ?? 0), screen: screen?.frame.size ?? .zero).height, accuracy: 2)
+    }
+
+    @discardableResult
+    private func render<Content: View>(_ content: Content, name: String, size: NSSize, wait: Double = 0.2, folder: String = "notch-rebuild-evidence") async throws -> NSBitmapImageRep {
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build").appendingPathComponent(folder)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -430,5 +459,6 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination.appendingPathComponent(name + ".png"))
+        return bitmap
     }
 }

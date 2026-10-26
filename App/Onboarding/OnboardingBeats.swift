@@ -39,7 +39,7 @@ private struct GreetBeat: View {
     var body: some View {
         VStack(spacing: 0) {
             HelloGreetingView()
-                .frame(width: 420, height: 210)
+                .frame(maxWidth: 420, minHeight: 150, maxHeight: 210)
                 .padding(.top, 16)
             Text("I’m Perry. I live up in your notch and help with whatever is on your screen.")
                 .font(.system(size: 16))
@@ -47,6 +47,7 @@ private struct GreetBeat: View {
                 .foregroundStyle(PerryTheme.Colors.text.opacity(0.78))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
                 .modifier(LateEntrance(delay: HelloInk.lift.upperBound))
             Spacer(minLength: 12)

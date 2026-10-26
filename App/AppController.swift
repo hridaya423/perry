@@ -395,8 +395,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func toggleSession() {
         PerfMark.mark("invoke.keydown")
-        sessionPanel.keyboardInitiated = true
-        defer { sessionPanel.keyboardInitiated = false }
         if isIdle {
             wake()
         } else {

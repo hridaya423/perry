@@ -31,7 +31,7 @@ final class NotchShapeTests: XCTestCase {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         for (name, shape, size) in [("closed", NotchShape.closed, CGSize(width: 240, height: 38)),
                                     ("open", NotchShape.open, CGSize(width: 476, height: 256))] {
-            let renderer = ImageRenderer(content: shape.surface.frame(width: size.width, height: size.height)
+            let renderer = ImageRenderer(content: shape.surface(crown: 40).frame(width: size.width, height: size.height)
                 .padding(24).background(Color(white: 0.85)))
             renderer.scale = 2
             let image = try XCTUnwrap(renderer.nsImage?.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))

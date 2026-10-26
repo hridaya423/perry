@@ -80,7 +80,7 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 22) {
+                HStack(spacing: 14) {
                     ForEach(SettingsTab.allCases, id: \.rawValue) { tab in
                         Button {
                             withAnimation(reduceMotion ? nil : PerryTheme.Motion.glide) { selectedTab = tab.rawValue }
@@ -107,7 +107,7 @@ struct SettingsView: View {
                         .accessibilityAddTraits(selectedTab == tab.rawValue ? .isSelected : [])
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 10)
             }
             Divider()
