@@ -30,6 +30,16 @@ enum PerryDebugTextScale: String, Equatable {
 #endif
 
 @main
+enum PerryLauncher {
+    static func main() {
+        if let output = PermissionCheck.output(for: CommandLine.arguments) {
+            print(output)
+            exit(0)
+        }
+        PerryApp.main()
+    }
+}
+
 struct PerryApp: App {
     @NSApplicationDelegateAdaptor(AppController.self) var appDelegate
 
