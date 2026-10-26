@@ -612,3 +612,17 @@ Evidence: docs/evidence/first-impressions/9.3-notch/. Full suite 881/0 (6 skippe
 Installed on the MacBook 21:0x; old app at build/backup/Perry-2026-10-26b.app.
 Unverified live: mic fix (mini has no mic), first click under the hardware notch, helper docking on a real Settings window.
 Remaining: level-1 helper faces row in the card, Stop as the primary task control.
+
+## 9.4 Polish pass (2026-10-26)
+Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). Phases A to F.
+- A done (`79a290f`): cursor bubble expires after speech (PerryOverlay tests), sidebar divider reaches the bottom,
+  settings icons are tinted tiles. Renders in docs/evidence/first-impressions/9.4-polish/.
+- B core done (`c171238`): natural-voice filter (never compact, Siri, eloquence, novelty; silent instead),
+  NeuralSpeechPlayer streaming 24 kHz PCM from ElevenLabs, OpenAI, Cartesia, and the `perry-voice` Kokoro helper
+  (FluidAudio 0.17.7, Apache-2.0). SpeechText cleanup, PronunciationStore respelling, SetupAdvisor with
+  Recommended / Best quality / Most private, Your setup beat, clipboard key capture.
+  Evidence: Kokoro on the mini: install 45 s, 376 MB on disk, helper peak RSS 342 MB during install; sentence two
+  0.47 s for 3.75 s audio (first call 3 s, so the helper warms on listen). Parakeet transcribed the output as
+  "Hi Fridia, your notes are ready." / "I moved the meeting to Thursday at 3, and told Sam."
+  Cloud engines are unverified live (no keys used, per the fixtures rule).
+- Next: Settings > Voice redesign, then phase C.
