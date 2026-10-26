@@ -25,7 +25,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         defer {
             presenter.cancel()
             presentation.onPresent = previousOnPresent
-            controller.homeController.stop()
+            controller.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<100 where !presentation.contains(presenter.requestID) { await Task.yield() }
@@ -50,7 +50,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let id = UUID()
         defer {
             presentation.remove(id)
-            controller.homeController.stop()
+            controller.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let guide = GuideControlsState()
@@ -95,7 +95,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         let controller = AppController(debugStorageDirectory: directory)
         let model = controller.homeController.homeModel
-        defer { controller.homeController.stop() }
+        defer { controller.notchPresence.stop() }
         let selections: [(String, HomeModel.Selection?)] = [
             ("workspace", nil), ("settings", .settings), ("routines", .routines),
             ("files", .files), ("tasks", .tasks), ("history", .history),
@@ -138,7 +138,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         let controller = AppController(debugStorageDirectory: directory)
         let model = controller.homeController.homeModel
-        defer { controller.homeController.stop() }
+        defer { controller.notchPresence.stop() }
         var snapshot = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }
@@ -196,7 +196,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         defer {
             presentation.remove(id)
             controller.collapseNotch()
-            controller.homeController.stop()
+            controller.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         var shortHeight: CGFloat = 0
@@ -259,7 +259,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let controller = AppController(debugStorageDirectory: directory)
         await controller.homeController.joinAll()
         let model = controller.homeController.homeModel
-        defer { controller.homeController.stop() }
+        defer { controller.notchPresence.stop() }
         let thread = PerryThread(title: "Review the launch plan and summarize the remaining decisions before Friday", turns: [.init(question: "What remains?", answer: "Review the outline and share the open questions.")])
         let store = try XCTUnwrap(controller.homeController.threadStore)
         try await store.upsert(thread)
@@ -304,7 +304,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         let controller = AppController(debugStorageDirectory: directory)
         let model = controller.homeController.homeModel
-        defer { controller.homeController.stop() }
+        defer { controller.notchPresence.stop() }
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied) }
         let director = OnboardingDirector(effects: effects)
@@ -359,7 +359,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let model = controller.homeController.homeModel
         defer {
             controller.clearFailure()
-            controller.homeController.stop()
+            controller.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let size = NSSize(width: 892, height: 552)

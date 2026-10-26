@@ -140,7 +140,7 @@ final class NotchStatusController {
         }
         stack.edgeInsets = NSEdgeInsets(top: screen.safeAreaInsets.top + 7, left: 16, bottom: 9, right: 16)
         let size = CGSize(width: max(220, stack.fittingSize.width), height: stack.fittingSize.height)
-        let frame = HomeController.notchPanelFrame(size: size, screenFrame: screen.frame, centerX: midX)
+        let frame = NotchPresence.notchPanelFrame(size: size, screenFrame: screen.frame, centerX: midX)
         panel.contentView?.layer?.cornerRadius = 14
         panel.contentView?.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         window = panel

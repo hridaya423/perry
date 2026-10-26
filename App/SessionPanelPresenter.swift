@@ -176,9 +176,9 @@ extension AppController {
     func showPanel(activate: Bool) {
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
-        homeController.setConversationVisible(true)
+        notchPresence.setConversationVisible(true)
         notchStatus.setConversationVisible(true)
-        if !sessionPanel.isVisible { sessionPanel.screen = HomeController.screenUnderPointer() }
+        if !sessionPanel.isVisible { sessionPanel.screen = NotchPresence.screenUnderPointer() }
         sessionPanel.show(frame: notchPanelFrame(), activate: activate)
         overlayState.panelScreenFrame = sessionPanel.frame
     }
@@ -186,7 +186,7 @@ extension AppController {
     /// Size follows what the notch is showing: a focused stage (onboarding,
     /// an approval, a guide step) stays narrow; the workspace opens wide.
     private func notchPanelFrame() -> NSRect {
-        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? HomeController.screenUnderPointer() else { return .zero }
+        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return .zero }
         let presentation = NotchPresentation.shared
         let model = homeController.homeModel
         let focused = (model.onboarding != nil && model.sidebarSelection != .settings)
@@ -197,10 +197,10 @@ extension AppController {
             width: min(focused ? 592 : 892, screen.frame.width - 32),
             height: min(contentHeight + max(24, screen.safeAreaInsets.top), screen.frame.height - 64)
         )
-        let frame = HomeController.notchPanelFrame(
+        let frame = NotchPresence.notchPanelFrame(
             size: size,
             screenFrame: screen.frame,
-            centerX: HomeController.zoneRect(for: screen).midX
+            centerX: NotchPresence.zoneRect(for: screen).midX
         )
         presentation.frame = frame
         return frame
@@ -264,7 +264,7 @@ extension AppController {
         guard !isUnderMaintenance else { return }
         if sessionPanel.isVisible { sessionPanel.place(notchPanelFrame()) }
         overlayState.panelScreenFrame = sessionPanel.frame
-        homeController.screenLayoutChanged()
+        notchPresence.screenLayoutChanged()
         notchStatus.repositionIfVisible()
     }
 
@@ -283,7 +283,7 @@ extension AppController {
     private func hideSurfaces() {
         sessionPanel.hide()
         overlayState.panelScreenFrame = nil
-        homeController.setConversationVisible(false)
+        notchPresence.setConversationVisible(false)
         notchStatus.setConversationVisible(false)
     }
 

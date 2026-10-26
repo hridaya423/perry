@@ -508,6 +508,24 @@ final class AppSubsystems {
         }
     )
 
+    lazy var notchPresence: NotchPresence = {
+        let presence = NotchPresence(home: self.homeController)
+        presence.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
+        presence.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
+        presence.onEndPreview = { [weak app = app] in
+            guard let app, app.sessionPanel.isVisible, !app.sessionPanel.isKey,
+                  NotchPresentation.shared.current == nil else { return false }
+            app.hidePanel()
+            return true
+        }
+        presence.onDismissConversation = { [weak app = app] in
+            guard let app, app.sessionPanel.isVisible else { return false }
+            app.collapseNotch()
+            return true
+        }
+        return presence
+    }()
+
     lazy var homeController: HomeController = {
         let controller = HomeController()
         controller.threadStore = self.homeThreadStore
@@ -537,19 +555,6 @@ final class AppSubsystems {
         }
         controller.onStop = { [weak app = app] id in app?.agentCoordinator.stop(threadID: id) }
         controller.onOpenConversation = { [weak app = app] in app?.showPanel() }
-        controller.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
-        controller.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
-        controller.onEndPreview = { [weak app = app] in
-            guard let app, app.sessionPanel.isVisible, !app.sessionPanel.isKey,
-                  NotchPresentation.shared.current == nil else { return false }
-            app.hidePanel()
-            return true
-        }
-        controller.onDismissConversation = { [weak app = app] in
-            guard let app, app.sessionPanel.isVisible else { return false }
-            app.collapseNotch()
-            return true
-        }
         app.agentRunningObservation = controller.bindWorkingThreads(self.agentCoordinator.$runningThreads)
         controller.perryListProvider = { [weak app = app] in
             await app?.perryStore?.list() ?? []

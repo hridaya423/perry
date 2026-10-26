@@ -28,9 +28,11 @@
 
 - 3.0 Done: mockups in `docs/design/2026-10-25-notch-mockups/` (`index.html`, `mockups.png`): resting A today / B capsule eyes / C pointer mascot, B's six eye states at 3x, the 440 pt peek, listening. The user picked B (capsule eyes) on 2026-10-26.
 
+- 3.1 Done: `App/Notch/NotchPresence.swift` owns the monitors, zones, resting panels, eyes, blink timer and peek; `HomeController` keeps input and threads. `NotchPresence.Surface { resting, peeking, open }` replaces `previewing` and `conversationVisible`; maintenance calls `suspend()` and `resume()`. `HomeHoverIntent.homeOpen`/`setHomeOpen` and the `HomeView` shell are deleted (no production caller). Deviation: no `swelling` or `hidden` case yet; swelling arrives with the hover swell in 3.x, and `hidden` is today's stopped state. Verified: app suite 640/0 on the mini (two `homeOpen` tests deleted).
+
 ## Next
 
-- Phase 3 with variant B: 3.1 `NotchPresence` split, then 3.2 onward.
+- Phase 3 with variant B: 3.2 one palette, then onward.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

@@ -6,18 +6,6 @@ import PerryGuide
 import PerryOverlay
 import PerryRuntimes
 
-struct HomeView: View {
-    @ObservedObject var model: HomeModel
-
-    var body: some View {
-        if let onboarding = model.onboarding, model.sidebarSelection != .settings {
-            OnboardingNotchView(director: onboarding, model: model)
-        } else {
-            NotchWorkspaceView(model: model)
-        }
-    }
-}
-
 /// Morning suggestion cards (Phase 9 §4.6): read-only research over connected
 /// apps, ranked; "Do it" runs the card's action as a goal on a new thread.
 struct SuggestionsView: View {

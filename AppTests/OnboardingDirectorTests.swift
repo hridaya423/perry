@@ -16,7 +16,7 @@ final class OnboardingDirectorTests: XCTestCase {
         director.start()
         defer {
             director.stop()
-            controller.homeController.stop()
+            controller.notchPresence.stop()
         }
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build/living-ink-evidence")
@@ -50,7 +50,7 @@ final class OnboardingDirectorTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController(debugStorageDirectory: directory)
-        defer { controller.homeController.stop() }
+        defer { controller.notchPresence.stop() }
         let model = controller.homeController.homeModel
         let director = OnboardingDirector()
         model.onboarding = director

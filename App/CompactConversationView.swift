@@ -92,7 +92,7 @@ struct CompactConversationView: View {
     }
 
     private func updateCameraInset() {
-        let screen = controller.sessionPanel.screen ?? HomeController.screenUnderPointer()
+        let screen = controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()
         cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
     }
 

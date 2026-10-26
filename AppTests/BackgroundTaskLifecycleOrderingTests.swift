@@ -25,7 +25,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         }
         defer {
             presentation.onPresent = originalOnPresent
-            controller.homeController.stop()
+            controller.notchPresence.stop()
         }
         let previousIDs = Set(presentation.entries.map(\.id))
         controller.debugInvokeWipeDataAction()
@@ -50,7 +50,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         presentation.onPresent = nil
         defer {
             presentation.onPresent = originalOnPresent
-            controller.homeController.stop()
+            controller.notchPresence.stop()
             controller.homeController.closeHome()
         }
         controller.homeController.threadStore = nil
@@ -86,7 +86,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertTrue(controller.backgroundTasks.acceptsControls)
         XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
         XCTAssertTrue(NSApp.windows.contains { $0.identifier == SessionPanelView.windowIdentifier })
-        controller.homeController.stop()
+        controller.notchPresence.stop()
         controller.homeController.closeHome()
     }
 
@@ -101,7 +101,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         defer {
             confirmation.cancel()
             presentation.onPresent = originalOnPresent
-            controller.homeController.stop()
+            controller.notchPresence.stop()
         }
         let waiting = Task { await confirmation.confirm() }
         for _ in 0..<100 where !presentation.contains(confirmation.requestID) { await Task.yield() }

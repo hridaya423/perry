@@ -117,6 +117,7 @@ final class MaintenanceCoordinator {
         host.agentCoordinator.closeAdmission()
         host.brain.closeAdmission()
         host.homeController.closeAdmission()
+        host.notchPresence.suspend()
         host.hidePanel()
         return true
     }
@@ -128,6 +129,7 @@ final class MaintenanceCoordinator {
         host.agentCoordinator.reopenAdmission()
         host.brain.reopenAdmission()
         host.homeController.reopenAdmission()
+        host.notchPresence.resume()
         host.mcp.resume()
         host.customConnectors.connectAll()
     }
@@ -212,7 +214,7 @@ final class MaintenanceCoordinator {
         host.talkSession.cancel()
         await host.talkSession.joinInputSaves()
         host.notchStatus.hide()
-        host.homeController.stop()
+        host.notchPresence.stop()
         host.perryScheduler?.stop()
         host.suggestionController.stop()
         host.customConnectors.disconnectAll()
@@ -247,7 +249,7 @@ final class MaintenanceCoordinator {
         host.talkSession.cancel()
         await host.talkSession.joinInputSaves()
         host.notchStatus.hide()
-        host.homeController.stop()
+        host.notchPresence.stop()
         host.perryScheduler?.stop()
         host.suggestionController.stop()
         host.customConnectors.forgetAll()

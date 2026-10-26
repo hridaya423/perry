@@ -156,7 +156,7 @@ final class HomeRecoveryTests: XCTestCase {
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: appearance)
             NSApp.appearance = window.appearance
-            let host = NSHostingView(rootView: HomeView(model: model)
+            let host = NSHostingView(rootView: NotchWorkspaceView(model: model)
                 .environment(\.colorScheme, name == "light" ? .light : .dark)
                 .background(Color(nsColor: .windowBackgroundColor)))
             window.contentView = host
@@ -348,7 +348,6 @@ final class HomeRecoveryTests: XCTestCase {
         let store = ThreadStore(directory: root)
         let home = HomeController()
         home.threadStore = store
-        defer { home.stop() }
         let target = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
         home.answerProvider = { input, receivedTarget, partial in
             XCTAssertEqual(receivedTarget, target)
@@ -379,7 +378,6 @@ final class HomeRecoveryTests: XCTestCase {
     func testReopeningCompactWorkspacePreservesDraftTargetUntilDraftIsCleared() async throws {
         let home = HomeController()
         home.threadStore = ThreadStore(directory: try directory())
-        defer { home.stop() }
         let first = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
         let next = CuaTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
         home.prepareConversation(target: first)
@@ -410,7 +408,6 @@ final class HomeRecoveryTests: XCTestCase {
             return .completed
         }
         home.openHome()
-        defer { home.stop() }
         home.homeModel.updateNewDraft("First question")
         home.captureTarget = { next }
         home.openHome(selection: .settings)
@@ -437,7 +434,6 @@ final class HomeRecoveryTests: XCTestCase {
         home.threadStore = store
         var dispatched = 0
         home.answerProvider = { _, _, _ in dispatched += 1; return .completed }
-        defer { home.stop() }
         home.openHome(selection: .thread(id))
         let loaded = await waitUntil { home.homeModel.threads.first?.pendingTurn != nil }
         XCTAssertTrue(loaded)
@@ -459,7 +455,6 @@ final class HomeRecoveryTests: XCTestCase {
         try await store.setWelcomeDraft("Help me think through a trip")
         let home = HomeController()
         home.threadStore = store
-        defer { home.stop() }
         home.openHome()
         let loaded = await waitUntil { home.homeModel.newConversationDraft == "Help me think through a trip" }
         let diskDraft = try await store.welcomeDraft()
@@ -492,7 +487,6 @@ final class HomeRecoveryTests: XCTestCase {
         let first = (1...80).map { "Paragraph \($0): Cedar is a fictional town beside a river." }.joined(separator: "\n\n")
         home.homeModel.streamingAnswers[id] = first
         home.openHome(selection: .thread(id))
-        defer { home.stop() }
         let loaded = await waitUntil { home.homeModel.threads.first?.pendingTurn != nil }
         XCTAssertTrue(loaded)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)

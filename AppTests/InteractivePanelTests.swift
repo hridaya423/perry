@@ -89,7 +89,6 @@ final class InteractivePanelTests: XCTestCase {
         let selections: [HomeModel.Selection] = [.history, .tasks, .settings, .whatsNew]
         for selection in selections { controller.openHome(selection: selection) }
         XCTAssertEqual(presented, selections.map(Optional.some))
-        controller.stop()
     }
 
     func testRoutineReviewRemainsInNotchUntilClosed() {

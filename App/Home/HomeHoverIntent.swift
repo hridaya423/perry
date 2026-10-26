@@ -22,8 +22,6 @@ struct HomeHoverIntent: Equatable {
 
     var dwell: TimeInterval = 0.110
     var tuck: TimeInterval = 0.250
-    /// Full Home window is open: peek is suppressed entirely.
-    var homeOpen = false
     private(set) var state: State = .closed
 
     var pendingDeadline: TimeInterval? {
@@ -34,7 +32,6 @@ struct HomeHoverIntent: Equatable {
     }
 
     mutating func entered(at now: TimeInterval) -> Action {
-        guard !homeOpen else { return .none }
         switch state {
         case .closed:
             state = .dwelling(deadline: now + dwell)
@@ -81,19 +78,6 @@ struct HomeHoverIntent: Equatable {
             return .hidePeek
         case .tucking:
             // Pointer already left — nothing to latch against; just close.
-            state = .closed
-            return .hidePeek
-        case .closed, .latched:
-            return .none
-        }
-    }
-
-    /// Opening/closing the full Home window. Opening hides any peek at once.
-    mutating func setHomeOpen(_ open: Bool) -> Action {
-        homeOpen = open
-        guard open else { return .none }
-        switch state {
-        case .dwelling, .peekOpen, .tucking:
             state = .closed
             return .hidePeek
         case .closed, .latched:

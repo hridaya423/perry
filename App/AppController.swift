@@ -59,6 +59,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         set { subsystems.agentCoordinator = newValue }
     }
     var homeController: HomeController { subsystems.homeController }
+    var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoice: VoiceConversationController { subsystems.conversationVoice }
     var conversationVoiceObservation: AnyCancellable?
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
@@ -311,7 +312,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
-        homeController.start()
+        notchPresence.start()
         perryScheduler?.start()
         suggestionController.start()
         if let dir = storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {

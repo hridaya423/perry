@@ -53,33 +53,18 @@ final class HomeHoverIntentTests: XCTestCase {
         XCTAssertEqual(intent.deadlineReached(at: 3.22), .showPeek)
     }
 
-    func testHomeOpenSuppressesPeek() {
-        intent.homeOpen = true
-        XCTAssertEqual(intent.entered(at: 0), .none)
-        XCTAssertNil(intent.pendingDeadline)
-    }
-
-    func testOpeningHomeHidesPeekImmediately() {
-        _ = intent.entered(at: 0)
-        _ = intent.deadlineReached(at: 0.12)
-        XCTAssertEqual(intent.setHomeOpen(true), .hidePeek)
-        XCTAssertEqual(intent.state, .closed)
-    }
-
-    /// Fuzzed pointer paths: random enter/exit/esc/deadline/home sequences
+    /// Fuzzed pointer paths: random enter/exit/esc/deadline sequences
     /// must never leave the machine with a pending deadline that cannot
     /// resolve, and peek must always end hidden when the pointer is gone.
     func testFuzzedPointerPathsNeverStickOpen() {
         var rng = SplitMix64(seed: 0xC0FFEE)
         var inside = false
-        var homeOpen = false
         var peekVisible = false
 
         for _ in 0..<20_000 {
             var m = intent
-            m.homeOpen = homeOpen
             let now = TimeInterval(rng.next() % 10_000) / 1000.0
-            switch rng.next() % 5 {
+            switch rng.next() % 4 {
             case 0 where !inside:
                 inside = true
                 if m.entered(at: now) == .showPeek { peekVisible = true }
@@ -93,9 +78,6 @@ final class HomeHoverIntentTests: XCTestCase {
                 let action = m.deadlineReached(at: now)
                 if action == .showPeek { peekVisible = true }
                 if action == .hidePeek { peekVisible = false }
-            case 4:
-                homeOpen.toggle()
-                if m.setHomeOpen(homeOpen) == .hidePeek { peekVisible = false }
             default:
                 continue
             }
@@ -106,7 +88,7 @@ final class HomeHoverIntentTests: XCTestCase {
                 XCTAssertNotEqual(intent.state, .latched)
             }
             // Pointer outside + all deadlines elapsed => nothing stuck.
-            if !inside && intent.pendingDeadline == nil && !homeOpen {
+            if !inside && intent.pendingDeadline == nil {
                 XCTAssertEqual(intent.state, .closed)
                 XCTAssertFalse(peekVisible)
             }

@@ -14,10 +14,10 @@ final class PaperOnboardingTests: XCTestCase {
             SuggestionCard(title: "Prepare for the project review", body: "Gather the decisions from yesterday’s discussion into a short agenda for the next review.", score: 0.8),
             SuggestionCard(title: "Follow up on the draft", body: "Prepare a follow-up that includes the revised outline and the two questions still awaiting an answer.", score: 0.7)
         ]
-        try render(AnyView(HomeView(model: model)), name: "suggestions")
-        try render(AnyView(HomeView(model: model)), name: "suggestions-minimum",
+        try render(AnyView(NotchWorkspaceView(model: model)), name: "suggestions")
+        try render(AnyView(NotchWorkspaceView(model: model)), name: "suggestions-minimum",
                    size: NSSize(width: 600, height: 460))
-        try render(AnyView(HomeView(model: model).environment(\.dynamicTypeSize, .accessibility3)),
+        try render(AnyView(NotchWorkspaceView(model: model).environment(\.dynamicTypeSize, .accessibility3)),
                    name: "suggestions-large-text")
     }
 
