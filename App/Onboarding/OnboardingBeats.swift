@@ -35,8 +35,11 @@ struct HomeOnboardingView: View {
                     model: InterviewModel(
                         name: controller.memoryFiles?.profileField("Name") ?? OnboardingDirector.suggestedName(saved: nil, fullName: NSFullUserName()),
                         effects: .init(
-                            complete: controller.brain.hasSavedChoice ? { try await controller.brain.completeText($0) } : nil,
-                            save: { facts in Task { await controller.saveInterview(facts) } }
+                            complete: controller.brain.hasSavedChoice || controller.brain.onDeviceRouteAvailable
+                                ? { try await controller.brain.completeOnDevice($0) } : nil,
+                            save: { facts in Task { await controller.saveInterview(facts) } },
+                            saveNotes: { facts in Task { await controller.saveImportedFacts(facts) } },
+                            sayName: { controller.voice.speak($0) }
                         )
                     ),
                     cloudLine: InterviewModel.cloudLine(choice: controller.brain.modelChoice, hasSavedChoice: controller.brain.hasSavedChoice),

@@ -34,3 +34,33 @@ final class MemoryExtractionTests: XCTestCase {
         XCTAssertEqual(MemoryExtraction.decode(#"{"facts": [\#(rows)]}"#, known: []).count, 3)
     }
 }
+
+final class InterviewPolicyTests: XCTestCase {
+    func testDigOnlyAfterRichAnswersWithinBudget() {
+        XCTAssertTrue(InterviewPolicy.shouldDig(answer: "I design onboarding for a fintech startup in Berlin", followUpsAsked: 0, elapsed: 20))
+        XCTAssertFalse(InterviewPolicy.shouldDig(answer: "Designer", followUpsAsked: 0, elapsed: 20))
+        XCTAssertFalse(InterviewPolicy.shouldDig(answer: nil, followUpsAsked: 0, elapsed: 20))
+        XCTAssertFalse(InterviewPolicy.shouldDig(answer: "I design onboarding for a fintech startup in Berlin", followUpsAsked: 2, elapsed: 20))
+        XCTAssertFalse(InterviewPolicy.shouldDig(answer: "I design onboarding for a fintech startup in Berlin", followUpsAsked: 0, elapsed: 95))
+    }
+
+    func testBackOffAfterTwoShortAnswersOrTheTimeBudget() {
+        XCTAssertFalse(InterviewPolicy.shouldBackOff(shortStreak: 1, elapsed: 30))
+        XCTAssertTrue(InterviewPolicy.shouldBackOff(shortStreak: 2, elapsed: 30))
+        XCTAssertTrue(InterviewPolicy.shouldBackOff(shortStreak: 0, elapsed: 90))
+        XCTAssertTrue(InterviewPolicy.isShort("yes"))
+        XCTAssertTrue(InterviewPolicy.isShort(nil))
+        XCTAssertFalse(InterviewPolicy.isShort("mostly product design"))
+    }
+
+    func testFollowUpCleaning() {
+        XCTAssertEqual(InterviewPolicy.cleanFollowUp("\"Are you raising money right now?\""), "Are you raising money right now?")
+        XCTAssertNil(InterviewPolicy.cleanFollowUp("NONE"))
+        XCTAssertNil(InterviewPolicy.cleanFollowUp("That sounds great."))
+    }
+
+    func testImportKeepsFactsAndDropsSecrets() {
+        let reply = #"{"facts": [{"text": "Works as a product designer", "kind": "profile", "subject": "role"}, {"text": "API key is sk-abcdefghijklmnopqrs", "kind": "profile", "subject": "key"}]}"#
+        XCTAssertEqual(MemoryExtraction.decodeImport(reply).map(\.text), ["Works as a product designer"])
+    }
+}

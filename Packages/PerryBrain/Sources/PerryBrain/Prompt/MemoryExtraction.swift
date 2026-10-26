@@ -69,3 +69,71 @@ public enum MemoryExtraction {
         let facts: [LearnedFact]
     }
 }
+
+public enum InterviewPolicy {
+    public static let maximumFollowUps = 2
+    public static let timeBudget: TimeInterval = 90
+
+    public static func isShort(_ answer: String?) -> Bool {
+        (answer?.split(whereSeparator: \.isWhitespace).count ?? 0) <= 2
+    }
+
+    public static func shouldDig(answer: String?, followUpsAsked: Int, elapsed: TimeInterval) -> Bool {
+        guard let answer, followUpsAsked < maximumFollowUps, elapsed < timeBudget else { return false }
+        return answer.split(whereSeparator: \.isWhitespace).count >= 6
+    }
+
+    public static func shouldBackOff(shortStreak: Int, elapsed: TimeInterval) -> Bool {
+        shortStreak >= 2 || elapsed >= timeBudget
+    }
+
+    public static func followUpPrompt(question: String, answer: String) -> String {
+        """
+        You are getting to know a new user. You asked: "\(question)" They said: "\(answer)"
+        If their answer mentions something specific worth one short follow-up, write that question in at most 12 words, friendly and plain.
+        Never ask about health, money, family or anything private. If nothing is worth asking, reply NONE.
+        Reply with the question or NONE only.
+        """
+    }
+
+    public static func cleanFollowUp(_ reply: String) -> String? {
+        let line = reply.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"“”")))
+        guard !line.isEmpty, !line.uppercased().hasPrefix("NONE"), line.hasSuffix("?"),
+              line.split(whereSeparator: \.isWhitespace).count <= 16, !line.contains("\n") else { return nil }
+        return line
+    }
+}
+
+extension MemoryExtraction {
+    public static let importRequest = "Tell me everything you remember about me, as a short list of plain facts."
+
+    public static func importPrompt(_ notes: String) -> String {
+        """
+        The user pasted what another assistant remembers about them. Turn it into short facts in third person, at most 12 facts.
+        Keep work, projects, people, tools, preferences and interests. Skip secrets, health and money details, and anything about the other assistant.
+        Reply with JSON only: {"facts": [{"text": "short fact", "kind": "profile|preference|person|project|event", "subject": "one or two words", "days": null}]}
+
+        Notes:
+        \(notes.prefix(8_000))
+        """
+    }
+
+    public static func decodeImport(_ text: String) -> [LearnedFact] {
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"),
+              let reply = try? JSONDecoder().decode(ImportReply.self, from: Data(text[start...end].utf8)) else { return [] }
+        var seen = Set<String>()
+        return reply.facts.compactMap { fact in
+            var fact = fact
+            fact.text = fact.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            fact.subject = fact.subject.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !fact.text.isEmpty, fact.text.count <= 160, !looksSecret(fact.text), seen.insert(fact.text.lowercased()).inserted else { return nil }
+            return fact
+        }
+        .prefix(12)
+        .map { $0 }
+    }
+
+    private struct ImportReply: Decodable {
+        let facts: [LearnedFact]
+    }
+}
