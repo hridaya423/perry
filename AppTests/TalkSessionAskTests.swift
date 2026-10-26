@@ -500,7 +500,7 @@ final class TalkSessionAskTests: XCTestCase {
         controller.submitComposer(question: "What is this?")
 
         XCTAssertEqual(captures, 0)
-        XCTAssertTrue(output.statuses.contains("Finish or dismiss the current session before asking."))
+        XCTAssertTrue(output.statuses.contains("Finish or dismiss what I’m doing before you ask."))
     }
 
     func testCancelStopsPendingAnswer() async {

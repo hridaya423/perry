@@ -156,7 +156,7 @@ final class RuntimeInventoryTests: XCTestCase {
         let definition = try XCTUnwrap(RuntimeCLIDefinition.production(codexRuntimeHome: nil).first)
         let status = try await definition.verify(URL(fileURLWithPath: "/must-not-launch/runtime"))
 
-        XCTAssertEqual(status, .unverified(reason: "Perry's private Codex home is unavailable"))
+        XCTAssertEqual(status, .unverified(reason: "Codex’s private folder isn’t available"))
         let inspected = try await definition.inspect()
         let record = try XCTUnwrap(inspected)
         XCTAssertFalse(record.canRun)

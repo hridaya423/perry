@@ -63,7 +63,7 @@ final class VoiceReadinessTests: XCTestCase {
 
         await permission.resolve(false)
         let denialReported = await eventually {
-            self.statuses.contains("Microphone permission is optional; type your request instead.")
+            self.statuses.contains("The microphone is off. Type your message instead.")
         }
         XCTAssertTrue(denialReported)
         XCTAssertEqual(overlayState.voiceState, .idle)

@@ -94,12 +94,12 @@ final class WorkerFinalizationTests: XCTestCase {
 
         let persistedTranscripts = await transcriptStore.snapshot()
         XCTAssertEqual(persistedTranscripts.map(\.id), [taskID])
-        XCTAssertEqual(persistedTranscripts.first?.summary, "Finished 1 step.")
+        XCTAssertEqual(persistedTranscripts.first?.summary, "Done. I ran 1 step.")
         let reloadedTranscriptStore = TranscriptStore(directory: directory)
         let reloadedTranscripts = await reloadedTranscriptStore.snapshot()
         XCTAssertEqual(reloadedTranscripts.map(\.id), [taskID])
         let persistedMemories = await memoryStore.snapshot()
-        XCTAssertEqual(persistedMemories.map(\.summary), ["Finished 1 step."])
+        XCTAssertEqual(persistedMemories.map(\.summary), ["Done. I ran 1 step."])
 
         await notifier.release()
         let finalizationResult = await XCTWaiter.fulfillment(of: [finalizationFinished], timeout: 1)

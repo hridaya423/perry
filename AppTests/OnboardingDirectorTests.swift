@@ -121,7 +121,7 @@ final class OnboardingDirectorTests: XCTestCase {
         XCTAssertFalse(OnboardingCoordinator.opensAtLaunch(completed: true, dismissed: false))
 
         let setup = PeekRow.setup
-        XCTAssertEqual(setup.title, "Finish setting up")
+        XCTAssertEqual(setup.title, "Finish setup")
         XCTAssertEqual(PeekRow.rows(needsYou: nil, setup: setup, tasks: [], perrys: [], suggestions: []).map(\.id), [setup.id])
         let task = PeekRow(id: "t", kind: .task(working: true), title: "Task", status: "")
         XCTAssertEqual(PeekRow.rows(needsYou: nil, setup: setup, tasks: [task, task], perrys: [], suggestions: []).first?.id, setup.id)
