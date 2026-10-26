@@ -37,10 +37,7 @@ enum RuntimeExecutableVerifier {
     static func claude(at executable: URL) async throws -> RuntimeInstallationStatus {
         try Task.checkCancellation()
         let resolved = executable.resolvingSymlinksInPath().standardizedFileURL
-        let identityVerified = verifiesCodeIdentity(
-            at: resolved,
-            requirement: "identifier \"com.anthropic.claude-code\" and anchor apple generic and certificate leaf[subject.OU] = \"Q6L2SF6YDW\""
-        )
+        let identityVerified = isSignedByAnthropic(resolved)
         try Task.checkCancellation()
         guard identityVerified else {
             return .unverified(reason: "Claude Code is not signed by Anthropic")
@@ -68,6 +65,13 @@ enum RuntimeExecutableVerifier {
         } catch {
             return .unverified(reason: "Claude Code identity probe failed")
         }
+    }
+
+    static func isSignedByAnthropic(_ executable: URL) -> Bool {
+        verifiesCodeIdentity(
+            at: executable.resolvingSymlinksInPath().standardizedFileURL,
+            requirement: "identifier \"com.anthropic.claude-code\" and anchor apple generic and certificate leaf[subject.OU] = \"Q6L2SF6YDW\""
+        )
     }
 
     static func sha256(at executable: URL) async throws -> String? {

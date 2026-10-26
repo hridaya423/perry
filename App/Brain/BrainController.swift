@@ -46,6 +46,7 @@ final class BrainController: ObservableObject {
     @Published private(set) var activeProfileID: String?
     @Published private(set) var profileChecks: [String: ProfileCheckState] = [:]
     @Published private(set) var acpAgent: AcpAgent?
+    @Published private(set) var setupStates = Dictionary(uniqueKeysWithValues: ModelChoice.allCases.map { ($0, SetupState.unchecked) })
 
     private let readCredential: (String) throws -> String?
     private let saveCredential: (String, String) throws -> Void
@@ -126,6 +127,14 @@ final class BrainController: ObservableObject {
     var acpAgentAvailable: Bool { acpAgent?.executable() != nil }
 
     var claudeCodeAvailable: Bool { claudeCode != nil }
+
+    func refreshSetupStates(using catalog: RuntimeCatalog) async {
+        let snapshot = await catalog.currentSetup()
+        guard acceptsSetup else { return }
+        let email: String?
+        if case .signedIn(let signedInEmail, _) = account { email = signedInEmail } else { email = nil }
+        setupStates = snapshot.setupStates(chatGPTEmail: email, acpInstalled: acpAgentAvailable)
+    }
 
     var activeProfile: ModelProfile? {
         profiles.first { $0.id == activeProfileID } ?? profiles.first
@@ -589,8 +598,12 @@ final class BrainController: ObservableObject {
         )
     }
 
-    private static func makeClaudeCodeProvider(scopes: (any MCPScopeHost)?) -> ClaudeCodeProvider? {
-        guard let executable = try? CLIRuntime.locateExecutable() else { return nil }
+    static func makeClaudeCodeProvider(
+        scopes: (any MCPScopeHost)?,
+        locate: () throws -> URL = { try CLIRuntime.locateExecutable() }
+    ) -> ClaudeCodeProvider? {
+        guard let executable = try? locate(),
+              RuntimeExecutableVerifier.isSignedByAnthropic(executable) else { return nil }
         return ClaudeCodeProvider(
             executable: executable,
             helper: Bundle.main.url(forAuxiliaryExecutable: "perry-mcp"),
