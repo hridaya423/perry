@@ -62,6 +62,13 @@ struct PeekRow: Equatable, Identifiable {
         )
     }
 
+    static func helperTint(_ id: String) -> Color {
+        let palette = [Color(red: 0.55, green: 0.71, blue: 1.0), Color(red: 1.0, green: 0.76, blue: 0.48),
+                       Color(red: 0.79, green: 0.65, blue: 1.0), Color(red: 1.0, green: 0.62, blue: 0.72),
+                       Color(red: 0.44, green: 0.84, blue: 0.88)]
+        return palette[Int(id.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }) % palette.count]
+    }
+
     private static func lastLine(_ text: String) -> String? {
         text.split(whereSeparator: \.isNewline).last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.map(String.init)
     }
@@ -75,32 +82,29 @@ struct NotchPeekView: View {
 
     var body: some View {
         let rows = PeekRow.rows(model: model, presentation: presentation)
-        VStack(spacing: 16) {
+        VStack(spacing: 10) {
             if rows.isEmpty {
-                PeekGestureLine()
+                PeekWelcome()
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        if index > 0 {
-                            Rectangle().fill(.white.opacity(0.08)).frame(height: 1).padding(.leading, PeekRowMetrics.textInset)
-                        }
+                VStack(spacing: 2) {
+                    ForEach(rows) { row in
                         PeekRowView(row: row) { onOpen(row) }
                     }
                 }
             }
-            WorkspaceComposer(
-                text: Binding(get: { model.newConversationDraft }, set: { model.updateNewDraft($0) }),
-                placeholder: "Ask Perry anything",
-                canSend: !model.isCreatingConversation,
-                focusOnAppear: false,
-                onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } },
-                onExpand: onExpand
-            ) {
-                model.onStartConversation?(model.newConversationDraft)
+            HStack {
+                if !rows.isEmpty {
+                    Text(TalkGesture.talk)
+                        .font(PerryTheme.Scale.secondary)
+                        .foregroundStyle(PerryTheme.Colors.textTertiary)
+                }
+                Spacer()
+                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open Perry", action: onExpand)
             }
+            .padding(.leading, PeekRowMetrics.inset)
         }
         .padding(.horizontal, NotchLayout.peekInset)
-        .padding(.bottom, NotchLayout.peekInset - NotchLayout.bottomInset)
+        .padding(.bottom, NotchLayout.peekInset - NotchLayout.bottomInset - 6)
         .foregroundStyle(PerryTheme.Colors.text)
     }
 }
@@ -108,7 +112,7 @@ struct NotchPeekView: View {
 private enum PeekRowMetrics {
     static let inset = CGFloat(6)
     static let leadSpacing = CGFloat(12)
-    static let textInset = inset + PerryTheme.Icon.slot + leadSpacing
+    static let tile = CGFloat(38)
 }
 
 private struct PeekRowView: View {
@@ -119,7 +123,7 @@ private struct PeekRowView: View {
     var body: some View {
         Button(action: open) {
             HStack(spacing: PeekRowMetrics.leadSpacing) {
-                lead.frame(width: PerryTheme.Icon.slot, height: PerryTheme.Icon.slot)
+                lead
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.title)
                         .font(PerryTheme.Scale.rowTitle)
@@ -131,7 +135,9 @@ private struct PeekRowView: View {
                         .truncationMode(.tail)
                 }
                 Spacer(minLength: 8)
-                if row.kind == .needsYou {
+                if row.kind == .task(working: true) {
+                    TypingDots()
+                } else if row.kind == .needsYou {
                     Text("Review")
                         .font(PerryTheme.Scale.chip)
                         .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
@@ -140,7 +146,7 @@ private struct PeekRowView: View {
                         .background(PerryTheme.Colors.primaryAction, in: Capsule())
                 }
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 8)
             .padding(.horizontal, PeekRowMetrics.inset)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
             .contentShape(Rectangle())
@@ -154,27 +160,54 @@ private struct PeekRowView: View {
     @ViewBuilder
     private var lead: some View {
         switch row.kind {
-        case .needsYou:
-            LeadDisc(systemImage: "exclamationmark", tint: PerryTheme.Colors.caution)
-        case .task(working: true):
-            LeadSpinner()
-        case .task(working: false):
-            LeadDisc(systemImage: "checkmark", tint: PerryTheme.Colors.success)
-        case .perry:
-            PerryCharacterView(pose: PerryCharacterPose(), size: PerryTheme.Icon.slot)
-        case .setup:
-            LeadDisc(systemImage: "arrow.right", tint: PerryTheme.Colors.accent)
-        case .suggestion:
-            LeadDisc(systemImage: "lightbulb", tint: PerryTheme.Colors.icon)
+        case .needsYou: face(PerryTheme.Colors.caution, face: .wide)
+        case .task(working: true): face(PerryCharacterView.fern, face: .focused)
+        case .task(working: false), .setup: face(PerryCharacterView.fern, face: .happy)
+        case .perry: face(PeekRow.helperTint(row.id), face: .open)
+        case .suggestion: face(PerryTheme.Colors.icon, face: .open)
         }
+    }
+
+    private func face(_ tint: Color, face: PerryCharacterPose.Face) -> some View {
+        var pose = PerryCharacterPose()
+        pose.face = face
+        return PerryCharacterView(pose: pose, size: 24, tint: tint)
+            .frame(width: PeekRowMetrics.tile, height: PeekRowMetrics.tile)
+            .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
 
-private struct PeekGestureLine: View {
+private struct PeekWelcome: View {
     var body: some View {
-        Text("\(TalkGesture.talk), or type below.")
-            .font(PerryTheme.Scale.secondary)
-            .foregroundStyle(PerryTheme.Colors.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(spacing: 6) {
+            PerryCharacterView(pose: PerryCharacterPose(), size: 30)
+                .padding(.bottom, 4)
+            Text("\(PerryPreferences.talkGesture.spoken) and ask me anything")
+                .font(PerryTheme.Scale.heading)
+            Text(TalkGesture.type)
+                .font(PerryTheme.Scale.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+    }
+}
+
+private struct TypingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            let time = reduceMotion ? 0.3 : context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 4) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .fill(PerryTheme.Colors.accent)
+                        .frame(width: 5, height: 5)
+                        .opacity(0.35 + 0.65 * max(0, sin((time * 2.4 - Double(index) * 0.35) * .pi)))
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

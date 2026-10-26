@@ -134,11 +134,7 @@ struct CompactConversationView: View {
     @ViewBuilder
     private var crown: some View {
         if peeking {
-            HStack {
-                Spacer()
-                crownControls
-            }
-            .padding(.trailing, NotchLayout.peekInset - 8)
+            EmptyView()
         } else if presentation.current != nil, presentation.showsInteraction {
             HStack {
                 Button(action: controller.showWorkspace) {
@@ -153,15 +149,6 @@ struct CompactConversationView: View {
                 Spacer()
                 WindowControlButton(systemImage: "chevron.up", label: "Collapse", action: controller.collapseNotch)
             }
-        }
-    }
-
-    private var crownControls: some View {
-        HStack(spacing: 2) {
-            NotchCommandsMenu(controller: controller)
-                .frame(width: 28, height: 28)
-                .help("More")
-            WindowControlButton(systemImage: "xmark", label: "Close", action: controller.collapseNotch)
         }
     }
 

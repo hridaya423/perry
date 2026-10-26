@@ -629,6 +629,12 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await shot("long-titles")
         model.workingThreads = []
         model.streamingAnswers = [:]
+
+        model.threads = []
+        model.perrys = [Perry(name: "Tidy Desktop", job: "Files new screenshots every evening", threadID: UUID().uuidString),
+                        Perry(name: "Inbox Watch", job: "Flags emails that need a reply", threadID: UUID().uuidString)]
+        try await shot("helpers")
+        model.perrys = []
     }
 
     func testRenderMascotMoods() async throws {
