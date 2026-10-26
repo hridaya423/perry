@@ -31,10 +31,11 @@
 - 3.1 Done: `App/Notch/NotchPresence.swift` owns the monitors, zones, resting panels, eyes, blink timer and peek; `HomeController` keeps input and threads. `NotchPresence.Surface { resting, peeking, open }` replaces `previewing` and `conversationVisible`; maintenance calls `suspend()` and `resume()`. `HomeHoverIntent.homeOpen`/`setHomeOpen` and the `HomeView` shell are deleted (no production caller). Deviation: no `swelling` or `hidden` case yet; swelling arrives with the hover swell in 3.x, and `hidden` is today's stopped state. Verified: app suite 640/0 on the mini (two `homeOpen` tests deleted).
 
 - 3.2 Done: r6 §7.11 dark values in `PerryTheme.Colors` (body `#1A1B1D`, card `#232427`, new `chip` and `textTertiary`, text `#F5F2EA`, accent `#7BE3BD`, success/caution/danger hex), one `crown` token for black, and dead tokens deleted (`focus`, `Elevation`, `Spacing.cardInset`, `Sizing.settings*`, `Motion.settle`). `SemanticTypographyTests.testNotchViewsUsePaletteTokensInsteadOfBlack` fails on `Color.black`/`NSColor.black` in `App/Home`, `App/Notch` and `CompactConversationView`. Deviation: `PerryOverlayTheme.Colors.accent` (`#34D399`, same hue) stays for on-screen glow and ink, because `#7BE3BD` is about 1.6:1 on white app content; the notch status icon now uses the notch accent. Verified: 641/0 on the mini; workspace render shows the charcoal body and mint accent.
+- 3.3 Done: `App/Notch/NotchShape.swift` replaces `NotchSilhouette`. It uses one quad-curve path with an ear and a bottom radius, `AnimatablePair(top, bottom)`, closed 6/14 and open 18/22. `surface` fills the crown and adds a 1 pt keyline (white 0% at the top, 10% at the bottom). The panel uses it as a background, so content is no longer clipped; the side padding became the 18 pt ear. Verified: 644/0 on the mini; `NotchShapeTests` checks that the path is closed and stays inside its rect. Renders inspected in `docs/evidence/first-impressions/3.3/`.
 
 ## Next
 
-- 3.3 `NotchShape`, then 3.4 fixed window sized to content (removes the black field under focused cards, visible in `task-question-notch.png`).
+- 3.4 fixed window sized to content (removes the black field under focused cards, visible in `task-question-notch.png`).
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

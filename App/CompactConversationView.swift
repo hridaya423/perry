@@ -33,7 +33,7 @@ struct CompactConversationView: View {
                 workspace
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, NotchShape.open.topRadius)
             if presentation.current != nil, !presentation.showsInteraction {
                 HStack {
                     Spacer()
@@ -49,8 +49,7 @@ struct CompactConversationView: View {
                 Color.clear.frame(height: 16)
             }
         }
-        .background(PerryTheme.Colors.crown)
-        .clipShape(NotchSilhouette())
+        .background(NotchShape.open.surface)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)

@@ -86,22 +86,3 @@ struct NotchCommandsMenu: NSViewRepresentable {
         return menu
     }
 }
-
-struct NotchSilhouette: Shape {
-    func path(in rect: CGRect) -> Path {
-        let shoulder: CGFloat = 16
-        let bottom: CGFloat = 30
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - shoulder, y: rect.minY + shoulder), control: CGPoint(x: rect.maxX - shoulder, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - shoulder, y: rect.maxY - bottom))
-        path.addQuadCurve(to: CGPoint(x: rect.maxX - shoulder - bottom, y: rect.maxY), control: CGPoint(x: rect.maxX - shoulder, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + shoulder + bottom, y: rect.maxY))
-        path.addQuadCurve(to: CGPoint(x: rect.minX + shoulder, y: rect.maxY - bottom), control: CGPoint(x: rect.minX + shoulder, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + shoulder, y: rect.minY + shoulder))
-        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.minY), control: CGPoint(x: rect.minX + shoulder, y: rect.minY))
-        path.closeSubpath()
-        return path
-    }
-}
