@@ -319,7 +319,7 @@ struct InterviewBeat: View {
     }
 
     private var review: some View {
-        OnboardingBeatLayout(title: "Here’s what I got.", message: model.extracting ? "Tidying up…" : "Not saved yet.", artHeight: 0) {
+        OnboardingBeatLayout(title: "Here’s what I got.", message: model.extracting ? "Tidying up…" : "Not saved yet.") {
             Color.clear
         } detail: {
             VStack(spacing: 0) {

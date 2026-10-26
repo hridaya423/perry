@@ -156,11 +156,11 @@ final class NotchPeekTests: XCTestCase {
         XCTAssertLessThan(p95, 80)
     }
 
-    func testPeekRowsPutTheApprovalFirstThenTwoTasks() {
+    func testPeekRowsPutTheApprovalFirstThenOneTask() {
         let approval = PeekRow(id: "a", kind: .needsYou, title: "Perry needs your OK", status: "Open it to continue")
         let tasks = (1...3).map { PeekRow(id: "t\($0)", kind: .task(working: true), title: "Task \($0)", status: "Working…") }
         let perry = PeekRow(id: "p", kind: .perry, title: "Morning brief", status: "Summarize newsletters")
-        XCTAssertEqual(PeekRow.rows(needsYou: approval, tasks: tasks, perrys: [perry], suggestions: []).map(\.id), ["a", "t1", "t2"])
+        XCTAssertEqual(PeekRow.rows(needsYou: approval, tasks: tasks, perrys: [perry], suggestions: []).map(\.id), ["a", "t1"])
         XCTAssertEqual(PeekRow.rows(needsYou: nil, tasks: [], perrys: [perry, perry], suggestions: [perry]).count, 2)
     }
 

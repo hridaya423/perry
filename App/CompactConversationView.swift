@@ -131,6 +131,7 @@ struct CompactConversationView: View {
                 Spacer()
                 crownControls
             }
+            .padding(.trailing, NotchLayout.peekInset - 8)
         } else if presentation.current != nil, presentation.showsInteraction {
             HStack {
                 Button(action: controller.showWorkspace) {

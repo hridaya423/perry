@@ -29,6 +29,8 @@ enum NotchLayout {
     static let topInset: CGFloat = 12
     static let bottomInset: CGFloat = 16
     static let contentInset: CGFloat = 18
+    static let peekInset: CGFloat = 24
+    static let peekWidth: CGFloat = 480
 
     @MainActor
     static func mode(_ presentation: NotchPresentation, expansion: NotchExpansion) -> Mode {
@@ -48,7 +50,7 @@ enum NotchLayout {
         let width: CGFloat, height: CGFloat
         switch mode {
         case .peek(let content):
-            width = 440
+            width = peekWidth
             height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
         case .focused(let content):
             width = 440

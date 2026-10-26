@@ -20,7 +20,7 @@ struct PeekRow: Equatable, Identifiable {
     static let setup = PeekRow(id: "perry.setup", kind: .setup, title: "Finish setting up", status: "Pick up where you left off")
 
     static func rows(needsYou: PeekRow?, setup: PeekRow? = nil, tasks: [PeekRow], perrys: [PeekRow], suggestions: [PeekRow]) -> [PeekRow] {
-        let urgent = [needsYou, setup].compactMap { $0 } + tasks.prefix(2)
+        let urgent = Array(([needsYou, setup].compactMap { $0 } + tasks).prefix(2))
         return urgent.isEmpty ? Array((perrys + suggestions).prefix(2)) : urgent
     }
 
@@ -74,7 +74,7 @@ struct NotchPeekView: View {
 
     var body: some View {
         let rows = PeekRow.rows(model: model, presentation: presentation)
-        VStack(spacing: 10) {
+        VStack(spacing: 16) {
             if rows.isEmpty {
                 PeekGestureLine()
             } else {
@@ -92,22 +92,14 @@ struct NotchPeekView: View {
                 placeholder: "Ask Perry…",
                 canSend: !model.isCreatingConversation,
                 focusOnAppear: false,
-                onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } }
+                onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } },
+                onExpand: onExpand
             ) {
                 model.onStartConversation?(model.newConversationDraft)
             }
-            HStack(spacing: 12) {
-                Button("Apps", systemImage: "square.grid.2x2") {
-                    PerryPreferences.settingsTab = SettingsPage.apps.rawValue
-                    model.sidebarSelection = .settings
-                }
-                Button("History", systemImage: "clock.arrow.circlepath") { model.sidebarSelection = .history }
-                Spacer(minLength: 0)
-                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open the workspace", action: onExpand)
-            }
-            .buttonStyle(ChipStyle())
         }
-        .padding(.horizontal, NotchLayout.contentInset)
+        .padding(.horizontal, NotchLayout.peekInset)
+        .padding(.bottom, NotchLayout.peekInset - NotchLayout.bottomInset)
         .foregroundStyle(PerryTheme.Colors.text)
     }
 }
@@ -147,11 +139,12 @@ private struct PeekRowView: View {
                         .background(PerryTheme.Colors.primaryAction, in: Capsule())
                 }
             }
-            .padding(.vertical, 6)
+            .padding(.vertical, 12)
             .padding(.horizontal, PeekRowMetrics.inset)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
             .contentShape(Rectangle())
         }
+        .padding(.horizontal, -6)
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
         .accessibilityLabel("\(row.title). \(row.status)")
@@ -182,6 +175,5 @@ private struct PeekGestureLine: View {
             .font(PerryTheme.Scale.secondary)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 6)
     }
 }

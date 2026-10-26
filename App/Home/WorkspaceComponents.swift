@@ -30,6 +30,7 @@ struct WorkspaceComposer: View {
     var canSend: Bool
     var focusOnAppear: Bool
     var onVoice: (() -> Void)?
+    var onExpand: (() -> Void)?
     let send: () -> Void
     @FocusState private var focused: Bool
     @State private var dropTargeted = false
@@ -38,7 +39,7 @@ struct WorkspaceComposer: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField(placeholder, text: $text, axis: .vertical)
+            TextField(placeholder, text: $text, prompt: Text(placeholder).foregroundStyle(PerryTheme.Colors.textTertiary), axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(PerryTheme.Scale.input)
                 .lineLimit(1...6)
@@ -77,6 +78,9 @@ struct WorkspaceComposer: View {
                 .accessibilityLabel("Talk to Perry")
                 .help(TalkGesture.talk)
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+            if let onExpand {
+                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open the workspace", action: onExpand)
             }
         }
         .animation(PerryTheme.Motion.glide, value: hasText)
