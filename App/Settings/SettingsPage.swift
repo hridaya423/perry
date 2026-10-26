@@ -211,9 +211,9 @@ struct SettingsCard<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
             )
             if let footer {

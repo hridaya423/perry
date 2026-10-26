@@ -107,14 +107,14 @@ struct InkChoiceStyle: ButtonStyle {
             .padding(.vertical, 10)
             .frame(minHeight: 40)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.white.opacity(configuration.isPressed ? 0.12 : hovering ? 0.09 : 0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(isDefault ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .onHover { hovering = $0 }
             .animation(PerryTheme.Motion.snap, value: hovering)
         }

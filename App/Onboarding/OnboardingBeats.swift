@@ -82,7 +82,7 @@ private struct HelloBeat: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(LateEntrance(delay: HelloInk.lift.upperBound))
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
+                RoundedRectangle(cornerRadius: 22)
                     .fill(PerryTheme.Colors.surface)
                     .strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
                 TextField("Your name", text: $name)
@@ -334,9 +334,9 @@ struct BrainBeat: View {
             .padding(14)
             .frame(width: 204, alignment: .topLeading)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(isSelected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
             .contentShape(Rectangle())
@@ -361,9 +361,9 @@ private struct ShortcutsBeat: View {
             Color.clear
         } detail: {
             ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
                 }
                 .multilineTextAlignment(.leading)

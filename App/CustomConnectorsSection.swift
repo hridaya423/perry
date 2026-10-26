@@ -42,7 +42,7 @@ struct CustomConnectorsSection: View {
             }
         }
         .padding(16)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private func row(_ connector: CustomConnector) -> some View {

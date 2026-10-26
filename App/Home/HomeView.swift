@@ -32,7 +32,7 @@ struct SuggestionsView: View {
                         .accessibilityLabel("Suggestions from connected apps")
                 }
                 .padding(16)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.bottom, 6)
                 ForEach(model.suggestions) { card in
                     suggestionCard(card)
@@ -89,7 +89,7 @@ struct SuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

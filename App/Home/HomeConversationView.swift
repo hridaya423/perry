@@ -432,7 +432,7 @@ private struct CodeBlock: View {
                 .padding(.trailing, 72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button {
                 NSPasteboard.general.clearContents()

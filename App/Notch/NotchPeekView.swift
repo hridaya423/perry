@@ -149,7 +149,7 @@ private struct PeekRowView: View {
             }
             .padding(.vertical, 6)
             .padding(.horizontal, PeekRowMetrics.inset)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

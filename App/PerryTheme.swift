@@ -89,7 +89,7 @@ enum PerryTheme {
     }
 
     enum Radius {
-        static let panel = CGFloat(18)
+        static let panel = CGFloat(22)
     }
 
     enum Sizing {

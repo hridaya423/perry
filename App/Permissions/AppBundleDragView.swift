@@ -118,9 +118,9 @@ private struct AppBundleRowContent: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 52)
-        .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(.white.opacity(0.08), lineWidth: 1)
         )
     }

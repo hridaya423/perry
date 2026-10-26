@@ -123,7 +123,7 @@ struct NotchWorkspaceView: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(RailRowStyle(cornerRadius: 7))
+                .buttonStyle(RailRowStyle(cornerRadius: 8))
                 .foregroundStyle(PerryTheme.Colors.icon)
                 .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New conversation")
@@ -594,7 +594,7 @@ struct WindowControlButton: View {
                 .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(RailRowStyle(cornerRadius: 7))
+        .buttonStyle(RailRowStyle(cornerRadius: 8))
         .foregroundStyle(PerryTheme.Colors.icon)
         .accessibilityLabel(label)
         .help(label)
@@ -602,7 +602,7 @@ struct WindowControlButton: View {
 }
 
 private struct RailRowStyle: ButtonStyle {
-    var cornerRadius: CGFloat = 7
+    var cornerRadius: CGFloat = 8
 
     func makeBody(configuration: Configuration) -> some View {
         RailRowBody(configuration: configuration, cornerRadius: cornerRadius)

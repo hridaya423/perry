@@ -13,12 +13,12 @@ struct Keycap: View {
             .padding(.horizontal, 6)
             .frame(minWidth: 22, minHeight: 20)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(PerryTheme.Colors.surface)
                     .shadow(color: .black.opacity(0.5), radius: 0, x: 0, y: 1)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             )
     }
