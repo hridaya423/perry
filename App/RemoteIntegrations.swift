@@ -294,7 +294,8 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
         case slack
         case linear
         case github
-        case googleWorkspace
+        case google
+        case microsoft
 
         init?(id: String) {
             switch id {
@@ -302,7 +303,8 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
             case "slack": self = .slack
             case "linear": self = .linear
             case "github": self = .github
-            case "google-workspace": self = .googleWorkspace
+            case "google-calendar", "google-drive", "google-gmail": self = .google
+            case "microsoft": self = .microsoft
             default: return nil
             }
         }
@@ -391,7 +393,10 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
         case "slack": return "/auth.test"
         case "linear": return "/graphql"
         case "github": return "/user"
-        case "google-workspace": return "/drive/v3/about?fields=user(displayName,emailAddress)"
+        case "google-calendar": return "/calendar/v3/calendars/primary"
+        case "google-drive": return "/drive/v3/about?fields=user(displayName,emailAddress)"
+        case "google-gmail": return "/gmail/v1/users/me/profile"
+        case "microsoft": return "/v1.0/me"
         default: return "/"
         }
     }
@@ -404,7 +409,10 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
     }
     var connectionHint: String {
         switch id {
-        case "google-workspace": return "Gmail, Calendar, Drive, Docs, and Sheets read access"
+        case "google-calendar": return "Events from your Google calendars"
+        case "google-drive": return "Files Perry creates or you open with it"
+        case "google-gmail": return "Read access to mail. Needs your own Google OAuth app until Google reviews Perry"
+        case "microsoft": return "Outlook mail, calendar, and OneDrive files, read-only"
         case "notion": return "Pages, databases, and workspace search"
         case "slack": return "Workspace and channel access"
         case "linear": return "Issues, teams, and workspace metadata"
@@ -435,8 +443,14 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
             return ["/graphql"]
         case "github":
             return ["/user", "/notifications", "/issues"]
-        case "google-workspace":
-            return ["/drive/v3", "/gmail/v1", "/calendar/v3", "/docs/v1", "/sheets/v4", "/oauth2/v3/userinfo"]
+        case "google-calendar":
+            return ["/calendar/v3"]
+        case "google-drive":
+            return ["/drive/v3"]
+        case "google-gmail":
+            return ["/gmail/v1"]
+        case "microsoft":
+            return ["/v1.0/me"]
         default:
             return []
         }
@@ -539,19 +553,53 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
                     path: "/issues?filter=assigned&per_page=10"
                 ),
             ]
-        case "google-workspace":
+        case "google-calendar":
+            let now = ISO8601DateFormatter().string(from: Date())
             return [
                 RemoteIntegrationQuickAction(
-                    id: "drive",
+                    id: "events",
+                    title: "Read upcoming events",
+                    method: "GET",
+                    path: "/calendar/v3/calendars/primary/events?maxResults=10&singleEvents=true&orderBy=startTime&timeMin=\(now)"
+                ),
+            ]
+        case "google-drive":
+            return [
+                RemoteIntegrationQuickAction(
+                    id: "files",
                     title: "Read recent Drive files",
                     method: "GET",
                     path: "/drive/v3/files?pageSize=10&orderBy=modifiedTime%20desc&fields=files(id,name,mimeType,modifiedTime)"
                 ),
+            ]
+        case "google-gmail":
+            return [
                 RemoteIntegrationQuickAction(
-                    id: "gmail",
+                    id: "messages",
                     title: "Read recent Gmail messages",
                     method: "GET",
                     path: "/gmail/v1/users/me/messages?maxResults=10"
+                ),
+            ]
+        case "microsoft":
+            return [
+                RemoteIntegrationQuickAction(
+                    id: "messages",
+                    title: "Read recent Outlook messages",
+                    method: "GET",
+                    path: "/v1.0/me/messages?$top=10&$select=subject,from,receivedDateTime"
+                ),
+                RemoteIntegrationQuickAction(
+                    id: "events",
+                    title: "Read upcoming events",
+                    method: "GET",
+                    path: "/v1.0/me/events?$top=10&$select=subject,start,end&$orderby=start/dateTime"
+                ),
+                RemoteIntegrationQuickAction(
+                    id: "files",
+                    title: "Read recent OneDrive files",
+                    method: "GET",
+                    path: "/v1.0/me/drive/recent?$top=10"
                 ),
             ]
         default:
@@ -612,7 +660,7 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
         case .linear:
             guard normalizedMethod == "POST" else { return false }
             return Self.graphQLIsMutation(body)
-        case .github, .googleWorkspace:
+        case .github, .google, .microsoft:
             return false
         }
         return true
@@ -835,6 +883,33 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
         return tokens
     }
 
+    private static func googleDefinition(
+        id: String,
+        displayName: String,
+        scope: String,
+        bundled: Bool
+    ) -> RemoteIntegrationDefinition {
+        RemoteIntegrationDefinition(
+            descriptor: IntegrationDescriptor(
+                id: id,
+                displayName: displayName,
+                credentialReference: CredentialReference(service: "dev.perry.integrations", account: "integration.\(id)")
+            ),
+            baseURL: URL(string: "https://www.googleapis.com")!,
+            authorizationURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
+            tokenURL: URL(string: "https://oauth2.googleapis.com/token")!,
+            scopes: [scope],
+            writesEnabledByDefault: false,
+            oauthStyle: .pkce,
+            authorizationParameters: ["access_type": "offline", "prompt": "consent"],
+            redirectKind: .loopback,
+            bundledClientKeys: bundled
+                ? BundledClientKeys(clientIDKey: "PerryOAuthGoogleClientID", clientSecretKey: "PerryOAuthGoogleClientSecret")
+                : nil,
+            revocation: .tokenForm(URL(string: "https://oauth2.googleapis.com/revoke")!, sendsTypeHint: false)
+        )
+    }
+
     static let catalog: [RemoteIntegrationDefinition] = [
         RemoteIntegrationDefinition(
             descriptor: IntegrationDescriptor(
@@ -848,7 +923,10 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
             scopes: [],
             writesEnabledByDefault: false,
             oauthStyle: .basicSecret,
-            authorizationParameters: ["owner": "user"]
+            authorizationParameters: ["owner": "user"],
+            redirectKind: .customScheme,
+            bundledClientKeys: BundledClientKeys(clientIDKey: "PerryOAuthNotionClientID", clientSecretKey: "PerryOAuthNotionClientSecret"),
+            revocation: .basicJSON(URL(string: "https://api.notion.com/v1/oauth/revoke")!)
         ),
         RemoteIntegrationDefinition(
             descriptor: IntegrationDescriptor(
@@ -910,28 +988,39 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
             bundledClientKeys: BundledClientKeys(clientIDKey: "PerryOAuthGitHubClientID", clientSecretKey: nil),
             deviceAuthorizationURL: URL(string: "https://github.com/login/device/code")!
         ),
+        googleDefinition(
+            id: "google-calendar",
+            displayName: "Google Calendar",
+            scope: "https://www.googleapis.com/auth/calendar.readonly",
+            bundled: true
+        ),
+        googleDefinition(
+            id: "google-drive",
+            displayName: "Google Drive",
+            scope: "https://www.googleapis.com/auth/drive.file",
+            bundled: true
+        ),
+        googleDefinition(
+            id: "google-gmail",
+            displayName: "Gmail",
+            scope: "https://www.googleapis.com/auth/gmail.readonly",
+            bundled: false
+        ),
         RemoteIntegrationDefinition(
             descriptor: IntegrationDescriptor(
-                id: "google-workspace",
-                displayName: "Google Workspace",
-                credentialReference: CredentialReference(service: "dev.perry.integrations", account: "integration.google-workspace")
+                id: "microsoft",
+                displayName: "Microsoft 365",
+                credentialReference: CredentialReference(service: "dev.perry.integrations", account: "integration.microsoft")
             ),
-            baseURL: URL(string: "https://www.googleapis.com")!,
-            authorizationURL: URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
-            tokenURL: URL(string: "https://oauth2.googleapis.com/token")!,
-            scopes: [
-                "openid",
-                "email",
-                "profile",
-                "https://www.googleapis.com/auth/drive.readonly",
-                "https://www.googleapis.com/auth/gmail.readonly",
-                "https://www.googleapis.com/auth/calendar.readonly",
-                "https://www.googleapis.com/auth/documents.readonly",
-                "https://www.googleapis.com/auth/spreadsheets.readonly",
-            ],
+            baseURL: URL(string: "https://graph.microsoft.com")!,
+            authorizationURL: URL(string: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize")!,
+            tokenURL: URL(string: "https://login.microsoftonline.com/common/oauth2/v2.0/token")!,
+            scopes: ["offline_access", "User.Read", "Mail.Read", "Calendars.Read", "Files.Read"],
             writesEnabledByDefault: false,
             oauthStyle: .pkce,
-            authorizationParameters: ["access_type": "offline", "prompt": "consent"]
+            authorizationParameters: [:],
+            redirectKind: .loopback,
+            bundledClientKeys: BundledClientKeys(clientIDKey: "PerryOAuthMicrosoftClientID", clientSecretKey: nil)
         ),
     ]
 }
@@ -1843,12 +1932,21 @@ actor RemoteIntegrationClient {
         case "github":
             let login = object["login"] as? String
             return login.map { "Connected to GitHub · \($0)." } ?? "Connected to GitHub."
-        case "google-workspace":
+        case "google-calendar":
+            let name = object["summary"] as? String
+            return name.map { "Connected to Google Calendar · \($0)." } ?? "Connected to Google Calendar."
+        case "google-drive":
             let user = object["user"] as? [String: Any]
             let name = user?["displayName"] as? String
             let email = user?["emailAddress"] as? String
-            if let name, let email { return "Connected to Google · \(name) (\(email))." }
-            return name.map { "Connected to Google · \($0)." } ?? "Connected to Google Workspace."
+            if let name, let email { return "Connected to Google Drive · \(name) (\(email))." }
+            return name.map { "Connected to Google Drive · \($0)." } ?? "Connected to Google Drive."
+        case "google-gmail":
+            let email = object["emailAddress"] as? String
+            return email.map { "Connected to Gmail · \($0)." } ?? "Connected to Gmail."
+        case "microsoft":
+            let name = (object["displayName"] as? String) ?? (object["userPrincipalName"] as? String)
+            return name.map { "Connected to Microsoft 365 · \($0)." } ?? "Connected to Microsoft 365."
         default:
             return "Connected to \(definition.displayName)."
         }

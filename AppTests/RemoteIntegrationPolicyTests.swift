@@ -7,7 +7,7 @@ final class RemoteIntegrationPolicyTests: XCTestCase {
     func testDesktopOAuthPoliciesMatchProviderRequirements() {
         let slack = definition(id: "slack")
         let linear = definition(id: "linear")
-        let google = definition(id: "google-workspace")
+        let google = definition(id: "google-calendar")
 
         XCTAssertEqual(slack.authorizationScopeParameter, "user_scope")
         XCTAssertEqual(slack.authorizationScopeSeparator, ",")

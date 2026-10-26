@@ -45,8 +45,18 @@
 	<string>$(PERRY_ISSUES_URL)</string>
 	<key>PerryOAuthGitHubClientID</key>
 	<string>$(PERRY_OAUTH_GITHUB_CLIENT_ID)</string>
+	<key>PerryOAuthGoogleClientID</key>
+	<string>$(PERRY_OAUTH_GOOGLE_CLIENT_ID)</string>
+	<key>PerryOAuthGoogleClientSecret</key>
+	<string>$(PERRY_OAUTH_GOOGLE_CLIENT_SECRET)</string>
 	<key>PerryOAuthLinearClientID</key>
 	<string>$(PERRY_OAUTH_LINEAR_CLIENT_ID)</string>
+	<key>PerryOAuthMicrosoftClientID</key>
+	<string>$(PERRY_OAUTH_MICROSOFT_CLIENT_ID)</string>
+	<key>PerryOAuthNotionClientID</key>
+	<string>$(PERRY_OAUTH_NOTION_CLIENT_ID)</string>
+	<key>PerryOAuthNotionClientSecret</key>
+	<string>$(PERRY_OAUTH_NOTION_CLIENT_SECRET)</string>
 	<key>PerryOAuthSlackClientID</key>
 	<string>$(PERRY_OAUTH_SLACK_CLIENT_ID)</string>
 	<key>SUEnableAutomaticChecks</key>

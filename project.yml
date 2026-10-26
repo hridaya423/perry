@@ -77,6 +77,11 @@ targets:
         PerryOAuthLinearClientID: "$(PERRY_OAUTH_LINEAR_CLIENT_ID)"
         PerryOAuthGitHubClientID: "$(PERRY_OAUTH_GITHUB_CLIENT_ID)"
         PerryOAuthSlackClientID: "$(PERRY_OAUTH_SLACK_CLIENT_ID)"
+        PerryOAuthGoogleClientID: "$(PERRY_OAUTH_GOOGLE_CLIENT_ID)"
+        PerryOAuthGoogleClientSecret: "$(PERRY_OAUTH_GOOGLE_CLIENT_SECRET)"
+        PerryOAuthNotionClientID: "$(PERRY_OAUTH_NOTION_CLIENT_ID)"
+        PerryOAuthNotionClientSecret: "$(PERRY_OAUTH_NOTION_CLIENT_SECRET)"
+        PerryOAuthMicrosoftClientID: "$(PERRY_OAUTH_MICROSOFT_CLIENT_ID)"
         SUEnableAutomaticChecks: true
         LSUIElement: true
         NSMicrophoneUsageDescription: "Perry hears you only while you hold the talk key — it never listens in the background."
