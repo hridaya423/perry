@@ -220,8 +220,10 @@ struct BrainBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: "How should I think?", artHeight: 40) {
-            Color.clear
+        OnboardingBeatLayout(title: "How should I think?") {
+            ChoiceSketch(local: selected == .local)
+                .scaleEffect(0.6)
+                .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -333,7 +335,7 @@ struct BrainBeat: View {
             }
             .multilineTextAlignment(.leading)
             .padding(14)
-            .frame(width: 204, height: 112, alignment: .topLeading)
+            .frame(width: 204, height: 100, alignment: .topLeading)
             .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
