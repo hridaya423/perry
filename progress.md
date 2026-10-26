@@ -177,11 +177,32 @@
   - Verified: 676/0 on the mini. `turn_detection` stays null, which the payload test checks.
   - Deviation: hands-free realtime (detector plus manual commit) arrives with the providers in 4.8. Today realtime is used only on hold paths, where release commits.
 
+- 4.8 Partly done, in two commits. Gemini Live and GPT-Live are deferred to the end of the plan (see Next).
+  - **Grok Voice** (`960f95c`). It is a dialect on the OpenAI transport, checked against xAI's voice agent guide (docs.x.ai/docs/guides/voice/agent). The model goes in the URL (`?model=grok-voice-latest`). `voice`, `instructions` and `turn_detection: null` sit at the top of the session, and the audio formats are nested.
+    - Transcription is `grok-transcribe`. Its cumulative `...transcription.updated` snapshots map to transcript deltas.
+    - xAI does not echo response metadata, so the transport fills in the nonce of the request it just sent. Without that, the response tracker would drop every Grok reply.
+  - **Providers.** `App/Realtime/RealtimeProvider.swift` has `RealtimeProviderID` (openAI, grok, custom) and each provider's endpoint, model, model family, voices, transcription model, billing and cost note. A stored model is honoured only inside the provider's own family, so an OpenAI model name never reaches xAI.
+  - **Keys.** One Keychain account per provider (`realtime.voice.<id>`). The old shared key moves once, to the provider its stored endpoint pointed at. With a different provider chosen explicitly it is never read, so an OpenAI key cannot be sent to xAI.
+  - **Billing.** Per-minute providers (Grok) skip the launch connect. The session itself hangs up after 30 s with no input, speech or reply, so the long-lived dictation session is covered too. The next hold redials.
+  - **Voice settings** (`9f9de9e`). The realtime section is its own view, `RealtimeVoiceSection`, with:
+    - a provider picker (Off, OpenAI Realtime, Grok Voice, Custom) and each provider's billing note;
+    - a voice picker, and a key field that says when a key is saved;
+    - for Custom, the endpoint, model and voice up front;
+    - an Advanced section with protocol, model override, speed and instructions.
+    - Off stays off even with an old endpoint stored. Renders in light and dark are in `docs/evidence/first-impressions/4.8/`. The first renders showed the Custom endpoint hidden under Advanced and an awkward key label; both are fixed.
+  - **Verified.** 685/0 on the mini. Mutation checks: removing the launch gate and removing the metadata fill-in each failed a test.
+  - **Cost notes** describe how a provider bills, not a price. Third-party sources disagree on Grok ($0.05 vs $0.08 a minute), and I found no first-party OpenAI price for `gpt-realtime-2.1`.
+  - **Not done in 4.8:**
+    - the turn-taking choice ("Perry decides" or "Hold to talk only");
+    - the "Make Perry's voice faster" card;
+    - the 1.5 s mic ring buffer for metered providers;
+    - live checks. The owner chose fixtures only on 2026-10-26, so nothing in 4.8 has run against a real endpoint.
+
 ## Next
 
-- 4.8 realtime providers: Grok (OpenAI wire dialect), Gemini Live, GPT-Live (beta) and the Voice settings page. Check each provider's current docs before writing transports; the plan's model names come from r9 and may have moved. One provider per commit, using recorded event fixtures only (no live keys).
-- Then Phases 5 to 9. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
-- Open items: migrate realtime transcription off `gpt-4o-transcribe` before 2027-02-26. Live checks still owed on a notched display: hover and peek recordings, click pass-through, the listening ring with a real microphone, and wake word in a room.
+- Phases 5 to 9 next. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
+- Deferred to the end: 4.8 Gemini Live and GPT-Live. Gemini always replies when a turn ends and has no transcribe-only commit, so it needs the conversational-front role (`ask_perry` tool) or an always-delegate tool. GPT-Live's API page returned 403 to fetch. Neither can be checked without a live trace, and the owner chose fixtures only on 2026-10-26. Build them when a key and permission for a live bench are available.
+- Open items: migrate realtime transcription off `gpt-4o-transcribe` before 2027-02-26. Live checks still owed on a notched display: hover and peek recordings, click pass-through, the listening ring with a real microphone, and the wake word in a room.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 
