@@ -167,6 +167,8 @@
     - A known floor lets speech start on the first frame.
   - Deviation: no audio ring buffer is handed to a second recognizer, because no second recognizer exists. The 1.5 s buffer holds levels for the floor instead. Not verified live: a real "Hey Perry" in a room, and idle CPU with the wake word on.
 
+- 4.6 Done: `VoiceController.swift` went from 1,082 to 551 lines. Speech out (voice resolution, speaking, the synthesizer delegate) moved to `App/Voice/SpeechOutput.swift`, and transcript handling, insertion into the frontmost app and dictation learning moved to `App/Voice/DictationInsertion.swift`, both as `extension VoiceController`. The only other edit: the 18 stored members those extensions use lost `private`, because Swift's `private` does not reach an extension in another file. The compiler listed each one, and only those changed. Verified: build and 672/0 on the mini.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.
