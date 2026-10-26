@@ -31,15 +31,7 @@ struct LocalBrainView: View {
 
     var body: some View {
         let rung = recommendation.interactive
-        SettingsCard(title: Self.machineLine(profile), footer: Self.isSmall(profile) ? "Answers on a Mac with 8 GB are limited, so Cloud is the better brain here. This brain still works offline." : nil) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(rung.name) \(rung.quant)")
-                Text(speedLine(rung))
-                    .settingNote()
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .settingsRowPadding()
-            SettingsDivider()
+        SettingsCard(title: Self.machineLine(profile), footer: footer(rung)) {
             setupRow(rung)
             if profile.appleIntelligenceAvailable {
                 SettingsDivider()
@@ -73,19 +65,21 @@ struct LocalBrainView: View {
         .task { await brain.refresh() }
     }
 
-    private func speedLine(_ rung: ModelRung) -> String {
-        let size = String(format: "%.1f GB download", rung.downloadGB)
-        if let bench, let summary = LocalBenchmark.summary(bench.interactive) {
-            return "\(size). \(summary)"
-        }
-        return "\(size). Perry measures its speed on this Mac after setup."
+    private func footer(_ rung: ModelRung) -> String {
+        let model = "Model: \(rung.name) \(rung.quant)."
+        return Self.isSmall(profile) ? "Answers on a Mac with 8 GB are limited, so a cloud brain is better here. \(model)" : model
+    }
+
+    private var abilityLine: String {
+        guard case .ready = local.phase else { return "Perry checks what it can do after setup." }
+        return brain.localTaskCapable ? "It can use your apps." : "It chats privately but cannot use your apps yet."
     }
 
     @ViewBuilder
     private func setupRow(_ rung: ModelRung) -> some View {
         switch local.phase {
         case .notSetUp:
-            SettingsRow(title: "Local brain", detail: "Nothing downloads until you choose this.") {
+            SettingsRow(title: "Private brain", detail: String(format: "Runs on this Mac, even offline. %.1f GB download. %@", rung.downloadGB, abilityLine)) {
                 Button("Download") { Task { await local.setUp(rung) } }
                     .buttonStyle(InkButtonStyle(.primary))
             }
@@ -99,8 +93,9 @@ struct LocalBrainView: View {
             }
             .settingsRowPadding()
         case .ready:
-            SettingsRow(title: "Ready on this Mac") {
+            SettingsRow(title: "Private brain", detail: [bench.flatMap { LocalBenchmark.summary($0.interactive) }, abilityLine].compactMap { $0 }.joined(separator: " ")) {
                 StatusMark(.ok)
+                    .accessibilityLabel("Ready")
             }
         case .failed(let message):
             SettingsRow(title: "Setup stopped", detail: message) {
