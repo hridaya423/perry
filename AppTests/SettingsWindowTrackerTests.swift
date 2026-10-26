@@ -4,23 +4,19 @@ import XCTest
 
 @MainActor
 final class SettingsWindowTrackerTests: XCTestCase {
-    func testTheHelperDocksBelowThenInsideThenBesideThenClamps() {
+    func testTheHelperDocksInsideTheListColumnAtTheBottom() {
         let laptop = NSRect(x: 0, y: 0, width: 1440, height: 875)
         let external = NSRect(x: 1440, y: 0, width: 1920, height: 1055)
-        let card = CGSize(width: 360, height: 140)
-        let cases: [(String, NSRect, NSRect, NSRect, SettingsDock)] = [
-            ("room below", NSRect(x: 300, y: 300, width: 800, height: 500), laptop, NSRect(x: 636, y: 150, width: 360, height: 140), .below),
-            ("tall window at the bottom", NSRect(x: 300, y: 50, width: 800, height: 600), laptop, NSRect(x: 636, y: 70, width: 360, height: 140), .inside),
-            ("short window, room right", NSRect(x: 100, y: 40, width: 700, height: 400), laptop, NSRect(x: 810, y: 40, width: 360, height: 140), .right),
-            ("short window, room left", NSRect(x: 700, y: 40, width: 700, height: 400), laptop, NSRect(x: 330, y: 40, width: 360, height: 140), .left),
-            ("no room anywhere", NSRect(x: 0, y: 0, width: 1440, height: 400), laptop, NSRect(x: 656, y: 10, width: 360, height: 140), .clamped),
-            ("second display", NSRect(x: 1700, y: 400, width: 800, height: 500), external, NSRect(x: 2036, y: 250, width: 360, height: 140), .below),
-            ("list centre past the edge", NSRect(x: 1000, y: 400, width: 800, height: 500), laptop, NSRect(x: 1080, y: 250, width: 360, height: 140), .below),
+        let cases: [(String, NSRect, NSRect, NSRect)] = [
+            ("standard window", NSRect(x: 300, y: 300, width: 800, height: 500), laptop, NSRect(x: 564, y: 316, width: 520, height: 150)),
+            ("narrow window keeps the sidebar floor", NSRect(x: 300, y: 300, width: 600, height: 500), laptop, NSRect(x: 531, y: 316, width: 353, height: 150)),
+            ("wide window caps the sidebar", NSRect(x: 0, y: 100, width: 1400, height: 700), laptop, NSRect(x: 376, y: 116, width: 1008, height: 150)),
+            ("bottom below the screen", NSRect(x: 300, y: -200, width: 800, height: 600), laptop, NSRect(x: 564, y: 16, width: 520, height: 150)),
+            ("right edge past the screen", NSRect(x: 1000, y: 300, width: 800, height: 500), laptop, NSRect(x: 1264, y: 316, width: 280, height: 150)),
+            ("second display", NSRect(x: 1700, y: 400, width: 800, height: 500), external, NSRect(x: 1964, y: 416, width: 520, height: 150)),
         ]
-        for (name, settings, visible, frame, dock) in cases {
-            let result = SettingsWindowTracker.dockFrame(settings: settings, visible: visible, cardSize: card)
-            XCTAssertEqual(result.0, frame, name)
-            XCTAssertEqual(result.1, dock, name)
+        for (name, settings, visible, frame) in cases {
+            XCTAssertEqual(SettingsWindowTracker.dockFrame(settings: settings, visible: visible, cardHeight: 150), frame, name)
         }
     }
 

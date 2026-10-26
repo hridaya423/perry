@@ -50,7 +50,7 @@ final class PermissionGuideCoordinatorTests: XCTestCase {
         XCTAssertEqual(status, .granted)
         XCTAssertEqual(opened, [.accessibility])
         XCTAssertEqual(phases, [.instruction, .granted])
-        XCTAssertEqual(surfaceEvents.first, "show 636,114")
+        XCTAssertEqual(surfaceEvents.first, "show 564,316")
         XCTAssertEqual(surfaceEvents.last, "close")
     }
 

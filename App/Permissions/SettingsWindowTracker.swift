@@ -5,14 +5,6 @@ struct SettingsWindowSnapshot: Equatable {
     let frame: CGRect
 }
 
-enum SettingsDock: Equatable {
-    case below
-    case inside
-    case right
-    case left
-    case clamped
-}
-
 @MainActor
 final class SettingsWindowTracker {
     static let goneAfter: TimeInterval = 0.5
@@ -97,22 +89,12 @@ final class SettingsWindowTracker {
         CGRect(x: frame.minX, y: primaryHeight - frame.maxY, width: frame.width, height: frame.height)
     }
 
-    static func dockFrame(settings: NSRect, visible: NSRect, cardSize: CGSize) -> (NSRect, SettingsDock) {
-        let gap: CGFloat = 10
-        let listMinX = settings.minX + 252
-        let listMaxX = settings.maxX - 20
-        let centeredX = (listMinX + listMaxX) / 2 - cardSize.width / 2
-        let x = min(max(centeredX, visible.minX), visible.maxX - cardSize.width)
-        let below = NSRect(x: x, y: settings.minY - gap - cardSize.height, width: cardSize.width, height: cardSize.height)
-        if below.minY >= visible.minY { return (below, .below) }
-        if cardSize.height + 20 <= settings.height * 0.3 {
-            return (NSRect(x: centeredX, y: settings.minY + 20, width: cardSize.width, height: cardSize.height), .inside)
-        }
-        let y = min(max(settings.minY, visible.minY), visible.maxY - cardSize.height)
-        let right = NSRect(x: settings.maxX + gap, y: y, width: cardSize.width, height: cardSize.height)
-        if right.maxX <= visible.maxX { return (right, .right) }
-        let left = NSRect(x: settings.minX - gap - cardSize.width, y: y, width: cardSize.width, height: cardSize.height)
-        if left.minX >= visible.minX { return (left, .left) }
-        return (NSRect(x: x, y: visible.minY + gap, width: cardSize.width, height: cardSize.height), .clamped)
+    static func dockFrame(settings: NSRect, visible: NSRect, cardHeight: CGFloat) -> NSRect {
+        let inset: CGFloat = 16
+        let sidebar = min(max(settings.width * 0.31, 215), 360)
+        let minX = max(settings.minX + sidebar + inset, visible.minX + inset)
+        let maxX = min(settings.maxX - inset, visible.maxX - inset)
+        let y = max(settings.minY, visible.minY) + inset
+        return NSRect(x: minX, y: y, width: max(maxX - minX, 280), height: cardHeight)
     }
 }

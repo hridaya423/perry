@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class PermissionHelperPanel: NSPanel {
-    static let cardSize = CGSize(width: 360, height: 176)
+    static let cardSize = CGSize(width: 420, height: 150)
 
     init() {
         super.init(
@@ -154,13 +154,13 @@ struct PermissionHelperView: View {
             }
         }
         .padding(16)
-        .frame(width: PermissionHelperPanel.cardSize.width, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(PerryTheme.Colors.crown, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
                 .strokeBorder(.white.opacity(0.1), lineWidth: 1)
         )
-        .frame(width: PermissionHelperPanel.cardSize.width, height: PermissionHelperPanel.cardSize.height, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .environment(\.colorScheme, .dark)
         .onAppear { if !reduceMotion { nudged = true } }
         .accessibilityElement(children: .contain)
@@ -183,7 +183,7 @@ struct PermissionHelperView: View {
 
     private var title: String {
         switch phase {
-        case .instruction: "Drag Perry into the list above."
+        case .instruction: "I’m Perry. Drag me into the list above."
         case .retry: "Perry isn’t in the list yet."
         case .settingsClosed: "Reopen System Settings."
         case .wrongLocation: "Move Perry to Applications first."
@@ -195,7 +195,7 @@ struct PermissionHelperView: View {
     private var detail: Text? {
         let name = Text(pane.displayName().replacingOccurrences(of: " ", with: "\u{00A0}")).foregroundStyle(PerryTheme.Colors.text)
         return switch phase {
-        case .instruction: Text("Then turn it on.")
+        case .instruction: Text("Then turn me on.")
         case .retry: Text("Drag Perry in again.")
         case .settingsClosed: Text("Then turn on Perry in \(name).")
         case .wrongLocation: Text("Then open it from there and try again.")

@@ -176,7 +176,7 @@ final class PermissionGuideCoordinator: ObservableObject {
     }
 
     private func dock(_ snapshot: SettingsWindowSnapshot) -> NSRect {
-        SettingsWindowTracker.dockFrame(settings: snapshot.frame, visible: visibleFrame(snapshot.frame), cardSize: PermissionHelperPanel.cardSize).0
+        SettingsWindowTracker.dockFrame(settings: snapshot.frame, visible: visibleFrame(snapshot.frame), cardHeight: PermissionHelperPanel.cardSize.height)
     }
 
     static func visibleFrame(around frame: NSRect) -> NSRect {
