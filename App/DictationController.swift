@@ -129,7 +129,6 @@ final class DictationController {
     private var finishCancellationWorkItem: DispatchWorkItem?
     private var rerouting = false
     private(set) var detectedLanguageIdentifier: String?
-    private(set) var voiceProcessingEnabled = false
     private(set) var isRunning = false
 
     init(
@@ -269,7 +268,7 @@ final class DictationController {
 
     func finish() {
         recognitionGate.finishInput()
-        guard isRunning || inputTapInstalled || request != nil || task != nil || voiceProcessingEnabled else { return }
+        guard isRunning || inputTapInstalled || request != nil || task != nil else { return }
         stopAudioCapture()
         request?.endAudio()
         scheduleFinalizationTimeout()
@@ -320,12 +319,6 @@ final class DictationController {
         let input = audioEngine.inputNode
         if !fallbackAttempted, let inputDeviceID, !MicrophoneDeviceSelector.select(on: input, deviceID: inputDeviceID) {
             throw DictationError.deviceUnavailable
-        }
-        do {
-            try input.setVoiceProcessingEnabled(true)
-            voiceProcessingEnabled = input.isVoiceProcessingEnabled
-        } catch {
-            voiceProcessingEnabled = false
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else {
@@ -504,7 +497,6 @@ final class DictationController {
             inputTapInstalled = false
         }
         isRunning = false
-        voiceProcessingEnabled = false
     }
 
     private func abortRecognition() {
