@@ -275,6 +275,34 @@ final class LearnedRoutineTests: XCTestCase {
         }
     }
 
+    func testReplayPlansTargetsThatAppearOnlyAfterAnEarlierStep() throws {
+        let menuTarget = RoutineTarget(role: "button", label: "Menu")
+        let renameTarget = RoutineTarget(role: "menuItem", label: "Rename")
+        let routine = try LearnedRoutine(name: "Rename", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Menu", target: menuTarget, action: .click),
+            RoutineStep(summary: "Click Rename", target: renameTarget, action: .click)
+        ])
+        let before = makeObservation(elements: [makeElement(stableID: "ax-menu", role: .button, label: "Menu")])
+        let plan = try RoutineReplay.plan(routine: routine, observation: before, taskID: TaskID("t"))
+        XCTAssertEqual(plan.actions.count, 2)
+
+        XCTAssertEqual(
+            try RoutineReplay.command(for: plan.actions[0], of: routine, in: before),
+            .click(.accessibilityID("ax-menu"))
+        )
+        XCTAssertThrowsError(try RoutineReplay.command(for: plan.actions[1], of: routine, in: before)) {
+            XCTAssertEqual($0 as? RoutineReplayError, .targetNotFound(step: 1))
+        }
+        let after = makeObservation(elements: [
+            makeElement(stableID: "ax-menu", role: .button, label: "Menu"),
+            makeElement(stableID: "ax-rename", role: .menuItem, label: "Rename")
+        ])
+        XCTAssertEqual(
+            try RoutineReplay.command(for: plan.actions[1], of: routine, in: after),
+            .click(.accessibilityID("ax-rename"))
+        )
+    }
+
     func testReplayPausesOnManualSteps() throws {
         let routine = try LearnedRoutine(name: "Mix", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click),

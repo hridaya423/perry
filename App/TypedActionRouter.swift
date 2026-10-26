@@ -17,6 +17,7 @@ struct TypedActionRouter: ExecutableActionExecutor {
     /// journal so the run lands durable receipts. Bound means journaling is
     /// mandatory — there is no silent unjournaled fallback.
     var journaledTransforms: (@Sendable (ExecutableAction) async throws -> WorkspaceFileExecutionReceipt)? = nil
+    var bindComputerCommand: (@Sendable (ExecutableAction) async throws -> ExecutableAction.ComputerCommand?)? = nil
 
     func execute(_ approvedAction: ApprovedExecutableAction) async throws -> ActionExecutionResult {
         let action = approvedAction.action
@@ -36,7 +37,8 @@ struct TypedActionRouter: ExecutableActionExecutor {
             guard let worker else {
                 throw ExecutionError(message: "no computer-use worker is attached to this session")
             }
-            let computerAction = try ComputerAction(actionID: action.id.rawValue, command: command, expectedWindow: window)
+            let boundCommand = try await bindComputerCommand?(action) ?? command
+            let computerAction = try ComputerAction(actionID: action.id.rawValue, command: boundCommand, expectedWindow: window)
             let result = try await worker.execute(computerAction)
             guard result.success else {
                 throw ExecutionError(message: result.message)

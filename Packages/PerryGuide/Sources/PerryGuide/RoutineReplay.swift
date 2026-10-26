@@ -62,7 +62,7 @@ public enum RoutineReplay {
             // user exactly which part is theirs.
             if step.requiresHuman {
                 actions.append(try ExecutableAction(
-                    id: ActionID("routine-step-\(index)"),
+                    id: ActionID("\(stepIDPrefix)\(index)"),
                     summary: step.summary,
                     approvalRequirement: .action,
                     operation: .askUser(prompt: "Your turn: \(step.summary)", choices: ["Done"]),
@@ -71,7 +71,12 @@ public enum RoutineReplay {
                 continue
             }
             let selector: ExecutableAction.Selector? = try step.target.map { target in
-                .accessibilityID(try resolve(target, in: observation.snapshot.elements, step: index))
+                guard !actions.isEmpty else {
+                    return .accessibilityID(try resolve(target, in: observation.snapshot.elements, step: index))
+                }
+                return (try? resolve(target, in: observation.snapshot.elements, step: index))
+                    .map(ExecutableAction.Selector.accessibilityID)
+                    ?? .accessibilityID("deferred-step-\(index)")
             }
             let command: ExecutableAction.ComputerCommand
             let postcondition: ExecutableAction.Postcondition
@@ -102,7 +107,7 @@ public enum RoutineReplay {
                 continue
             }
             actions.append(try ExecutableAction(
-                id: ActionID("routine-step-\(index)"),
+                id: ActionID("\(stepIDPrefix)\(index)"),
                 summary: step.summary,
                 approvalRequirement: .plan,
                 operation: .computer(window: window, command: command),
@@ -117,6 +122,31 @@ public enum RoutineReplay {
             requestedScopes: Set(actions.flatMap { $0.operation.requiredScopes })
         )
     }
+
+    public static func command(
+        for action: ExecutableAction,
+        of routine: LearnedRoutine,
+        in observation: GuideObservation
+    ) throws -> ExecutableAction.ComputerCommand? {
+        guard case .computer(_, let command) = action.operation,
+              action.id.rawValue.hasPrefix(stepIDPrefix),
+              let index = Int(action.id.rawValue.dropFirst(stepIDPrefix.count)),
+              routine.steps.indices.contains(index),
+              let target = routine.steps[index].target else { return nil }
+        let selector = ExecutableAction.Selector.accessibilityID(
+            try resolve(target, in: observation.snapshot.elements, step: index)
+        )
+        switch command {
+        case .click: return .click(selector)
+        case .doubleClick: return .doubleClick(selector)
+        case .typeText(let text, _): return .typeText(text, target: selector)
+        case .pressKey(let key, let modifiers, _): return .pressKey(key, modifiers: modifiers, target: selector)
+        case .hotkey(let key, let modifiers, _): return .hotkey(key: key, modifiers: modifiers, target: selector)
+        default: return nil
+        }
+    }
+
+    private static let stepIDPrefix = "routine-step-"
 
     /// A target resolves to exactly one element — a miss fails the plan and an
     /// ambiguous match refuses to guess rather than acting on the wrong

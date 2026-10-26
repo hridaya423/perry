@@ -1523,6 +1523,63 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertEqual(dragArguments["steps"] as? Int, 12)
     }
 
+    func testTypedRouterDispatchesTheCommandBoundJustBeforeTheStep() async throws {
+        let configuration = CuaDriverConfiguration(
+            executableURL: driverURL,
+            capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
+            hostBundleID: "dev.perry.PerryTests"
+        )
+        let service = CuaWorkerService(configuration: configuration)
+        addTeardownBlock { try await service.shutdown() }
+        let supervisor = DoSupervisor(
+            confirmer: AutoApproveConfirmer(),
+            typedVerifier: AlwaysVerifiedTypedVerifier()
+        )
+        let outcome = try await service.withWorker(scope: .foreground, resources: []) { worker in
+            let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
+            let window = ExecutableAction.WindowIdentity(
+                bundleID: capture.target.bundleID,
+                processID: capture.target.processID,
+                windowID: UInt32(capture.target.windowID),
+                connectionGeneration: capture.target.connectionGeneration
+            )
+            let plan = try ExecutionPlan(
+                taskID: TaskID("bound-click"),
+                goal: "click where the control is now",
+                actions: [
+                    try ExecutableAction(
+                        id: "routine-step-0",
+                        summary: "click the control",
+                        approvalRequirement: .action,
+                        operation: .computer(window: window, command: .click(.windowPixels(x: 1, y: 2))),
+                        postcondition: .elementValue("")
+                    )
+                ],
+                requestedScopes: [.computerControl]
+            )
+            var router = TypedActionRouter(
+                worker: worker,
+                workspace: nil,
+                remoteIntegrations: nil,
+                askUser: nil,
+                runCodingTask: nil
+            )
+            router.bindComputerCommand = { _ in .click(.windowPixels(x: 12.5, y: 20.25)) }
+            return await supervisor.run(plan: plan, typedExecutor: router)
+        }
+        guard case .completed = outcome else {
+            return XCTFail("bound click did not complete: \(outcome)")
+        }
+        let log = try String(contentsOf: testDirectory.appendingPathComponent("requests.log"), encoding: .utf8)
+        let calls = try log.split(separator: "\n").compactMap { line in
+            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])["params"] as? [String: Any]
+        }
+        let click = try XCTUnwrap(calls.first { $0["name"] as? String == "click" })
+        let arguments = try XCTUnwrap(click["arguments"] as? [String: Any])
+        XCTAssertEqual(arguments["x"] as? Double, 12.5)
+        XCTAssertEqual(arguments["y"] as? Double, 20.25)
+    }
+
     func testTransformActionWithoutBoundWorkspaceFailsClosed() async throws {
         let service = CuaWorkerService()
         addTeardownBlock { try await service.shutdown() }

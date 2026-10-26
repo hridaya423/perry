@@ -86,7 +86,10 @@ final class RoutineRunner {
         }
         let targetStore = CuaGuideTargetStore()
         await targetStore.set(CuaTargetHint(bundleID: routine.bundleID, processID: nil, windowTitle: nil))
-        let observation = try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe()
+        let observe: @Sendable () async throws -> GuideObservation = {
+            try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe()
+        }
+        let observation = try await observe()
         let plan = try RoutineReplay.plan(
             routine: routine,
             observation: observation,
@@ -100,6 +103,8 @@ final class RoutineRunner {
         )
         return try await execute(
             plan: plan,
+            routine: routine,
+            observe: observe,
             goal: routine.name,
             attemptID: attemptID,
             captured: captured,
@@ -112,6 +117,8 @@ final class RoutineRunner {
 
     private func execute(
         plan: ExecutionPlan,
+        routine: LearnedRoutine,
+        observe: @escaping @Sendable () async throws -> GuideObservation,
         goal: String,
         attemptID: UUID,
         captured: (context: ScreenContext, target: CuaWindowTarget?),
@@ -181,7 +188,14 @@ final class RoutineRunner {
             guard let coordinator = workspaceCoordinator else { return nil }
             return WorkspaceRunJournal(plan: effectsPlan, workspace: workspace, coordinator: coordinator)
         }
-        let typedExecutor = typedActionRouter(worker: worker, workspace: workspace, journal: runJournal)
+        let typedExecutor = typedActionRouter(
+            worker: worker,
+            workspace: workspace,
+            journal: runJournal,
+            bindComputerCommand: { action in
+                try RoutineReplay.command(for: action, of: routine, in: try await observe())
+            }
+        )
         let outcome = await supervisor.run(
             plan: executionPlan,
             context: captured.context,
@@ -278,7 +292,12 @@ final class RoutineRunner {
         }
     }
 
-    private func typedActionRouter(worker: CuaWorkerHandle, workspace: URL, journal: WorkspaceRunJournal?) -> TypedActionRouter {
+    private func typedActionRouter(
+        worker: CuaWorkerHandle,
+        workspace: URL,
+        journal: WorkspaceRunJournal?,
+        bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> ExecutableAction.ComputerCommand?
+    ) -> TypedActionRouter {
         let codexRuntimeHome = RuntimeCatalog.codexRuntimeHome
 #if DEBUG
         let debugAskUser = self.debugAskUser
@@ -306,7 +325,8 @@ final class RoutineRunner {
             },
             journaledTransforms: journal.map { journal in
                 { action in try await journal.perform(action) }
-            }
+            },
+            bindComputerCommand: bindComputerCommand
         )
     }
 
