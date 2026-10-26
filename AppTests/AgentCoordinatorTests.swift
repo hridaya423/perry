@@ -160,7 +160,7 @@ final class AgentCoordinatorTests: XCTestCase {
         let coordinator = AgentCoordinator(
             provider: { _ in provider }, host: PerryToolHost(executors: []),
             threads: store, consent: ToolConsentStore(directory: nil),
-            memoryContext: { (true, "Use the Cedar workspace") }
+            memoryContext: { _ in (true, "Use the Cedar workspace") }
         )
         let id = UUID()
         _ = await collect(coordinator.run(threadID: id, goal: "The document is called Orchid"))

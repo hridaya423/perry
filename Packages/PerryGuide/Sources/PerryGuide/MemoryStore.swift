@@ -1,8 +1,10 @@
 import Foundation
+import NaturalLanguage
 import PerryCore
 
 public struct MemoryRecord: Codable, Equatable, Sendable, Identifiable {
     public enum Category: String, Codable, Sendable, CaseIterable {
+        case aboutYou
         case appWorkflow
         case preference
         case pastSession
@@ -13,19 +15,29 @@ public struct MemoryRecord: Codable, Equatable, Sendable, Identifiable {
     public let appBundleID: String?
     public let summary: String
     public let createdAt: Date
+    public let subject: String?
+    public let expiresAt: Date?
 
     public init(
         id: UUID = UUID(),
         category: Category,
         appBundleID: String? = nil,
         summary: String,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        subject: String? = nil,
+        expiresAt: Date? = nil
     ) {
         self.id = id
         self.category = category
         self.appBundleID = appBundleID
         self.summary = summary
         self.createdAt = createdAt
+        self.subject = subject
+        self.expiresAt = expiresAt
+    }
+
+    public func isLive(at date: Date) -> Bool {
+        expiresAt.map { $0 > date } ?? true
     }
 }
 
@@ -97,6 +109,9 @@ public actor MemoryStore {
             return false
         }
         var nextRecords = records
+        if let subject = record.subject {
+            nextRecords.removeAll { $0.category == record.category && $0.subject == subject }
+        }
         nextRecords.append(record)
         guard persist(configuration: configuration, records: nextRecords, includeMarkdown: true) else {
             return false
@@ -118,26 +133,38 @@ public actor MemoryStore {
     /// Recall used when planning; respects the same toggles as writing.
     public func recall(category: MemoryRecord.Category?, appBundleID: String?) -> [MemoryRecord] {
         guard configuration.enabled else { return [] }
+        let now = Date()
         return records.filter { record in
-            guard configuration.categoryToggles[record.category] == true else { return false }
+            guard configuration.categoryToggles[record.category] == true, record.isLive(at: now) else { return false }
             if let category, record.category != category { return false }
             if let appBundleID, record.appBundleID != appBundleID { return false }
             return true
         }
     }
 
-    public func promptContext(appBundleID: String?, limit: Int = 12) -> String? {
-        let recalled = recall(category: nil, appBundleID: nil)
-            .filter { record in
-                record.appBundleID == nil || record.appBundleID == appBundleID
-            }
-            .sorted { $0.createdAt > $1.createdAt }
-            .prefix(max(0, limit))
-        guard !recalled.isEmpty else { return nil }
-        return recalled.reversed().map { record in
+    public func promptContext(appBundleID: String?, query: String? = nil, limit: Int = 12) -> String? {
+        let recalled = recall(category: nil, appBundleID: nil).filter { record in
+            record.appBundleID == nil || record.appBundleID == appBundleID
+        }
+        let standing = recalled.filter { $0.category == .aboutYou && $0.expiresAt == nil }
+        let rest = Self.ranked(recalled.filter { !($0.category == .aboutYou && $0.expiresAt == nil) }, query: query)
+        let chosen = Array(standing.suffix(limit)) + rest.prefix(max(0, min(8, limit - standing.count)))
+        guard !chosen.isEmpty else { return nil }
+        let ordered = query?.isEmpty == false ? chosen : chosen.sorted { $0.createdAt < $1.createdAt }
+        return ordered.map { record in
             let app = record.appBundleID.map { " · \($0)" } ?? ""
             return "- [\(record.category.rawValue)\(app)] \(record.summary)"
         }.joined(separator: "\n")
+    }
+
+    static func ranked(_ records: [MemoryRecord], query: String?) -> [MemoryRecord] {
+        let recent = records.sorted { $0.createdAt > $1.createdAt }
+        guard let query, !query.isEmpty, let embedding = NLEmbedding.sentenceEmbedding(for: .english) else { return recent }
+        return recent.enumerated().sorted { left, right in
+            let leftDistance = embedding.distance(between: query, and: left.element.summary)
+            let rightDistance = embedding.distance(between: query, and: right.element.summary)
+            return leftDistance == rightDistance ? left.offset < right.offset : leftDistance < rightDistance
+        }.map(\.element)
     }
 
     /// PRD §4: one-click wipe.

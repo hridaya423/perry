@@ -62,7 +62,8 @@ enum AppToolHost {
             executors += FileToolExecutors.make(backend: files)
         }
         executors += MemoryToolExecutors.make(
-            files: MemoryFiles(directory: support.appendingPathComponent("memory", isDirectory: true))
+            files: MemoryFiles(directory: support.appendingPathComponent("memory", isDirectory: true)),
+            pronunciations: PronunciationStore(directory: support)
         )
         executors += IntegrationToolExecutors.make(backend: integrationBackend)
         if let perryStore {

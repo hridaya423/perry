@@ -109,6 +109,7 @@ struct YouSettingsPage: View {
 
     private static func title(_ category: MemoryRecord.Category) -> String {
         switch category {
+        case .aboutYou: "About you"
         case .appWorkflow: "App workflows"
         case .preference: "Preferences"
         case .pastSession: "Past conversations"

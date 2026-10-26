@@ -549,7 +549,7 @@ final class HomeController {
         }
     }
 
-    private func refreshThreads() async {
+    func refreshThreads() async {
         homeModel.threads = await threadStore?.list() ?? []
         if let issue = await threadStore?.readIssues().first {
             homeModel.storageError = "Some conversations couldn’t be opened. Their original files are preserved at \(issue.file.path). \(issue.message)"

@@ -20,6 +20,11 @@ public struct AppleFoundationModelProvider: ModelProvider {
         _ = SystemLanguageModel.default.availability
     }
 
+    public static func respond(to prompt: String, instructions: String? = nil) async throws -> String {
+        let session = instructions.map { LanguageModelSession(instructions: $0) } ?? LanguageModelSession()
+        return try await session.respond(to: prompt).content
+    }
+
     public func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         BrainHTTP.eventStream { continuation in
                     guard Self.isAvailable else {

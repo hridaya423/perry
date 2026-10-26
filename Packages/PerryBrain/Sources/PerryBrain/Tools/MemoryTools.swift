@@ -2,8 +2,8 @@ import Foundation
 
 /// `memory.read` / `memory.write` over `MemoryFiles` (PROFILE.md/CONTEXT.md).
 public enum MemoryToolExecutors {
-    public static func make(files: MemoryFiles) -> [any ToolExecutor] {
-        [ReadTool(files: files), WriteTool(files: files)]
+    public static func make(files: MemoryFiles, pronunciations: PronunciationStore? = nil) -> [any ToolExecutor] {
+        [ReadTool(files: files), WriteTool(files: files)] + (pronunciations.map { [PronunciationTool(store: $0)] } ?? [])
     }
 
     private static let sectionSchema: JSONValue = .object([
@@ -49,7 +49,7 @@ public enum MemoryToolExecutors {
                 ]),
                 "required": .array([.string("section"), .string("text")]),
             ]),
-            tier: .yellow, surfaces: [.agent]
+            surfaces: [.agent]
         )
         func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
             guard let section = call.arguments["section"]?.stringValue,
@@ -66,6 +66,30 @@ public enum MemoryToolExecutors {
                 throw WorkspaceFileError("unknown section: \(section)")
             }
             return .text(call.id, "{\"updated\":\"\(section)\"}")
+        }
+    }
+
+    private struct PronunciationTool: ToolExecutor {
+        let store: PronunciationStore
+        let spec = ToolSpec(
+            name: "pronunciation.remember",
+            description: "Save how to say a name or word when the user corrects you or explains it, e.g. \"it's pronounced Hrid-yah\". Use a simple respelling with hyphens between syllables.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "written": .object(["type": .string("string"), "description": .string("The word as it is spelled")]),
+                    "spoken": .object(["type": .string("string"), "description": .string("A respelling that sounds right, e.g. Hrid-yah")]),
+                ]),
+                "required": .array([.string("written"), .string("spoken")]),
+            ]),
+            surfaces: [.agent]
+        )
+        func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+            guard let written = call.arguments["written"]?.stringValue, let spoken = call.arguments["spoken"]?.stringValue else {
+                throw WorkspaceFileError("missing written or spoken")
+            }
+            try store.set(Pronunciation(written: written, spoken: spoken, source: .learned))
+            return .text(call.id, "{\"saved\":\"\(written)\"}")
         }
     }
 }

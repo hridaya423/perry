@@ -493,6 +493,17 @@ final class AppSubsystems {
 
     lazy var toolConsent = ToolConsentStore(directory: AppController.supportDirectory)
 
+    lazy var conversationLearner: ConversationLearner = {
+        let memory = self.memoryStore
+        self.homeController.homeModel.onForgetMemory = { record in Task { _ = await memory.forget(record.id) } }
+        return ConversationLearner(
+            complete: { [unowned app = app] in try await app.brain.completeOnDevice($0) },
+            threads: self.homeThreadStore, memory: memory,
+            remembered: { [weak app = app] id, records in app?.homeController.homeModel.remembered[id, default: []] += records },
+            titled: { [weak app = app] in Task { await app?.homeController.refreshThreads() } }
+        )
+    }()
+
     lazy var agentCoordinator = AgentCoordinator(
         provider: { [unowned app = app] requirement in
             try await app.brain.route(requirement).provider
@@ -500,12 +511,12 @@ final class AppSubsystems {
         host: self.toolHost, threads: self.homeThreadStore, consent: self.toolConsent,
         perrys: self.perryStore,
         workers: self.workers, workerLease: self.foregroundWorkerLease,
-        memoryContext: { [memoryStore = self.memoryStore] in
+        memoryContext: { [memoryStore = self.memoryStore] question in
             let config = await memoryStore.currentConfiguration()
             let profile = AppController.supportDirectory.map {
                 MemoryFiles(directory: $0.appendingPathComponent("memory", isDirectory: true)).promptBlock()
             }
-            let records = await memoryStore.promptContext(appBundleID: nil)
+            let records = await memoryStore.promptContext(appBundleID: nil, query: question)
             let text = [profile, records].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
             return (config.enabled, text.isEmpty ? nil : text)
         },
@@ -517,6 +528,9 @@ final class AppSubsystems {
                 screenRecording: permissions.screenRecording.isUsable,
                 connectedApps: apps.filter(\.connected).map(\.name)
             )
+        },
+        onTurnCompleted: { [unowned self] id, question, answer in
+            self.conversationLearner.turnCompleted(threadID: id, question: question, answer: answer)
         }
     )
 

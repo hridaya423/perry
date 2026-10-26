@@ -128,6 +128,8 @@ final class HomeModel: ObservableObject {
     @Published var streamingAnswers: [UUID: String] = [:]
     @Published var suggestions: [SuggestionCard] = []
     @Published var routines: [LearnedRoutine] = []
+    @Published var remembered: [UUID: [MemoryRecord]] = [:]
+    var onForgetMemory: ((MemoryRecord) -> Void)?
     var deps = Deps()
 
     var onDraftChanged: ((UUID, String) -> Void)?

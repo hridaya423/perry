@@ -389,6 +389,13 @@ final class BrainController: ObservableObject {
 
     /// Single fast text completion through whatever brain the user chose —
     /// used for polish passes like routine naming.
+    func completeOnDevice(_ prompt: String) async throws -> String {
+        if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable {
+            return try await AppleFoundationModelProvider.respond(to: prompt)
+        }
+        return try await completeText(prompt)
+    }
+
     func completeText(_ prompt: String) async throws -> String {
         let decision = try await route(RouteRequirement(tier: .fast))
         var text = ""

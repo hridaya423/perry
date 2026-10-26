@@ -33,7 +33,8 @@ final class AgentCoordinator: ObservableObject {
     private let observations: AgentObservationStore
     private let consent: ToolConsentStore
     private let perrys: PerryStore?
-    private let memoryContext: () async -> (enabled: Bool, text: String?)
+    private let memoryContext: (String?) async -> (enabled: Bool, text: String?)
+    private let onTurnCompleted: (UUID, String, String) -> Void
     private let promptEnvironment: () async -> PromptEnvironment
     private var acceptsRuns = true
     private var loops: [UUID: AgentLoop] = [:]
@@ -48,8 +49,9 @@ final class AgentCoordinator: ObservableObject {
         observations: AgentObservationStore = .shared,
         workers: CuaWorkerService = CuaWorkerService(),
         workerLease: ForegroundWorkerLease = ForegroundWorkerLease(),
-        memoryContext: @escaping () async -> (enabled: Bool, text: String?) = { (false, nil) },
-        promptEnvironment: @escaping () async -> PromptEnvironment = { PromptEnvironment() }
+        memoryContext: @escaping (String?) async -> (enabled: Bool, text: String?) = { _ in (false, nil) },
+        promptEnvironment: @escaping () async -> PromptEnvironment = { PromptEnvironment() },
+        onTurnCompleted: @escaping (UUID, String, String) -> Void = { _, _, _ in }
     ) {
         self.workers = workers
         self.workerLease = workerLease
@@ -61,6 +63,7 @@ final class AgentCoordinator: ObservableObject {
         self.perrys = perrys
         self.memoryContext = memoryContext
         self.promptEnvironment = promptEnvironment
+        self.onTurnCompleted = onTurnCompleted
     }
 
     typealias GuidedOperation = @MainActor (PerryThread) async throws -> (answer: String, finish: AgentFinish)
@@ -341,6 +344,7 @@ final class AgentCoordinator: ObservableObject {
                 failureReason: finish.failureReason
             )
             sink(.finished(finish))
+            if finish.turnOutcome == .completed { onTurnCompleted(threadID, pending.question, answer) }
             // Off the hot path (H5): fold the newly-covered history prefix into
             // the saved summary now that the turn has a durable record. The
             // answer has already streamed, but the run isn't over until the
@@ -406,7 +410,7 @@ final class AgentCoordinator: ObservableObject {
 
     private func systemPrompt(for thread: PerryThread, provider: any ModelProvider, mode: PromptMode) async -> String {
         let perry = await perrys?.list().first { $0.id.uuidString == thread.perryID }
-        let memory = await memoryContext()
+        let memory = await memoryContext(thread.pendingTurn?.question)
         let perryMemory: String?
         if memory.enabled, let perry {
             perryMemory = await perrys?.memory(for: perry.id)

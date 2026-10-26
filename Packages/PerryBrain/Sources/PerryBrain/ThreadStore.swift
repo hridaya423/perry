@@ -330,6 +330,12 @@ public actor ThreadStore {
         _ = try upsert(thread)
     }
 
+    public func setTitle(_ title: String, for id: UUID) throws {
+        guard var t = thread(id: id) else { return }
+        t.title = title
+        _ = try upsert(t)
+    }
+
     public func setDraft(_ draft: String, for id: UUID) throws {
         guard var t = thread(id: id) else { return }
         t.draft = draft

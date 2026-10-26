@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import PerryBrain
+import PerryGuide
 import PerryOverlay
 
 struct HomeConversationView: View {
@@ -38,6 +39,12 @@ struct HomeConversationView: View {
                                     .font(PerryTheme.Scale.body)
                                     .foregroundStyle(.secondary)
                             }
+                        }
+                    }
+                    if let records = model.remembered[thread.id], !records.isEmpty {
+                        RememberedLine(records: records) { record in
+                            model.onForgetMemory?(record)
+                            model.remembered[thread.id]?.removeAll { $0.id == record.id }
                         }
                     }
                     if let waiting = thread.waitingInputs, !waiting.isEmpty {
@@ -430,5 +437,30 @@ private struct CodeBlock: View {
                 copied = false
             }
         }
+    }
+}
+
+private struct RememberedLine: View {
+    let records: [MemoryRecord]
+    let undo: (MemoryRecord) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(records) { record in
+                HStack(spacing: 6) {
+                    Image(systemName: "brain.head.profile")
+                        .imageScale(.small)
+                        .accessibilityHidden(true)
+                    Text("Remembered: \(record.summary)")
+                        .lineLimit(1)
+                    Button("Undo") { undo(record) }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PerryTheme.Colors.accent)
+                }
+                .font(PerryTheme.Scale.secondary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+            }
+        }
+        .transition(.opacity)
     }
 }
