@@ -642,4 +642,21 @@ Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). P
   - `dda7b2e`: Sounds switch in General, cues at volume 0.45, no stop-listening cue.
   - Not done: cloud STT (deferred: SpeechAnalyzer covers accuracy; add if the owner asks), the earcon set
     (owner picks from three), the loopback mic drill (needs approval for the device).
-- Next: phase E (redactor, capability eval, Brain page), then F.
+- E partial:
+  - `4628367`: Hide personal details (Privacy). Regex for secrets, email, cards (Luhn), IBAN (mod 97), phones,
+    addresses; NLTagger names minus leading command verbs; known names; names seen once stay hidden for the
+    conversation. Reversible placeholders per conversationKey; tools run on real values, tool results are hidden
+    again. Tests: PersonalDetailsTests (7), RedactingToolProviderTests (1). Screenshots are not covered.
+  - `9be0279`: Brain page says "Private brain"; the model name is in the footer.
+  - Not done: capability eval (needs a multi-GB local model on the mini), Rampart weights (owner approval).
+- `f20d4ad`: ClaudeCodeProvider no longer hangs in waitUntilExit (it spun the PerryBrain suite at 100% CPU).
+  PerryBrain: 424 tests, 0 failures.
+- F partial (`b2e7954`): PressableStyle (press dim and 0.97 scale, 28 pt minimum) on all 41 plain buttons,
+  Radius.control/card/panel tokens on 53 literals, settings rows 16/12, no animation on the keystroke-driven
+  send/mic swap, eye hover respects Reduce Motion, jargon errors rewritten. Audit by a Sonnet 5.5 subagent.
+  Copy rule: CopyLintTests requires contractions (it flags "could not" as stiff), so the global no-contractions
+  rule does not apply to interface copy here. Full app suite: 896 tests, 6 skipped, 0 failures.
+  Still open from the audit: off-scale spacing literals (about 150 sites), concentric radii in the peek row and
+  interview fields, keyboard-driven animation in onboarding (kept: first-run only), notch open spring (kept the
+  no-overshoot choice from 62ea35d; owner to decide).
+- Next: remaining audit items, contact sheet, install for the owner.
