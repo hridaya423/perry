@@ -36,6 +36,15 @@ enum PushToTalkShortcut: String, CaseIterable, Identifiable {
         }
     }
 
+    var gesture: Gesture? {
+        switch self {
+        case .functionHold: .hold([.function])
+        case .optionCommandSpace: .chord([.option, .command], keyCode: 49)
+        case .controlOptionCommandHold: .hold([.control, .option, .command])
+        case .capsLockDoubleTap: nil
+        }
+    }
+
     /// The (keyCode, symbolichotkeys modifier bits) a chord-based shortcut
     /// occupies, for conflict checks against com.apple.symbolichotkeys —
     /// modifier-hold shortcuts own no key chord and cannot conflict.

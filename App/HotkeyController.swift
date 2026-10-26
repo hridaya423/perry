@@ -18,6 +18,15 @@ enum WakeShortcut: String, CaseIterable, Identifiable {
         }
     }
 
+    var gesture: Gesture {
+        switch self {
+        case .optionCommandP: .chord([.option, .command], keyCode: 35)
+        case .optionCommandO: .chord([.option, .command], keyCode: 31)
+        case .controlCommandP: .chord([.control, .command], keyCode: 35)
+        case .controlCommandO: .chord([.control, .command], keyCode: 31)
+        }
+    }
+
     var modifiers: UInt32 {
         switch self {
         case .optionCommandP, .optionCommandO: return UInt32(optionKey | cmdKey)

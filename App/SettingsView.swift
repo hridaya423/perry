@@ -60,6 +60,7 @@ struct SettingsView: View {
     @State private var settingsError: String?
     @State private var showReportProblem = false
     @State private var permissions: PerryPermissionSnapshot?
+    @State private var talkCapture = ShortcutCapture(saved: PerryPreferences.talkGesture, defaultGesture: .defaultTalk)
 
     init(controller: AppController) {
         self.controller = controller
@@ -152,6 +153,15 @@ struct SettingsView: View {
                 }
             }
             Section("Invocation") {
+                ShortcutRecorder(
+                    title: "Talk",
+                    capture: $talkCapture,
+                    presets: [.hold([.function]), .hold([.option, .rightOption]), .defaultTalk],
+                    onSave: { PerryPreferences.talkGesture = $0 }
+                )
+                .onAppear(perform: refreshTalkCapture)
+                .onChange(of: pttShortcut) { _, _ in refreshTalkCapture() }
+                .onChange(of: wakeShortcut) { _, _ in refreshTalkCapture() }
                 Toggle(isOn: $wakeWordEnabled) {
                     Text("Say “hey Perry” to wake")
                     Text("Listens on this Mac for the phrase and keeps no transcript.").settingNote()
@@ -729,6 +739,15 @@ struct SettingsView: View {
             "com.lastpass.LastPass": "LastPass",
         ]
         return (bundleID: bundleID, name: names[bundleID] ?? bundleID)
+    }
+
+    private func refreshTalkCapture() {
+        talkCapture.allowsChords = false
+        talkCapture.perryOwners = [
+            .init(gesture: .doubleTap([.control]), name: "typing gesture"),
+            .init(gesture: wakeShortcut.gesture, name: "wake shortcut"),
+        ] + (pttShortcut.gesture.map { [.init(gesture: $0, name: "dictation shortcut")] } ?? [])
+        talkCapture.systemHotkeys = SymbolicHotkeys.load()
     }
 
     private func saveSpeechPreferences() {
