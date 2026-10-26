@@ -440,28 +440,9 @@ Three parts, in this order, each optional except the first: **what happened** (i
 - Never blame the user ([NNg-ERR], [HIG-W]).
 - Data loss and security: neutral and explicit, with the consequence on the button ("Delete 3 items").
 
-### 6.5 Terms (one referent, one word)
+### 6.5 Terms
 
-| Referent | Use | Retire |
-|---|---|---|
-| the AI that answers | **model** | Brain, brain, agent (for a model), runtime, engine, provider, "On this Mac" as a label |
-| a coding agent such as Codex | **agent** (only for these) | |
-| the character and product | **Perry** | "a Perry", "Perrys" |
-| a named, scheduled job-runner | **helper** (owner decision) | "Perry" as a noun for it, "job" |
-| a chat | **conversation** | thread, session |
-| something Perry does in apps | **task** | job, request, run (noun), goal |
-| saved replayable steps | **routine** | Watch & Learn, "demonstration" |
-| a walk-through | **guide** | |
-| what the user types and sends | **message** | request |
-| macOS pane name | the system's own name (`PrivacyPane.displayName()`) | "Accessibility" when macOS shows "Device Control and Data Access" |
-| macOS Settings vs Perry Settings | "System Settings" vs bare "Settings" (Perry's own) | bare "Settings" for System Settings |
-| the user's work folder | **work folder** | "workspace" (window, folder, task folder) |
-| RAM | **memory** | |
-| what Perry remembers about the user | **notes** or **Memory** (tab) | "memory" for RAM |
-| connecting an app | **Connect** | Set up (reserve for the local model), Sign in (a step inside Connect) |
-| decline | **Deny** or "Don't {verb}" | Don't allow |
-| needs the user's approval | **Needs your OK** (one phrase) | Approval needed, Awaiting approval |
-| needs the user to check | **Needs checking** | Check needed |
+Superseded on 2026-10-26 by the owner decisions. The AI that answers is the **brain** in all UI copy, never model, agent, runtime, engine or provider. A scheduled Perry is a **helper**. The "Type" shortcut is **Type to Perry**. The maintained glossary is `docs/copy-glossary.md`.
 
 ### 6.6 Five before and after pairs
 
