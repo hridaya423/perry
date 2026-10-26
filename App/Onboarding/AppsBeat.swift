@@ -97,7 +97,7 @@ struct AppsBeat: View {
         }
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 14)
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder

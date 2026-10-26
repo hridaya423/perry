@@ -136,7 +136,7 @@ private struct AccessBeat: View {
     var body: some View {
         OnboardingBeatLayout(title: "I need two permissions.") {
             PermissionSketch(lit: director.accessGranted)
-                .scaleEffect(0.46)
+                .scaleEffect(0.38)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {

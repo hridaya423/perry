@@ -355,7 +355,7 @@ struct InterviewBeat: View {
             Text(label)
                 .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
-                .frame(width: 70, alignment: .leading)
+                .frame(width: 96, alignment: .leading)
             if editing {
                 TextField(label, text: value)
                     .textFieldStyle(.plain)
