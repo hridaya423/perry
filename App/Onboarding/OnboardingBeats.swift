@@ -220,18 +220,17 @@ struct BrainBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: "How should I think?") {
-            ChoiceSketch(local: selected == .local)
-                .scaleEffect(0.6)
-                .modifier(InkDrawOn())
+        OnboardingBeatLayout(title: "How should I think?", artHeight: 52) {
+            PerryCharacterView(pose: perryPose, size: 40)
         } detail: {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    card(.cloud, title: cloudRow == .apiKey ? "Your API key" : cloudRow.title, detail: cloudDetail, status: cloudReady ? readyDetail : nil)
-                    card(.local, title: "On this Mac", detail: "Private and offline. Nothing leaves this Mac.",
+                    card(.cloud, title: "Cloud", sketch: .cloud, detail: cloudDetail, status: cloudReady ? readyDetail : nil)
+                    card(.local, title: "On this Mac", sketch: .laptop, detail: "Private and offline. Nothing leaves this Mac.",
                          status: localReady ? nil : "Set up later in Settings")
                         .disabled(!localReady)
                 }
+                .fixedSize(horizontal: false, vertical: true)
                 if let error = brain.signInError {
                     Text(error)
                         .font(PerryTheme.Scale.secondary)
@@ -262,7 +261,7 @@ struct BrainBeat: View {
     private var cloudDetail: String {
         switch cloudRow {
         case .chatGPT: "Sharper answers. Uses your ChatGPT account."
-        case .apiKey: "Sharper answers. Your provider bills you."
+        case .apiKey: "Sharper answers. Uses your API key."
         default: "Sharper answers. Uses \(cloudRow.title)."
         }
     }
@@ -304,19 +303,23 @@ struct BrainBeat: View {
         }
     }
 
-    private func card(_ value: Route, title: String, detail: String, status: String?) -> some View {
+    private var perryPose: PerryCharacterPose {
+        var pose = PerryCharacterPose()
+        pose.face = .happy
+        pose.gaze = CGVector(dx: selected == .local ? 0.9 : -0.9, dy: 0.3)
+        return pose
+    }
+
+    private func card(_ value: Route, title: String, sketch: ChoiceSketch.Kind, detail: String, status: String?) -> some View {
         let isSelected = selected == value
         return Button { route = value } label: {
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(title)
-                        .font(PerryTheme.Scale.rowTitle)
-                        .foregroundStyle(PerryTheme.Colors.text)
-                    Spacer()
-                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                        .font(PerryTheme.Icon.row)
-                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
-                }
+                ChoiceSketch(kind: sketch, lit: isSelected)
+                    .modifier(InkDrawOn())
+                    .padding(.bottom, 6)
+                Text(title)
+                    .font(PerryTheme.Scale.rowTitle)
+                    .foregroundStyle(PerryTheme.Colors.text)
                 Text(detail)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -331,7 +334,8 @@ struct BrainBeat: View {
             }
             .multilineTextAlignment(.leading)
             .padding(14)
-            .frame(width: 204, height: 100, alignment: .topLeading)
+            .frame(width: 204, alignment: .topLeading)
+            .frame(maxHeight: .infinity, alignment: .top)
             .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)

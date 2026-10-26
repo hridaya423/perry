@@ -256,52 +256,47 @@ struct PermissionSketch: View {
 }
 
 struct ChoiceSketch: View {
+    enum Kind {
+        case cloud, laptop
+    }
+
     @Environment(\.inkProgress) private var progress
-    let local: Bool
+    let kind: Kind
+    let lit: Bool
 
     var body: some View {
+        let color = lit ? PerryTheme.Colors.accent : PerryTheme.Colors.text.opacity(0.4)
         ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                InkLine(points: InkStroke.rectangle(in: CGRect(x: 26, y: 30, width: 70, height: 48)), width: 2, seed: 41, progress: progress, color: tint(local))
-                InkLine(points: [CGPoint(x: 18, y: 84), CGPoint(x: 104, y: 84), CGPoint(x: 114, y: 92), CGPoint(x: 8, y: 92), CGPoint(x: 18, y: 84)], width: 2, seed: 42, progress: progress, color: tint(local))
-                InkLine(points: Self.cloud, width: 2.2, seed: 43, progress: progress, color: tint(!local), smooth: false)
+            switch kind {
+            case .laptop:
+                InkLine(points: InkStroke.rectangle(in: CGRect(x: 12, y: 2, width: 46, height: 30)), width: 1.8, seed: 41, progress: progress, color: color)
+                InkLine(points: [CGPoint(x: 7, y: 36), CGPoint(x: 63, y: 36), CGPoint(x: 69, y: 41), CGPoint(x: 1, y: 41), CGPoint(x: 7, y: 36)], width: 1.8, seed: 42, progress: progress, color: color)
+            case .cloud:
+                InkLine(points: Self.cloud, width: 2, seed: 43, progress: progress, color: color, smooth: false)
             }
-            .frame(width: 300, height: 110, alignment: .topLeading)
-            .scaleEffect(x: -1, y: 1)
-            PerryCharacterView(pose: pose, size: 46)
-                .position(x: 148, y: 66)
         }
-        .frame(width: 300, height: 110)
-        .animation(.easeOut(duration: 0.2), value: local)
+        .frame(width: 70, height: 44, alignment: .topLeading)
+        .animation(.easeOut(duration: 0.2), value: lit)
+        .accessibilityHidden(true)
     }
 
     static let cloud: [CGPoint] = {
         let bumps: [(CGPoint, CGFloat, Double, Double)] = [
-            (CGPoint(x: 213, y: 68), 11, .pi * 0.6, .pi * 1.6),
-            (CGPoint(x: 237, y: 57), 17, .pi * 1.1, .pi * 1.92),
-            (CGPoint(x: 262, y: 66), 13, .pi * 1.3, .pi * 2.4)
+            (CGPoint(x: 18, y: 28), 9, .pi * 0.6, .pi * 1.6),
+            (CGPoint(x: 37, y: 19), 14, .pi * 1.1, .pi * 1.92),
+            (CGPoint(x: 57, y: 26), 10.5, .pi * 1.3, .pi * 2.4)
         ]
-        var points = [CGPoint(x: 203, y: 80)]
+        var points = [CGPoint(x: 10, y: 38)]
         for (center, radius, from, to) in bumps {
             for step in 0...6 {
                 let angle = from + (to - from) * Double(step) / 6
                 points.append(CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle)))
             }
         }
-        points.append(CGPoint(x: 278, y: 80))
-        points.append(CGPoint(x: 203, y: 80.5))
+        points.append(CGPoint(x: 70, y: 38))
+        points.append(CGPoint(x: 10, y: 38.5))
         return points
     }()
-
-    private func tint(_ on: Bool) -> Color {
-        on ? PerryTheme.Colors.accent : PerryTheme.Colors.text.opacity(0.35)
-    }
-
-    private var pose: PerryCharacterPose {
-        var pose = PerryCharacterPose()
-        pose.gaze = CGVector(dx: local ? 0.9 : -0.9, dy: -0.1)
-        return pose
-    }
 }
 
 struct SketchbookGrain: View {
