@@ -131,14 +131,14 @@ struct InkChoiceStyle: ButtonStyle {
             .padding(.vertical, 10)
             .frame(minHeight: 40)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                     .fill(Color.white.opacity(configuration.isPressed ? 0.12 : hovering ? 0.09 : 0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                     .strokeBorder(isFocused ? PerryTheme.Colors.accent : isDefault ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator, lineWidth: isFocused ? 2 : 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
             .onHover { hovering = $0 }
             .animation(PerryTheme.Motion.snap, value: hovering)
         }
@@ -233,4 +233,27 @@ struct InkSlider: View {
         let clamped = min(max(snapped, range.lowerBound), range.upperBound)
         if clamped != value { value = clamped }
     }
+}
+
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Pressable(configuration: configuration)
+    }
+
+    private struct Pressable: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        var body: some View {
+            configuration.label
+                .frame(minWidth: PerryTheme.Icon.hit, minHeight: PerryTheme.Icon.hit)
+                .contentShape(Rectangle())
+                .opacity(configuration.isPressed ? 0.6 : 1)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+        }
+    }
+}
+
+extension ButtonStyle where Self == PressableStyle {
+    static var pressable: PressableStyle { PressableStyle() }
 }

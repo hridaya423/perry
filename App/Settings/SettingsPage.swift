@@ -128,7 +128,7 @@ struct SettingsSidebar: View {
                 .padding(.vertical, 5)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .help("Back (⌘[)")
             .padding(.horizontal, 6)
             .padding(.top, 12)
@@ -176,12 +176,12 @@ struct SettingsSidebar: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                     .fill(Color.white.opacity(selected ? 0.1 : 0))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
@@ -221,9 +221,9 @@ struct SettingsCard<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
             )
             if let footer {
@@ -241,7 +241,7 @@ struct SettingsDivider: View {
         Rectangle()
             .fill(PerryTheme.Colors.subtleSeparator)
             .frame(height: 1)
-            .padding(.leading, 14)
+            .padding(.leading, PerryTheme.Spacing.panelInset)
     }
 }
 
@@ -305,7 +305,7 @@ struct SettingsAdvanced<Content: View>: View {
                 .padding(.leading, 4)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityAddTraits(.isHeader)
             .accessibilityValue(expanded ? "Expanded" : "Collapsed")
             if expanded {
@@ -317,14 +317,14 @@ struct SettingsAdvanced<Content: View>: View {
 
 extension View {
     func settingsRowPadding() -> some View {
-        padding(.horizontal, 14).padding(.vertical, 10)
+        padding(.horizontal, PerryTheme.Spacing.panelInset).padding(.vertical, PerryTheme.Spacing.section)
     }
 
     func settingsErrorDialog(_ error: Binding<String?>) -> some View {
         notchDialog(
             "Perry couldn’t save that setting",
             item: error,
-            message: error.wrappedValue ?? "Something went wrong.",
+            message: error.wrappedValue ?? "Perry couldn’t do that. Try again.",
             cancelTitle: "Close"
         ) { _ in [] }
     }

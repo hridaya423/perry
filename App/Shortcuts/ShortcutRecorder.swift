@@ -174,7 +174,7 @@ struct ShortcutRecorder: View {
                         .background(PerryTheme.Colors.chip, in: Capsule())
                         .overlay(Capsule().strokeBorder(capture.state == .recording ? PerryTheme.Colors.accent : .clear, lineWidth: 1.5))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .accessibilityLabel("\(title) shortcut, \(pillText)")
                 .accessibilityHint(capture.state == .recording ? "Press the keys. Escape cancels, Delete resets." : "Records a new shortcut")
             }
@@ -194,7 +194,7 @@ struct ShortcutRecorder: View {
                     .fixedSize()
                 }
                 .font(PerryTheme.Scale.secondary)
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .foregroundStyle(PerryTheme.Colors.accent)
             case .rejected(let gesture, let owner):
                 Text("\(gesture.keys) is taken by \(owner). Pick another.")

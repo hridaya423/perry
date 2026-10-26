@@ -93,7 +93,7 @@ struct NotchWorkspaceView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityLabel("Home")
             .help("Home (⌘[)")
             .padding(.horizontal, 14)
@@ -112,7 +112,7 @@ struct NotchWorkspaceView: View {
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 6)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
                 Button {
                     searchFocused = false
                     model.sidebarSelection = nil
@@ -123,7 +123,7 @@ struct NotchWorkspaceView: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(RailRowStyle(cornerRadius: 8))
+                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
                 .foregroundStyle(PerryTheme.Colors.icon)
                 .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New conversation")
@@ -162,9 +162,9 @@ struct NotchWorkspaceView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 5)
                                         .background { selectionPill(model.sidebarSelection == .thread(thread.id)) }
-                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
                                 }
-                                .buttonStyle(RailRowStyle(cornerRadius: 8))
+                                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
                                 .accessibilityAddTraits(model.sidebarSelection == .thread(thread.id) ? .isSelected : [])
                                 .help("\(thread.title.isEmpty ? "Untitled" : thread.title)\n\(thread.updatedAt.formatted(.relative(presentation: .named)))")
                             }
@@ -189,7 +189,7 @@ struct NotchWorkspaceView: View {
                             } label: {
                                 Image(systemName: "plus").font(PerryTheme.Icon.utility).imageScale(.small)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.pressable)
                             .foregroundStyle(PerryTheme.Colors.icon)
                             .accessibilityLabel("New helper")
                             .help("New helper: its own job, schedule, and memory")
@@ -210,7 +210,7 @@ struct NotchWorkspaceView: View {
                                     .padding(.vertical, 4)
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(RailRowStyle(cornerRadius: 8))
+                            .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
                             .help("Make a helper for a job you repeat")
                         }
                         ForEach(model.perrys) { perry in
@@ -232,9 +232,9 @@ struct NotchWorkspaceView: View {
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 6)
-                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
                             }
-                            .buttonStyle(RailRowStyle(cornerRadius: 8))
+                            .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
                             .help("\(perry.name)\n\(perry.job)")
                             .contextMenu {
                                 Button("Edit \(perry.name)…") { model.sidebarSelection = .perryEditor(perry.id) }
@@ -276,7 +276,7 @@ struct NotchWorkspaceView: View {
                     }
                     .font(PerryTheme.Scale.body)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .accessibilityHint("Open connected apps settings")
                 Spacer()
                 Button {
@@ -287,7 +287,7 @@ struct NotchWorkspaceView: View {
                         .font(PerryTheme.Icon.rail)
                         .foregroundStyle(PerryTheme.Colors.icon)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .help("Settings")
             }
             .padding(.horizontal, 14)
@@ -346,7 +346,7 @@ struct NotchWorkspaceView: View {
                         .font(PerryTheme.Scale.body)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
                         .textSelection(.enabled)
                 }
             }
@@ -390,9 +390,9 @@ struct NotchWorkspaceView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background { selectionPill(model.sidebarSelection == selection) }
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
         }
-        .buttonStyle(RailRowStyle(cornerRadius: 8))
+        .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
         .keyboardShortcut(shortcut, modifiers: .command)
         .help("\(title) (⌘\(shortcut.character))")
         .accessibilityAddTraits(model.sidebarSelection == selection ? .isSelected : [])
@@ -401,7 +401,7 @@ struct NotchWorkspaceView: View {
     @ViewBuilder
     private func selectionPill(_ selected: Bool) -> some View {
         if selected {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                 .fill(Color.white.opacity(0.1))
                 .matchedGeometryEffect(id: "railSelection", in: railNamespace)
         }
@@ -585,7 +585,7 @@ struct WindowControlButton: View {
                 .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(RailRowStyle(cornerRadius: 8))
+        .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
         .foregroundStyle(PerryTheme.Colors.icon)
         .accessibilityLabel(label)
         .help(label)

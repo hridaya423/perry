@@ -1275,9 +1275,9 @@ enum OAuthError: Error, LocalizedError {
         case .callbackMissingCode: return "OAuth callback did not include an authorization code."
         case .providerReturned(let message): return message
         case .stateMismatch: return "OAuth state did not match the request."
-        case .tokenExchangeFailed(let status): return "OAuth token exchange returned HTTP \(status)."
+        case .tokenExchangeFailed(let status): return "Sign-in didn’t finish (error \(status)). Try connecting again."
         case .tokenResponseInvalid: return "OAuth token response was invalid."
-        case .refreshFailed(let status): return "OAuth token refresh returned HTTP \(status)."
+        case .refreshFailed(let status): return "Your sign-in expired (error \(status)). Connect the app again."
         case .deviceCodeExpired: return "The sign-in code expired before it was approved. Try connecting again."
         }
     }
@@ -1853,7 +1853,7 @@ actor RemoteIntegrationClient {
             )
         }
         guard (200..<300).contains(response.statusCode) else {
-            throw RemoteIntegrationError.providerReturned("The provider returned HTTP \(response.statusCode).")
+            throw RemoteIntegrationError.providerReturned("That app didn’t answer correctly (error \(response.statusCode)). Try again.")
         }
         try validateProviderResponse(data, definition: definition)
         return data

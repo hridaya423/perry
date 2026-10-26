@@ -61,9 +61,9 @@ struct AppsBeat: View {
                     }
                 }
                 .padding(.vertical, 2)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                         .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
                 }
             }

@@ -210,7 +210,7 @@ final class CustomConnectorsSignInTests: XCTestCase {
 
         let status = await connectors.add(CustomConnector(name: "Hosted", endpoint: hosted), secret: "wrong")
 
-        XCTAssertEqual(status, .failed("The server rejected the bearer token."))
+        XCTAssertEqual(status, .failed("The server didn’t accept your key."))
         XCTAssertEqual(browser.opened, 0)
         XCTAssertTrue(connectors.connectors.isEmpty)
         XCTAssertEqual(try keychain.accounts(), [])

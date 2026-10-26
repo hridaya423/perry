@@ -36,7 +36,7 @@ struct TypedActionRouter: ExecutableActionExecutor {
             return try await WorkspaceFileRuntime(baseURL: base).execute(approvedAction)
         case .computer(let window, let command):
             guard let worker else {
-                throw ExecutionError(message: "no computer-use worker is attached to this session")
+                throw ExecutionError(message: "Perry can’t control apps right now. Restart Perry.")
             }
             let binding = try await bindComputerCommand?(action)
             let computerAction = try ComputerAction(actionID: action.id.rawValue, command: binding?.command ?? command, expectedWindow: window)
@@ -54,7 +54,7 @@ struct TypedActionRouter: ExecutableActionExecutor {
             switch command {
             case .codingTask(let runtimeID, let prompt):
                 guard let runCodingTask else {
-                    throw ExecutionError(message: "no sandboxed coding runtime is configured")
+                    throw ExecutionError(message: "No coding agent is set up. Choose one in Settings > Brain.")
                 }
                 try await runCodingTask(runtimeID, workspace, prompt)
                 return ActionExecutionResult(action: action)

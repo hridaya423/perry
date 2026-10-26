@@ -102,7 +102,7 @@ struct GuideControlsView: View {
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .accessibilityLabel("More step options")
@@ -135,7 +135,7 @@ struct GuideControlsView: View {
                             .background(Color.white.opacity(0.06), in: Circle())
                             .overlay(Circle().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .accessibilityLabel("Start at step \(index + 1)")
                     .accessibilityHint(state.markerCaptions[index])
                 }

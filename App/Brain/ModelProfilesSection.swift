@@ -50,7 +50,7 @@ struct ModelProfilesSection: View {
                         RadioMark(selected: brain.activeProfile?.id == profile.id)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .accessibilityAddTraits(brain.activeProfile?.id == profile.id ? .isSelected : [])
                 Spacer()
                 if brain.profileChecks[profile.id] == .checking {

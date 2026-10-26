@@ -98,7 +98,7 @@ struct IntegrationRow: View {
             }
             if !connected && hasBundledClient {
                 Button(settingUp ? "Cancel own setup" : "Use your own setup") { settingUp.toggle() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .font(PerryTheme.Typography.note)
                     .underline()
                     .foregroundStyle(PerryTheme.Colors.textSecondary)

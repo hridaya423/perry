@@ -169,7 +169,7 @@ private struct BackgroundTaskRow: View {
         .notchDialog(
             "Undo my changes?",
             isPresented: $showUndoConfirmation,
-            message: "I’ll reverse these, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays as it is. I stop at the first conflict."
+            message: "I’ll reverse these, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays as it’s. I stop at the first conflict."
         ) {
             [NotchDialog.Action("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
                 backgroundTasks.undoWorkspaceChanges(record)
@@ -187,7 +187,7 @@ private struct BackgroundTaskRow: View {
                         .accessibilityLabel("Stop task \(record.goal)")
                 } else {
                     if recoveryNotice == .legacyPlan {
-                        Button("Replan") { backgroundTasks.replan(record.id) }
+                        Button("Plan again") { backgroundTasks.replan(record.id) }
                             .buttonStyle(InkButtonStyle())
                             .controlSize(.small)
                             .accessibilityLabel("Replan task \(record.goal)")
@@ -279,7 +279,7 @@ private struct WorkspaceTaskApprovalView: View {
                 .font(PerryTheme.Scale.title)
             if let action = record.workspaceActionToApprove,
                case .transform(let workspace, .createUTF8File(let path, let contents)) = action.operation {
-                Text("I’ll create one file in this task’s folder. I won’t overwrite an existing file.")
+                Text("I’ll create one file in this task’s folder. I’ll not overwrite an existing file.")
                     .font(PerryTheme.Scale.body)
                 Text(workspace.appendingPathComponent(path).path)
                     .font(PerryTheme.Scale.code)

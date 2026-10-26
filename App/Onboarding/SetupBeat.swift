@@ -146,9 +146,9 @@ struct SetupBeat: View {
                     privacyRow.environment(\.setupCompact, compact)
                 }
             }
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
             if let message = brain.signInError ?? voiceError ?? (brainPick == .cloud ? advice.brainNote : nil) {
                 Text(message)
@@ -199,7 +199,7 @@ struct SetupBeat: View {
                 Button("Get key") { keyCapture.getKey(for: service) }
             }
             Menu {
-                Button("Natural voice on this Mac (380 MB)") {
+                Button("On-device voice, 380\u{00A0}MB") {
                     if KokoroVoice.isInstalled { voiceOverride = .kokoro } else { installKokoro() }
                 }
                 Button("Apple Premium voice") {

@@ -341,7 +341,7 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
         case .targetSessionMismatch:
             return "That control is from an earlier look at the screen. I need to look again."
         case .protectedTarget:
-            return "I won’t look at or use a window that holds sensitive information."
+            return "I’ll not look at or use a window that holds sensitive information."
         case .unsupportedAction:
             return "I can’t do that in this window."
         case .terminationUnconfirmed:

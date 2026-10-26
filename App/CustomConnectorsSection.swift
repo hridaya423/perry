@@ -23,7 +23,7 @@ struct CustomConnectorsSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Custom connectors")
                         .font(PerryTheme.Typography.panelBody.weight(.semibold))
-                    Text("Connect any MCP server. Perry asks before it changes anything.")
+                    Text("Connect a tool you set up yourself. Perry asks before it changes anything.")
                         .settingNote()
                 }
                 Spacer(minLength: 8)
@@ -42,7 +42,7 @@ struct CustomConnectorsSection: View {
             }
         }
         .padding(16)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
     }
 
     private func row(_ connector: CustomConnector) -> some View {
@@ -73,7 +73,7 @@ struct CustomConnectorsSection: View {
                     .controlSize(.small)
             }
             Button("Remove", role: .destructive) { connectors.remove(connector.id) }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }

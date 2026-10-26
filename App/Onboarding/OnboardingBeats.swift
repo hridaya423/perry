@@ -87,7 +87,7 @@ private struct HelloBeat: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(LateEntrance(delay: HelloInk.lift.upperBound))
             ZStack {
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
                     .fill(PerryTheme.Colors.surface)
                     .strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
                 TextField("Your name", text: $name)
@@ -160,7 +160,7 @@ private struct AccessBeat: View {
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("I’ll type instead") { director.skip() }
+                    Button("Type instead") { director.skip() }
                 }
             } trailing: {
                 EmptyView()
@@ -332,14 +332,14 @@ struct BrainBeat: View {
             .padding(12)
             .frame(width: 204, alignment: .topLeading)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                     .strokeBorder(isSelected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -359,9 +359,9 @@ private struct ShortcutsBeat: View {
             Color.clear
         } detail: {
             ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                         .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
                 }
                 .multilineTextAlignment(.leading)

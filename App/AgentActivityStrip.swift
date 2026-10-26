@@ -294,7 +294,7 @@ struct AgentActivityStripView: View {
                     }
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .contentShape(Rectangle())
             .accessibilityElement(children: .ignore)
             .accessibilityAddTraits(.isButton)
@@ -410,7 +410,7 @@ struct AgentActivityStripView: View {
                     .accessibilityLabel(TalkGesture.steer)
                 Text("·").accessibilityHidden(true)
                 Button(typedSteeringExpanded ? "Hide typing" : "Type") { typedSteeringExpanded.toggle() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .foregroundStyle(PerryTheme.Colors.text)
             }
             .font(PerryTheme.Scale.secondary)

@@ -244,7 +244,7 @@ private struct VoiceOptionRow: View {
                     .frame(width: 24, height: 24)
                     .background(PerryTheme.Colors.chip, in: Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityLabel("Preview \(name)")
             Button(action: select) {
                 HStack(spacing: 8) {
@@ -262,7 +262,7 @@ private struct VoiceOptionRow: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityLabel(name)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
@@ -288,7 +288,7 @@ private struct PronunciationsCard: View {
                             .frame(width: 24, height: 24)
                             .background(PerryTheme.Colors.chip, in: Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .accessibilityLabel("Say \(entry.written)")
                     Text(entry.written).font(PerryTheme.Scale.body)
                     Text("says “\(entry.spoken)”").font(PerryTheme.Scale.body).foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -297,7 +297,7 @@ private struct PronunciationsCard: View {
                         try? store.remove(written: entry.written)
                         entries = store.entries()
                     } label: { Image(systemName: "minus.circle") }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .foregroundStyle(PerryTheme.Colors.icon)
                     .accessibilityLabel("Remove \(entry.written)")
                 }

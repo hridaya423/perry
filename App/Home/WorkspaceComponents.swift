@@ -13,12 +13,12 @@ struct Keycap: View {
             .padding(.horizontal, 6)
             .frame(minWidth: 22, minHeight: 20)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                     .fill(PerryTheme.Colors.surface)
                     .shadow(color: .black.opacity(0.5), radius: 0, x: 0, y: 1)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                     .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             )
     }
@@ -60,12 +60,11 @@ struct WorkspaceComposer: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .background(PerryTheme.Colors.primaryAction, in: Circle())
                 }
-                .buttonStyle(RailRowStyle(cornerRadius: 14))
+                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.card))
                 .disabled(!canSend)
                 .keyboardShortcut(.return, modifiers: .command)
                 .accessibilityLabel("Send")
                 .help("Send (Return)")
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
             } else if let onVoice {
                 Button(action: onVoice) {
                     Image(systemName: "mic")
@@ -77,19 +76,17 @@ struct WorkspaceComposer: View {
                 .buttonStyle(RailRowStyle())
                 .accessibilityLabel("Talk to Perry")
                 .help(TalkGesture.talk)
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
             if let onExpand {
                 WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open Perry", action: onExpand)
             }
         }
-        .animation(PerryTheme.Motion.glide, value: hasText)
         .padding(.leading, 16)
         .padding(.trailing, 8)
         .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(PerryTheme.Colors.surface))
+        .background(RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .circular).fill(PerryTheme.Colors.surface))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .circular)
                 .strokeBorder(dropTargeted ? PerryTheme.Colors.accent.opacity(0.8) : focused ? PerryTheme.Colors.accent.opacity(0.35) : PerryTheme.Colors.subtleSeparator, lineWidth: dropTargeted ? 2 : 1)
         )
         .animation(PerryTheme.Motion.panelStateChange, value: focused)

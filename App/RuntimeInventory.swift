@@ -191,7 +191,7 @@ struct RuntimeCLIDefinition {
             RuntimeCLIDefinition(
                 name: "Claude Code",
                 usesProviderAuthentication: false,
-                unverifiedMessage: "Claude Code is installed, but I couldn’t confirm it’s Anthropic software, so I won’t use it.",
+                unverifiedMessage: "Claude Code is installed, but I couldn’t confirm it’s Anthropic software, so I’ll not use it.",
                 locate: { try CLIRuntime.locateExecutable() }, verify: RuntimeExecutableVerifier.claude,
                 authenticate: { try await CLIRuntime.authenticationStatus(executable: $0) },
                 id: "cli.claude-code",

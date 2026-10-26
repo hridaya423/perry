@@ -43,7 +43,7 @@ struct NotchListeningView: View {
                             .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                             .background(PerryTheme.Colors.primaryAction, in: Circle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .keyboardShortcut(.defaultAction)
                     .accessibilityLabel("Send now")
                     .help("Send now (Return)")

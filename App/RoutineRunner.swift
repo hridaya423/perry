@@ -343,7 +343,7 @@ final class RoutineRunner {
             },
             runCodingTask: { runtimeID, workspaceURL, prompt in
                 guard runtimeID == "cli.codex" else {
-                    throw ExecutionError(message: "no sandboxed coding runtime named \(runtimeID) is configured")
+                    throw ExecutionError(message: "No coding agent is set up. Choose one in Settings > Brain.")
                 }
                 let runtime = CodexRuntime(
                     executableLocator: { try CodexRuntime.bundledLocator() },

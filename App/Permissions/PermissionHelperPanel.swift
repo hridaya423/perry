@@ -133,7 +133,7 @@ struct PermissionHelperView: View {
                     Text("macOS will ask for your password.")
                     Spacer(minLength: 8)
                     Button("Reopen list", action: actions.reopenSettings)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .help("Open the \(pane.displayName()) list again")
                 }

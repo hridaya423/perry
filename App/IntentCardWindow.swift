@@ -133,7 +133,7 @@ struct IntentCardView: View {
                     }
                     if detail.count > 220 || detail.contains("\n") {
                         Button(showsFullDetail ? "Show less" : "Show more") { showsFullDetail.toggle() }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.pressable)
                             .font(PerryTheme.Scale.secondary)
                             .foregroundStyle(PerryTheme.Colors.accent)
                     }
@@ -165,7 +165,7 @@ struct IntentCardView: View {
                             .keyboardShortcut("r", modifiers: .command)
                             .accessibilityHint("Look at the screen again and show the preview")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }

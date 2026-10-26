@@ -184,7 +184,7 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
         }
         if type.contains("error") {
             let error = payload["error"] as? [String: Any]
-            return .error(error?["message"] as? String ?? "realtime voice provider error")
+            return .error(error?["message"] as? String ?? "The voice service reported a problem.")
         }
         if type == "response.created" {
             let response = payload["response"] as? [String: Any]

@@ -27,7 +27,7 @@ struct HomeConversationView: View {
                                 .textSelection(.enabled)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             if !turn.answer.isEmpty {
                                 ConversationAnswer(text: turn.answer)
@@ -57,7 +57,7 @@ struct HomeConversationView: View {
                     }
                     if thread.pendingTurn != nil && !isWorking {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label("I stopped before finishing. Check the app for changes before you continue. I won’t repeat the task on my own.", systemImage: "pause.circle")
+                            Label("I stopped before finishing. Check the app for changes before you continue. I’ll not repeat the task on my own.", systemImage: "pause.circle")
                                 .font(PerryTheme.Scale.body)
                                 .foregroundStyle(.secondary)
                             Button("Mark as reviewed") { model.onResolveInterrupted?(thread.id) }
@@ -418,7 +418,7 @@ private struct CodeBlock: View {
                 .padding(.trailing, 72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button {
                 NSPasteboard.general.clearContents()
@@ -454,7 +454,7 @@ private struct RememberedLine: View {
                     Text("Remembered: \(record.summary)")
                         .lineLimit(1)
                     Button("Undo") { undo(record) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                         .foregroundStyle(PerryTheme.Colors.accent)
                 }
                 .font(PerryTheme.Scale.secondary)

@@ -96,8 +96,8 @@ struct FirstGoalBeat: View {
                         .onSubmit { asking = false }
                         .padding(.horizontal, 16)
                         .frame(width: 360, height: 44)
-                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 22))
-                        .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(PerryTheme.Colors.subtleSeparator) }
+                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+                        .overlay { RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator) }
                         .task { focused = true }
                 }
             } actions: {

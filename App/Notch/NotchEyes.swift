@@ -89,9 +89,10 @@ final class NotchEyesModel: ObservableObject {
     }
 
     func hover(_ inside: Bool) {
-        withAnimation(inside ? .spring(response: 0.30, dampingFraction: 0.72) : .spring(response: 0.26, dampingFraction: 0.95)) {
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduced ? nil : inside ? .spring(response: 0.30, dampingFraction: 0.72) : .spring(response: 0.26, dampingFraction: 0.95)) {
             swollen = inside
-            look = inside ? CGSize(width: -2, height: 1) : .zero
+            look = inside && !reduced ? CGSize(width: -2, height: 1) : .zero
         }
         if inside { wake() }
     }

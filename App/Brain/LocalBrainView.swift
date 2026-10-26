@@ -72,7 +72,7 @@ struct LocalBrainView: View {
 
     private var abilityLine: String {
         guard case .ready = local.phase else { return "Perry checks what it can do after setup." }
-        return brain.localTaskCapable ? "It can use your apps." : "It chats privately but cannot use your apps yet."
+        return brain.localTaskCapable ? "It can use your apps." : "It chats privately but can’t use your apps yet."
     }
 
     @ViewBuilder
@@ -129,7 +129,7 @@ struct LocalBrainView: View {
             .settingsRowPadding()
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 

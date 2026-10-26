@@ -42,7 +42,7 @@ struct BrainChoiceSection: View {
                 .settingsRowPadding()
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityAddTraits(brain.modelChoice == .local ? .isSelected : [])
         }
         detail

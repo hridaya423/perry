@@ -76,7 +76,7 @@ struct TaskQuestionView: View {
             HStack {
                 Spacer()
                 Button("Stop task", role: .cancel, action: onCancel)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .font(.callout)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .keyboardShortcut(.cancelAction)

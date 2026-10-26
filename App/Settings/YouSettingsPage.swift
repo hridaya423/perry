@@ -79,7 +79,7 @@ struct YouSettingsPage: View {
                                 .frame(width: 22, height: 22)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                         .help("Forget this")
                         .accessibilityLabel("Forget: \(record.summary)")
                     }
@@ -158,7 +158,7 @@ struct YouSettingsPage: View {
         do {
             try controller.memoryFiles?.setProfileField(field, profile[field] ?? "")
         } catch {
-            self.error = "I could not save your \(field.lowercased()). Try again."
+            self.error = "I couldn’t save your \(field.lowercased()). Try again."
         }
     }
 
@@ -171,7 +171,7 @@ struct YouSettingsPage: View {
             let reply = try? await controller.brain.completeOnDevice(MemoryExtraction.importPrompt(pasted))
             let facts = (reply.map(MemoryExtraction.decodeImport) ?? []).filter { !known.contains($0.text.lowercased()) }
             guard reply != nil else {
-                error = "I could not read those notes. Check the brain in Brain settings, then try again."
+                error = "I couldn’t read those notes. Check the brain in Brain settings, then try again."
                 return
             }
             await controller.saveImportedFacts(facts)

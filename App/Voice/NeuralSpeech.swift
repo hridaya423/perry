@@ -314,7 +314,7 @@ struct CloudVoice: NeuralVoice {
                         for try await byte in bytes.prefix(2_000) { body.append(byte) }
                         throw NeuralSpeechError(message: status == 401 || status == 403
                             ? "\(provider.name) did not accept the voice key."
-                            : "\(provider.name) voice failed (\(status)).")
+                            : "\(provider.name) couldn’t speak that (error \(status)). Try again.")
                     }
                     var chunk = Data()
                     chunk.reserveCapacity(4_800)

@@ -214,7 +214,7 @@ final class CustomConnectors: ObservableObject {
             }
             result = ContinuousClock.now - started >= timeout
                 ? .failed("The server didn’t answer within \(timeout.formatted(.units(allowed: [.seconds], width: .wide))).")
-                : .failed(error is MCPUnauthorized && connector.secret == .bearer ? "The server rejected the bearer token." : error.localizedDescription)
+                : .failed(error is MCPUnauthorized && connector.secret == .bearer ? "The server didn’t accept your key." : error.localizedDescription)
         }
         if connectors.contains(where: { $0.id == connector.id }) {
             status[connector.id] = result

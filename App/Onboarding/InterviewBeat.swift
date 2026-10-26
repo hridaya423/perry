@@ -390,13 +390,13 @@ struct InterviewBeat: View {
                     .controlSize(.small)
                 }
                 .padding(10)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                 TextEditor(text: $model.pasted)
                     .font(PerryTheme.Scale.secondary)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .frame(height: 72)
-                    .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                     .overlay(alignment: .topLeading) {
                         if model.pasted.isEmpty {
                             Text("Paste the answer").font(PerryTheme.Scale.secondary).foregroundStyle(PerryTheme.Colors.textTertiary)
@@ -430,7 +430,7 @@ struct InterviewBeat: View {
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .foregroundStyle(PerryTheme.Colors.accent)
                 .accessibilityLabel("Hear Perry say your name")
                 TextField("For example, Hrid-yah", text: $model.draft)
@@ -442,8 +442,8 @@ struct InterviewBeat: View {
             }
             .padding(.horizontal, 10)
             .frame(width: 360, height: 44)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 22))
-            .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator) }
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator) }
             .task { model.sayName() }
         } actions: {
             OnboardingFooter {
@@ -474,7 +474,7 @@ struct InterviewBeat: View {
                 OnboardingProgress(current: index, count: model.questionCount)
                     .padding(.trailing, 10)
             } primary: {
-                Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: model.thinking ? "One sec…" : "Continue") }
+                Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: model.thinking ? "Thinking…" : "Continue") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
@@ -527,15 +527,15 @@ struct InterviewBeat: View {
                     .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityLabel(listener.listening ? "Stop listening" : "Answer by voice")
         }
         .padding(.leading, 16)
         .padding(.trailing, 6)
         .frame(width: 360, height: 44)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 22))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 22)
+            RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
                 .strokeBorder(focused || listener.listening ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
         }
         .task(id: index) {
@@ -569,7 +569,7 @@ struct InterviewBeat: View {
     }
 
     private var review: some View {
-        OnboardingBeatLayout(title: "What I know about you", message: model.extracting ? "Tidying up…" : "I haven’t saved this yet.") {
+        OnboardingBeatLayout(title: "What I know about you", message: model.extracting ? "Sorting your answers…" : "I haven’t saved this yet.") {
             Color.clear
         } detail: {
             ScrollView {
@@ -598,9 +598,9 @@ struct InterviewBeat: View {
             }
             .frame(maxHeight: 220)
             .fixedSize(horizontal: false, vertical: true)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                     .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
         } actions: {
@@ -636,7 +636,7 @@ struct InterviewBeat: View {
             Spacer(minLength: 0)
             if let play {
                 Button(action: play) { Image(systemName: "play.fill").imageScale(.small) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .foregroundStyle(PerryTheme.Colors.icon)
                     .accessibilityLabel("Hear your name")
             }

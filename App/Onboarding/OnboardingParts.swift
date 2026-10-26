@@ -145,9 +145,9 @@ struct OnboardingRow<Leading: View, Trailing: View>: View {
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 14)
         .frame(height: 48)
-        .background(PerryTheme.Colors.surface.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(PerryTheme.Colors.surface.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
                 .strokeBorder(selected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
         }
     }

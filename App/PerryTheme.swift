@@ -89,6 +89,8 @@ enum PerryTheme {
     }
 
     enum Radius {
+        static let control = CGFloat(8)
+        static let card = CGFloat(14)
         static let panel = CGFloat(22)
     }
 

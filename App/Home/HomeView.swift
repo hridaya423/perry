@@ -32,7 +32,7 @@ struct SuggestionsView: View {
                         .accessibilityLabel("Suggestions from connected apps")
                 }
                 .padding(16)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                 .padding(.bottom, 6)
                 ForEach(model.suggestions) { card in
                     suggestionCard(card)
@@ -85,9 +85,9 @@ struct SuggestionsView: View {
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
                 Button("Adjust") { editing = card }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                 Button("Dismiss") { model.onSuggestionDismiss?(card) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
             .font(PerryTheme.Scale.body)
@@ -96,7 +96,7 @@ struct SuggestionsView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
     }
 }
 
@@ -181,10 +181,10 @@ struct RoutinesView: View {
                                     .padding(.vertical, 8)
                                     .background(
                                         selected?.id == routine.id ? PerryTheme.Colors.surface : .clear,
-                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
                                     )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.pressable)
                             .accessibilityAddTraits(selected?.id == routine.id ? .isSelected : [])
                         }
                     }
@@ -243,7 +243,7 @@ struct RoutinesView: View {
                                 Button(role: .destructive) { deleting = routine } label: {
                                     Label("Delete…", systemImage: "trash")
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.pressable)
                                 .font(PerryTheme.Scale.body)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             }

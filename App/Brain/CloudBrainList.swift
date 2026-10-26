@@ -108,7 +108,7 @@ struct CloudBrainList: View {
                 .settingsRowPadding()
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .accessibilityAddTraits(selection == row ? .isSelected : [])
             .accessibilityValue(status(row))
         }

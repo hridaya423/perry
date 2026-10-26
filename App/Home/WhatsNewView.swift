@@ -27,7 +27,7 @@ struct WhatsNewView: View {
                             .font(PerryTheme.Scale.body.weight(.medium))
                             .foregroundStyle(PerryTheme.Colors.accent)
                             .frame(width: 30, height: 30)
-                            .background(PerryTheme.Colors.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .background(PerryTheme.Colors.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(change.title)
@@ -51,7 +51,7 @@ struct WhatsNewView: View {
                     guard let url = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md") else { return }
                     NSWorkspace.shared.open(url)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .font(PerryTheme.Scale.body)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
