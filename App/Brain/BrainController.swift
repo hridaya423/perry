@@ -351,6 +351,9 @@ final class BrainController: ObservableObject {
         var requirement = requirement
         switch choice {
         case .chatGPT:
+            guard account != .signedOut else {
+                throw ModelProviderError(kind: .notConfigured, provider: .codex, message: PromptAssembler.noBrainAnswer)
+            }
             requirement.providerID = .codex
         case .acp:
             guard let acpAgent, acpAgentAvailable else {

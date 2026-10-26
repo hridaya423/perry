@@ -109,6 +109,30 @@ final class BrainControllerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
     }
 
+    func testSignedOutChatGPTRoutesToNoBrain() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let script = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Packages/PerryBrain/Tests/PerryBrainTests/Fixtures/fake-codex-app-server.py")
+        let process = CodexAppServerProcess(configuration: .init(
+            binaryURL: URL(fileURLWithPath: "/usr/bin/python3"), codexHome: root.appendingPathComponent("home"),
+            workingDirectory: root.appendingPathComponent("work"), processArguments: ["-u", script.path],
+            extraEnvironment: ["SCENARIO": "a", "FAKE_LOG": root.appendingPathComponent("requests.jsonl").path]
+        ))
+        let provider = CodexAppServerProvider(process: process)
+        let brain = BrainController(defaults: try isolatedDefaults(), discoverLocalModels: { [] }, codexFactory: { provider })
+        await brain.refresh()
+        XCTAssertEqual(brain.account, .signedOut)
+        do {
+            _ = try await brain.route(RouteRequirement(capabilities: [.streaming], tier: .deep))
+            XCTFail("A signed-out ChatGPT choice must not route")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, PromptAssembler.noBrainAnswer)
+        }
+        await brain.stopSetup()
+    }
+
     func testMaintenanceRetiresProviderWhileAccountRefreshIsInitializing() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

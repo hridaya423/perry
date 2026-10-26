@@ -673,7 +673,7 @@ final class HomeController {
                         self.homeModel.updateNewDraft("")
                     }
                     return await self.answerProvider?(input, target, onPartial)
-                        ?? .failed("Connect a model in Settings to start a conversation.")
+                        ?? .failed(PromptAssembler.noBrainAnswer)
                 } catch is CancellationError {
                     return .interrupted
                 } catch {

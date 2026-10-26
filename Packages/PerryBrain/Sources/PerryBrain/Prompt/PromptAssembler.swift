@@ -192,6 +192,58 @@ public enum PromptAssembler {
         return parts.joined(separator: "\n\n")
     }
 
+    public static let noBrainAnswer = """
+        I don't have a brain connected yet, so I can't answer. Sign in with ChatGPT or add an API key \
+        in Settings › Models. If your Mac supports Apple Intelligence, you can turn that on there instead. \
+        Then ask me again.
+        """
+
+    private static let capabilityQuestions: Set<String> = [
+        "what can you do", "what can you do for me", "what can you help me with", "what can you help with",
+        "how can you help", "how can you help me", "what do you do", "what are you able to do",
+        "what are your capabilities", "what can i ask you", "what are you capable of", "what are you good at",
+        "what can perry do", "help",
+    ]
+
+    public static func isCapabilityQuestion(_ text: String) -> Bool {
+        var words = text.lowercased()
+            .unicodeScalars.filter { CharacterSet.letters.contains($0) || CharacterSet.whitespaces.contains($0) }
+            .map(String.init).joined()
+            .split(whereSeparator: \.isWhitespace).map(String.init)
+        if words.first == "hey" { words.removeFirst() }
+        if words.first == "perry" { words.removeFirst() }
+        var question = words.joined(separator: " ")
+        for suffix in [" right now", " here"] where question.hasSuffix(suffix) {
+            question.removeLast(suffix.count)
+        }
+        return capabilityQuestions.contains(question)
+    }
+
+    public static func answerForCapabilityQuestion(_ snapshot: CapabilitySnapshot) -> String {
+        guard case .model(let name, let capabilities) = snapshot.brain else { return noBrainAnswer }
+        let status = Dictionary(uniqueKeysWithValues: CapabilityResolver.resolve(snapshot).map { ($0.verb, $0.status) })
+        var sentences: [String] = []
+        if capabilities.contains(.local) {
+            sentences.append("Right now I'm running privately on your Mac with \(name).")
+        }
+        if status[.screen] == .available {
+            sentences.append("I can see your screen, answer questions about it, and walk you through any app step by step.")
+        } else {
+            sentences.append("I can chat, explain things, and help you write or think something through.")
+        }
+        if status[.act] == .available {
+            sentences.append("Say “do this for me” and I'll do the task myself.")
+        }
+        if status[.apps] == .available {
+            sentences.append("I can also use " + snapshot.connectedApps.joined(separator: ", ") + ".")
+        }
+        if case .blocked(_, let fix) = status[.screen] {
+            sentences.append("To let me see your screen and guide you: \(fix)")
+        }
+        sentences.append("What are you working on?")
+        return sentences.joined(separator: " ")
+    }
+
     private static func summary(of verb: Capability.Verb, snapshot: CapabilitySnapshot) -> String {
         switch verb {
         case .chat: return "chat, explain things, and help the user write or think something through"

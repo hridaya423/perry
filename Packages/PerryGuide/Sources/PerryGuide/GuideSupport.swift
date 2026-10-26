@@ -79,7 +79,7 @@ public enum GuideIntentParser {
         case notAGuideRequest
     }
 
-    private static let guideTriggers = ["show me", "teach me", "guide me", "how do i", "help me"]
+    private static let guideTriggers = ["show me", "teach me", "guide me", "how do i"]
     private static let everythingTriggers = ["show me everything", "paint it all", "show all steps"]
     private static let doTriggers = ["perry, do", "do this for me", "take over"]
 

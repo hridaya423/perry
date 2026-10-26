@@ -21,7 +21,7 @@ final class CommandRouterTests: XCTestCase {
         expect("", .idle, nil, .showPanel)
         expect("what can you help me with", .idle, nil, .ask("what can you help me with"))
         expect("how do I export a PDF", .idle, nil, .guide("export a PDF"))
-        expect("help me write a poem", .idle, nil, .guide("write a poem"))
+        expect("help me write a poem", .idle, nil, .ask("help me write a poem"))
         expect("show me everything for invoices", .idle, nil, .showEverything("for invoices"))
         expect("take over and rename these", .idle, nil, .doTask("and rename these"))
         expect("do this for me: tidy Downloads", .idle, nil, .doTask("tidy Downloads"))

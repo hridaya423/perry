@@ -231,6 +231,12 @@ final class AgentCoordinator: ObservableObject {
             try Task.checkCancellation()
             if let operation {
                 (answer, finish) = try await operation(thread)
+            } else if mode == .chat || mode == .talk, PromptAssembler.isCapabilityQuestion(goal) {
+                let brain = try? await provider(RouteRequirement(capabilities: [.streaming], tier: tier))
+                try Task.checkCancellation()
+                answer = PromptAssembler.answerForCapabilityQuestion(await capabilitySnapshot(brain: brain, mode: mode))
+                sink(.textDelta(answer))
+                finish = .completed
             } else {
                 if let spatialContext {
                     try GuideTargetValidator.requireUnprotected(spatialContext.observation)

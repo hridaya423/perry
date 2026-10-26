@@ -88,6 +88,52 @@ final class PromptAssemblerTests: XCTestCase {
         XCTAssertLessThan(assemble(Self.cases[1]).utf8.count / 4, 700)
     }
 
+    func testCapabilityQuestionsAreRecognisedAndOthersAreNot() {
+        let questions = [
+            "what can you do", "What can you do?", "what can you help me with", "What can you help with?",
+            "how can you help", "How can you help me?", "what do you do", "what are you able to do",
+            "what are your capabilities", "what can I ask you", "Perry, what can you do?", "hey perry what can you do",
+            "what can you do right now", "what can you do here", "what can you do for me", "what are you capable of",
+            "what are you good at", "what can Perry do", "help", "Help!",
+        ]
+        let others = [
+            "", "help me write a poem", "help me rename these files", "what can you do with this spreadsheet",
+            "what can you see on my screen", "how do I export a PDF", "show me how to share", "do this for me: tidy Downloads",
+            "what is this button", "can you help me write an email", "what does this error mean", "what can I do about this error",
+            "who made you", "stop", "what time is it", "summarise this page", "helpful tips for Keynote",
+            "what did you do", "what can you do to fix this", "explain this chart",
+        ]
+        for text in questions { XCTAssertTrue(PromptAssembler.isCapabilityQuestion(text), text) }
+        for text in others { XCTAssertFalse(PromptAssembler.isCapabilityQuestion(text), text) }
+    }
+
+    func testCapabilityAnswerFollowsTheSnapshot() {
+        let all = PromptAssembler.answerForCapabilityQuestion(Self.cases[0].snapshot)
+        XCTAssertTrue(all.contains("see your screen"))
+        XCTAssertTrue(all.contains("do this for me"))
+        XCTAssertTrue(all.contains("Gmail, Notion"))
+        XCTAssertFalse(all.contains("Settings"))
+
+        let apple = PromptAssembler.answerForCapabilityQuestion(Self.cases[1].snapshot)
+        XCTAssertTrue(apple.contains("privately on your Mac with Apple Intelligence"))
+        XCTAssertFalse(apple.contains("I can see your screen"))
+        XCTAssertTrue(apple.contains("Settings › Models"))
+
+        let noScreen = PromptAssembler.answerForCapabilityQuestion(Self.cases[2].snapshot)
+        XCTAssertTrue(noScreen.contains("Accessibility"))
+        XCTAssertFalse(noScreen.contains("do this for me"))
+
+        let none = PromptAssembler.answerForCapabilityQuestion(.init(brain: .none, accessibility: true, screenRecording: true, connectedApps: [], mode: .chat))
+        XCTAssertEqual(none, PromptAssembler.noBrainAnswer)
+        XCTAssertTrue(none.contains("Settings"))
+
+        for entry in Self.cases {
+            let answer = PromptAssembler.answerForCapabilityQuestion(entry.snapshot)
+            XCTAssertLessThanOrEqual(answer.split(separator: ".").count, 5, entry.name)
+            XCTAssertNil(answer.range(of: #"\b(screen|ui|files|integrations)\.[a-z]"#, options: .regularExpression), entry.name)
+        }
+    }
+
     func testGoldens() throws {
         let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/PromptGoldens")
         let update = ProcessInfo.processInfo.environment["UPDATE_GOLDENS"] == "1"

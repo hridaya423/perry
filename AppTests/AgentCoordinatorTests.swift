@@ -335,6 +335,29 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertFalse(system.contains("cannot read apps"))
     }
 
+    func testCapabilityQuestionAnswersFromLiveStateWithoutAModelCall() async throws {
+        let provider = ConversationTestProvider()
+        let coordinator = AgentCoordinator(
+            provider: { _ in provider }, host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: try directory()), consent: ToolConsentStore(directory: nil),
+            promptEnvironment: { .init(accessibility: true, screenRecording: false, connectedApps: []) }
+        )
+        let events = await collect(coordinator.run(threadID: UUID(), goal: "What can you help me with?"))
+        XCTAssertEqual(events.last, .finished(.completed))
+        guard case .textDelta(let answer) = events.first else { return XCTFail("Expected the answer first") }
+        XCTAssertTrue(answer.contains("Screen Recording"))
+        XCTAssertTrue(provider.requests.isEmpty)
+
+        let unrouted = AgentCoordinator(
+            provider: { _ in throw ModelProviderError(kind: .notConfigured, provider: "router", message: "none") },
+            host: PerryToolHost(executors: []), threads: ThreadStore(directory: try directory()),
+            consent: ToolConsentStore(directory: nil)
+        )
+        let none = await collect(unrouted.run(threadID: UUID(), goal: "what can you do"))
+        XCTAssertEqual(none.first, .textDelta(PromptAssembler.noBrainAnswer))
+        XCTAssertEqual(none.last, .finished(.completed))
+    }
+
     func testRunIdentityIsDurableBeforeProviderWorkStarts() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)

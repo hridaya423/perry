@@ -84,5 +84,6 @@ final class GuideIntentParserTests: XCTestCase {
     func testNonRequestsAreRejected() {
         XCTAssertEqual(GuideIntentParser.parse(""), .notAGuideRequest)
         XCTAssertEqual(GuideIntentParser.parse("what a lovely day"), .notAGuideRequest)
+        XCTAssertEqual(GuideIntentParser.parse("help me write a poem"), .notAGuideRequest)
     }
 }
