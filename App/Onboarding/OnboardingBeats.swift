@@ -140,7 +140,7 @@ private struct AccessBeat: View {
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
-                row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read buttons, menus and fields, and click for you.", icon: "accessibility",
+                row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read and click in your apps.", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
                 row(.microphone, title: "Microphone", detail: "So I can hear you when you talk to me.", icon: "mic",
                     granted: director.permissions?.microphone.isUsable == true)

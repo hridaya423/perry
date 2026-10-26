@@ -37,7 +37,7 @@ final class InterviewModel: ObservableObject {
         case .direct: "the service behind your API key"
         case .local: nil
         }
-        return service.map { "I send them to \($0) with your questions." }
+        return service.map { "I share your notes with \($0) when I answer." }
     }
 
     @Published private(set) var step = Step.consent

@@ -475,7 +475,7 @@ struct NotchWorkspaceView: View {
             choosesTarget = true
         } label: {
             Label {
-                Text(target.map(CompactTargetChooser.targetName) ?? "Choose window")
+                Text(target.map(CompactTargetChooser.targetName) ?? "Window")
             } icon: {
                 if let bundleID = target.flatMap(CompactTargetChooser.bundleID) {
                     BrandMark(id: bundleID, name: target.map(CompactTargetChooser.applicationName), bundleID: bundleID, size: 16)
