@@ -409,15 +409,15 @@ struct RemoteIntegrationDefinition: Identifiable, Equatable, Sendable {
     }
     var connectionHint: String {
         switch id {
-        case "google-calendar": return "Events from your Google calendars"
-        case "google-drive": return "Files Perry creates or you open with it"
-        case "google-gmail": return "Read access to mail. Needs your own Google OAuth app until Google reviews Perry"
-        case "microsoft": return "Outlook mail, calendar, and OneDrive files, read-only"
-        case "notion": return "Pages, databases, and workspace search"
-        case "slack": return "Workspace and channel access"
-        case "linear": return "Issues, teams, and workspace metadata"
-        case "github": return "Your profile, notifications, and assigned issues"
-        default: return "Provider API access"
+        case "google-calendar": return "Read your events."
+        case "google-drive": return "Read files you open with Perry."
+        case "google-gmail": return "Read your mail. You need your own Google setup until Google reviews Perry."
+        case "microsoft": return "Read your mail, calendar and files."
+        case "notion": return "Read your pages and databases."
+        case "slack": return "Read your channels and messages."
+        case "linear": return "Read your issues and projects."
+        case "github": return "Read your notifications."
+        default: return "Read data from this app."
         }
     }
 

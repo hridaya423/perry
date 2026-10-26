@@ -90,23 +90,23 @@ struct IntegrationRow: View {
                         .disabled(operationState.isWorking)
                         .accessibilityLabel("Connect \(definition.displayName)")
                 } else {
-                    Button(settingUp ? "Cancel" : "Set up") { settingUp.toggle() }
+                    Button(settingUp ? "Cancel" : "Connect") { settingUp.toggle() }
                         .buttonStyle(InkButtonStyle(.secondary))
                         .controlSize(.small)
-                        .accessibilityLabel(settingUp ? "Cancel \(definition.displayName) setup" : "Set up \(definition.displayName)")
+                        .accessibilityLabel(settingUp ? "Cancel \(definition.displayName) setup" : "Connect \(definition.displayName)")
                 }
             }
             if !connected && hasBundledClient {
-                Button(settingUp ? "Cancel own OAuth app" : "Use my own OAuth app") { settingUp.toggle() }
+                Button(settingUp ? "Cancel own setup" : "Use your own setup") { settingUp.toggle() }
                     .buttonStyle(.plain)
                     .font(PerryTheme.Typography.note)
                     .underline()
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .accessibilityLabel(settingUp ? "Cancel own OAuth app for \(definition.displayName)" : "Use my own OAuth app for \(definition.displayName)")
+                    .accessibilityLabel(settingUp ? "Cancel own setup for \(definition.displayName)" : "Use your own setup for \(definition.displayName)")
             }
             if !connected && settingUp {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text((hasBundledClient ? "Sign in with your own OAuth app for \(definition.displayName) instead of Perry’s. " : "This build needs your own OAuth app for \(definition.displayName). ") + definition.redirectInstructions)
+                    Text((hasBundledClient ? "Sign in with your own setup for \(definition.displayName) instead of Perry’s. " : "\(definition.displayName) needs your own sign-in setup. ") + definition.redirectInstructions)
                         .font(PerryTheme.Typography.note)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -136,7 +136,7 @@ struct IntegrationRow: View {
                 .padding(.top, 4)
             }
             if connected && !definition.allowedWritePathPrefixes.isEmpty {
-                Toggle("Allow agent writes", isOn: Binding(
+                Toggle("Let Perry make changes", isOn: Binding(
                     get: { writesEnabled },
                     set: { value in setWrites(value) }
                 ))
@@ -144,7 +144,7 @@ struct IntegrationRow: View {
                 .font(PerryTheme.Typography.note)
             }
             if connected {
-                Text(definition.writesEnabledByDefault ? "Read and write access is available." : "Read-only by default. Writes require your approval.")
+                Text(definition.writesEnabledByDefault ? "Perry can read and make changes." : "Read-only to start. Perry asks before it makes changes.")
                     .font(PerryTheme.Typography.note)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
@@ -162,7 +162,7 @@ struct IntegrationRow: View {
         .notchDialog(
             "Disconnect \(definition.displayName)?",
             isPresented: $showDisconnectConfirmation,
-            message: "Perry removes the saved credential and write permission. You’ll need to authorize this integration again to reconnect."
+            message: "I’ll remove the saved sign-in and permission to make changes. To reconnect, sign in again."
         ) {
             [NotchDialog.Action("Disconnect \(definition.displayName)", role: .destructive) {
                 disconnect()
@@ -180,7 +180,7 @@ struct IntegrationRow: View {
     }
 
     private func connect() {
-        setOperationState(.working("Opening secure authorization…"))
+        setOperationState(.working("Opening sign-in…"))
         connections.connect(definition, clientID: clientID, clientSecret: clientSecret, deviceCodePrompt: showDeviceCode) { result in
             switch result {
             case .success:
@@ -202,11 +202,11 @@ struct IntegrationRow: View {
     private func showDeviceCode(_ prompt: DeviceCodePrompt) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(prompt.userCode, forType: .string)
-        setOperationState(.working("Enter code \(prompt.userCode) at \(prompt.verificationURL.host ?? "the provider"). It is copied to your clipboard."))
+        setOperationState(.working("Enter code \(prompt.userCode) at \(prompt.verificationURL.host ?? "the sign-in page"). I copied it to your clipboard."))
     }
 
     private func setWrites(_ value: Bool) {
-        if value { setOperationState(.working("Checking \(definition.displayName) write access…")) }
+        if value { setOperationState(.working("Checking \(definition.displayName) access…")) }
         connections.setWrites(value, for: definition, deviceCodePrompt: showDeviceCode) { result in
             switch result {
             case .success(let enabled):
@@ -226,7 +226,7 @@ struct IntegrationRow: View {
     }
 
     private func testConnection() {
-        setOperationState(.working("Testing provider access…"))
+        setOperationState(.working("Testing the connection…"))
         connections.test(definition) { result in
             switch result {
             case .success(let summary): setOperationState(.succeeded(summary))

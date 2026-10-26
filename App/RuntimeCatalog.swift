@@ -115,9 +115,9 @@ final class RuntimeCatalog: ObservableObject {
         do {
             return try await inspect().setup
         } catch is CancellationError {
-            return RuntimeSetupSnapshot(summary: "Runtime inspection was canceled.", records: [])
+            return RuntimeSetupSnapshot(summary: "I stopped looking for coding agents.", records: [])
         } catch {
-            return RuntimeSetupSnapshot(summary: "Perry could not inspect the available runtimes. Try refreshing runtime setup.", records: [])
+            return RuntimeSetupSnapshot(summary: "I couldn’t look for coding agents. Choose Check again.", records: [])
         }
     }
 
@@ -127,7 +127,7 @@ final class RuntimeCatalog: ObservableObject {
         case "cli.claude-code": return "Claude Code"
         case "local.task-planner": return "Perry local planner"
         case "local.workspace-files": return "Perry workspace files"
-        case "byok.vision": return "Custom provider"
+        case "byok.vision": return "Your API key"
         case DirectAIProvider.openAI.runtimeID: return DirectAIProvider.openAI.displayName
         case DirectAIProvider.anthropic.runtimeID: return DirectAIProvider.anthropic.displayName
         case DirectAIProvider.gemini.runtimeID: return DirectAIProvider.gemini.displayName

@@ -11,10 +11,10 @@ final class IntegrationOperationStateTests: XCTestCase {
     }
 
     func testWorkingStateClassifiesProgress() {
-        let state = IntegrationOperationState.working("Testing provider access…")
+        let state = IntegrationOperationState.working("Testing the connection…")
 
-        XCTAssertEqual(state.message, "Testing provider access…")
-        XCTAssertEqual(state.accessibilityLabel, "In progress: Testing provider access…")
+        XCTAssertEqual(state.message, "Testing the connection…")
+        XCTAssertEqual(state.accessibilityLabel, "In progress: Testing the connection…")
         XCTAssertTrue(state.isWorking)
     }
 

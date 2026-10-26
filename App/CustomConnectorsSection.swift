@@ -23,7 +23,7 @@ struct CustomConnectorsSection: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Custom connectors")
                         .font(PerryTheme.Typography.panelBody.weight(.semibold))
-                    Text("Add any MCP server. Perry asks before any tool that might change something.")
+                    Text("Connect any MCP server. Perry asks before it changes anything.")
                         .settingNote()
                 }
                 Spacer(minLength: 8)

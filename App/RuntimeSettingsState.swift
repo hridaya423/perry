@@ -8,7 +8,7 @@ final class RuntimeSettingsState: ObservableObject {
     }
 
     @Published private(set) var status = Status(
-        setup: RuntimeSetupSnapshot(summary: "Looking for agent runtimes…", records: []),
+        setup: RuntimeSetupSnapshot(summary: "Looking for coding agents…", records: []),
         cuaStatus: "Checking…"
     )
 

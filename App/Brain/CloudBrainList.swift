@@ -35,16 +35,16 @@ struct CloudBrainList: View {
             case .chatGPT: "ChatGPT"
             case .claudeCode: "Claude Code"
             case .agent(let agent): agent.name
-            case .apiKey: "API key…"
+            case .apiKey: "API key"
             }
         }
 
         var capability: String {
             switch self {
-            case .chatGPT: "Sees your screen and acts. Uses your ChatGPT plan."
-            case .claudeCode: "Sees your screen and acts. Uses your Claude plan."
-            case .agent(let agent): "Sees your screen and acts through \(agent.name)."
-            case .apiKey: "Sees your screen and acts with a vision model. Your provider bills you."
+            case .chatGPT: "Needs internet. Uses your ChatGPT plan."
+            case .claudeCode: "Needs internet. Uses your Claude plan."
+            case .agent(let agent): "Needs internet. Runs through \(agent.name)."
+            case .apiKey: "Needs internet. The service behind your key bills you."
             }
         }
     }

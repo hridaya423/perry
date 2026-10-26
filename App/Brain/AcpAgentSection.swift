@@ -25,7 +25,7 @@ struct AcpAgentSection: View {
         }
         HStack {
             if let current = brain.acpAgent {
-                Text(brain.acpAgentAvailable ? "Using \(current.name)." : "\(current.name) is not installed.").settingNote()
+                Text(brain.acpAgentAvailable ? "Using \(current.name)." : "\(current.name) isn’t installed.").settingNote()
             }
             Spacer()
             Button("Use this agent") { if let agent = chosen { brain.setAcpAgent(agent) } }
@@ -34,11 +34,11 @@ struct AcpAgentSection: View {
         Text("Perry starts the agent in its read-only mode when it has one and refuses the agent’s own requests to run commands or edit files. The agent can still read files without asking.")
             .settingNote()
             .onAppear(perform: load)
-        DisclosureGroup("More agents from the ACP registry") {
+        DisclosureGroup("More coding agents") {
             if let registry {
                 AcpRegistryList(entries: registry, brain: brain, failure: $registryError)
             } else {
-                Button(loadingRegistry ? "Loading the registry…" : "Load the registry") { loadRegistry() }
+                Button(loadingRegistry ? "Loading the list…" : "Load the list") { loadRegistry() }
                     .disabled(loadingRegistry)
                 Text("Perry contacts agentclientprotocol.com only when you press this.").settingNote()
             }
@@ -56,7 +56,7 @@ struct AcpAgentSection: View {
             do {
                 registry = try await AcpRegistry.fetch()
             } catch {
-                registryError = "Couldn’t load the registry: \(error.localizedDescription)"
+                registryError = "Couldn’t load the list. Try again."
             }
         }
     }
@@ -135,7 +135,7 @@ struct AcpRegistryList: View {
                 let agent = try await AcpRegistry.install(entry, archive: archive, sha256: sha256, command: command, arguments: arguments, environment: environment, into: root)
                 brain.setAcpAgent(agent)
             } catch {
-                failure = "Couldn’t install \(entry.name): \(error.localizedDescription)"
+                failure = "Couldn’t install \(entry.name). Try again."
             }
         }
     }

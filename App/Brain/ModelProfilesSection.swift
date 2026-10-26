@@ -21,13 +21,13 @@ struct ModelProfilesSection: View {
         ForEach(brain.profiles) { profile in
             row(profile)
         }
-        .notchDialog("Remove this provider?", item: $pendingRemoval,
-                     message: "Perry removes its API key from Keychain.") { profile in
-            [NotchDialog.Action("Remove provider", role: .destructive) {
+        .notchDialog("Remove this API key?", item: $pendingRemoval,
+                     message: "I’ll remove it from the Keychain.") { profile in
+            [NotchDialog.Action("Remove API key", role: .destructive) {
                 do { try brain.removeProfile(profile) } catch { errorMessage = error.localizedDescription }
             }]
         }
-        DisclosureGroup(brain.profiles.isEmpty ? "Add your first provider" : "Add another provider", isExpanded: $adding) {
+        DisclosureGroup(brain.profiles.isEmpty ? "Add your first API key" : "Add another API key", isExpanded: $adding) {
             form
         }
         if let errorMessage {
@@ -77,7 +77,7 @@ struct ModelProfilesSection: View {
         case .failed(let message):
             StatusLabel(message, .attention).settingNote()
         case .checking:
-            Text("Checking text, images, and tools with a harmless test.").settingNote()
+            Text("Checking text, images and actions with a harmless test.").settingNote()
         default:
             if profile.preset.keyRequired, !brain.hasCredential(profile) {
                 Text("No API key saved. Remove and add it again.").settingNote()
@@ -93,12 +93,12 @@ struct ModelProfilesSection: View {
             case .notRun: "not checked"
             }
         }
-        return "Text: \(word(result.text)). Images: \(word(result.vision)). Tools: \(word(result.tools))."
+        return "Text: \(word(result.text)). Images: \(word(result.vision)). Actions: \(word(result.tools))."
     }
 
     @ViewBuilder
     private var form: some View {
-        Picker("Provider", selection: $presetID) {
+        Picker("Service", selection: $presetID) {
             ForEach(ProviderPreset.all) { preset in
                 Text(preset.name).tag(preset.id)
             }
@@ -117,25 +117,25 @@ struct ModelProfilesSection: View {
                 .textFieldStyle(.roundedBorder)
         }
         HStack(spacing: PerryTheme.Spacing.inline) {
-            Button(loadingModels ? "Loading models…" : "Load models") { loadModels() }
+            Button(loadingModels ? "Loading list…" : "Load list") { loadModels() }
                 .disabled(loadingModels || endpointURL == nil)
             if !availableModels.isEmpty {
                 Text("\(availableModels.count) models").settingNote()
             }
         }
         if availableModels.isEmpty {
-            TextField("Model ID", text: $model).textFieldStyle(.roundedBorder)
-            TextField("Faster model for Talk (optional)", text: $fastModel).textFieldStyle(.roundedBorder)
+            TextField("Brain ID", text: $model).textFieldStyle(.roundedBorder)
+            TextField("Faster brain for Talk (optional)", text: $fastModel).textFieldStyle(.roundedBorder)
         } else {
-            Picker("Model", selection: $model) {
+            Picker("Brain", selection: $model) {
                 ForEach(availableModels, id: \.self) { Text($0).tag($0) }
             }
-            Picker("Model for Talk", selection: $fastModel) {
+            Picker("Brain for Talk", selection: $fastModel) {
                 Text("Same as above").tag("")
                 ForEach(availableModels, id: \.self) { Text($0).tag($0) }
             }
         }
-        Text("Talk uses the faster model so spoken answers start sooner. Tasks use the main model.").settingNote()
+        Text("Talk uses the faster brain so spoken answers start sooner. Tasks use the main brain.").settingNote()
         Button("Save and use") { save() }
             .disabled(!canSave)
     }
@@ -174,9 +174,9 @@ struct ModelProfilesSection: View {
                 availableModels = models
                 if !models.contains(model) { model = models.first ?? model }
                 if !fastModel.isEmpty, !models.contains(fastModel) { fastModel = "" }
-                if models.isEmpty { errorMessage = "The provider returned no models. Type a model ID instead." }
+                if models.isEmpty { errorMessage = "The service sent no list. Type a brain ID instead." }
             } catch {
-                errorMessage = "Couldn’t load models: \(error.localizedDescription) Type a model ID instead."
+                errorMessage = "Couldn’t load the list. Type a brain ID instead."
             }
         }
     }

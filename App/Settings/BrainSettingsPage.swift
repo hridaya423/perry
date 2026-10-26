@@ -23,7 +23,7 @@ struct BrainSettingsPage: View {
     var body: some View {
         SettingsScroll {
             BrainChoiceSection(brain: controller.brain, local: controller.localBrain, catalog: controller.runtimes)
-            SettingsCard(title: "Agents", footer: setup.records.contains(where: { $0.status == setup.summary }) ? nil : setup.summary) {
+            SettingsCard(title: "Coding agents", footer: setup.records.contains(where: { $0.status == setup.summary }) ? nil : setup.summary) {
                 ForEach(setup.records) { runtime in
                     HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.inline) {
                         StatusMark(runtime.isReady ? .ok : .attention)
@@ -34,7 +34,7 @@ struct BrainSettingsPage: View {
                             Text(runtime.status)
                                 .settingNote()
                             if runtime.authenticatesInApp, runtime.authentication != .authenticated {
-                                Text("Sign in with ChatGPT from Conversation model above.")
+                                Text("Sign in with ChatGPT under Brain above.")
                                     .settingNote()
                             }
                         }
@@ -48,13 +48,13 @@ struct BrainSettingsPage: View {
                     Button("Check again") { runtimeSettings.refresh() }
                 }
             }
-            SettingsCard(title: "Screen helper", footer: "The screen helper (Cua Driver) lets Perry see the screen and act in other apps.") {
+            SettingsCard(title: "Screen control", footer: "Lets Perry see your screen and act in other apps.") {
                 Text(runtimeSettings.status.cuaStatus)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .settingsRowPadding()
-                    .accessibilityLabel("Computer-use driver status")
+                    .accessibilityLabel("Screen control status")
                     .accessibilityValue(runtimeSettings.status.cuaStatus)
             }
             SettingsAdvanced {
@@ -79,7 +79,7 @@ struct BrainSettingsPage: View {
                         SettingsDivider()
                     }
                     HStack(spacing: PerryTheme.Spacing.inline) {
-                        TextField("Cua Driver path (optional)", text: $cuaDriverPath)
+                        TextField("Screen control path (optional)", text: $cuaDriverPath)
                             .textFieldStyle(.roundedBorder)
                         Button("Save") {
                             controller.reloadCuaDriverConfiguration()
@@ -103,7 +103,7 @@ struct BrainSettingsPage: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         guard pasteboard.setString(command.shellText, forType: .string) else {
-            error = "Perry could not copy the authentication command. Open Terminal and run the runtime’s official sign-in command manually."
+            error = "I couldn’t copy the sign-in command. Open Terminal and run it yourself."
             return
         }
         copiedCommand = command.shellText

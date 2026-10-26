@@ -10,7 +10,7 @@ struct AppsSettingsPage: View {
 
     var body: some View {
         SettingsScroll {
-            SettingsCard(title: "Connected apps", footer: "Connections stay in this Mac’s Keychain. Each service starts read-only, and every change Perry makes still asks you first.") {
+            SettingsCard(title: "Apps", footer: "Connections stay in this Mac’s Keychain. Each app starts read-only. Perry asks before it changes anything.") {
                 SystemCalendarRow()
                     .settingsRowPadding()
                 SettingsDivider()
@@ -79,7 +79,7 @@ struct AppsSettingsPage: View {
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             guard NSWorkspace.shared.open(directory) else {
-                error = "Perry could not open the local skills folder."
+                error = "Perry couldn’t open the skills folder."
                 return
             }
         } catch {

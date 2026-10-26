@@ -83,7 +83,7 @@ final class RuntimeInventoryTests: XCTestCase {
             ("https://api.anthropic.com", "Anthropic"),
             ("https://generativelanguage.googleapis.com", "Gemini"),
             ("https://openrouter.ai/api", "OpenRouter"),
-            ("https://custom.example", "Custom provider"),
+            ("https://custom.example", "Custom"),
         ]
         for (url, summaryName) in cases {
             let fixture = Fixture()
@@ -93,7 +93,7 @@ final class RuntimeInventoryTests: XCTestCase {
                 commandLineProviders: [fixture.definition]
             )
             let inventory = try await inspector.inspect()
-            XCTAssertEqual(inventory.setup.summary, "\(summaryName) credential configured. Perry verifies it when a task starts.", url)
+            XCTAssertEqual(inventory.setup.summary, "\(summaryName) key saved. I check it when a task starts.", url)
         }
     }
 
@@ -102,7 +102,7 @@ final class RuntimeInventoryTests: XCTestCase {
             readDirectProvider: { throw FixtureError() }, commandLineProviders: []
         ).inspect()
 
-        XCTAssertEqual(inventory.setup.summary, "Perry could not read the direct-provider credential from Keychain.")
+        XCTAssertEqual(inventory.setup.summary, "I couldn’t read your API key from the Keychain.")
         XCTAssertEqual(inventory.credentialFailure, inventory.setup.summary)
         XCTAssertFalse(inventory.setup.summary.contains("seeded-secret"))
     }

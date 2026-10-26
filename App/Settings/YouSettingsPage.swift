@@ -11,8 +11,8 @@ struct YouSettingsPage: View {
 
     var body: some View {
         SettingsScroll {
-            SettingsCard(title: "Memory", footer: "Stored on this Mac, never synced.") {
-                Toggle("Remember context between conversations", isOn: $memoryEnabled)
+            SettingsCard(title: "Keep notes", footer: "Stored on this Mac, never synced.") {
+                Toggle("Remember between conversations", isOn: $memoryEnabled)
                     .settingsRowPadding()
                     .onChange(of: memoryEnabled) { _, value in
                         Task { await controller.setMemoryEnabled(value) }
@@ -32,7 +32,7 @@ struct YouSettingsPage: View {
             }
             SettingsCard(title: "What Perry remembers") {
                 if records.isEmpty {
-                    Text(memoryEnabled ? "Nothing yet. Perry adds notes as you work together." : "Nothing. Memory is off.")
+                    Text(memoryEnabled ? "Nothing yet. Perry adds notes as you use it." : "Nothing. Memory is off.")
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .settingsRowPadding()
                 }
@@ -64,24 +64,24 @@ struct YouSettingsPage: View {
                 }
             }
             SettingsCard {
-                SettingsRow(title: "Erase what Perry knows", detail: "Every note above and your profile. Settings, history and connections stay.") {
-                    Button("Erase…", role: .destructive) { confirmsErase = true }
+                SettingsRow(title: "Erase memory", detail: "Every note above and your profile. Settings, history and connections stay.") {
+                    Button("Erase all…", role: .destructive) { confirmsErase = true }
                         .disabled(records.isEmpty && !memoryEnabled)
                 }
             }
         }
         .task(reload)
         .notchDialog(
-            "Erase what Perry knows?",
+            "Erase memory?",
             isPresented: $confirmsErase,
-            message: "Perry forgets every note and your profile. This can’t be undone."
+            message: "I’ll forget every note and your profile. This can’t be undone."
         ) {
-            [NotchDialog.Action("Erase", role: .destructive) {
+            [NotchDialog.Action("Erase memory", role: .destructive) {
                 Task {
                     if await controller.eraseMemory() {
                         await reload()
                     } else {
-                        error = "Perry could not erase its memory. Try again, or use Erase all Perry data in Privacy & Safety."
+                        error = "I couldn’t erase my memory. Try again, or use Erase all Perry data in Privacy."
                     }
                 }
             }]
@@ -102,7 +102,7 @@ struct YouSettingsPage: View {
             if await controller.forgetMemory(record.id) {
                 records.removeAll { $0.id == record.id }
             } else {
-                error = "Perry could not forget that note."
+                error = "I couldn’t forget that note. Try again."
             }
         }
     }

@@ -132,7 +132,7 @@ struct ShortcutCapture: Equatable {
 
     private func conflictOwner(for gesture: Gesture) -> String? {
         if gesture == saved { return nil }
-        if let owner = perryOwners.first(where: { $0.gesture == gesture }) { return "Perry’s \(owner.name)" }
+        if let owner = perryOwners.first(where: { $0.gesture == gesture }) { return owner.name }
         if case .chord(let set, let key) = gesture,
            SymbolicHotkeys.conflicts(keyCode: Int(key), modifiers: set.symbolicBits, in: systemHotkeys) {
             return "a macOS keyboard shortcut"
@@ -197,7 +197,7 @@ struct ShortcutRecorder: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(PerryTheme.Colors.accent)
             case .rejected(let gesture, let owner):
-                Text("\(gesture.keys) belongs to \(owner). Pick another.")
+                Text("\(gesture.keys) is taken by \(owner). Pick another.")
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.caution)
                     .fixedSize(horizontal: false, vertical: true)

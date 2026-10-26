@@ -36,6 +36,6 @@ final class SettingsPageTests: XCTestCase {
 
     func testRecoveryLinksNameTheNewPage() {
         XCTAssertEqual(FailureRecovery.settings(.brain).title, "Open Brain settings")
-        XCTAssertEqual(FailureRecovery.settings(.privacy).title, "Open Privacy & Safety settings")
+        XCTAssertEqual(FailureRecovery.settings(.privacy).title, "Open Privacy settings")
     }
 }

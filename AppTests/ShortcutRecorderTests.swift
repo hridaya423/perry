@@ -9,7 +9,7 @@ final class ShortcutRecorderTests: XCTestCase {
     private func recording(allowsChords: Bool = true) -> ShortcutCapture {
         var capture = ShortcutCapture(saved: .defaultTalk, defaultGesture: .defaultTalk)
         capture.allowsChords = allowsChords
-        capture.perryOwners = [.init(gesture: .hold([.function]), name: "dictation shortcut")]
+        capture.perryOwners = [.init(gesture: .hold([.function]), name: "Dictate anywhere")]
         capture.systemHotkeys = [SymbolicHotkey(keyCode: 49, modifiers: 0x40000)]
         capture.begin()
         return capture
@@ -69,7 +69,7 @@ final class ShortcutRecorderTests: XCTestCase {
         var capture = recording()
         capture.flagsChanged([.function])
         capture.flagsChanged([])
-        XCTAssertEqual(capture.state, .conflict(.hold([.function]), owner: "Perry’s dictation shortcut"))
+        XCTAssertEqual(capture.state, .conflict(.hold([.function]), owner: "Dictate anywhere"))
         XCTAssertEqual(capture.saved, .defaultTalk)
         capture.useAnyway()
         XCTAssertEqual(capture.saved, .hold([.function]))

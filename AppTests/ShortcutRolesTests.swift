@@ -91,8 +91,8 @@ final class ShortcutRolesTests: XCTestCase {
             .wake: .chord([.option, .command], keyCode: 35),
         ]
         let names: [ShortcutRole: String] = [
-            .talk: "Perry’s talk shortcut", .type: "Perry’s typing shortcut",
-            .dictate: "Perry’s dictation shortcut", .wake: "Perry’s wake shortcut",
+            .talk: "Talk to Perry", .type: "Type to Perry",
+            .dictate: "Dictate anywhere", .wake: "Open Perry",
         ]
         for role in ShortcutRole.allCases {
             for other in ShortcutRole.allCases {

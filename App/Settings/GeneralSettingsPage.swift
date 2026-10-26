@@ -24,8 +24,8 @@ struct GeneralSettingsPage: View {
                 }
                 .settingsRowPadding()
             }
-            SettingsCard(title: "Startup", footer: LoginItem.needsApproval ? "Approve Perry in System Settings › General › Login Items." : nil) {
-                Toggle("Open Perry when you log in", isOn: $opensAtLogin)
+            SettingsCard(title: "Startup", footer: LoginItem.needsApproval ? "Approve Perry in System Settings > General > Login Items." : nil) {
+                Toggle("Open at login", isOn: $opensAtLogin)
                     .settingsRowPadding()
                     .onChange(of: opensAtLogin) { _, value in
                         guard value != LoginItem.isEnabled else { return }
@@ -43,16 +43,16 @@ struct GeneralSettingsPage: View {
             }
             SettingsCard(title: "Perry \(Self.version)", footer: updateNote) {
                 SettingsRow(title: "Updates") {
-                    Button("Check for Updates") {
+                    Button("Check for updates") {
                         if case .unavailable = controller.updateNoticeController.availability {
-                            updateNote = "This build can’t check for updates. Download the latest Perry from its website."
+                            updateNote = "This copy of Perry can’t check for updates. Download the latest Perry from its website."
                         } else {
                             controller.updateNoticeController.checkForUpdates()
                         }
                     }
                 }
                 SettingsDivider()
-                SettingsRow(title: "What’s New") {
+                SettingsRow(title: "What’s new") {
                     Button("Show") { controller.showWhatsNew() }
                 }
             }

@@ -33,13 +33,13 @@ enum SettingsPage: String, CaseIterable {
     var title: String {
         switch self {
         case .general: "General"
-        case .you: "You"
+        case .you: "Memory"
         case .voice: "Voice"
         case .dictation: "Dictation"
         case .shortcuts: "Shortcuts"
         case .brain: "Brain"
         case .apps: "Apps"
-        case .privacy: "Privacy & Safety"
+        case .privacy: "Privacy"
         }
     }
 

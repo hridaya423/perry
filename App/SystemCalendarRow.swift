@@ -19,7 +19,7 @@ struct SystemCalendarRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Calendar")
                         .font(PerryTheme.Typography.panelBody.weight(.semibold))
-                    Text("Events from your calendars on this Mac, Google and iCloud included")
+                    Text("Read the events on this Mac.")
                         .font(PerryTheme.Typography.note)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }

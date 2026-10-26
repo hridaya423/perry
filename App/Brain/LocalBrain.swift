@@ -26,9 +26,9 @@ final class LocalBrain: ObservableObject {
 
         var title: String {
             switch self {
-            case .nothing: "Nothing"
-            case .upTo2GB: "Up to 2 GB"
-            case .keepMainReady: "Keep the main model ready"
+            case .nothing: "Unload when idle"
+            case .upTo2GB: "Keep the small brain (up to 2 GB)"
+            case .keepMainReady: "Keep the main brain"
             }
         }
     }
@@ -39,7 +39,7 @@ final class LocalBrain: ObservableObject {
 
         var title: String {
             switch self {
-            case .ask: "Ask me before using the cloud"
+            case .ask: "Ask before using the cloud"
             case .never: "Never use the cloud"
             }
         }
@@ -97,7 +97,7 @@ final class LocalBrain: ObservableObject {
 
     func setUp(_ rung: ModelRung) async {
         guard engine != nil else {
-            phase = .failed("This build doesn’t include Perry’s local engine yet, so nothing was downloaded.")
+            phase = .failed("This copy of Perry can’t run a brain on this Mac yet, so nothing was downloaded.")
             return
         }
         let source = Self.files(for: rung)
@@ -118,7 +118,7 @@ final class LocalBrain: ObservableObject {
             let format = ByteCountFormatter()
             phase = .failed("This needs \(format.string(fromByteCount: needed)) free and the disk has \(format.string(fromByteCount: available)).")
         } catch {
-            phase = .failed("The download stopped: \(error.localizedDescription) Choose Download again to resume.")
+            phase = .failed("The download stopped. Choose Download to resume.")
         }
     }
 }

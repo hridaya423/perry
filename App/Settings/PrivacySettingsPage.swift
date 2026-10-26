@@ -15,13 +15,13 @@ struct PrivacySettingsPage: View {
             SettingsCard(title: "Permissions", footer: "Turning on Screen Recording may ask you to quit and reopen Perry.") {
                 permissionRow(.accessibility, why: "Lets Perry read and act on whatever you point at.", granted: permissions?.accessibility)
                 SettingsDivider()
-                permissionRow(.screenRecording, why: "Lets Perry see window contents so answers stay grounded.", granted: permissions?.screenRecording.isUsable)
+                permissionRow(.screenRecording, why: "Lets Perry see what’s in your windows so answers match your screen.", granted: permissions?.screenRecording.isUsable)
                 SettingsDivider()
                 permissionRow(.microphone, why: "Lets Perry hear you for talk and dictation.", granted: permissions?.microphone.isUsable)
                 SettingsDivider()
-                permissionRow(.inputMonitoring, why: "Lets Perry hear the dictation key while other apps are focused.", granted: permissions?.inputMonitoring)
+                permissionRow(.inputMonitoring, why: "Lets Perry notice the dictation key when another app is in front.", granted: permissions?.inputMonitoring)
             }
-            SettingsCard(title: "Workspace folder", footer: "File tasks stay inside this folder.") {
+            SettingsCard(title: "Work folder", footer: "File tasks stay inside this folder.") {
                 SettingsRow(title: WorkspaceScope.root.lastPathComponent, detail: (WorkspaceScope.root.path as NSString).abbreviatingWithTildeInPath) {
                     Button("Choose…", action: chooseWorkspace)
                 }
@@ -34,8 +34,6 @@ struct PrivacySettingsPage: View {
                         Text(app.name)
                             .font(PerryTheme.Scale.body)
                         Spacer()
-                        Text("Never")
-                            .settingNote()
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
@@ -43,7 +41,7 @@ struct PrivacySettingsPage: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            SettingsCard(title: "Records") {
+            SettingsCard(title: "Export and report") {
                 SettingsRow(title: "Activity log") {
                     Button("Export…") { controller.exportActivityLog() }
                 }
@@ -52,13 +50,13 @@ struct PrivacySettingsPage: View {
                     Button("Export…") { controller.exportDiagnostics() }
                 }
                 SettingsDivider()
-                SettingsRow(title: "Something wrong?") {
-                    Button("Report a problem…") { showReportProblem = true }
+                SettingsRow(title: "Report a problem") {
+                    Button("Report…") { showReportProblem = true }
                 }
             }
             SettingsCard {
-                SettingsRow(title: "Erase all Perry data", detail: "Tasks, history, memory, approvals, preferences, credentials and temporary files. Perry asks you to confirm first.") {
-                    Button("Erase…", role: .destructive) {
+                SettingsRow(title: "Erase all Perry data", detail: "Deletes tasks, history, memory, approvals, preferences, saved sign-ins and temporary files.") {
+                    Button("Erase all…", role: .destructive) {
                         NotificationCenter.default.post(name: .perryWipeDataRequested, object: nil)
                     }
                 }
@@ -71,11 +69,11 @@ struct PrivacySettingsPage: View {
         .notchDialog(
             "Report a problem",
             isPresented: $showReportProblem,
-            message: "Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository."
+            message: "Export the diagnostics file, then attach it to a new issue on GitHub. Perry doesn’t upload anything."
         ) {
-            var actions = [NotchDialog.Action("Export diagnostics first") { controller.exportDiagnostics() }]
+            var actions = [NotchDialog.Action("Export diagnostics") { controller.exportDiagnostics() }]
             if let url = Self.issuesURL {
-                actions.append(NotchDialog.Action("Open GitHub issues") { NSWorkspace.shared.open(url) })
+                actions.append(NotchDialog.Action("Open GitHub") { NSWorkspace.shared.open(url) })
             }
             return actions
         }
@@ -105,7 +103,7 @@ struct PrivacySettingsPage: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = WorkspaceScope.root
-        panel.prompt = "Use as workspace"
+        panel.prompt = "Use as work folder"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         WorkspaceScope.setRoot(url)
     }

@@ -55,7 +55,7 @@ final class ProviderSetupStateTests: XCTestCase {
     }
 
     func testAFailedInspectionLeavesCLIRowsUnchecked() {
-        let states = RuntimeSetupSnapshot(summary: "Perry could not inspect the available runtimes.", records: [])
+        let states = RuntimeSetupSnapshot(summary: "I couldn’t look for coding agents. Choose Check again.", records: [])
             .setupStates(chatGPTEmail: nil, acpInstalled: false)
         XCTAssertEqual(states[.chatGPT], .unchecked)
         XCTAssertEqual(states[.claudeCode], .unchecked)

@@ -31,7 +31,7 @@ struct LocalBrainView: View {
 
     var body: some View {
         let rung = recommendation.interactive
-        SettingsCard(title: Self.machineLine(profile), footer: Self.isSmall(profile) ? "Answers on a Mac with 8 GB are limited, so Cloud is the better brain here. This model still works offline." : nil) {
+        SettingsCard(title: Self.machineLine(profile), footer: Self.isSmall(profile) ? "Answers on a Mac with 8 GB are limited, so Cloud is the better brain here. This brain still works offline." : nil) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(rung.name) \(rung.quant)")
                 Text(speedLine(rung))
@@ -43,31 +43,31 @@ struct LocalBrainView: View {
             setupRow(rung)
             if profile.appleIntelligenceAvailable {
                 SettingsDivider()
-                SettingsRow(title: "Apple Intelligence", detail: "Text answers. Reads windows as text. Can’t act.") {
+                SettingsRow(title: "Apple Intelligence", detail: "Answers in text. Reads windows as text. Can’t click or type.") {
                     StatusMark(.ok)
                         .accessibilityLabel("Available")
                 }
             }
         }
-        SettingsCard(title: "How much memory can Perry keep ready?", footer: "Perry also lets go of the model when macOS runs low on memory.") {
+        SettingsCard(title: "Keep the brain loaded", footer: "Perry also unloads the brain when macOS runs low on memory.") {
             ForEach(Array(LocalBrain.Budget.allCases.enumerated()), id: \.element) { index, budget in
                 if index > 0 { SettingsDivider() }
                 choiceRow(budget.title, detail: detail(budget), selected: budgetRaw == budget.rawValue) { budgetRaw = budget.rawValue }
             }
         }
-        SettingsCard(title: "When this Mac’s model can’t do a task") {
+        SettingsCard(title: "When this Mac’s brain can’t do a task") {
             ForEach(Array(LocalBrain.CloudFallback.allCases.enumerated()), id: \.element) { index, fallback in
                 if index > 0 { SettingsDivider() }
                 choiceRow(fallback.title, detail: nil, selected: fallbackRaw == fallback.rawValue) { fallbackRaw = fallback.rawValue }
             }
         }
-        SettingsCard(title: "Use a model you already have", footer: brain.localModels.isEmpty ? "Start Ollama or LM Studio and load a model, then look again." : "Perry uses only capabilities that passed. Check again after changing the model.") {
+        SettingsCard(title: "Use a brain you already have", footer: brain.localModels.isEmpty ? "Start Ollama or LM Studio and load one, then look again." : "Perry uses only what passed the check. Check again after you change it.") {
             ForEach(brain.localModels, id: \.id) { model in
                 existingModelRow(model)
                 SettingsDivider()
             }
-            SettingsRow(title: brain.localModels.isEmpty ? "No models found" : "Look again") {
-                Button("Find models") { Task { await brain.refresh() } }
+            SettingsRow(title: brain.localModels.isEmpty ? "No brains found" : "Look again") {
+                Button("Find brains") { Task { await brain.refresh() } }
             }
         }
         .task { await brain.refresh() }
@@ -85,8 +85,8 @@ struct LocalBrainView: View {
     private func setupRow(_ rung: ModelRung) -> some View {
         switch local.phase {
         case .notSetUp:
-            SettingsRow(title: "Set up on this Mac", detail: "Nothing downloads until you choose this.") {
-                Button("Download and set up") { Task { await local.setUp(rung) } }
+            SettingsRow(title: "Local brain", detail: "Nothing downloads until you choose this.") {
+                Button("Download") { Task { await local.setUp(rung) } }
                     .buttonStyle(InkButtonStyle(.primary))
             }
         case .downloading(let received, let total):
@@ -111,9 +111,9 @@ struct LocalBrainView: View {
 
     private func detail(_ budget: LocalBrain.Budget) -> String {
         switch budget {
-        case .nothing: "Perry lets go of the model after 30 idle minutes. The first answer after that takes a few seconds longer."
-        case .upTo2GB: "Only the small helper stays ready."
-        case .keepMainReady: String(format: "The main model stays loaded, about %.0f GB.", recommendation.interactive.warmGB)
+        case .nothing: "Perry unloads it after 30 idle minutes. The next answer takes a few seconds longer."
+        case .upTo2GB: "Only the small brain stays ready."
+        case .keepMainReady: String(format: "The main brain stays loaded, about %.0f GB.", recommendation.interactive.warmGB)
         }
     }
 
@@ -152,9 +152,9 @@ struct LocalBrainView: View {
             }
             switch brain.localChecks[model.id] {
             case .checking:
-                Text("Checking with sample text, a generated image and a harmless test tool. No apps or files change.").settingNote()
+                Text("Checking with sample text, a generated image and a harmless test. No apps or files change.").settingNote()
             case .checked(_, let result):
-                Text([("Text", result.text), ("Images", result.vision), ("Tools", result.tools)].map { "\($0.0) \(Self.mark($0.1))" }.joined(separator: " · "))
+                Text([("Text", result.text), ("Images", result.vision), ("Actions", result.tools)].map { "\($0.0) \(Self.mark($0.1))" }.joined(separator: " · "))
                     .settingNote()
             case .failed(let message):
                 Text(message).settingNote()

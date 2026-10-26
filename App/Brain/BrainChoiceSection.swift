@@ -53,9 +53,9 @@ struct BrainChoiceSection: View {
     }
 
     private var localCapability: String {
-        if local.phase == .ready { return "Stays on this Mac. Sees your screen and acts." }
-        if profile.appleIntelligenceAvailable { return "Stays on this Mac. Text answers until a model is set up." }
-        return "Stays on this Mac once a model is set up."
+        if local.phase == .ready { return "Works offline. Nothing leaves this Mac." }
+        if profile.appleIntelligenceAvailable { return "Works offline. Answers in text until a brain is set up." }
+        return "Works offline once a brain is set up."
     }
 
     @ViewBuilder
@@ -69,13 +69,13 @@ struct BrainChoiceSection: View {
         case .claudeCode:
             SettingsCard(title: "Claude Code") {
                 Text(brain.claudeCodeAvailable
-                    ? "Perry runs Claude Code with your Claude sign-in. Claude Code can use only Perry’s tools, under the same approval rules as every other model."
+                    ? "Perry runs Claude Code with your Claude sign-in. It follows the same approval rules as every other brain."
                     : "Claude Code isn’t installed. Install it, sign in with `claude`, then come back.")
                     .fixedSize(horizontal: false, vertical: true)
                     .settingsRowPadding()
             }
         case .acp:
-            SettingsCard(title: "Agent") {
+            SettingsCard(title: "Coding agent") {
                 VStack(alignment: .leading, spacing: 10) {
                     AcpAgentSection(brain: brain)
                 }

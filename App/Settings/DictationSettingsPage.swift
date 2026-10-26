@@ -49,7 +49,7 @@ struct DictationSettingsPage: View {
                 }
                 .onChange(of: languageRaw) { _, _ in update() }
             }
-            SettingsCard(title: "Your words", footer: "When you say the first phrase, Perry types the second.") {
+            SettingsCard(title: "Replacements", footer: "When you say the first phrase, Perry types the second.") {
                 ForEach(entries.keys.sorted(), id: \.self) { spoken in
                     HStack(spacing: PerryTheme.Spacing.inline) {
                         Text(spoken)
@@ -75,7 +75,7 @@ struct DictationSettingsPage: View {
                     SettingsDivider()
                 }
                 HStack(spacing: PerryTheme.Spacing.inline) {
-                    TextField("Spoken phrase", text: $newSpoken, prompt: Text("When I say"))
+                    TextField("Spoken phrase", text: $newSpoken, prompt: Text("When you say"))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                     TextField("Replacement phrase", text: $newReplacement, prompt: Text("Type"))

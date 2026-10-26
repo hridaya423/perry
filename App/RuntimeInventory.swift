@@ -28,15 +28,15 @@ struct RuntimeInventoryInspector {
             if let configured = try readDirectProvider(), !configured.credential.isEmpty {
                 let endpoint = configured.endpoint
                 if let host = endpoint.baseURL.host, let kind = DirectAIProvider(officialHost: host) {
-                    directSummary = "\(kind.displayName) credential configured. Perry verifies it when a task starts."
+                    directSummary = "\(kind.displayName) key saved. I check it when a task starts."
                 } else {
-                    directSummary = "Custom provider credential configured. Perry verifies it when a task starts."
+                    directSummary = "Custom key saved. I check it when a task starts."
                 }
             }
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            credentialFailure = "Perry could not read the direct-provider credential from Keychain."
+            credentialFailure = "I couldn’t read your API key from the Keychain."
         }
         for definition in commandLineProviders {
             try Task.checkCancellation()
@@ -47,7 +47,7 @@ struct RuntimeInventoryInspector {
         return RuntimeInventory(
             setup: RuntimeSetupSnapshot(
                 summary: credentialFailure ?? directSummary ?? records.first?.status
-                    ?? "Perry's built-in agent handles open-ended work. Install Codex for delegated coding tasks.",
+                    ?? "Perry handles open-ended work on its own. Install Codex to hand off coding tasks.",
                 records: records
             ),
             credentialFailure: credentialFailure
@@ -171,12 +171,12 @@ struct RuntimeCLIDefinition {
                 name: "Bundled Codex",
                 usesProviderAuthentication: false,
                 unverifiedMessage: codexRuntimeHome == nil
-                    ? "Perry's private Codex data directory is unavailable. Check storage and folder permissions, then refresh runtime setup."
-                    : "Bundled Codex could not be verified. Reinstall Perry before running open-ended tasks.",
+                    ? "I can’t reach Codex’s private data folder. Check storage and folder permissions, then check again."
+                    : "I couldn’t confirm the Codex that came with Perry. Reinstall Perry before running open-ended tasks.",
                 locate: { try CodexRuntime.bundledLocator() },
                 verify: { executable in
                     guard codexRuntimeHome != nil else {
-                        return .unverified(reason: "Perry's private Codex home is unavailable")
+                        return .unverified(reason: "Codex’s private folder isn’t available")
                     }
                     return try await RuntimeExecutableVerifier.codex(at: executable)
                 },
@@ -191,7 +191,7 @@ struct RuntimeCLIDefinition {
             RuntimeCLIDefinition(
                 name: "Claude Code",
                 usesProviderAuthentication: false,
-                unverifiedMessage: "Claude Code is installed but could not be verified as Anthropic software. Perry will not use it.",
+                unverifiedMessage: "Claude Code is installed, but I couldn’t confirm it’s Anthropic software, so I won’t use it.",
                 locate: { try CLIRuntime.locateExecutable() }, verify: RuntimeExecutableVerifier.claude,
                 authenticate: { try await CLIRuntime.authenticationStatus(executable: $0) },
                 id: "cli.claude-code",

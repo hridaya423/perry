@@ -10,19 +10,19 @@ enum ShortcutRole: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .talk: "Talk"
-        case .type: "Type"
-        case .dictate: "Dictate"
-        case .wake: "Wake"
+        case .talk: "Talk to Perry"
+        case .type: "Type to Perry"
+        case .dictate: "Dictate anywhere"
+        case .wake: "Open Perry"
         }
     }
 
     var ownerName: String {
         switch self {
-        case .talk: "talk shortcut"
-        case .type: "typing shortcut"
-        case .dictate: "dictation shortcut"
-        case .wake: "wake shortcut"
+        case .talk: "Talk to Perry"
+        case .type: "Type to Perry"
+        case .dictate: "Dictate anywhere"
+        case .wake: "Open Perry"
         }
     }
 

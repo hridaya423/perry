@@ -39,7 +39,7 @@ struct VoiceSettingsPage: View {
                         .frame(width: PerryTheme.Sizing.speechRateValueWidth, alignment: .trailing)
                 }
                 SettingsDivider()
-                SettingsRow(title: "More voices", detail: soundsRobotic ? "This voice sounds robotic. Enhanced and Premium voices sound far more natural, and they’re free." : "Download Enhanced and Premium voices in System Settings.") {
+                SettingsRow(title: "More voices", detail: soundsRobotic ? "Enhanced and Premium voices sound more natural and are free in System Settings." : "Download Enhanced and Premium voices in System Settings.") {
                     Button("Open…") {
                         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
                         NSWorkspace.shared.open(url)
