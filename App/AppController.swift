@@ -106,12 +106,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var lastBackgroundCount = 0
     var lastAwaitingApprovalCount = 0
     lazy var onboarding = OnboardingCoordinator(
-        overlayState: overlayState,
         home: { [unowned self] in homeController },
-        talkSession: { [unowned self] in talkSession },
-        preferOnDeviceBrain: { [unowned self] in brain.preferOnDeviceModelIfUnchosen() },
-        showNotch: { [unowned self] in showPanel() },
-        endTalk: { [unowned self] in conversationVoice.cancel() }
+        showNotch: { [unowned self] in showPanel() }
     )
     var persistenceTasks: [UUID: Task<Void, Never>] = [:]
 #if DEBUG
@@ -237,7 +233,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             if self.talkSessionStarted, !state.isTalkingSession {
                 self.talkSession.cancel()
             }
-            self.onboarding.noteSessionTransition(from: self.sessionController.state, to: state)
             if let cue = SoundPlayer.cue(from: self.sessionController.state, to: state) {
                 SoundPlayer.play(cue)
             }

@@ -6,6 +6,7 @@ import SwiftUI
 struct PeekRow: Equatable, Identifiable {
     enum Kind: Equatable {
         case needsYou
+        case setup
         case task(working: Bool)
         case perry
         case suggestion
@@ -16,13 +17,15 @@ struct PeekRow: Equatable, Identifiable {
     let title: String
     let status: String
 
-    static func rows(needsYou: PeekRow?, tasks: [PeekRow], perrys: [PeekRow], suggestions: [PeekRow]) -> [PeekRow] {
-        let urgent = [needsYou].compactMap { $0 } + tasks.prefix(2)
+    static let setup = PeekRow(id: "perry.setup", kind: .setup, title: "Finish setting up", status: "Pick up where you left off")
+
+    static func rows(needsYou: PeekRow?, setup: PeekRow? = nil, tasks: [PeekRow], perrys: [PeekRow], suggestions: [PeekRow]) -> [PeekRow] {
+        let urgent = [needsYou, setup].compactMap { $0 } + tasks.prefix(2)
         return urgent.isEmpty ? Array((perrys + suggestions).prefix(2)) : urgent
     }
 
     @MainActor
-    static func rows(model: HomeModel, presentation: NotchPresentation, now: Date = .now) -> [PeekRow] {
+    static func rows(model: HomeModel, presentation: NotchPresentation, setupParked: Bool = OnboardingCoordinator.isParked, now: Date = .now) -> [PeekRow] {
         let waiting = presentation.current.flatMap { entry -> PeekRow? in
             guard entry.priority != .activity, !presentation.showsInteraction else { return nil }
             let title = switch entry.priority {
@@ -51,6 +54,7 @@ struct PeekRow: Equatable, Identifiable {
             }
         return rows(
             needsYou: waiting,
+            setup: setupParked ? setup : nil,
             tasks: running + threads,
             perrys: model.perrys.map { PeekRow(id: $0.id.uuidString, kind: .perry, title: $0.name, status: $0.job) },
             suggestions: model.suggestions.map { PeekRow(id: $0.id.uuidString, kind: .suggestion, title: $0.title, status: $0.body) }
@@ -162,6 +166,10 @@ private struct PeekRowView: View {
                 .foregroundStyle(PerryTheme.Colors.success)
         case .perry:
             PerryCharacterView(pose: PerryCharacterPose(), size: 22)
+        case .setup:
+            Image(systemName: "arrow.forward.circle")
+                .font(PerryTheme.Icon.row)
+                .foregroundStyle(PerryTheme.Colors.accent)
         case .suggestion:
             Image(systemName: "lightbulb")
                 .font(PerryTheme.Icon.row)

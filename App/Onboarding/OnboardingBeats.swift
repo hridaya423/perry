@@ -11,22 +11,22 @@ struct HomeOnboardingView: View {
 
     var body: some View {
         switch director.beat {
-        case .greet:
+        case .hello:
             GreetBeat(director: director)
-        case .firstTalk:
-            if let controller = model.deps.controller {
-                FirstTalkBeat(director: director, model: model, voice: controller.conversationVoice, brain: brain, openSettings: openSettings)
-            }
-        case .screenAccess:
-            ScreenAccessBeat(director: director)
-        case .brainChoice:
+        case .brain:
             if let brain {
                 BrainChoiceBeat(director: director, brain: brain, openSettings: openSettings)
             }
-        case .practice:
-            PracticeBeat(director: director)
-        case .finale:
-            FinaleBeat(director: director, brain: brain)
+        case .access:
+            AccessBeat(director: director)
+        case .shortcuts:
+            PendingBeat(director: director, title: "Shortcuts")
+        case .interview:
+            PendingBeat(director: director, title: "About you")
+        case .apps:
+            PendingBeat(director: director, title: "Your apps")
+        case .firstGoal:
+            PendingBeat(director: director, title: "First goal")
         case nil:
             EmptyView()
         }
@@ -72,271 +72,31 @@ private struct LateEntrance: ViewModifier {
             .opacity(shown || reduceMotion ? 1 : 0)
             .offset(y: shown || reduceMotion ? 0 : 8)
             .onAppear {
-                withAnimation(OnboardingStyle.enter.delay(delay)) { shown = true }
+                withAnimation(PerryTheme.Motion.enter.delay(delay)) { shown = true }
             }
     }
 }
 
-private struct FirstTalkBeat: View {
+private struct AccessBeat: View {
     @ObservedObject var director: OnboardingDirector
-    @ObservedObject var model: HomeModel
-    @ObservedObject var voice: VoiceConversationController
-    let brain: BrainController?
-    let openSettings: () -> Void
-    @State private var typing = false
-    @State private var draft = ""
-    @FocusState private var composerFocused: Bool
-
-    private var threadID: UUID? {
-        if case .thread(let id) = model.sidebarSelection { return id }
-        return nil
-    }
-
-    private var thread: PerryThread? { threadID.flatMap { id in model.threads.first { $0.id == id } } }
-    private var pendingQuestion: String? { threadID.flatMap { model.pendingQuestions[$0]?.text } }
-    private var question: String? {
-        pendingQuestion ?? thread?.turns.last?.question ?? (voice.transcript.isEmpty ? nil : voice.transcript)
-    }
-    private var answer: String? {
-        let text = threadID.flatMap { model.streamingAnswers[$0] } ?? (pendingQuestion == nil ? thread?.turns.last?.answer : nil)
-        return text?.isEmpty == false ? text : nil
-    }
-    private var failedTurn: PerryThread.Turn? {
-        guard pendingQuestion == nil, let last = thread?.turns.last, last.outcome == .failed else { return nil }
-        return last
-    }
-    private var failure: String? {
-        threadID.flatMap { model.threadErrors[$0] } ?? voice.error ?? failedTurn.map { $0.failureReason ?? "Perry couldn’t answer that." }
-    }
-    private var answeredTurns: Int {
-        pendingQuestion == nil ? (thread?.turns.filter { $0.outcome != .failed && !$0.answer.isEmpty }.count ?? 0) : 0
-    }
-    private var working: Bool { pendingQuestion != nil || voice.state == .thinking || model.isCreatingConversation }
-
-    private var mood: PerryMood {
-        if director.firstAnswerReceived { return .celebrating }
-        switch voice.state {
-        case .listening: return .listening
-        case .thinking, .requestingPermission: return .thinking
-        case .speaking: return .speaking
-        case .failed: return .needsYou
-        case .idle: return working ? .thinking : (answer == nil ? .resting : .speaking)
-        }
-    }
-
-    private var title: String? {
-        if director.firstAnswerReceived { return nil }
-        if failure != nil { return "That didn’t go through." }
-        switch voice.state {
-        case .requestingPermission: return "Getting the mic ready…"
-        case .listening: return "I’m listening."
-        case .thinking: return "Let me think…"
-        case .speaking: return "Here’s what I found."
-        default: return working ? "Let me think…" : "Ask me something."
-        }
-    }
-
-    private var message: String? {
-        if director.firstAnswerReceived {
-            return "That’s the idea. Ask me anything, any time."
-        }
-        if let failure { return failure }
-        if question != nil || answer != nil { return nil }
-        if director.micDenied { return "Your microphone is off for Perry, so let’s type. Try “What can you help me with?”" }
-        switch voice.state {
-        case .listening: return "Talk normally. I’ll answer when you pause."
-        default: return "Say it out loud or type it. Try “What can you help me with?”"
-        }
-    }
 
     var body: some View {
-        OnboardingBeatLayout(title: title, message: message, artHeight: director.firstAnswerReceived ? 210 : OnboardingStyle.artHeight) {
-            if question != nil || answer != nil {
-                exchange
-            } else {
-                PerryCharacter(mood: mood, size: 76)
-                    .frame(width: 96, height: 96)
-            }
-        } detail: {
-            EmptyView()
-        } actions: {
-            actions
-        }
-        .onAppear { typing = director.micDenied }
-        .onChange(of: director.micDenied) { _, denied in if denied { typing = true } }
-        .onChange(of: answeredTurns) { _, count in if count > 0 { director.noteTalkTurnCompleted() } }
-    }
-
-    private var exchange: some View {
-        HStack(alignment: .top, spacing: 12) {
-            PerryCharacter(mood: mood, size: 44)
-                .frame(width: 48, height: 48)
-            card
-        }
-        .frame(maxWidth: 470, maxHeight: .infinity, alignment: .bottom)
-        .padding(.top, 10)
-    }
-
-    private var card: some View {
-        ViewThatFits(in: .vertical) {
-            cardText
-            ScrollView { cardText }.scrollIndicators(.never)
-        }
-        .background(OnboardingStyle.carbon, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(OnboardingStyle.hairline) }
-    }
-
-    private var cardText: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let question {
-                Text(question)
-                    .font(.system(size: 13))
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-            }
-            if let answer {
-                Text(answer)
-                    .font(.system(size: 15))
-                    .lineSpacing(3)
-                    .foregroundStyle(PerryTheme.Colors.text)
-                    .textSelection(.enabled)
-            }
-        }
-        .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-    }
-
-    @ViewBuilder
-    private var actions: some View {
-        if director.firstAnswerReceived {
-            Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
-                .buttonStyle(InkButtonStyle())
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-                .padding(.bottom, 8)
-        } else {
-            OnboardingFooter {
-                if typing {
-                    if !director.micDenied { Button("Use my voice") { typing = false } }
-                } else {
-                    Button("Type instead") { voice.cancel(); typing = true }
-                }
-            } primary: {
-                if typing {
-                    composer
-                } else {
-                    Button(action: talk) { OnboardingPrimaryLabel(title: talkTitle, systemImage: talkIcon) }
-                        .buttonStyle(InkButtonStyle())
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(working && voice.state == .idle)
-                }
-            } trailing: {
-                Button("Skip") { director.skip() }
-            }
-        }
-    }
-
-    private var composer: some View {
-        HStack(spacing: 8) {
-            TextField("Ask Perry…", text: $draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 15))
-                .multilineTextAlignment(.leading)
-                .focused($composerFocused)
-                .onSubmit(send)
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
-                    .frame(width: 30, height: 30)
-                    .background(PerryTheme.Colors.primaryAction.opacity(canSend ? 1 : 0.3), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSend)
-            .accessibilityLabel("Send")
-        }
-        .padding(.leading, 18)
-        .padding(.trailing, 8)
-        .frame(width: 260, height: 46)
-        .background(OnboardingStyle.carbon, in: Capsule())
-        .overlay { Capsule().strokeBorder(composerFocused ? PerryTheme.Colors.accent.opacity(0.6) : OnboardingStyle.hairline) }
-        .task {
-            await Task.yield()
-            composerFocused = true
-        }
-    }
-
-    private var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !working
-    }
-
-    private func send() {
-        guard canSend else { return }
-        model.onStartConversation?(draft)
-        draft = ""
-    }
-
-    private var talkTitle: String {
-        switch voice.state {
-        case .listening: "Listening…"
-        case .requestingPermission, .thinking, .speaking: "Stop"
-        case .failed: "Try again"
-        case .idle: answer == nil ? "Talk to Perry" : "Ask another"
-        }
-    }
-
-    private var talkIcon: String {
-        switch voice.state {
-        case .listening: "waveform"
-        case .requestingPermission, .thinking, .speaking: "stop.fill"
-        case .idle, .failed: "mic.fill"
-        }
-    }
-
-    private func talk() {
-        switch voice.state {
-        case .idle, .failed: voice.start()
-        case .listening: voice.sendNow()
-        default: voice.cancel()
-        }
-    }
-}
-
-private struct ScreenAccessBeat: View {
-    @ObservedObject var director: OnboardingDirector
-    @State private var asked: Set<String> = []
-
-    private var accessibility: Bool { director.permissions?.accessibility == true }
-    private var recording: Bool { director.permissions?.screenRecording == .granted }
-
-    var body: some View {
-        OnboardingBeatLayout(
-            title: "Let me see what you mean.",
-            message: "Two permissions let me point at things for you."
-        ) {
-            PermissionSketch(lit: accessibility && recording)
+        OnboardingBeatLayout(title: "I need to see what you see.") {
+            PermissionSketch(lit: director.accessGranted)
+                .scaleEffect(0.6)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 6) {
-                permissionRow(
-                    key: "accessibility", title: "Accessibility", detail: "Read buttons, menus and fields",
-                    icon: "hand.point.up.left", granted: accessibility, prominent: true
-                ) { director.openAccessibilitySettings() }
-                permissionRow(
-                    key: "recording", title: "Screen Recording", detail: "See the window you point at",
-                    icon: "macwindow", granted: recording, prominent: accessibility
-                ) { director.openScreenRecordingSettings() }
-                Text("Opens System Settings. You can turn either off any time.")
-                    .font(.caption)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .padding(.top, 4)
+                row(.accessibility, title: "Accessibility", detail: "Reads buttons, menus and fields", icon: "hand.point.up.left",
+                    granted: director.permissions?.accessibility == true)
+                row(.microphone, title: "Microphone", detail: "Hears you only while you hold the shortcut", icon: "mic",
+                    granted: director.permissions?.microphone.isUsable == true)
             }
         } actions: {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                if accessibility && recording {
+                if director.accessGranted {
                     Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
@@ -351,21 +111,17 @@ private struct ScreenAccessBeat: View {
         .task(id: director.beat) { await director.refreshPermissions() }
     }
 
-    private func permissionRow(key: String, title: String, detail: String, icon: String, granted: Bool, prominent: Bool, open: @escaping () -> Void) -> some View {
-        OnboardingRow(title: title, detail: asked.contains(key) && !granted ? "Turn on Perry in System Settings, then come back" : detail, selected: granted) {
+    private func row(_ pane: PrivacyPane, title: String, detail: String, icon: String, granted: Bool) -> some View {
+        OnboardingRow(title: title, detail: detail, selected: granted) {
             Image(systemName: icon)
-                .font(.system(size: 15))
+                .font(PerryTheme.Icon.row)
                 .foregroundStyle(granted ? PerryTheme.Colors.accent : PerryTheme.Colors.text)
         } trailing: {
             if granted {
                 GrantedMark()
             } else {
-                Button(asked.contains(key) ? "Open again" : "Allow") {
-                    asked.insert(key)
-                    open()
-                }
-                .buttonStyle(RowButtonStyle(prominent: prominent))
-                .keyboardShortcut(key == "accessibility" || accessibility ? .defaultAction : nil)
+                Button("Allow") { Task { await director.grant(pane) } }
+                    .buttonStyle(RowButtonStyle(prominent: true))
             }
         }
     }
@@ -394,6 +150,7 @@ private struct BrainChoiceBeat: View {
             message: "Start on this Mac or connect ChatGPT. Switch any time in Settings."
         ) {
             ChoiceSketch(local: choice == .local)
+                .scaleEffect(0.76)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
@@ -417,11 +174,11 @@ private struct BrainChoiceBeat: View {
                         Button {} label: { OnboardingPrimaryLabel(title: "Waiting for sign-in…") }
                             .disabled(true)
                     } else if ready {
-                        Button { director.noteBrainChoiceMade() } label: { OnboardingPrimaryLabel(title: "Continue") }
+                        Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
                             .keyboardShortcut(.defaultAction)
                     } else {
                         Button {
-                            brain.signInWithChatGPT { connected in if connected { director.noteBrainChoiceMade() } }
+                            brain.signInWithChatGPT { connected in if connected { director.skip() } }
                         } label: { OnboardingPrimaryLabel(title: "Connect ChatGPT") }
                             .keyboardShortcut(.defaultAction)
                     }
@@ -460,10 +217,10 @@ private struct BrainChoiceBeat: View {
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 14)
             .frame(width: 214, height: 56)
-            .background(OnboardingStyle.carbon.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(PerryTheme.Colors.surface.opacity(selected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(selected ? PerryTheme.Colors.accent.opacity(0.7) : OnboardingStyle.hairline, lineWidth: 1)
+                    .strokeBorder(selected ? PerryTheme.Colors.accent.opacity(0.7) : PerryTheme.Colors.subtleSeparator, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
@@ -472,120 +229,21 @@ private struct BrainChoiceBeat: View {
     }
 }
 
-private struct PracticeBeat: View {
+private struct PendingBeat: View {
     @ObservedObject var director: OnboardingDirector
-
-    private var stepIndex: Int {
-        director.practiceStep.flatMap { OnboardingDirector.PracticeStep.allCases.firstIndex(of: $0) } ?? 0
-    }
+    let title: String
 
     var body: some View {
-        OnboardingBeatLayout(
-            title: director.practiceStarted ? "Step \(stepIndex + 1) of 4" : "Try it on something safe.",
-            message: director.practiceStarted
-                ? director.practiceStep.map(OnboardingDirector.practiceHint(for:))
-                : "A practice window with sample files and notes. Point, ask, rename, undo. Nothing of yours is touched."
-        ) {
-            PracticeWindowSketch(step: director.practiceStarted ? stepIndex : 0)
-                .modifier(InkDrawOn())
+        OnboardingBeatLayout(title: title) {
+            EmptyView()
         } detail: {
-            StepGrid(current: stepIndex, started: director.practiceStarted)
+            EmptyView()
         } actions: {
-            OnboardingFooter {
-                if director.practiceStarted { Button("Skip this step") { director.notePracticeStepCompleted() } }
-            } primary: {
-                if director.practiceStarted {
-                    Button { director.showPracticeWindow() } label: { OnboardingPrimaryLabel(title: "Show practice window") }
-                        .buttonStyle(InkButtonStyle())
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                } else {
-                    Button { director.startPractice() } label: { OnboardingPrimaryLabel(title: "Open practice window") }
-                        .buttonStyle(InkButtonStyle())
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                }
-            } trailing: {
-                Button("Skip practice") { director.skip() }
-            }
-        }
-    }
-}
-
-private struct FinaleBeat: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ObservedObject var director: OnboardingDirector
-    let brain: BrainController?
-    @StateObject private var keys = ModifierWatcher()
-    @State private var permissions: PerryPermissionSnapshot?
-    @State private var shown = false
-    @State private var leaving = false
-
-    private var firstName: String? {
-        NSFullUserName().split(separator: " ").first.map(String.init)
-    }
-
-    private var items: [FinaleCard.Item] {
-        let choice = brain?.modelChoice
-        var signedIn = false
-        if case .signedIn = brain?.account { signedIn = true }
-        let answers: FinaleCard.Item = switch choice {
-        case .chatGPT where !signedIn: .init(text: "Answers wait for ChatGPT in Settings.", on: false)
-        case .local: .init(text: "Answers on this Mac", on: true)
-        case let choice?: .init(text: "Answers with \(choice.title)", on: true)
-        case nil: .init(text: "Answers wait for a model in Settings.", on: false)
-        }
-        let seesScreen = permissions?.requiredPermissionsGranted == true
-        return [
-            answers,
-            .init(text: seesScreen ? "Sees the window you point at" : "Typing works now. Screen access waits in Settings.", on: seesScreen),
-            .init(text: "Opens at login. Change it in Settings.", on: true)
-        ]
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            FinaleCard(name: firstName, items: items, since: .now, leaving: leaving)
-                .rotationEffect(.degrees(shown || reduceMotion ? -1.5 : -6))
-                .offset(y: shown || reduceMotion ? 0 : 24)
-                .opacity(shown || reduceMotion ? 1 : 0)
-                .padding(.top, 4)
-            Text("I live in your notch now.")
-                .font(OnboardingStyle.title)
-                .tracking(-0.4)
-                .padding(.top, 22)
-            HStack(spacing: 36) {
-                LargeShortcut(keys: ["⌃", "⌥"], lit: keys.held, label: "Hold to talk")
-                LargeShortcut(keys: ["⌃", "⌃"], label: "Double-tap to type")
-            }
-            .padding(.top, 16)
-            Spacer(minLength: 8)
-            OnboardingFooter {
-                EmptyView()
-            } primary: {
-                Button(action: finish) { OnboardingPrimaryLabel(title: "Start using Perry") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-            } trailing: {
-                EmptyView()
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            keys.start()
-            withAnimation(.spring(duration: 0.7, bounce: 0.25).delay(0.1)) { shown = true }
-        }
-        .onDisappear { keys.stop() }
-        .task { permissions = await PerryPermissionSnapshot.probe() }
-    }
-
-    private func finish() {
-        guard !leaving else { return }
-        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .timingCurve(0.5, 0, 0.75, 0, duration: 0.36)) { leaving = true }
-        Task {
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 200 : 380))
-            if director.beat == .finale { director.skip() }
+            Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
+                .buttonStyle(InkButtonStyle())
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .padding(.bottom, 8)
         }
     }
 }

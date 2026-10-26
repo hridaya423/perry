@@ -295,7 +295,6 @@ final class AppSubsystems {
                 output: SharedTalkOutput(voice: self.voice)
             )
         )
-        controller.onTurnCompleted = { [weak app = app] in app?.onboarding.noteTalkTurnCompleted() }
         app.conversationVoiceObservation = controller.$state.removeDuplicates().dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak app = app] state in app?.presentConversationVoice(state) }

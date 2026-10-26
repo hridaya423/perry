@@ -93,11 +93,11 @@ final class PaperOnboardingTests: XCTestCase {
             PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .denied)
         }))
         permissions.start(resume: false)
-        while permissions.beat != .screenAccess { permissions.skip() }
+        while permissions.beat != .access { permissions.skip() }
         await permissions.refreshPermissions()
-        XCTAssertEqual(permissions.beat, .screenAccess)
+        XCTAssertEqual(permissions.beat, .access)
         XCTAssertEqual(permissions.permissions?.accessibility, true)
-        try render(AnyView(OnboardingNotchView(director: permissions, model: model)), name: "screenRecording",
+        try render(AnyView(OnboardingNotchView(director: permissions, model: model)), name: "access-half",
                    size: NSSize(width: PerryTheme.Sizing.onboardingContentWidth, height: PerryTheme.Sizing.onboardingContentHeight))
         permissions.stop()
     }

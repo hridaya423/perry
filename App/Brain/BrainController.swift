@@ -294,16 +294,6 @@ final class BrainController: ObservableObject {
         }
     }
 
-    /// Onboarding's value-first beat: when the user never picked a model and
-    /// an on-device route exists, make it the choice so the first answer
-    /// needs no account. An explicit saved choice is never overridden.
-    func preferOnDeviceModelIfUnchosen() {
-        guard acceptsSetup,
-              defaults.string(forKey: PerryPreferences.$modelChoice.key) == nil,
-              onDeviceRouteAvailable else { return }
-        modelChoice = .local
-    }
-
     func reopenAdmission() {
         if codex == nil { codex = codexFactory() }
         acceptsSetup = true

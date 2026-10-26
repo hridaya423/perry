@@ -5,7 +5,6 @@ struct OnboardingNotchView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var director: OnboardingDirector
     @ObservedObject var model: HomeModel
-    var onClose: (() -> Void)?
 
     private var beatIndex: Int {
         director.beat.flatMap { OnboardingDirector.Beat.allCases.firstIndex(of: $0) } ?? 0
@@ -14,12 +13,12 @@ struct OnboardingNotchView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                if director.beat == .greet {
+                if director.beat == .hello {
                     NotchPeek()
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     OnboardingProgress(current: beatIndex, count: OnboardingDirector.Beat.allCases.count)
-                        .animation(OnboardingStyle.enter, value: beatIndex)
+                        .animation(PerryTheme.Motion.enter, value: beatIndex)
                 }
                 HStack {
                     if director.canGoBack {
@@ -30,7 +29,7 @@ struct OnboardingNotchView: View {
                         .transition(.opacity)
                     }
                     Spacer()
-                    Button { onClose?() ?? model.deps.controller?.collapseNotch() } label: {
+                    Button { director.close() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 11, weight: .bold))
                             .frame(width: 26, height: 26)
@@ -63,9 +62,7 @@ struct OnboardingNotchView: View {
         .foregroundStyle(PerryTheme.Colors.text)
         .background { SketchbookGrain() }
         .tint(PerryTheme.Colors.accent)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : OnboardingStyle.enter, value: director.beat)
-        .onAppear { director.resumePermissionPolling() }
-        .onDisappear { director.pausePermissionPolling() }
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : PerryTheme.Motion.enter, value: director.beat)
     }
 
     private var beatTransition: AnyTransition {

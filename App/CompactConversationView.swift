@@ -160,6 +160,7 @@ struct CompactConversationView: View {
     private func open(_ row: PeekRow) {
         switch row.kind {
         case .needsYou: presentation.showsInteraction = true
+        case .setup: return controller.runOnboarding(force: false)
         case .task: model.sidebarSelection = UUID(uuidString: row.id).map { .thread($0) } ?? .history
         case .perry: model.sidebarSelection = .perryEditor(UUID(uuidString: row.id))
         case .suggestion: model.sidebarSelection = .suggestions

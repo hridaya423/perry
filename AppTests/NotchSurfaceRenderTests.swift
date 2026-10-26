@@ -153,36 +153,20 @@ final class NotchSurfaceRenderTests: XCTestCase {
         func shot(_ name: String, wait: Double = 1.1) async throws {
             try await render(openNotch(controller), name: "onboarding-\(name)", size: size, wait: wait, folder: "onboarding-evidence")
         }
-        try await render(openNotch(controller).environment(\._accessibilityReduceMotion, true), name: "onboarding-1-greet-reduced-motion", size: size, wait: 0.3, folder: "onboarding-evidence")
-        try await shot("1-greet", wait: HelloInk.peekDelay + 0.8)
-        director.skip()
-        try await shot("2-firstTalk")
-        let thread = PerryThread(title: "What can you help me with?", turns: [.init(
-            question: "What can you help me with?",
-            answer: "Point at anything on your screen and ask. I can explain it, show you where to click, or do small jobs like renaming files. Hold ⌃⌥ to talk to me any time."
-        )])
-        model.threads = [thread]
-        model.sidebarSelection = .thread(thread.id)
-        director.noteTalkTurnCompleted()
-        try await shot("2b-firstTalk-answered")
-        director.skip()
-        model.sidebarSelection = nil
-        try await shot("3-screenAccess-denied")
-        snapshot = PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .denied)
-        await director.refreshPermissions()
-        try await shot("3b-screenAccess-half")
-        snapshot = PerryPermissionSnapshot(accessibility: true, screenRecording: .granted, microphone: .denied)
-        await director.refreshPermissions()
-        try await shot("3c-screenAccess-granted")
-        director.skip()
-        try await shot("4-brainChoice")
-        director.skip()
-        try await shot("5-practice")
-        director.startPractice()
-        director.notePracticeStepCompleted()
-        try await shot("5b-practice-step2")
-        director.skip()
-        try await shot("6-finale")
+        try await render(openNotch(controller).environment(\._accessibilityReduceMotion, true), name: "onboarding-1-hello-reduced-motion", size: size, wait: 0.3, folder: "onboarding-evidence")
+        for (index, beat) in OnboardingDirector.Beat.allCases.enumerated() {
+            XCTAssertEqual(director.beat, beat)
+            try await shot("\(index + 1)-\(beat.rawValue)", wait: beat == .hello ? HelloInk.peekDelay + 0.8 : 1.1)
+            if beat == .access {
+                snapshot = PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .denied)
+                await director.refreshPermissions()
+                try await shot("3b-access-half")
+                snapshot = PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .granted)
+                await director.refreshPermissions()
+                try await shot("3c-access-granted")
+            }
+            director.skip()
+        }
     }
 
     func testApprovalWindowFitsShortContentAndBoundsLongContent() async throws {
@@ -344,7 +328,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             }
         }
         try await capture(for: HelloInk.peekDelay + 1.2)
-        for _ in 0..<5 {
+        for _ in 1..<OnboardingDirector.Beat.allCases.count {
             director.skip()
             try await capture(for: 1.4)
         }
