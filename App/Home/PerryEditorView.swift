@@ -7,7 +7,7 @@ struct PerryEditorView: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .onRequest: "Only when I ask"
+            case .onRequest: "Only when you ask"
             case .once: "Once"
             case .daily: "Every day"
             case .interval: "Every few hours"
@@ -35,7 +35,7 @@ struct PerryEditorView: View {
         VStack(spacing: 0) {
         Form {
             Section {
-                TextField("Job", text: $job, prompt: Text("What should this Perry do?"), axis: .vertical)
+                TextField("What to do", text: $job, prompt: Text("What should this helper do?"), axis: .vertical)
                     .lineLimit(2...5)
                     .labelsHidden()
                     .focused($jobFocused)
@@ -47,7 +47,7 @@ struct PerryEditorView: View {
                 }
                 switch cadence {
                 case .onRequest:
-                    Text("Open this Perry and ask it anything. It keeps its own conversation and memory.").settingNote()
+                    Text("Open this helper and ask it anything. It keeps its own conversation and memory.").settingNote()
                 case .once:
                     DatePicker("On", selection: $onceDate, displayedComponents: [.date, .hourAndMinute])
                 case .daily:
@@ -67,7 +67,7 @@ struct PerryEditorView: View {
                     TextEditor(text: $memory)
                         .font(PerryTheme.Scale.body)
                         .frame(minHeight: 80)
-                    Text("Notes this Perry keeps between runs. Perry uses them only when memory is on in Settings.").settingNote()
+                    Text("Notes this helper keeps between runs. Perry uses them only when memory is on in Settings.").settingNote()
                 }
             }
             if let errorMessage {
@@ -82,11 +82,11 @@ struct PerryEditorView: View {
                         .buttonStyle(InkButtonStyle(.destructive))
                         .notchDialog("Delete \(perry.name)?", isPresented: $confirmDelete,
                                      message: "Its schedule and memory are removed. Its past conversation stays in History.") {
-                            [NotchDialog.Action("Delete Perry", role: .destructive) { delete(perry) }]
+                            [NotchDialog.Action("Delete helper", role: .destructive) { delete(perry) }]
                         }
                 }
                 Spacer()
-                Button(perry == nil ? "Create Perry" : "Save") { save() }
+                Button(perry == nil ? "Create helper" : "Save") { save() }
                     .buttonStyle(InkButtonStyle())
                     .disabled(job.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

@@ -142,7 +142,7 @@ struct CompactConversationView: View {
         } else if presentation.current != nil, presentation.showsInteraction {
             HStack {
                 Button(action: controller.showWorkspace) {
-                    Label("Workspace", systemImage: "chevron.left").imageScale(.small)
+                    Label("Back", systemImage: "chevron.left").imageScale(.small)
                         .font(PerryTheme.Scale.chip)
                         .padding(.horizontal, 6)
                         .frame(height: 28)

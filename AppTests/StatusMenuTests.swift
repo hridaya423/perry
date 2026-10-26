@@ -27,7 +27,7 @@ final class StatusMenuTests: XCTestCase {
         let titles = visibleTitles(menu)
         XCTAssertEqual(titles, [
             "Talk to Perry",
-            "Ask or do something…",
+            "Ask Perry…",
             "Record a routine…",
             "Settings…",
             "Quit Perry"
@@ -43,9 +43,9 @@ final class StatusMenuTests: XCTestCase {
         }
         let menu = controller.buildMenu()
         controller.statusMenu.setBackgroundTaskCount(2)
-        XCTAssertEqual(visibleTitles(menu)[2], "Background tasks (2)")
+        XCTAssertEqual(visibleTitles(menu)[2], "Tasks (2)")
         controller.statusMenu.setBackgroundTaskCount(0)
-        XCTAssertFalse(visibleTitles(menu).contains { $0.hasPrefix("Background tasks") })
+        XCTAssertFalse(visibleTitles(menu).contains { $0.hasPrefix("Tasks") })
     }
 
     func testSettingsAndQuitKeepTheirShortcuts() throws {

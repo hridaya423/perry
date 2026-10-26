@@ -17,7 +17,7 @@ struct PeekRow: Equatable, Identifiable {
     let title: String
     let status: String
 
-    static let setup = PeekRow(id: "perry.setup", kind: .setup, title: "Finish setting up", status: "Pick up where you left off")
+    static let setup = PeekRow(id: "perry.setup", kind: .setup, title: "Finish setup", status: "Pick up where you left off")
 
     static func rows(needsYou: PeekRow?, setup: PeekRow? = nil, tasks: [PeekRow], perrys: [PeekRow], suggestions: [PeekRow]) -> [PeekRow] {
         let urgent = Array(([needsYou, setup].compactMap { $0 } + tasks).prefix(2))
@@ -29,13 +29,14 @@ struct PeekRow: Equatable, Identifiable {
         let waiting = presentation.current.flatMap { entry -> PeekRow? in
             guard entry.priority != .activity, !presentation.showsInteraction else { return nil }
             let title = switch entry.priority {
-            case .voice: "Perry is listening"
-            case .approval: "Perry needs your OK"
-            case .guide: "A guide is waiting for you"
-            case .routine: "A routine is waiting for you"
+            case .voice: "Listening"
+            case .approval: entry.title ?? "Needs your OK"
+            case .guide: "Guide needs you"
+            case .routine: "Routine needs you"
             case .activity: ""
             }
-            return PeekRow(id: entry.id.uuidString, kind: .needsYou, title: title, status: "Open it to continue")
+            let status = entry.priority == .approval ? (entry.title == nil ? "Open to review" : "Needs your OK") : "Open to continue"
+            return PeekRow(id: entry.id.uuidString, kind: .needsYou, title: title, status: status)
         }
         let running = (model.deps.backgroundTasks?.records ?? []).filter { !$0.isTerminal }.map {
             PeekRow(id: "\($0.id)", kind: .task(working: true), title: $0.goal, status: "Working in the background")
@@ -89,7 +90,7 @@ struct NotchPeekView: View {
             }
             WorkspaceComposer(
                 text: Binding(get: { model.newConversationDraft }, set: { model.updateNewDraft($0) }),
-                placeholder: "Ask Perry…",
+                placeholder: "Ask Perry anything",
                 canSend: !model.isCreatingConversation,
                 focusOnAppear: false,
                 onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } },

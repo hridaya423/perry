@@ -47,7 +47,7 @@ struct NotchListeningView: View {
                     .accessibilityLabel("Send now")
                     .help("Send now (Return)")
                 }
-                WindowControlButton(systemImage: "xmark", label: "Cancel (Esc)") {
+                WindowControlButton(systemImage: "xmark", label: "Cancel") {
                     voice.clickState == .failed ? voice.resetConversation() : voice.cancelClick()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -109,7 +109,7 @@ struct NotchListeningView: View {
         case .listening: voice.transcript.isEmpty ? "Listening…" : voice.transcript
         case .thinking: voice.transcript.isEmpty ? "Thinking…" : voice.transcript
         case .speaking: voice.answer.isEmpty ? "Speaking…" : voice.answer
-        case .failed: voice.error ?? "Voice failed."
+        case .failed: voice.error ?? "I couldn’t hear that. Try again."
         }
     }
 

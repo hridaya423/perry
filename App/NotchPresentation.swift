@@ -10,6 +10,7 @@ final class NotchPresentation: ObservableObject {
     struct Entry: Identifiable {
         let id: UUID
         let priority: Priority
+        let title: String?
         let content: AnyView
         let onDismiss: (() -> Void)?
         let preservesWorkspace: Bool
@@ -28,9 +29,9 @@ final class NotchPresentation: ObservableObject {
         }?.element
     }
 
-    func present<Content: View>(id: UUID, priority: Priority, content: Content, reveal: Bool = true, preservesWorkspace: Bool = false, onDismiss: (() -> Void)? = nil) {
+    func present<Content: View>(id: UUID, priority: Priority, title: String? = nil, content: Content, reveal: Bool = true, preservesWorkspace: Bool = false, onDismiss: (() -> Void)? = nil) {
         let height = entries.first { $0.id == id }?.contentHeight
-        entries = entries.filter { $0.id != id } + [Entry(id: id, priority: priority, content: AnyView(content), onDismiss: onDismiss, preservesWorkspace: preservesWorkspace, contentHeight: height)]
+        entries = entries.filter { $0.id != id } + [Entry(id: id, priority: priority, title: title, content: AnyView(content), onDismiss: onDismiss, preservesWorkspace: preservesWorkspace, contentHeight: height)]
         if reveal {
             showsInteraction = true
             onPresent?(priority)

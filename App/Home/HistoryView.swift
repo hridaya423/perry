@@ -26,7 +26,7 @@ struct HistoryView: View {
             if !entries.isEmpty || !query.isEmpty {
                 HStack {
                     Spacer()
-                    TextField("Search requests, apps, steps", text: $query)
+                    TextField("Search messages, apps, steps", text: $query)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 230)
                 }
@@ -38,9 +38,9 @@ struct HistoryView: View {
                     .accessibilityLabel("Loading Perry history")
             } else if filteredEntries.isEmpty {
                 if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    WorkspaceEmptyState(title: "No history yet", message: "Everything Perry does shows up here, including what it couldn’t finish.", actionTitle: askPerry == nil ? nil : "Ask Perry something", action: askPerry)
+                    WorkspaceEmptyState(title: "No history yet", message: "Everything Perry does shows up here, including what it couldn’t finish.", actionTitle: askPerry == nil ? nil : "Ask Perry", action: askPerry)
                 } else {
-                    WorkspaceEmptyState(face: .focused, title: "No matches", message: "Try another request, app, or step.")
+                    WorkspaceEmptyState(face: .focused, title: "No matches", message: "Try another message, app, or step.")
                 }
             } else {
                 List(selection: $selectedIDs) {
@@ -90,12 +90,12 @@ struct HistoryView: View {
         }
         .onChange(of: query) { _, _ in refreshSearch() }
         .notchDialog(
-            "Delete \(selectedIDs.count) session record\(selectedIDs.count == 1 ? "" : "s")?",
+            "Delete \(selectedIDs.count) item\(selectedIDs.count == 1 ? "" : "s")?",
             isPresented: $showDeleteConfirmation,
-            message: "Removes the selected sessions from history and deletes their stored transcripts from this Mac. This cannot be undone."
+            message: "I’ll delete \(selectedIDs.count == 1 ? "it" : "them") and \(selectedIDs.count == 1 ? "its transcript" : "their transcripts") from this Mac. This can’t be undone."
         ) {
             let doomed = selectedIDs
-            return [NotchDialog.Action("Delete selected sessions", role: .destructive) {
+            return [NotchDialog.Action("Delete \(doomed.count) item\(doomed.count == 1 ? "" : "s")", role: .destructive) {
                 deleteSelected(doomed)
             }]
         }
@@ -106,9 +106,9 @@ struct HistoryView: View {
             if await store.delete(doomed) {
                 selectedIDs.subtract(doomed)
                 entries.removeAll { doomed.contains($0.id) }
-                message = "Deleted \(doomed.count) session record\(doomed.count == 1 ? "" : "s")."
+                message = "Deleted \(doomed.count) item\(doomed.count == 1 ? "" : "s")."
             } else {
-                message = "Delete failed: \(await store.lastPersistenceError?.localizedDescription ?? "the store could not be updated")"
+                message = "Couldn’t delete. \(await store.lastPersistenceError?.localizedDescription ?? "Try again.")"
             }
         }
     }
@@ -142,7 +142,7 @@ struct HistoryView: View {
                 guard !Task.isCancelled else { return }
                 let matchingDays = Set(activityMatches.map { Calendar.current.startOfDay(for: $0.timestamp) })
                 entries = allEntries.filter { matchingDays.contains(Calendar.current.startOfDay(for: $0.finishedAt)) }
-                message = "Showing sessions with matching activity."
+                message = "Showing items with matching activity."
             } else {
                 entries = matches
                 message = nil
@@ -159,9 +159,9 @@ struct HistoryView: View {
                 panel.allowedContentTypes = format == .markdown ? [.plainText] : [.commaSeparatedText]
                 guard panel.runModal() == .OK, let url = panel.url else { return }
                 try data.write(to: url, options: .atomic)
-                message = "Exported \(selectedIDs.count) session\(selectedIDs.count == 1 ? "" : "s")."
+                message = "Exported \(selectedIDs.count) item\(selectedIDs.count == 1 ? "" : "s")."
             } catch {
-                message = "Export failed: \(error.localizedDescription)"
+                message = "Couldn’t export. \(error.localizedDescription)"
             }
         }
     }
@@ -193,7 +193,7 @@ struct HistoryRow: View {
                                 .foregroundStyle(secondaryText)
                         }
                         if let verified = entry.verified {
-                            StatusLabel(verified ? "Verified" : "Check needed", verified ? .ok : .attention, tint: emphasized ? selectionText : nil)
+                            StatusLabel(verified ? "Checked" : "Needs checking", verified ? .ok : .attention, tint: emphasized ? selectionText : nil)
                                 .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
                         }

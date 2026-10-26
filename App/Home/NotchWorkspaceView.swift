@@ -169,7 +169,7 @@ struct NotchWorkspaceView: View {
                                 .help("\(thread.title.isEmpty ? "Untitled" : thread.title)\n\(thread.updatedAt.formatted(.relative(presentation: .named)))")
                             }
                             if !model.search.isEmpty, model.filteredThreads.isEmpty {
-                                Text("No matches")
+                                Text("No matches for “\(model.search)”")
                                     .font(PerryTheme.Scale.secondary)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                                     .padding(.horizontal, 8)
@@ -179,7 +179,7 @@ struct NotchWorkspaceView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text("Perrys")
+                            Text("Helpers")
                                 .font(PerryTheme.Scale.meta)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             Spacer()
@@ -191,8 +191,8 @@ struct NotchWorkspaceView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(PerryTheme.Colors.icon)
-                            .accessibilityLabel("New Perry")
-                            .help("Make a Perry: a named helper with its own job, schedule, and memory")
+                            .accessibilityLabel("New helper")
+                            .help("New helper: its own job, schedule, and memory")
                         }
                         .padding(.horizontal, 8)
                         .padding(.bottom, 2)
@@ -201,7 +201,7 @@ struct NotchWorkspaceView: View {
                                 searchFocused = false
                                 model.sidebarSelection = .perryEditor(nil)
                             } label: {
-                                Text("Make a helper")
+                                Text("New helper")
                                     .font(PerryTheme.Scale.secondary)
                                     .lineLimit(1)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -475,7 +475,7 @@ struct NotchWorkspaceView: View {
             choosesTarget = true
         } label: {
             Label {
-                Text(target.map(CompactTargetChooser.targetName) ?? "Window")
+                Text(target.map(CompactTargetChooser.targetName) ?? "Choose window")
             } icon: {
                 if let bundleID = target.flatMap(CompactTargetChooser.bundleID) {
                     BrandMark(id: bundleID, name: target.map(CompactTargetChooser.applicationName), bundleID: bundleID, size: 16)
@@ -486,7 +486,7 @@ struct NotchWorkspaceView: View {
             .lineLimit(1)
         }
         .buttonStyle(ChipStyle())
-        .help(target?.windowTitle ?? "Choose which window Perry can inspect")
+        .help(target?.windowTitle ?? "Choose which window Perry can see")
         .disabled(threadID.map { model.workingThreads.contains($0) || model.pendingQuestions[$0] != nil } ?? false)
     }
 
@@ -500,9 +500,9 @@ struct NotchWorkspaceView: View {
         case .files: "Files"
         case .suggestions: "Suggestions"
         case .settings: SettingsPage(stored: settingsPage).title
-        case .whatsNew: "What’s New"
+        case .whatsNew: "What’s new"
         case .perryEditor(let id):
-            id.flatMap { id in model.perrys.first { $0.id == id }?.name } ?? "New Perry"
+            id.flatMap { id in model.perrys.first { $0.id == id }?.name } ?? "New helper"
         case nil: "Perry"
         }
     }
@@ -515,7 +515,7 @@ struct NotchWorkspaceView: View {
                 HomeConversationView(thread: thread, model: model, focusComposer: true, composerAccessory: AnyView(targetButton))
                     .id(thread.id)
             } else {
-                pagePlaceholder("Pick a thread")
+                pagePlaceholder("Pick a conversation")
             }
         case .suggestions:
             SuggestionsView(model: model)
@@ -523,13 +523,13 @@ struct NotchWorkspaceView: View {
             if let store = model.deps.transcriptStore, let log = model.deps.activityLog {
                 HistoryView(store: store, activityLog: log, undoableEntryIDs: model.deps.undoableEntryIDs, askPerry: { model.sidebarSelection = nil })
             } else {
-                pagePlaceholder("History unavailable")
+                pagePlaceholder("Couldn’t load History. Reopen Perry.")
             }
         case .tasks:
             if let tasks = model.deps.backgroundTasks, let runtimes = model.deps.runtimes {
                 BackgroundTasksView(backgroundTasks: tasks, runtimes: runtimes, askPerry: { model.sidebarSelection = nil })
             } else {
-                pagePlaceholder("Background tasks unavailable")
+                pagePlaceholder("Couldn’t load Tasks. Reopen Perry.")
             }
         case .routines:
             RoutinesView(model: model)
@@ -539,7 +539,7 @@ struct NotchWorkspaceView: View {
             if let controller = model.deps.controller {
                 SettingsView(controller: controller)
             } else {
-                pagePlaceholder("Settings unavailable")
+                pagePlaceholder("Couldn’t load Settings. Reopen Perry.")
             }
         case .whatsNew:
             WhatsNewView(onDone: { model.sidebarSelection = nil })
@@ -548,7 +548,7 @@ struct NotchWorkspaceView: View {
                 PerryEditorView(perry: id.flatMap { id in model.perrys.first { $0.id == id } }, model: model, store: store)
                     .id(id)
             } else {
-                pagePlaceholder("Perrys unavailable")
+                pagePlaceholder("Couldn’t load helpers. Reopen Perry.")
             }
         case nil:
             EmptyView()
@@ -649,6 +649,6 @@ private struct ComposerModeChip: View {
         .buttonStyle(ChipStyle())
         .fixedSize()
         .accessibilityLabel("Mode: \(mode.title)")
-        .help("Ask, guide, or do")
+        .help("Choose whether I answer, guide you, or act")
     }
 }

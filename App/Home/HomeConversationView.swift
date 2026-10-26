@@ -50,10 +50,10 @@ struct HomeConversationView: View {
                     }
                     if thread.pendingTurn != nil && !isWorking {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label("This task was interrupted. Review any changes in the affected app before continuing. Perry will not repeat the task automatically.", systemImage: "pause.circle")
+                            Label("I stopped before finishing. Check the app for changes before you continue. I won’t repeat the task on my own.", systemImage: "pause.circle")
                                 .font(PerryTheme.Scale.body)
                                 .foregroundStyle(.secondary)
-                            Button("I’ve reviewed the changes") { model.onResolveInterrupted?(thread.id) }
+                            Button("Mark as reviewed") { model.onResolveInterrupted?(thread.id) }
                         }
                     }
                 }
@@ -137,18 +137,18 @@ struct WaitingInputRecoveryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label("Saved requests", systemImage: "tray")
+            Label("Saved messages", systemImage: "tray")
                 .font(PerryTheme.Scale.rowTitle)
-            Text("These requests haven’t started. Review one in the composer when you’re ready.")
+            Text("I haven’t sent these. Restore one when you’re ready.")
                 .font(PerryTheme.Scale.body)
                 .foregroundStyle(.secondary)
             ForEach(inputs) { input in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(input.text).textSelection(.enabled)
                     HStack {
-                        Button("Use in composer") { restore(input.id) }
+                        Button("Restore") { restore(input.id) }
                             .disabled(!canRestore)
-                            .help(canRestore ? "Restore without sending" : "Finish the active task and clear the composer first")
+                            .help(canRestore ? "Put it back in the message box without sending" : "Finish the active task and clear the message box first")
                         Button("Discard", role: .destructive) { discarding = input }
                     }
                     .controlSize(.small)
@@ -156,8 +156,8 @@ struct WaitingInputRecoveryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .notchDialog("Discard this saved request?", item: $discarding) { input in
-            [NotchDialog.Action("Discard request", role: .destructive) {
+        .notchDialog("Discard this message?", item: $discarding) { input in
+            [NotchDialog.Action("Discard message", role: .destructive) {
                 remove(input.id)
             }]
         }
@@ -171,12 +171,12 @@ struct HomeConnectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if brain.modelChoice != .chatGPT {
-                Text("\(brain.modelChoice.title) selected")
+                Text("Using \(brain.modelChoice.title)")
                     .font(PerryTheme.Scale.rowTitle)
-                Text("You can change this choice in model settings.")
+                Text("Change it in Settings.")
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
-                Button("Model settings", action: openSettings).buttonStyle(.borderless)
+                Button("Brain settings", action: openSettings).buttonStyle(.borderless)
             } else if case .signedIn(let email, _) = brain.account {
                 HStack {
                     StatusLabel(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", .ok)
@@ -188,9 +188,9 @@ struct HomeConnectionView: View {
                         .controlSize(.small)
                 }
             } else {
-                Text("Connect your ChatGPT account")
+                Text("Connect ChatGPT")
                     .font(PerryTheme.Scale.rowTitle)
-                Text("Use your existing account to talk with Perry. You can switch models any time.")
+                Text("Sign in with your ChatGPT account. You can switch brains any time.")
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 HStack {
@@ -204,7 +204,7 @@ struct HomeConnectionView: View {
                         if brain.isSigningIn {
                             Button("Cancel") { brain.cancelSignIn() }
                         } else {
-                            Button("Other models", action: openSettings)
+                            Button("Other brains", action: openSettings)
                         }
                     }
                     .buttonStyle(InkButtonStyle(.secondary))
@@ -229,7 +229,7 @@ struct ModelSettingsButton: View {
 
     private var title: String {
         let choice = brain.modelChoice
-        if choice == .chatGPT, case .signedOut = brain.account { return "Connect ChatGPT" }
+        if choice == .chatGPT, case .signedOut = brain.account { return "Choose brain" }
         return choice.title
     }
 
@@ -238,9 +238,9 @@ struct ModelSettingsButton: View {
             Label(title, systemImage: brain.modelChoice == .local ? "laptopcomputer" : "cloud")
         }
         .fixedSize()
-        .accessibilityLabel("Model: \(title)")
-        .accessibilityHint("Open model settings")
-        .help("Model")
+        .accessibilityLabel("Brain: \(title)")
+        .accessibilityHint("Open brain settings")
+        .help("Brain")
     }
 }
 

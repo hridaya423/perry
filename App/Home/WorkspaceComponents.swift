@@ -80,7 +80,7 @@ struct WorkspaceComposer: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
             if let onExpand {
-                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open the workspace", action: onExpand)
+                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open Perry", action: onExpand)
             }
         }
         .animation(PerryTheme.Motion.glide, value: hasText)

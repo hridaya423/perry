@@ -218,7 +218,7 @@ final class HomeController {
                 do {
                     try await store.finishTurn(
                         to: id, runID: pending.id, answer: self.homeModel.streamingAnswers[id] ?? "",
-                        outcome: .interrupted, failureReason: "Interrupted task closed after your review. Its effects have not been independently verified."
+                        outcome: .interrupted, failureReason: "You reviewed this task. I haven’t confirmed its changes."
                     )
                     self.homeModel.streamingAnswers[id] = nil
                     await self.refreshThreads()
@@ -497,7 +497,7 @@ final class HomeController {
     ) async -> AgentFinish {
         defer { homeModel.stoppingThreads.remove(threadID) }
         guard !Task.isCancelled, !homeModel.stoppingThreads.contains(threadID) else {
-            homeModel.threadErrors[threadID] = "Stopped before starting. Your request is still here."
+            homeModel.threadErrors[threadID] = "I stopped before starting. Your message is still here."
             homeModel.pendingQuestions[threadID] = nil
             return .interrupted
         }

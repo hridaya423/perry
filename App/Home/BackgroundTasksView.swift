@@ -18,9 +18,9 @@ struct BackgroundTasksView: View {
         VStack(alignment: .leading, spacing: 14) {
             if isEmpty {
                 WorkspaceEmptyState(
-                    title: "Nothing in the background",
-                    message: "Long jobs you hand to Perry keep running here while you work.",
-                    actionTitle: askPerry == nil ? nil : "Give Perry a job",
+                    title: "No tasks running",
+                    message: "Tasks you start run here while you work.",
+                    actionTitle: askPerry == nil ? nil : "Start a task",
                     action: askPerry
                 )
             } else {
@@ -51,10 +51,10 @@ struct BackgroundTasksView: View {
                         LazyVStack(spacing: 1) {
                             if let issue = backgroundTasks.persistenceError {
                                 VStack(alignment: .leading, spacing: PerryTheme.Spacing.inline) {
-                                    StatusLabel("Task storage needs attention", .attention)
+                                    StatusLabel("Couldn’t read saved tasks", .attention)
                                         .font(PerryTheme.Scale.rowTitle)
                                         .accessibilityAddTraits(.isHeader)
-                                    Text("Resolve the storage issue shown below, then reopen Perry. Keep the task files for recovery.")
+                                    Text("Reopen Perry. Don’t delete the task files.")
                                         .font(PerryTheme.Scale.secondary)
                                     Text(issue.localizedDescription)
                                         .font(PerryTheme.Scale.secondary)
@@ -123,7 +123,7 @@ private struct BackgroundTaskRow: View {
                 .monospacedDigit()
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 if case .legacy(let plan) = record.plan {
-                    Text("Agent: \(runtimes.name(for: plan.runtimeID))")
+                    Text("Run by \(runtimes.name(for: plan.runtimeID))")
                         .font(PerryTheme.Scale.secondary)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -132,7 +132,7 @@ private struct BackgroundTaskRow: View {
                     BackgroundTaskRecoveryNoticeView(notice: recoveryNotice)
                 } else if record.checkpoint.isAwaitingApproval,
                    record.plan.actionSummaries.indices.contains(record.checkpoint.nextStepIndex) {
-                    Text("Approval required: \(record.plan.actionSummaries[record.checkpoint.nextStepIndex])")
+                    Text("Needs your OK: \(record.plan.actionSummaries[record.checkpoint.nextStepIndex])")
                         .font(PerryTheme.Scale.meta)
                         .foregroundStyle(PerryTheme.Colors.warning)
                 }
@@ -148,11 +148,11 @@ private struct BackgroundTaskRow: View {
         }
         .padding(.vertical, 9)
         .notchDialog(
-            "Delete this task and its workspace?",
+            "Delete this task and its files?",
             isPresented: $showDeleteConfirmation,
-            message: "This removes the saved task and every file in its private Perry workspace."
+            message: "I’ll delete the saved task and every file it made."
         ) {
-            [NotchDialog.Action("Delete task and workspace", role: .destructive) {
+            [NotchDialog.Action("Delete task", role: .destructive) {
                 backgroundTasks.discard(record.id)
             }]
         }
@@ -167,9 +167,9 @@ private struct BackgroundTaskRow: View {
                 }))
         }
         .notchDialog(
-            "Undo Perry’s changes?",
+            "Undo my changes?",
             isPresented: $showUndoConfirmation,
-            message: "Perry will reverse, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays untouched. Undo stops at the first conflict."
+            message: "I’ll reverse these, in order:\n" + undoDescriptions.joined(separator: "\n") + "\n\nAnything you changed since stays as it is. I stop at the first conflict."
         ) {
             [NotchDialog.Action("Undo \(undoDescriptions.count) change\(undoDescriptions.count == 1 ? "" : "s")") {
                 backgroundTasks.undoWorkspaceChanges(record)
@@ -194,7 +194,7 @@ private struct BackgroundTaskRow: View {
                     }
                     Button("Delete…", role: .destructive) { showDeleteConfirmation = true }
                         .controlSize(.small)
-                        .accessibilityLabel("Delete task and workspace \(record.goal)")
+                        .accessibilityLabel("Delete task \(record.goal)")
                 }
             } else if record.workspaceActionToApprove != nil {
                 Button("Review file") { workspaceApproval = record }
@@ -242,7 +242,7 @@ private struct BackgroundTaskRow: View {
                 }
                 Button("Delete…", role: .destructive) { showDeleteConfirmation = true }
                     .controlSize(.small)
-                    .accessibilityLabel("Delete task and workspace \(record.goal)")
+                    .accessibilityLabel("Delete task \(record.goal)")
             }
         }
     }
@@ -279,7 +279,7 @@ private struct WorkspaceTaskApprovalView: View {
                 .font(PerryTheme.Scale.title)
             if let action = record.workspaceActionToApprove,
                case .transform(let workspace, .createUTF8File(let path, let contents)) = action.operation {
-                Text("Perry will create one file in this task’s workspace. An existing file will not be overwritten.")
+                Text("I’ll create one file in this task’s folder. I won’t overwrite an existing file.")
                     .font(PerryTheme.Scale.body)
                 Text(workspace.appendingPathComponent(path).path)
                     .font(PerryTheme.Scale.code)
@@ -305,7 +305,7 @@ private struct WorkspaceTaskApprovalView: View {
                     .buttonStyle(InkButtonStyle())
                 }
             } else {
-                Text("This approval is no longer available. Go back and review the current task.")
+                Text("This request is gone. Go back and review the current task.")
                 Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }

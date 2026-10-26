@@ -22,7 +22,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 
     func setBackgroundTaskCount(_ total: Int) {
         backgroundTaskCount = total
-        backgroundTasksMenuItem?.title = "Background tasks (\(total))"
+        backgroundTasksMenuItem?.title = "Tasks (\(total))"
         backgroundTasksMenuItem?.isHidden = total == 0
     }
 
@@ -34,8 +34,8 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Talk to Perry", action: #selector(wakeAction), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Ask or do something…", action: #selector(askPromptAction), keyEquivalent: "").target = self
-        let backgroundTasksItem = NSMenuItem(title: "Background tasks (\(backgroundTaskCount))", action: #selector(backgroundTasksAction), keyEquivalent: "")
+        menu.addItem(withTitle: "Ask Perry…", action: #selector(askPromptAction), keyEquivalent: "").target = self
+        let backgroundTasksItem = NSMenuItem(title: "Tasks (\(backgroundTaskCount))", action: #selector(backgroundTasksAction), keyEquivalent: "")
         backgroundTasksItem.target = self
         backgroundTasksItem.isHidden = backgroundTaskCount == 0
         backgroundTasksMenuItem = backgroundTasksItem
@@ -74,7 +74,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         developer.submenu = developerMenu
         menu.addItem(developer)
 #endif
-        let updateItem = NSMenuItem(title: "Update available", action: #selector(checkForUpdatesAction), keyEquivalent: "")
+        let updateItem = NSMenuItem(title: "Update Perry", action: #selector(checkForUpdatesAction), keyEquivalent: "")
         updateItem.target = self
         updateItem.isHidden = host?.isUpdateAvailable != true
         updateMenuItem = updateItem

@@ -18,9 +18,9 @@ struct SuggestionsView: View {
             LazyVStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 14) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("A head start on your day")
+                        Text("Morning suggestions")
                             .font(PerryTheme.Scale.title)
-                        Text("Each morning Perry reads recent activity in your connected apps and suggests a few useful tasks. It never watches your screen.")
+                        Text("Each morning Perry reads recent activity in your connected apps and suggests tasks. It doesn’t read your screen.")
                             .font(PerryTheme.Scale.body)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -400,7 +400,7 @@ struct UnsavedInputRecoveryButton: View {
             Button {
                 isPresented = true
             } label: {
-                StatusLabel("Requests not saved (\(model.unsavedInputs.count))", .attention)
+                StatusLabel("Messages not saved (\(model.unsavedInputs.count))", .attention)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.borderless)
@@ -411,7 +411,7 @@ struct UnsavedInputRecoveryButton: View {
             if isPresented {
                 ScrollView { UnsavedInputRecoveryView(model: model) }
                     .frame(maxHeight: 180)
-                Button("Hide unsaved requests") { isPresented = false }
+                Button("Hide unsaved messages") { isPresented = false }
                     .buttonStyle(.borderless)
             }
         }
@@ -425,7 +425,7 @@ struct UnsavedInputRecoveryView: View {
     var body: some View {
         if !model.unsavedInputs.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                StatusLabel("Requests not saved", .attention)
+                StatusLabel("Messages not saved", .attention)
                     .font(PerryTheme.Scale.rowTitle)
                 Text("Keep Perry open or copy your text. Saving again won’t send it.")
                     .font(PerryTheme.Scale.body).foregroundStyle(.secondary)
@@ -459,7 +459,7 @@ struct UnsavedInputRecoveryView: View {
             .padding(16)
             .background(Color(nsColor: .windowBackgroundColor))
             .notchDialog(
-                "Discard this unsaved request?",
+                "Discard this unsaved message?",
                 item: $discarding,
                 message: "This text hasn’t been saved. You won’t be able to recover it from Perry."
             ) { id in

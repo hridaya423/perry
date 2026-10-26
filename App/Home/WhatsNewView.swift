@@ -7,8 +7,8 @@ struct WhatsNewView: View {
 
     private let changes: [(symbol: String, title: String, detail: String)] = [
         ("rectangle.topthird.inset.filled", "Perry lives in your notch", "Click it for conversations, tasks, routines and files."),
-        ("cursorarrow.rays", "A companion by your cursor", "It listens, points and works beside you in any app."),
-        ("puzzlepiece.extension", "Bring your own tools", "Connect any MCP server in Settings → Apps."),
+        ("cursorarrow.rays", "Works next to your cursor", "I listen, point and work beside you in any app."),
+        ("puzzlepiece.extension", "Connect more apps", "Add your own connectors in Settings > Apps."),
     ]
 
     var body: some View {
