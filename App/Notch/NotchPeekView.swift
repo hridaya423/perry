@@ -16,6 +16,7 @@ struct PeekRow: Equatable, Identifiable {
     let kind: Kind
     let title: String
     let status: String
+    var brand: String? = nil
 
     static let setup = PeekRow(id: "perry.setup", kind: .setup, title: "Finish setup", status: "Pick up where you left off")
 
@@ -58,14 +59,14 @@ struct PeekRow: Equatable, Identifiable {
             setup: setupParked ? setup : nil,
             tasks: running + threads,
             perrys: model.perrys.map { PeekRow(id: $0.id.uuidString, kind: .perry, title: $0.name, status: $0.job) },
-            suggestions: model.suggestions.map { PeekRow(id: $0.id.uuidString, kind: .suggestion, title: $0.title, status: $0.body) }
+            suggestions: model.suggestions.map {
+                PeekRow(id: $0.id.uuidString, kind: .suggestion, title: $0.title, status: $0.body, brand: $0.sourceServiceID)
+            }
         )
     }
 
     static func helperTint(_ id: String) -> Color {
-        let palette = [Color(red: 0.55, green: 0.71, blue: 1.0), Color(red: 1.0, green: 0.76, blue: 0.48),
-                       Color(red: 0.79, green: 0.65, blue: 1.0), Color(red: 1.0, green: 0.62, blue: 0.72),
-                       Color(red: 0.44, green: 0.84, blue: 0.88)]
+        let palette = TileTint.all
         return palette[Int(id.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }) % palette.count]
     }
 
@@ -77,12 +78,28 @@ struct PeekRow: Equatable, Identifiable {
 struct NotchPeekView: View {
     @ObservedObject var model: HomeModel
     @ObservedObject var presentation: NotchPresentation
+    @ObservedObject var expansion: NotchExpansion
     let onOpen: (PeekRow) -> Void
     let onExpand: () -> Void
+    let onSettings: () -> Void
+    let onApps: () -> Void
 
     var body: some View {
+        Group {
+            if let id = expansion.peekThread, let thread = model.threads.first(where: { $0.id == id }) {
+                PeekConversation(thread: thread, model: model, onBack: { expansion.peekThread = nil }, onExpand: onExpand)
+            } else {
+                home
+            }
+        }
+        .padding(.horizontal, NotchLayout.peekInset)
+        .padding(.bottom, NotchLayout.peekInset - NotchLayout.bottomInset - 6)
+        .foregroundStyle(PerryTheme.Colors.text)
+    }
+
+    private var home: some View {
         let rows = PeekRow.rows(model: model, presentation: presentation)
-        VStack(spacing: 10) {
+        return VStack(spacing: 10) {
             if rows.isEmpty {
                 PeekWelcome()
             } else {
@@ -92,20 +109,44 @@ struct NotchPeekView: View {
                     }
                 }
             }
-            HStack {
+            HStack(spacing: 2) {
                 if !rows.isEmpty {
                     Text(TalkGesture.talk)
                         .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textTertiary)
                 }
                 Spacer()
+                WindowControlButton(systemImage: "square.grid.2x2", label: "Apps", action: onApps)
+                WindowControlButton(systemImage: "gearshape", label: "Settings", action: onSettings)
                 WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open Perry", action: onExpand)
             }
             .padding(.leading, PeekRowMetrics.inset)
         }
-        .padding(.horizontal, NotchLayout.peekInset)
-        .padding(.bottom, NotchLayout.peekInset - NotchLayout.bottomInset - 6)
-        .foregroundStyle(PerryTheme.Colors.text)
+    }
+}
+
+private struct PeekConversation: View {
+    let thread: PerryThread
+    @ObservedObject var model: HomeModel
+    let onBack: () -> Void
+    let onExpand: () -> Void
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                WindowControlButton(systemImage: "chevron.left", label: "Back", action: onBack)
+                    .keyboardShortcut(.cancelAction)
+                Text(thread.title.isEmpty ? thread.turns.last?.question ?? "Conversation" : thread.title)
+                    .font(PerryTheme.Scale.rowTitle)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open in Perry", action: onExpand)
+            }
+            .padding(.horizontal, -6)
+            HomeConversationView(thread: thread, model: model, focusComposer: true)
+                .frame(height: 260)
+                .padding(.horizontal, -NotchLayout.peekInset + 8)
+        }
     }
 }
 
@@ -164,16 +205,17 @@ private struct PeekRowView: View {
         case .task(working: true): face(PerryCharacterView.fern, face: .focused)
         case .task(working: false), .setup: face(PerryCharacterView.fern, face: .happy)
         case .perry: face(PeekRow.helperTint(row.id), face: .open)
-        case .suggestion: face(PerryTheme.Colors.icon, face: .open)
+        case .suggestion:
+            if let brand = row.brand {
+                BrandMark(id: brand, size: PeekRowMetrics.tile)
+            } else {
+                SymbolTile(systemImage: "lightbulb.fill", tint: TileTint.peach, size: PeekRowMetrics.tile)
+            }
         }
     }
 
     private func face(_ tint: Color, face: PerryCharacterPose.Face) -> some View {
-        var pose = PerryCharacterPose()
-        pose.face = face
-        return PerryCharacterView(pose: pose, size: 24, tint: tint)
-            .frame(width: PeekRowMetrics.tile, height: PeekRowMetrics.tile)
-            .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+        PerryFaceTile(tint: tint, face: face, size: PeekRowMetrics.tile)
     }
 }
 

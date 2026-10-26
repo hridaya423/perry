@@ -31,6 +31,7 @@ enum NotchLayout {
     static let contentInset: CGFloat = 18
     static let peekInset: CGFloat = 24
     static let peekWidth: CGFloat = 480
+    static let interactionBar: CGFloat = 30
 
     @MainActor
     static func mode(_ presentation: NotchPresentation, expansion: NotchExpansion) -> Mode {
@@ -42,7 +43,7 @@ enum NotchLayout {
     }
 
     static func cap(screen: CGSize) -> CGSize {
-        CGSize(width: min(600, screen.width * 0.4, screen.width - 32), height: min(screen.height * 0.38, 440))
+        CGSize(width: min(800, screen.width - 64), height: min(screen.height * 0.62, 540))
     }
 
     static func size(_ mode: Mode, cameraInset: CGFloat, screen: CGSize) -> CGSize {
@@ -51,13 +52,13 @@ enum NotchLayout {
         switch mode {
         case .peek(let content):
             width = peekWidth
-            height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
+            height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 440) } ?? 320
         case .focused(let content):
             width = 440
-            height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
+            height = content.map { min(max(cameraInset + interactionBar + $0 + bottomInset, 120), 340) } ?? 340
         case .workspace:
-            width = 560
-            height = 400
+            width = 780
+            height = 520
         }
         return CGSize(width: min(width, cap.width), height: min(height, cap.height))
     }

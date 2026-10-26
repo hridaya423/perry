@@ -4,6 +4,10 @@ import SwiftUI
 import PerryBrain
 import PerryOverlay
 
+final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 final class CompactConversationPanel: NSPanel {
     static let identifier = NSUserInterfaceItemIdentifier("perry.session")
 
@@ -49,12 +53,14 @@ struct CompactConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: cameraInset)
-                .overlay { crown }
                 .overlay {
-                    if let onboarding = model.onboarding, model.sidebarSelection != .settings {
+                    if let onboarding = model.onboarding, model.sidebarSelection != .settings, !(presentation.current != nil && presentation.showsInteraction) {
                         OnboardingCrown(director: onboarding)
                     }
                 }
+            if !peeking, presentation.current != nil, presentation.showsInteraction {
+                interactionBar
+            }
             NotchInteractionHost(presentation: presentation) {
                 workspace
             }
@@ -113,7 +119,8 @@ struct CompactConversationView: View {
         } else if let onboarding = model.onboarding {
             OnboardingNotchView(director: onboarding, model: model)
         } else if peeking {
-            NotchPeekView(model: model, presentation: presentation, onOpen: open, onExpand: controller.showPanel)
+            NotchPeekView(model: model, presentation: presentation, expansion: expansion, onOpen: open, onExpand: expand,
+                          onSettings: { openSettings(.general) }, onApps: { openSettings(.apps) })
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                     var transaction = Transaction()
@@ -131,35 +138,45 @@ struct CompactConversationView: View {
         expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil
     }
 
-    @ViewBuilder
-    private var crown: some View {
-        if peeking {
-            EmptyView()
-        } else if presentation.current != nil, presentation.showsInteraction {
-            HStack {
-                Button(action: controller.showWorkspace) {
-                    Label("Back", systemImage: "chevron.left").imageScale(.small)
-                        .font(PerryTheme.Scale.chip)
-                        .padding(.horizontal, 6)
-                        .frame(height: 28)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                Spacer()
-                WindowControlButton(systemImage: "chevron.up", label: "Collapse", action: controller.collapseNotch)
-            }
+    private var interactionBar: some View {
+        HStack(spacing: 2) {
+            WindowControlButton(systemImage: "chevron.left", label: "Back to Perry", action: controller.showWorkspace)
+            Spacer()
+            WindowControlButton(systemImage: "chevron.up", label: "Collapse", action: controller.collapseNotch)
         }
+        .frame(height: NotchLayout.interactionBar)
+        .padding(.horizontal, NotchLayout.contentInset - 6)
     }
 
     private func open(_ row: PeekRow) {
         switch row.kind {
         case .needsYou: presentation.showsInteraction = true
         case .setup: return controller.runOnboarding(force: false)
-        case .task: model.sidebarSelection = UUID(uuidString: row.id).map { .thread($0) } ?? .history
+        case .task:
+            if let id = UUID(uuidString: row.id), model.threads.contains(where: { $0.id == id }) {
+                expansion.peekThread = id
+                controller.sessionPanel.focusWithoutActivating()
+                return
+            }
+            model.sidebarSelection = .history
         case .perry: model.sidebarSelection = .perryEditor(UUID(uuidString: row.id))
         case .suggestion: model.sidebarSelection = .suggestions
         }
+        controller.showPanel()
+    }
+
+    private func expand() {
+        if let id = expansion.peekThread {
+            model.sidebarSelection = .thread(id)
+            expansion.peekThread = nil
+        }
+        controller.showPanel()
+    }
+
+    private func openSettings(_ page: SettingsPage) {
+        expansion.peekThread = nil
+        PerryPreferences.settingsTab = page.rawValue
+        model.sidebarSelection = .settings
         controller.showPanel()
     }
 
@@ -284,7 +301,6 @@ struct NotchInteractionHost<Workspace: View>: View {
                             .frame(height: 16)
                     }
                 }
-                .padding(.top, NotchLayout.topInset)
                 .padding(.horizontal, NotchLayout.contentInset)
             }
         }

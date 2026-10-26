@@ -73,11 +73,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var statusMenu = StatusMenuController(host: self)
     lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
 #if DEBUG
-        let host = NSHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
+        let host = FirstClickHostingView(rootView: PerryDebugTextScale(arguments: ProcessInfo.processInfo.arguments).apply(
             to: CompactConversationView(controller: self)
         ))
 #else
-        let host = NSHostingView(rootView: CompactConversationView(controller: self))
+        let host = FirstClickHostingView(rootView: CompactConversationView(controller: self))
 #endif
         host.sizingOptions = []
         return host

@@ -16,4 +16,5 @@ final class NotchExpansion: ObservableObject {
     @Published var contentShown = false
     @Published var peeking = false
     @Published var peekHeight: CGFloat?
+    @Published var peekThread: UUID?
 }

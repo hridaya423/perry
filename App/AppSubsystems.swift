@@ -526,7 +526,7 @@ final class AppSubsystems {
         presence.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
         presence.onEndPreview = { [weak app = app] in
             let presentation = NotchPresentation.shared
-            guard let app, app.sessionPanel.isVisible,
+            guard let app, app.sessionPanel.isVisible, app.sessionPanel.expansion.peekThread == nil,
                   !(presentation.showsInteraction && (presentation.current?.priority ?? .activity) != .activity) else { return false }
             app.endPeek()
             return true

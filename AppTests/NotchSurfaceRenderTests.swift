@@ -630,6 +630,11 @@ final class NotchSurfaceRenderTests: XCTestCase {
         model.workingThreads = []
         model.streamingAnswers = [:]
 
+        model.threads = [notes]
+        controller.sessionPanel.expansion.peekThread = notes.id
+        try await shot("conversation")
+        controller.sessionPanel.expansion.peekThread = nil
+
         model.threads = []
         model.perrys = [Perry(name: "Tidy Desktop", job: "Files new screenshots every evening", threadID: UUID().uuidString),
                         Perry(name: "Inbox Watch", job: "Flags emails that need a reply", threadID: UUID().uuidString)]

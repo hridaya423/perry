@@ -59,11 +59,15 @@ final class NotchPresentation: ObservableObject {
     }
 }
 
+final class FirstClickPopUpButton: NSPopUpButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 struct NotchCommandsMenu: NSViewRepresentable {
     let controller: AppController
 
     func makeNSView(context: Context) -> NSPopUpButton {
-        let button = NSPopUpButton(frame: .zero, pullsDown: true)
+        let button = FirstClickPopUpButton(frame: .zero, pullsDown: true)
         button.bezelStyle = .inline
         button.isBordered = false
         button.imagePosition = .imageOnly

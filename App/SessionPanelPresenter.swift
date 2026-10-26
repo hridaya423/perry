@@ -281,6 +281,7 @@ extension AppController {
     private func hideSurfaces() {
         overlayState.panelScreenFrame = nil
         sessionPanel.hide { [weak self] in
+            self?.sessionPanel.expansion.peekThread = nil
             self?.notchPresence.setConversationVisible(false)
             self?.notchStatus.setConversationVisible(false)
         }
