@@ -1,38 +1,6 @@
 import XCTest
 @testable import PerryBrain
 
-final class AgentPromptTests: XCTestCase {
-    func testPlainAgentPromptStatesRules() {
-        let prompt = AgentPrompt.system()
-        XCTAssertTrue(prompt.contains("Act only through the tools"))
-        XCTAssertTrue(prompt.contains("never sent"))
-        XCTAssertFalse(prompt.contains("a Perry"))
-    }
-
-    func testPerryPromptCarriesJobAndMemory() {
-        let perry = Perry(name: "Inbox Keeper", job: "keep my inbox clean", threadID: "t1")
-        let prompt = AgentPrompt.system(
-            perry: perry,
-            perryMemory: "archive newsletters",
-            memory: "About the user:\nterse",
-            skills: ["In Mail, the archive button is top-left."],
-            workspacePath: "~/Perry"
-        )
-        XCTAssertTrue(prompt.contains("Inbox Keeper"))
-        XCTAssertTrue(prompt.contains("keep my inbox clean"))
-        XCTAssertTrue(prompt.contains("archive newsletters"))
-        XCTAssertTrue(prompt.contains("terse"))
-        XCTAssertTrue(prompt.contains("archive button"))
-        XCTAssertTrue(prompt.contains("~/Perry"))
-    }
-
-    func testEmptySectionsOmitted() {
-        let prompt = AgentPrompt.system(memory: "  ")
-        XCTAssertFalse(prompt.contains("Workspace"))
-        XCTAssertFalse(prompt.contains("remember"))
-    }
-}
-
 final class ToolConsentStoreTests: XCTestCase {
     private var dir: URL!
 

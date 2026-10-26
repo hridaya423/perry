@@ -3,6 +3,7 @@ import Foundation
 public enum PromptMode: String, Sendable, CaseIterable {
     case chat
     case talk
+    case guide
     case doTask
     case perryJob
 }
@@ -126,6 +127,8 @@ public enum PromptAssembler {
                 Draw attention with: point, ring, arrow, underline, caption, path, clear, as tools \
                 or inline ⟦verb e1 "label"⟧ tags that reference element ids supplied in the current turn.
                 """
+        case .guide:
+            return "You teach one step at a time. Say what to click and where to find it. The user clicks."
         case .doTask:
             return """
                 You are doing a task for the user. Work until it is done. Look at the window or folder before \

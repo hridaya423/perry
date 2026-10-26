@@ -13,7 +13,25 @@ final class PromptAssemblerTests: XCTestCase {
         ("f-cloud-memory-chat", .init(brain: cloud, accessibility: true, screenRecording: true, connectedApps: [], mode: .chat), "Name: Hridya. Prefers short answers.", nil),
         ("g-perry-job", .init(brain: cloud, accessibility: true, screenRecording: true, connectedApps: ["Gmail"], mode: .perryJob), nil,
          Perry(name: "Inbox Keeper", job: "Archive newsletters every morning.", threadID: "t1")),
+        ("h-cloud-guide", .init(brain: cloud, accessibility: true, screenRecording: true, connectedApps: [], mode: .guide), nil, nil),
     ]
+
+    func testTalkModeKeepsTheDrawingSyntaxAndNeverActs() {
+        let prompt = assemble(Self.cases[2])
+        XCTAssertTrue(prompt.contains("⟦verb e1 \"label\"⟧"))
+        XCTAssertTrue(prompt.contains("you never act"))
+    }
+
+    func testPerryJobCarriesItsJobAndMemory() {
+        let perry = Perry(name: "Inbox Keeper", job: "keep my inbox clean", threadID: "t1")
+        let snapshot = CapabilitySnapshot(brain: Self.cloud, accessibility: true, screenRecording: true, connectedApps: [], mode: .perryJob)
+        let prompt = PromptAssembler.assemble(snapshot, about: nil, perry: perry, perryMemory: "archive newsletters", skills: ["In Mail, the archive button is top-left."], workspacePath: "  ")
+        XCTAssertTrue(prompt.contains("Inbox Keeper"))
+        XCTAssertTrue(prompt.contains("keep my inbox clean"))
+        XCTAssertTrue(prompt.contains("archive newsletters"))
+        XCTAssertTrue(prompt.contains("archive button"))
+        XCTAssertFalse(prompt.contains("workspace folder (file paths"))
+    }
 
     private func assemble(_ entry: (name: String, snapshot: CapabilitySnapshot, user: String?, perry: Perry?)) -> String {
         PromptAssembler.assemble(entry.snapshot, about: entry.user, perry: entry.perry, perryMemory: nil, skills: [], workspacePath: "~/Perry")

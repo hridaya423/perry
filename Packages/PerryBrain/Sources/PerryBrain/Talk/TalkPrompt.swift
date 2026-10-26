@@ -27,23 +27,9 @@ public struct ElementIndex: Sendable, Equatable {
     }
 }
 
-/// System prompt contract for Talk: compact element index, deixis bindings,
-/// memory, and the active app's skill — plus the draw/act rules of the
-/// `.talk` tool surface (point and describe, never act).
+/// Per-turn input for Talk: the compact element index, deixis bindings,
+/// memory, and the active app's skill. The rules live in PromptAssembler.
 public enum TalkPrompt {
-    /// Stable behavioral rules — safe to pin at thread start. Anything that
-    /// changes between turns of a conversation belongs in `context` instead.
-    public static var rules: String {
-        """
-        You are Perry, a screen-aware companion. The user holds a key, points at the \
-        screen, and talks. Answer in short spoken sentences.
-
-        Draw attention with: point, ring, arrow, underline, caption, path, clear — as tools \
-        or inline ⟦verb e1 "label"⟧ tags referencing element ids supplied in the current turn. \
-        You can point and describe, but never act on the user's behalf.
-        """
-    }
-
     /// Per-turn spatial payload: the observed element index, deixis bindings,
     /// memory, and the active app's skill. This is turn input, not
     /// instruction — providers with server-side threads can reuse a thread
@@ -72,15 +58,5 @@ public enum TalkPrompt {
             parts.append(skill)
         }
         return parts.joined(separator: "\n\n")
-    }
-
-    public static func system(
-        index: ElementIndex,
-        bindings: [DeixisBinding] = [],
-        memory: String? = nil,
-        skill: String? = nil
-    ) -> String {
-        let context = context(index: index, bindings: bindings, memory: memory, skill: skill)
-        return context.isEmpty ? rules : rules + "\n\n" + context
     }
 }

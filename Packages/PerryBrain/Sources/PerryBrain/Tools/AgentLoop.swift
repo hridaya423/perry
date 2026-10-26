@@ -71,13 +71,6 @@ public actor AgentLoop {
 
     private func request(system: String, messages: [ModelMessage], context: ToolContext, tier: ModelTier) -> ModelRequest {
         let tools = host.specs(for: context.surface).filter { provider.capabilities.isSuperset(of: $0.requiredCapabilities) }
-        var system = system
-        if !provider.capabilities.contains(.tools) {
-            system += "\nThis model can answer using this conversation only. It cannot read apps or files, control the screen, or perform actions. Ask the user to paste needed text or choose a capable model in Settings. Never claim to have performed an action."
-        } else if !provider.capabilities.contains(.vision) {
-            system += "\nThis model cannot interpret screenshots or perform screen-grounded actions. Use only the supplied text-based tools. Ask the user to choose an image-capable model for screen tasks."
-        }
-
         return ModelRequest(system: system, messages: messages, tools: tools, tier: tier, conversationKey: context.threadID)
     }
 

@@ -491,6 +491,15 @@ final class AppSubsystems {
         memoryContext: { [memoryStore = self.memoryStore] in
             let config = await self.memoryStore.currentConfiguration()
             return (config.enabled, await self.memoryStore.promptContext(appBundleID: nil))
+        },
+        promptEnvironment: { [integrationBackend = self.integrationBackend] in
+            let permissions = await PerryPermissionSnapshot.probe()
+            let apps = (try? await integrationBackend.services()) ?? []
+            return PromptEnvironment(
+                accessibility: permissions.accessibility,
+                screenRecording: permissions.screenRecording.isUsable,
+                connectedApps: apps.filter(\.connected).map(\.name)
+            )
         }
     )
 

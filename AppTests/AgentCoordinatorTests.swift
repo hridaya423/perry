@@ -319,6 +319,22 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertEqual(observations.snapshot(runID: otherRunID)?.screenshotData, Data([1, 2]))
     }
 
+    func testOnDeviceChatSendsTheAssembledPromptWithoutToolTalk() async throws {
+        let provider = ConversationTestProvider(capabilities: [.local, .streaming])
+        let coordinator = AgentCoordinator(
+            provider: { _ in provider }, host: PerryToolHost(executors: []),
+            threads: ThreadStore(directory: try directory()), consent: ToolConsentStore(directory: nil),
+            promptEnvironment: { .init(accessibility: true, screenRecording: true, connectedApps: []) }
+        )
+        let events = await collect(coordinator.run(threadID: UUID(), goal: "Summarise my week"))
+        XCTAssertEqual(events.last, .finished(.completed))
+        let system = try XCTUnwrap(provider.requests.first?.system)
+        XCTAssertTrue(system.contains("Right now:"))
+        XCTAssertTrue(system.contains("Model: Test, on this Mac."))
+        XCTAssertFalse(system.contains("screen.observe"))
+        XCTAssertFalse(system.contains("cannot read apps"))
+    }
+
     func testRunIdentityIsDurableBeforeProviderWorkStarts() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
@@ -451,7 +467,7 @@ final class AgentCoordinatorTests: XCTestCase {
                 : .init(question: "Question \(index)", answer: String(repeating: "a", count: 600))
         })
         _ = try await store.upsert(original)
-        let provider = ConversationTestProvider(capacity: 4096)
+        let provider = ConversationTestProvider(capacity: 8192)
         let coordinator = AgentCoordinator(
             provider: { _ in provider }, host: PerryToolHost(executors: []),
             threads: store, consent: ToolConsentStore(directory: nil)
@@ -589,7 +605,7 @@ final class AgentCoordinatorTests: XCTestCase {
             host: PerryToolHost(executors: []), threads: ThreadStore(directory: root),
             consent: ToolConsentStore(directory: nil)
         )
-        let events = await collect(coordinator.run(threadID: id, goal: "Help"))
+        let events = await collect(coordinator.run(threadID: id, goal: "Summarise my week"))
         guard case .finished(.providerError) = events.last else { return XCTFail("Expected the original provider failure") }
         let saved = await ThreadStore(directory: root).thread(id: id)
         XCTAssertEqual(saved?.turns.first?.outcome, .failed)

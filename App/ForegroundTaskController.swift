@@ -489,7 +489,7 @@ final class ForegroundTaskController: ObservableObject {
         var answer = ""
         var stepIndex = 0
         var terminal: AgentFinish?
-        for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target) {
+        for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target, task: true) {
             guard case .executing(let current) = sessionController.state,
                   current.taskID == taskUUID, !current.isFinalized else {
                 coordinator.stop(threadID: threadID)

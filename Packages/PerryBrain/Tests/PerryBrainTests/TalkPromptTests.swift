@@ -19,25 +19,20 @@ final class TalkPromptTests: XCTestCase {
         XCTAssertNil(index.element(for: "e3"))
     }
 
-    func testSystemPromptContainsElementsBindingsMemorySkill() {
+    func testContextContainsElementsBindingsMemorySkill() {
         let index = ElementIndex(elements: [element("ax-export", label: "Export")])
         let binding = DeixisBinding(
             word: "this", time: 1.0, point: CGPoint(x: 5, y: 5),
             windowID: 42, element: index.entries[0].element, isWindowLevel: false
         )
-        let prompt = TalkPrompt.system(index: index, bindings: [binding], memory: "User likes dark mode.", skill: "Figma skill body")
+        let prompt = TalkPrompt.context(index: index, bindings: [binding], memory: "User likes dark mode.", skill: "Figma skill body")
         XCTAssertTrue(prompt.contains("e1 AXButton \"Export\" window 42"))
         XCTAssertTrue(prompt.contains("(1) \"this\" → AXButton \"Export\" in window 42"))
         XCTAssertTrue(prompt.contains("Memory:\nUser likes dark mode."))
         XCTAssertTrue(prompt.contains("Figma skill body"))
-        XCTAssertTrue(prompt.contains("never act on the user's behalf"))
-        XCTAssertTrue(prompt.contains("⟦verb e1 \"label\"⟧"))
     }
 
-    func testSystemPromptMinimal() {
-        let prompt = TalkPrompt.system(index: ElementIndex(elements: []))
-        XCTAssertTrue(prompt.contains("Perry"))
-        XCTAssertFalse(prompt.contains("Elements on screen"))
-        XCTAssertFalse(prompt.contains("Memory:"))
+    func testEmptyContextIsEmpty() {
+        XCTAssertEqual(TalkPrompt.context(index: ElementIndex(elements: [])), "")
     }
 }

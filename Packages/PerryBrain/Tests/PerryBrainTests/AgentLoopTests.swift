@@ -32,6 +32,7 @@ final class AgentLoopTests: XCTestCase {
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
         let events = await collect(loop.run(system: "Perry", messages: [.user([.text("Hello")])], context: context))
         XCTAssertEqual(provider.requests.first?.tools, [])
+        XCTAssertEqual(provider.requests.first?.system, "Perry", "AgentLoop must send the assembled prompt unchanged")
         XCTAssertEqual(executor.callCount, 0)
         guard case .failed = finishReason(events) else { return XCTFail("An unavailable tool must fail without effects") }
     }
@@ -46,6 +47,7 @@ final class AgentLoopTests: XCTestCase {
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [read, screen]))
         let events = await collect(loop.run(system: "Perry", messages: [], context: context))
         XCTAssertEqual(provider.requests.first?.tools.map(\.name), [read.spec.name])
+        XCTAssertEqual(provider.requests.first?.system, "Perry", "AgentLoop must send the assembled prompt unchanged")
         XCTAssertEqual(read.callCount, 1)
         XCTAssertEqual(screen.callCount, 0)
         guard case .failed = finishReason(events) else { return XCTFail("Screen access must remain gated") }
