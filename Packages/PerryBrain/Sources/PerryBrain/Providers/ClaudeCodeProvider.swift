@@ -74,7 +74,12 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         process.standardOutput = output
         process.standardError = errors
         let stderr = StderrTail()
-        errors.fileHandleForReading.readabilityHandler = { handle in stderr.append(handle.availableData) }
+        errors.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty { handle.readabilityHandler = nil } else { stderr.append(chunk) }
+        }
+        let (exits, exited) = AsyncStream<Void>.makeStream()
+        process.terminationHandler = { _ in exited.finish() }
         stop.onStop = { [weak process] in process?.terminate() }
 
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
@@ -84,7 +89,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
             try input.fileHandleForWriting.write(contentsOf: message)
         } catch {
             process.terminate()
-            process.waitUntilExit()
+            for await _ in exits {}
             throw ModelProviderError(kind: .unavailable, provider: id, message: Self.failureMessage(stderr: stderr.text, status: process.terminationStatus))
         }
         try? input.fileHandleForWriting.close()
@@ -111,7 +116,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
             process.terminate()
             throw stop.reason ?? error
         }
-        process.waitUntilExit()
+        for await _ in exits {}
         errors.fileHandleForReading.readabilityHandler = nil
         if let reason = stop.reason { throw reason }
         try Task.checkCancellation()
