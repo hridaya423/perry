@@ -18,7 +18,7 @@ struct OnboardingNotchView: View {
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     OnboardingProgress(current: beatIndex, count: OnboardingDirector.Beat.allCases.count)
-                        .animation(PerryTheme.Motion.enter, value: beatIndex)
+                        .animation(PerryTheme.Motion.progress, value: beatIndex)
                 }
                 HStack {
                     if director.canGoBack {
@@ -55,16 +55,16 @@ struct OnboardingNotchView: View {
         .foregroundStyle(PerryTheme.Colors.text)
         .background { SketchbookGrain() }
         .tint(PerryTheme.Colors.accent)
-        .animation(reduceMotion ? .easeOut(duration: 0.2) : PerryTheme.Motion.enter, value: director.beat)
+        .animation(reduceMotion ? PerryTheme.Motion.panelStateChange : PerryTheme.Motion.enter, value: director.beat)
     }
 
     private var beatTransition: AnyTransition {
         guard !reduceMotion else { return .opacity }
         let lead: CGFloat = director.direction == .forward ? 1 : -1
         return .asymmetric(
-            insertion: .modifier(active: BeatShift(x: 36 * lead, blur: 10, opacity: 0), identity: BeatShift()),
-            removal: .modifier(active: BeatShift(x: -24 * lead, blur: 8, opacity: 0), identity: BeatShift())
-                .animation(.timingCurve(0.4, 0, 1, 1, duration: 0.2))
+            insertion: .modifier(active: BeatShift(x: 36 * lead, blur: 4, opacity: 0), identity: BeatShift()),
+            removal: .modifier(active: BeatShift(x: -24 * lead, blur: 4, opacity: 0), identity: BeatShift())
+                .animation(PerryTheme.Motion.exit)
         )
     }
 }

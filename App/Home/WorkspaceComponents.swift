@@ -79,7 +79,7 @@ struct WorkspaceComposer: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: hasText)
+        .animation(PerryTheme.Motion.glide, value: hasText)
         .padding(.leading, 16)
         .padding(.trailing, 8)
         .padding(.vertical, 8)
@@ -88,8 +88,8 @@ struct WorkspaceComposer: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(dropTargeted ? PerryTheme.Colors.accent.opacity(0.8) : focused ? PerryTheme.Colors.accent.opacity(0.35) : PerryTheme.Colors.subtleSeparator, lineWidth: dropTargeted ? 2 : 1)
         )
-        .animation(.easeOut(duration: 0.15), value: focused)
-        .animation(.easeOut(duration: 0.15), value: dropTargeted)
+        .animation(PerryTheme.Motion.panelStateChange, value: focused)
+        .animation(PerryTheme.Motion.panelStateChange, value: dropTargeted)
         .dropDestination(for: URL.self) { urls, _ in
             attach(urls)
         } isTargeted: { dropTargeted = $0 }

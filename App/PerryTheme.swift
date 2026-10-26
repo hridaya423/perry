@@ -112,6 +112,8 @@ enum PerryTheme {
         static let snap = Animation.snappy(duration: 0.16)
         static let glide = Animation.spring(response: 0.32, dampingFraction: 0.86)
         static let enter = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.5)
+        static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.18)
+        static let progress = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.32)
         static let draw = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.9)
     }
 }

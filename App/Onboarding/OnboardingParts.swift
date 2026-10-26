@@ -89,7 +89,7 @@ struct OnboardingLinkStyle: ButtonStyle {
             .contentShape(Rectangle())
             .opacity(configuration.isPressed ? 0.6 : 1)
             .onHover { hovering = $0 }
-            .animation(.easeOut(duration: 0.12), value: hovering)
+            .animation(PerryTheme.Motion.snap, value: hovering)
     }
 }
 
@@ -276,7 +276,7 @@ struct ChoiceSketch: View {
             }
         }
         .frame(width: 70, height: 44, alignment: .topLeading)
-        .animation(.easeOut(duration: 0.2), value: lit)
+        .animation(PerryTheme.Motion.panelStateChange, value: lit)
         .accessibilityHidden(true)
     }
 
