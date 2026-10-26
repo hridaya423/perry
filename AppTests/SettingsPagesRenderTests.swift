@@ -1,4 +1,5 @@
 import AppKit
+import PerryGuide
 import SwiftUI
 import XCTest
 @testable import Perry
@@ -33,6 +34,63 @@ final class SettingsPagesRenderTests: XCTestCase {
             host.cacheDisplay(in: host.bounds, to: bitmap)
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
                 .write(to: destination.appendingPathComponent("\(page.rawValue).png"))
+            window.close()
+        }
+    }
+
+    func testRenderAppRowsWithAndWithoutPerrysSignIn() async throws {
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/settings-pages")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let suite = "dev.perry.tests.render-apps.\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        let permissions = RemoteIntegrationPermissionStore(suiteName: suite)
+        let client = RemoteIntegrationClient(
+            keychain: KeychainStore(service: "dev.perry.tests.render-apps.\(UUID().uuidString)"),
+            permissionStore: permissions
+        )
+        let oauth = OAuthCoordinator(credentialStore: OAuthCredentialStore(keychain: KeychainStore(service: "dev.perry.tests.render-apps.\(UUID().uuidString)")))
+        let withPerry = IntegrationConnections(
+            oauth: oauth, client: client, permissions: permissions,
+            bundled: BundledOAuthClients(infoDictionary: ["PerryOAuthLinearClientID": "id", "PerryOAuthGitHubClientID": "id"])
+        )
+        let withoutPerry = IntegrationConnections(
+            oauth: oauth, client: client, permissions: permissions,
+            bundled: BundledOAuthClients(infoDictionary: nil)
+        )
+        let catalog = RemoteIntegrationDefinition.catalog
+        let views: [(String, AnyView)] = [
+            ("apps-with-perry-sign-in", AnyView(SettingsScroll {
+                SettingsCard(title: "Connected apps") {
+                    ForEach(catalog) { definition in
+                        IntegrationRow(definition: definition, connections: withPerry).settingsRowPadding()
+                    }
+                }
+            })),
+            ("apps-bring-your-own", AnyView(SettingsScroll {
+                SettingsCard(title: "Connected apps") {
+                    ForEach(catalog) { definition in
+                        IntegrationRow(definition: definition, connections: withoutPerry).settingsRowPadding()
+                    }
+                }
+            })),
+        ]
+        for (name, view) in views {
+            let frame = NSRect(x: 0, y: 0, width: 600, height: 520)
+            let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            let host = NSHostingView(rootView: view.frame(width: frame.width, height: frame.height))
+            window.contentView = host
+            host.frame = frame
+            window.orderFrontRegardless()
+            try await Task.sleep(for: .milliseconds(500))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: destination.appendingPathComponent("\(name).png"))
             window.close()
         }
     }

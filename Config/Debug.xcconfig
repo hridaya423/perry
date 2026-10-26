@@ -1,1 +1,2 @@
 #include? "DebugSigning.local.xcconfig"
+#include? "OAuthClients.local.xcconfig"

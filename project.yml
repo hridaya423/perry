@@ -5,6 +5,7 @@ options:
     macOS: "14.0"
 configFiles:
   Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
 settings:
   base:
     ARCHS: arm64
@@ -73,6 +74,9 @@ targets:
         SUFeedURL: "$(PERRY_UPDATE_FEED_URL)"
         SUPublicEDKey: "$(PERRY_SPARKLE_PUBLIC_KEY)"
         PerryIssuesURL: "$(PERRY_ISSUES_URL)"
+        PerryOAuthLinearClientID: "$(PERRY_OAUTH_LINEAR_CLIENT_ID)"
+        PerryOAuthGitHubClientID: "$(PERRY_OAUTH_GITHUB_CLIENT_ID)"
+        PerryOAuthSlackClientID: "$(PERRY_OAUTH_SLACK_CLIENT_ID)"
         SUEnableAutomaticChecks: true
         LSUIElement: true
         NSMicrophoneUsageDescription: "Perry hears you only while you hold the talk key — it never listens in the background."

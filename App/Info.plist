@@ -41,6 +41,12 @@
 	<string>Perry transcribes what you say with Apple Speech, on this Mac, so it can answer. Nothing leaves the Mac for speech.</string>
 	<key>PerryIssuesURL</key>
 	<string>$(PERRY_ISSUES_URL)</string>
+	<key>PerryOAuthGitHubClientID</key>
+	<string>$(PERRY_OAUTH_GITHUB_CLIENT_ID)</string>
+	<key>PerryOAuthLinearClientID</key>
+	<string>$(PERRY_OAUTH_LINEAR_CLIENT_ID)</string>
+	<key>PerryOAuthSlackClientID</key>
+	<string>$(PERRY_OAUTH_SLACK_CLIENT_ID)</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

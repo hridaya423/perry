@@ -80,6 +80,12 @@ struct IntegrationRow: View {
                     .fixedSize()
                     .accessibilityLabel("\(definition.displayName) options")
                     .disabled(operationState.isWorking)
+                } else if hasBundledClient {
+                    Button("Connect") { connect() }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.small)
+                        .disabled(operationState.isWorking)
+                        .accessibilityLabel("Connect \(definition.displayName)")
                 } else {
                     Button(settingUp ? "Cancel" : "Set up") { settingUp.toggle() }
                         .buttonStyle(InkButtonStyle(.secondary))
@@ -87,15 +93,25 @@ struct IntegrationRow: View {
                         .accessibilityLabel(settingUp ? "Cancel \(definition.displayName) setup" : "Set up \(definition.displayName)")
                 }
             }
+            if !connected && hasBundledClient {
+                Button(settingUp ? "Cancel own OAuth app" : "Use my own OAuth app") { settingUp.toggle() }
+                    .buttonStyle(.plain)
+                    .font(PerryTheme.Typography.note)
+                    .underline()
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .accessibilityLabel(settingUp ? "Cancel own OAuth app for \(definition.displayName)" : "Use my own OAuth app for \(definition.displayName)")
+            }
             if !connected && settingUp {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("This build needs your own OAuth app for \(definition.displayName). Add this callback URL in the provider’s developer settings, then enter its credentials.")
+                    Text((hasBundledClient ? "Sign in with your own OAuth app for \(definition.displayName) instead of Perry’s. " : "This build needs your own OAuth app for \(definition.displayName). ") + definition.redirectInstructions)
                         .font(PerryTheme.Typography.note)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("dev.perry.perry:/oauth/callback")
-                        .font(PerryTheme.Typography.monoSmall)
-                        .textSelection(.enabled)
+                    if definition.showsCallbackURL {
+                        Text(OAuthConfiguration.defaultRedirectURI.absoluteString)
+                            .font(PerryTheme.Typography.monoSmall)
+                            .textSelection(.enabled)
+                    }
                     TextField("OAuth client ID", text: $clientID)
                         .textFieldStyle(.roundedBorder)
                     if definition.requiresClientSecret {
@@ -119,10 +135,7 @@ struct IntegrationRow: View {
             if connected && !definition.allowedWritePathPrefixes.isEmpty {
                 Toggle("Allow agent writes", isOn: Binding(
                     get: { writesEnabled },
-                    set: { value in
-                        writesEnabled = value
-                        RemoteIntegrationPermissionStore().setWritesEnabled(value, for: definition)
-                    }
+                    set: { value in setWrites(value) }
                 ))
                 .toggleStyle(InkSwitchStyle())
                 .font(PerryTheme.Typography.note)
@@ -165,14 +178,39 @@ struct IntegrationRow: View {
 
     private func connect() {
         setOperationState(.working("Opening secure authorization…"))
-        connections.connect(definition, clientID: clientID, clientSecret: clientSecret) { result in
+        connections.connect(definition, clientID: clientID, clientSecret: clientSecret, deviceCodePrompt: showDeviceCode) { result in
             switch result {
             case .success:
                 connected = true
+                settingUp = false
                 clientID = ""
                 clientSecret = ""
                 setOperationState(.succeeded("Connected on this Mac."))
             case .failure(let error):
+                setOperationState(.failed(error.localizedDescription))
+            }
+        }
+    }
+
+    private var hasBundledClient: Bool {
+        connections.hasBundledClient(definition)
+    }
+
+    private func showDeviceCode(_ prompt: DeviceCodePrompt) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(prompt.userCode, forType: .string)
+        setOperationState(.working("Enter code \(prompt.userCode) at \(prompt.verificationURL.host ?? "the provider"). It is copied to your clipboard."))
+    }
+
+    private func setWrites(_ value: Bool) {
+        if value { setOperationState(.working("Checking \(definition.displayName) write access…")) }
+        connections.setWrites(value, for: definition, deviceCodePrompt: showDeviceCode) { result in
+            switch result {
+            case .success(let enabled):
+                writesEnabled = enabled
+                setOperationState(.idle)
+            case .failure(let error):
+                writesEnabled = false
                 setOperationState(.failed(error.localizedDescription))
             }
         }
@@ -208,10 +246,10 @@ struct IntegrationRow: View {
         setOperationState(.working("Disconnecting…"))
         Task {
             do {
-                try await connections.disconnect(definition)
+                let revoked = try await connections.disconnect(definition)
                 connected = false
                 writesEnabled = false
-                setOperationState(.succeeded("Disconnected."))
+                setOperationState(.succeeded(revoked ? "Disconnected, and \(definition.displayName) revoked Perry’s access." : "Disconnected on this Mac."))
             } catch {
                 setOperationState(.failed(error.localizedDescription))
             }
