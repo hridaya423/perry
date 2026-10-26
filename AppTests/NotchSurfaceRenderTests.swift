@@ -85,8 +85,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
         presentation.present(id: id, priority: .activity, content: activityView, reveal: false)
         try await render(openNotch(controller), name: "task-working", size: NSSize(width: 592, height: 492))
         activity.phase = .failed
-        activity.title = "The connection was interrupted"
-        activity.detail = "Your request is saved. Retry when the connection returns."
+        activity.title = "I lost the connection."
+        activity.detail = "Your message is saved."
         activity.progress = nil
         activity.canRetry = true
         try await render(openNotch(controller), name: "task-failed", size: NSSize(width: 592, height: 492))

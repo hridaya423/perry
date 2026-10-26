@@ -62,8 +62,8 @@ enum SettingsPage: String, CaseIterable {
 
     static let groups: [(title: String?, pages: [SettingsPage])] = [
         (nil, [.general, .you]),
-        ("Perry", [.voice, .dictation, .shortcuts]),
-        ("Work", [.brain, .apps]),
+        ("Talk", [.voice, .dictation, .shortcuts]),
+        ("Connect", [.brain, .apps]),
         ("Trust", [.privacy]),
     ]
 }

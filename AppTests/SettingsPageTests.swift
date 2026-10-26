@@ -31,7 +31,7 @@ final class SettingsPageTests: XCTestCase {
 
     func testTheSidebarListsEveryPageOnceInPlanOrder() {
         XCTAssertEqual(SettingsPage.groups.flatMap(\.pages), [.general, .you, .voice, .dictation, .shortcuts, .brain, .apps, .privacy])
-        XCTAssertEqual(SettingsPage.groups.map(\.title), [nil, "Perry", "Work", "Trust"])
+        XCTAssertEqual(SettingsPage.groups.map(\.title), [nil, "Talk", "Connect", "Trust"])
     }
 
     func testRecoveryLinksNameTheNewPage() {
