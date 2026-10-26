@@ -308,32 +308,3 @@ struct ChoiceSketch: View {
         return points
     }()
 }
-
-struct SketchbookGrain: View {
-    var body: some View {
-        Canvas { context, size in
-            var rng = SplitMix(seed: 7)
-            let count = Int(size.width * size.height / 60)
-            for _ in 0..<count {
-                let x = CGFloat(rng.unit()) * size.width
-                let y = CGFloat(rng.unit()) * size.height
-                let alpha = 0.03 + 0.05 * rng.unit()
-                context.fill(Path(CGRect(x: x, y: y, width: 0.8, height: 0.8)), with: .color(.white.opacity(alpha)))
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
-private struct SplitMix {
-    private var state: UInt64
-    init(seed: UInt64) { state = seed &* 0x9E3779B97F4A7C15 }
-    mutating func unit() -> Double {
-        state &+= 0x9E3779B97F4A7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
-        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
-        return Double((z ^ (z >> 31)) >> 11) / Double(1 << 53)
-    }
-}

@@ -50,7 +50,6 @@ struct OnboardingNotchView: View {
             alignment: .top
         )
         .foregroundStyle(PerryTheme.Colors.text)
-        .background { SketchbookGrain() }
         .tint(PerryTheme.Colors.accent)
         .animation(reduceMotion ? PerryTheme.Motion.panelStateChange : PerryTheme.Motion.enter, value: director.beat)
     }
