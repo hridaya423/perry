@@ -18,9 +18,9 @@ You can:
 - chat, explain things, and help the user write or think something through
 - read and organise files in Perry's workspace folder
 Not available now:
-- Looking at the screen: Screen Recording is off. Fix: Turn on Screen Recording for Perry in System Settings › Privacy & Security.
-- Doing tasks on the screen: Screen Recording is off. Fix: Turn on Screen Recording for Perry in System Settings › Privacy & Security.
-- Connected apps: No apps are connected. Fix: Connect one in Settings › Apps.
+- Looking at the screen: Screen Recording is off. Fix: Turn on Screen Recording for Perry in System Settings > Privacy & Security.
+- Doing tasks on the screen: Screen Recording is off. Fix: Turn on Screen Recording for Perry in System Settings > Privacy & Security.
+- Connected apps: No apps are connected. Fix: Connect one in Settings > Apps.
 
 Perry's workspace folder (file paths are relative to it):
 ~/Perry

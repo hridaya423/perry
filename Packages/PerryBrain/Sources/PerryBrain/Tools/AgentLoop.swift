@@ -317,17 +317,17 @@ public actor AgentLoop {
         switch error.kind {
         case .rateLimited(let resetAt):
             let reset = resetAt.map { " until \(Self.timeFormatter.string(from: $0))" } ?? ""
-            return "\(name) is rate limited\(reset). Try again later, or choose another model in Settings."
+            return "\(name) is out of requests\(reset). Try again later, or choose another brain in Settings > Brain."
         case .unauthenticated where error.provider == .codex:
-            return "\(name) isn’t signed in. Connect it in Settings › Models."
+            return "\(name) isn’t signed in. Connect it in Settings > Brain."
         case .unauthenticated:
-            return "\(name) didn’t accept your key. Check it in Settings › Models."
+            return "\(name) didn’t accept your key. Check it in Settings > Brain."
         case .network:
-            return "Perry can’t reach \(name). Check your internet connection."
+            return "I can’t reach \(name). Check your internet connection."
         case .http(let status) where status >= 500:
             return "\(name) had a server problem (error \(status)). Try again in a moment."
         case .http(let status):
-            return "\(name) turned this request down (error \(status)). Try again, or choose another model in Settings › Models."
+            return "\(name) turned this request down (error \(status)). Try again, or choose another brain in Settings > Brain."
         default:
             return error.localizedDescription
         }

@@ -18,6 +18,6 @@ You can:
 - chat, explain things, and help the user write or think something through
 - read the text of the window the user is in, point at its controls, and explain what is there; you get text, not images
 Not available now:
-- Doing tasks on the screen: This model cannot use Perry's tools. Fix: Choose a cloud model in Settings › Models.
-- Files: This model cannot use Perry's tools. Fix: Choose a cloud model in Settings › Models.
-- Connected apps: This model cannot use Perry's tools. Fix: Choose a cloud model in Settings › Models.
+- Doing tasks on the screen: This brain can’t click or type for me. Fix: Choose a cloud brain in Settings > Brain.
+- Files: This brain can’t work with files for me. Fix: Choose a cloud brain in Settings > Brain.
+- Connected apps: This brain can’t use your apps for me. Fix: Choose a cloud brain in Settings > Brain.

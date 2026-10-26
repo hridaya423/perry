@@ -118,7 +118,7 @@ final class PromptAssemblerTests: XCTestCase {
         XCTAssertTrue(apple.contains("privately on your Mac with Apple Intelligence"))
         XCTAssertFalse(apple.contains("I can see your screen"))
         XCTAssertTrue(apple.contains("read the window"))
-        XCTAssertTrue(apple.contains("Settings › Models"))
+        XCTAssertTrue(apple.contains("Settings > Brain"))
 
         let noScreen = PromptAssembler.answerForCapabilityQuestion(Self.cases[2].snapshot)
         XCTAssertTrue(noScreen.contains("Accessibility"))

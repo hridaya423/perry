@@ -15,8 +15,8 @@ final class BrainController: ObservableObject {
             switch self {
             case .chatGPT: "ChatGPT"
             case .claudeCode: "Claude Code"
-            case .acp: "Another agent (ACP)"
-            case .direct: "My API provider"
+            case .acp: "Coding agent"
+            case .direct: "API key"
             case .local: "On this Mac"
             }
         }
@@ -358,7 +358,7 @@ final class BrainController: ObservableObject {
             requirement.providerID = .codex
         case .acp:
             guard let acpAgent, acpAgentAvailable else {
-                throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Choose an installed agent in Settings, Models.")
+                throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Choose an installed coding agent in Settings > Brain.")
             }
             requirement.providerID = ProviderID(rawValue: "acp.\(acpAgent.id)")
         case .claudeCode:
@@ -368,7 +368,7 @@ final class BrainController: ObservableObject {
             requirement.providerID = .claudeCode
         case .direct:
             guard let profile = activeProfile else {
-                throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Add your API provider, model, and credential in Settings.")
+                throw ModelProviderError(kind: .notConfigured, provider: "settings", message: "Add your API key and choose a brain in Settings > Brain.")
             }
             requirement.providerID = profile.providerID
         case .local:
@@ -397,7 +397,7 @@ final class BrainController: ObservableObject {
         try Task.checkCancellation()
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw ModelProviderError(kind: .malformed, provider: decision.provider.id, message: "The model returned an empty response. Try again.")
+            throw ModelProviderError(kind: .malformed, provider: decision.provider.id, message: "The brain sent an empty answer. Try again.")
         }
         return trimmed
     }
@@ -434,7 +434,7 @@ final class BrainController: ObservableObject {
                     }
                 case .done(.endTurn): completed = true
                 case .done, .toolCall:
-                    throw ModelProviderError(kind: .malformed, provider: selected.id, message: "The model did not finish a usable Guide response. Try again.")
+                    throw ModelProviderError(kind: .malformed, provider: selected.id, message: "The brain didn’t finish the guide. Try again.")
                 case .usage: break
                 }
             }

@@ -175,8 +175,8 @@ enum ModelContextError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidCapacity: "The selected model reported an invalid context size. Check its server settings."
-        case .requestTooLarge: "Perry’s context estimate exceeds this model’s limit. Shorten the request or choose a model with more context. Your conversation is still saved."
+        case .invalidCapacity: "This brain reported a size I can’t use. Check its server settings."
+        case .requestTooLarge: "That’s too long for this brain. Shorten your message or choose a brain that takes more text. Your conversation is saved."
         }
     }
 }

@@ -49,10 +49,10 @@ public struct Capability: Sendable, Equatable {
 }
 
 public enum CapabilityResolver {
-    static let chooseModel = "Choose a model in Settings › Models."
-    static let chooseCloudModel = "Choose a cloud model in Settings › Models."
-    static let grantAccessibility = "Turn on Accessibility for Perry in System Settings › Privacy & Security."
-    static let grantScreenRecording = "Turn on Screen Recording for Perry in System Settings › Privacy & Security."
+    static let chooseModel = "Choose a brain in Settings > Brain."
+    static let chooseCloudModel = "Choose a cloud brain in Settings > Brain."
+    static let grantAccessibility = "Turn on Accessibility for Perry in System Settings > Privacy & Security."
+    static let grantScreenRecording = "Turn on Screen Recording for Perry in System Settings > Privacy & Security."
 
     public static func resolve(_ snapshot: CapabilitySnapshot) -> [Capability] {
         Capability.Verb.allCases.map { Capability(verb: $0, status: status(of: $0, in: snapshot)) }
@@ -60,7 +60,7 @@ public enum CapabilityResolver {
 
     private static func status(of verb: Capability.Verb, in snapshot: CapabilitySnapshot) -> Capability.Status {
         guard case .model = snapshot.brain else {
-            return .blocked(reason: "No model is connected.", fix: chooseModel)
+            return .blocked(reason: "No brain is connected.", fix: chooseModel)
         }
         let capabilities = snapshot.capabilities
         switch verb {
@@ -72,14 +72,14 @@ public enum CapabilityResolver {
             }
             return screenAccess(snapshot)
         case .act:
-            guard capabilities.isSuperset(of: [.vision, .tools]) else { return .blocked(reason: "This model cannot use Perry's tools.", fix: chooseCloudModel) }
+            guard capabilities.isSuperset(of: [.vision, .tools]) else { return .blocked(reason: "This brain can’t click or type for me.", fix: chooseCloudModel) }
             return screenAccess(snapshot)
         case .files:
-            guard capabilities.contains(.tools) else { return .blocked(reason: "This model cannot use Perry's tools.", fix: chooseCloudModel) }
+            guard capabilities.contains(.tools) else { return .blocked(reason: "This brain can’t work with files for me.", fix: chooseCloudModel) }
             return .available
         case .apps:
-            guard capabilities.contains(.tools) else { return .blocked(reason: "This model cannot use Perry's tools.", fix: chooseCloudModel) }
-            guard !snapshot.connectedApps.isEmpty else { return .blocked(reason: "No apps are connected.", fix: "Connect one in Settings › Apps.") }
+            guard capabilities.contains(.tools) else { return .blocked(reason: "This brain can’t use your apps for me.", fix: chooseCloudModel) }
+            guard !snapshot.connectedApps.isEmpty else { return .blocked(reason: "No apps are connected.", fix: "Connect one in Settings > Apps.") }
             return .available
         }
     }
@@ -195,8 +195,8 @@ public enum PromptAssembler {
     }
 
     public static let noBrainAnswer = """
-        I don't have a brain connected yet, so I can't answer. Sign in with ChatGPT or add an API key \
-        in Settings › Models. If your Mac supports Apple Intelligence, you can turn that on there instead. \
+        I don’t have a brain connected yet, so I can’t answer. Sign in with ChatGPT or add an API key \
+        in Settings > Brain. If your Mac supports Apple Intelligence, you can turn that on there instead. \
         Then ask me again.
         """
 
@@ -226,18 +226,18 @@ public enum PromptAssembler {
         let status = Dictionary(uniqueKeysWithValues: CapabilityResolver.resolve(snapshot).map { ($0.verb, $0.status) })
         var sentences: [String] = []
         if capabilities.contains(.local) {
-            sentences.append("Right now I'm running privately on your Mac with \(name).")
+            sentences.append("Right now I’m running privately on your Mac with \(name).")
         }
         if status[.screen] == .available, capabilities.contains(.vision) {
             sentences.append("I can see your screen, answer questions about it, and walk you through any app step by step.")
         } else {
             sentences.append("I can chat, explain things, and help you write or think something through.")
             if status[.screen] == .available {
-                sentences.append("I can also read the window you're in and explain what's there.")
+                sentences.append("I can also read the window you’re in and explain what's there.")
             }
         }
         if status[.act] == .available {
-            sentences.append("Say “do this for me” and I'll do the task myself.")
+            sentences.append("Say “do this for me” and I’ll do the task myself.")
         }
         if status[.apps] == .available {
             sentences.append("I can also use " + snapshot.connectedApps.joined(separator: ", ") + ".")
