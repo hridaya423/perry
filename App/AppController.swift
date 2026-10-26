@@ -405,7 +405,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    func wake() {
+    func wake(cue: Bool = true) {
         guard isIdle, transitionSession({ try sessionController.wake() }) else { return }
         voice.refreshWakeWordListener()
         sessionStatus = "Listening for a request."
@@ -421,7 +421,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         PerfMark.mark("wake.overlay")
         spatial.startMonitoring()
         showPanel()
-        SoundPlayer.play(.wake)
+        if cue { SoundPlayer.play(.wake) }
     }
 
     func dismiss() {

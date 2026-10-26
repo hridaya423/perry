@@ -55,9 +55,10 @@ public struct EndOfTurnDetector: Sendable {
     private var transcript = ""
     private var silenceProgress = 0.0
 
-    public init(startedAt: TimeInterval, parameters: Parameters = Parameters()) {
+    public init(startedAt: TimeInterval, noiseFloor: Double? = nil, parameters: Parameters = Parameters()) {
         self.startedAt = startedAt
         self.parameters = parameters
+        floor = noiseFloor.map { 20 * log10(max($0, 1e-7)) }
     }
 
     public var requiredSilence: TimeInterval {

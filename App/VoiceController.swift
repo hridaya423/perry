@@ -136,6 +136,9 @@ final class VoiceController: NSObject, ObservableObject {
         onWake: { [weak self] command in
             Task { @MainActor [weak self] in self?.handleWakeWord(command) }
         },
+        onHeard: { [weak self] in
+            Task { @MainActor [weak self] in self?.handleWakeHeard() }
+        },
         onFailure: { [weak self] reason in
             Task { @MainActor [weak self] in
                 guard let self, PerryPreferences.wakeWordEnabled else { return }
@@ -1021,15 +1024,20 @@ final class VoiceController: NSObject, ObservableObject {
         wakeWordListener.start()
     }
 
+    private func handleWakeHeard() {
+        SoundPlayer.play(.wake)
+        overlayState.voiceState = .listening
+    }
+
     private func handleWakeWord(_ command: String) {
-        guard hooks.sessionIsIdle() else { return }
-        hooks.wake()
+        overlayState.voiceState = .idle
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            speak("I’m listening.")
-        } else {
-            hooks.dispatch(trimmed, nil)
+        guard hooks.sessionIsIdle(), !trimmed.isEmpty else {
+            refreshWakeWordListener()
+            return
         }
+        hooks.wake()
+        hooks.dispatch(trimmed, nil)
     }
 
 #if DEBUG

@@ -152,6 +152,21 @@
   - Renders of start, speech, ending, thinking and failed are in `docs/evidence/first-impressions/4.4/`. The first renders showed two defects, now fixed: the hint never appeared (the view mounted before listening began), and the mood badge collided with the ring (the mascot now rests inside the ring).
   - Not verified live: the ring against a real microphone, and focus returning to the user's app after the notch closes.
 
+- 4.5 Done: the wake word no longer sends the first partial after "hey perry". `WakeWordListener` keeps capturing on its own recognition stream after a match, so the mic never changes hands. It feeds the text after the wake phrase and the tap's levels to an `EndOfTurnDetector`, and calls `onWake` with the full remainder when the turn commits.
+  - The remainder comes from the original transcript, so "what's" and the final "?" survive. The gate's normalized text is no longer used for dispatch.
+  - A match plays the `wake` earcon and turns the notch eyes to listening. `AppController.wake(cue:)` stays silent at commit, so the earcon plays once.
+  - "Hey Perry" alone waits up to 8 s for the request. If nothing comes, it goes back to listening quietly.
+  - Ring buffer: the tap keeps the last ~1.6 s of RMS values, and a match seeds the detector's noise floor from their 20th percentile (`EndOfTurnDetector(startedAt:noiseFloor:)`).
+  - Bug found by the new test: without that seed, the detector learned its floor from the user's own voice at the match and ended the turn while they were still talking.
+  - Levels cross to the main actor only while capturing; the always-on part is one lock and an append per buffer.
+  - Verified: 672/0 on the mini, with 0 constraint-loop lines, and PerryCore 94/0. New tests:
+    - The partial stream "hey" → "hey perry what's the weather in paris" dispatches nothing mid-sentence and then exactly "what's the weather in paris".
+    - "Hey Perry." then a 2 s pause then "Open my notes." dispatches "Open my notes.".
+    - "hey perry" with 8 s of silence gives up.
+    - The remainder keeps punctuation.
+    - A known floor lets speech start on the first frame.
+  - Deviation: no audio ring buffer is handed to a second recognizer, because no second recognizer exists. The 1.5 s buffer holds levels for the floor instead. Not verified live: a real "Hey Perry" in a room, and idle CPU with the wake word on.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.

@@ -356,7 +356,7 @@ final class AppSubsystems {
             setStatus: { [weak app = app] status in app?.sessionStatus = status },
             setTranscriptPreview: { [weak app = app] text in app?.transcriptPreview = text },
             dispatch: { [weak app = app] text, taskScope in app?.commandRouter.route(commandText: text, voiceTaskScope: taskScope) },
-            wake: { [weak app = app] in app?.wake() },
+            wake: { [weak app = app] in app?.wake(cue: false) },
             sessionIsIdle: { [weak app = app] in app?.isIdle ?? false },
             wakeListeningChanged: { [weak app = app] in app?.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
             guideSpeechFinished: { [weak app = app] identity in app?.guideCoordinator.handleSpeechFinished(identity: identity) },

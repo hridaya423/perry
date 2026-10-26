@@ -79,6 +79,19 @@ final class EndOfTurnDetectorTests: XCTestCase {
         }
     }
 
+    func testAKnownNoiseFloorLetsSpeechStartOnTheFirstFrame() {
+        var detector = EndOfTurnDetector(startedAt: 0, noiseFloor: 0.001)
+        var events: [EndOfTurnDetector.Event] = []
+        for index in 1...10 {
+            if let event = detector.frame(at: Double(index) * 0.02, rms: 0.06) { events.append(event) }
+        }
+        XCTAssertEqual(events, [.speechStarted])
+        for index in 11...60 {
+            if let event = detector.frame(at: Double(index) * 0.02, rms: 0.06), event.isTerminal { events.append(event) }
+        }
+        XCTAssertEqual(events, [.speechStarted])
+    }
+
     func testShortQuestionCommitsWithin900msOfTheLastWord() throws {
         let fixture = try XCTUnwrap(Self.fixtures().first { $0.name == "short-question" })
         let latency = try XCTUnwrap(Self.replay(fixture).latency)
