@@ -140,17 +140,18 @@ enum BrandCatalog {
         case native
         case rounded
         case dark
+        case light
     }
 
     static let entries: [String: Entry] = [
-        "notion": Entry(bundleIDs: ["notion.id"], asset: nil, tile: .native),
-        "slack": Entry(bundleIDs: ["com.tinyspeck.slackmacgap"], asset: nil, tile: .native),
+        "notion": Entry(bundleIDs: ["notion.id"], asset: "brand-notion", tile: .native),
+        "slack": Entry(bundleIDs: ["com.tinyspeck.slackmacgap"], asset: "brand-slack", tile: .light),
         "linear": Entry(bundleIDs: ["com.linear"], asset: "brand-linear", tile: .rounded),
         "github": Entry(bundleIDs: ["com.github.GitHubClient"], asset: "brand-github", tile: .dark),
         "google-drive": Entry(bundleIDs: ["com.google.drivefs"], asset: "brand-google-drive", tile: .native),
         "google-calendar": Entry(bundleIDs: [], asset: "brand-google-calendar", tile: .native),
         "google-gmail": Entry(bundleIDs: [], asset: "brand-google-gmail", tile: .native),
-        "microsoft": Entry(bundleIDs: ["com.microsoft.Outlook"], asset: nil, tile: .native),
+        "microsoft": Entry(bundleIDs: ["com.microsoft.Outlook"], asset: "brand-microsoft", tile: .native),
         "apple-calendar": Entry(bundleIDs: ["com.apple.iCal"], asset: nil, tile: .native),
     ]
 }
@@ -196,6 +197,11 @@ struct BrandMark: View {
         case .dark:
             ZStack {
                 shape.fill(Color.black)
+                Image(asset).resizable().scaledToFit().padding(size * 0.2)
+            }
+        case .light:
+            ZStack {
+                shape.fill(Color.white)
                 Image(asset).resizable().scaledToFit().padding(size * 0.2)
             }
         }
