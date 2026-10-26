@@ -67,9 +67,47 @@
   - Verified: 656/0 on the mini, with 0 constraint-loop lines. PerryOverlay 28/0. `testRenderMascotMoods` renders the resting, listening, working and needs-you moods; inspected in `docs/evidence/first-impressions/3.11/`. The first renders showed the badge overlapping the greeting and the wordmark, now fixed. Idle probe on the mini, 60 s with the notch closed: avg CPU 0.025%, max 0.4%, RSS 103.7 MB (PASS).
   - Not measured: CPU while the workspace is open. The probe cannot open the notch over ssh. The Perrys rail rows and the peek row leads stay static on purpose, so there is no timeline per row.
 
+- 3.12 Done:
+  - Latency: new marks `notch.hover_enter` (renamed from `home.hover_start`) and `notch.peek_visible` (`panel.visible` is unchanged for the full panel). `testPeekBecomesVisibleWithin80msOfTheDwell` times 20 `showPeek()` calls on the mini: p50 10–13 ms, p95 15–22 ms, max 34–36 ms. With the 180 ms dwell that is about 200 ms hover-to-visible at p95, under the 260 ms target. The figure comes from a test, not a live run: ssh cannot post events and the mini has no notch.
+  - Three blind critic rounds (fresh Sonnet 5.5, PNGs only, HeyClicky as R). Round 3 used two critics to average out the noise. C scores, R in brackets:
+
+    | Round | Size | Density | Colour | Icons | Life |
+    |---|---|---|---|---|---|
+    | 1 | 7 (8) | 6 (8) | 7 (8) | 6 (8) | 7 (7) |
+    | 2 | 6 (8) | 5 (8) | 6 (8) | 5 (7) | 7 (6) |
+    | 3, mean of 2 | 6.5 (8) | 6 (8) | 6.5 (8) | 5 (7.5) | 6.5 (7.5) |
+
+  - Round 1 fixes:
+    - The focused header ("‹ Workspace", collapse) moved into the crown, which saves 40 pt; `NotchLayout.headerHeight` and `headerGap` are deleted.
+    - Task strip: the title has its own line, the progress bar is full width, and Pause, Take over and Stop sit in a row below.
+    - The logo mascot stays resting, and the greeting hint fits on one line.
+    - Rail blurb "Make a helper"; target chip "Window".
+    - Composer focus outline at accent 35%; content fade delay 0.12 s.
+    - The guide stop button is a plain glyph.
+  - Round 2 fixes:
+    - The workspace root lost its canvas fill and now shares the crown gradient.
+    - "No conversations yet" is gone; Recent shows only when threads exist.
+    - Activity strip fonts are on the scale; the mic is the outline glyph.
+    - `NotchLayout.topInset` went from 6 to 12 pt.
+    - Peek task rows lead with a spinner while working and a check when done.
+  - Round 3 fixes, where both critics agreed:
+    - Peek status leads are one outline-circle family: amber `exclamationmark.circle`, mint `checkmark.circle`, and a 13 pt mint arc spinner instead of the grey `ProgressView`.
+    - The strip's Pause, Play and Stop use outline glyphs to match Take over.
+    - The intent card's tier label is 11 pt semibold in the tier colour (was grey `.caption`); its title, body and links are on the scale.
+    - Recent sits above Perrys, and thread rows are one-line titles (date in the tooltip), so the rail no longer ends on a bare "Recent" header. This closes the 3.10 open item.
+  - Not taken from the critics:
+    - Rebalancing the resting eyes: mockup B is the chosen layout.
+    - Renaming "Perrys": a product name, so the user's call.
+    - Removing the crown gradient: the critics split on it.
+    - Shrinking the workspace height: it conflicts with the 3.9 single-size workspace.
+  - Surprise, with evidence in `docs/evidence/first-impressions/3.12/symbol-tint-*.png`: the render harness's `cacheDisplay` capture draws SF Symbols of 14 pt or more in white, whatever their `foregroundStyle` (13 pt and below keep their colour). The same view through `ImageRenderer` shows amber and mint. A standalone probe with the same view tree does not reproduce it, so the cause is unknown. The capture, not the view, is wrong. Until live capture exists, treat the colour of large symbols in harness renders as unverified. Critics in earlier rounds saw this artifact as icon inconsistency.
+  - The routine review fits under the 320 pt cap with Discard and Save visible (it only clipped when the render caught the resize mid-flight). This closes the 3.9 open item.
+  - Verified: 657/0 on the mini, with 0 constraint-loop lines. Renders inspected in `docs/evidence/first-impressions/3.12/`.
+  - Not done live: recordings of hover open and close, peek, approval and listening, plus the click pass-through check. They need a notched display or a GUI session that can post events and record the screen.
+
 ## Next
 
-- 3.12 phase verification, with a blind Sonnet 5.5 critic against the HeyClicky screenshots.
+- Finish 3.12 (critic round 2), commit, then Phase 4.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

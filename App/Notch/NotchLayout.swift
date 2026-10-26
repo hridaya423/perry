@@ -26,9 +26,7 @@ enum NotchLayout {
     }
 
     static let shadowPadding: CGFloat = 48
-    static let headerHeight: CGFloat = 28
-    static let headerGap: CGFloat = 12
-    static let topInset: CGFloat = 6
+    static let topInset: CGFloat = 12
     static let bottomInset: CGFloat = 16
     static let contentInset: CGFloat = 18
 
@@ -54,7 +52,7 @@ enum NotchLayout {
             height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
         case .focused(let content):
             width = 440
-            height = content.map { min(max(cameraInset + topInset + headerHeight + headerGap + $0 + bottomInset, 160), 320) } ?? 320
+            height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
         case .workspace:
             width = 560
             height = 400

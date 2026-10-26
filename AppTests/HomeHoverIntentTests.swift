@@ -135,6 +135,27 @@ final class NotchPeekTests: XCTestCase {
         XCTAssertTrue(controller.sessionPanel.isVisible)
     }
 
+    func testPeekBecomesVisibleWithin80msOfTheDwell() async throws {
+        let (controller, cleanup) = try await peekingController()
+        defer { cleanup() }
+        controller.endPeek()
+        try await Task.sleep(for: .milliseconds(600))
+        var samples: [Double] = []
+        for _ in 0..<20 {
+            let start = ContinuousClock.now
+            controller.showPeek()
+            let elapsed = ContinuousClock.now - start
+            samples.append(Double(elapsed.components.attoseconds) / 1e15 + Double(elapsed.components.seconds) * 1000)
+            XCTAssertTrue(controller.sessionPanel.isVisible)
+            controller.endPeek()
+            try await Task.sleep(for: .milliseconds(600))
+        }
+        let sorted = samples.sorted()
+        let p95 = sorted[Int(Double(sorted.count - 1) * 0.95)]
+        print("notch.peek_show_ms p50=\(sorted[sorted.count / 2]) p95=\(p95) max=\(sorted.last!)")
+        XCTAssertLessThan(p95, 80)
+    }
+
     func testPeekRowsPutTheApprovalFirstThenTwoTasks() {
         let approval = PeekRow(id: "a", kind: .needsYou, title: "Perry needs your OK", status: "Open it to continue")
         let tasks = (1...3).map { PeekRow(id: "t\($0)", kind: .task(working: true), title: "Task \($0)", status: "Working…") }

@@ -150,16 +150,37 @@ private struct PeekRowView: View {
     private var lead: some View {
         switch row.kind {
         case .needsYou:
-            Image(systemName: "exclamationmark.circle.fill")
+            Image(systemName: "exclamationmark.circle")
                 .font(PerryTheme.Icon.row)
                 .foregroundStyle(PerryTheme.Colors.caution)
-        case .task, .perry:
+        case .task(working: true):
+            PeekSpinner()
+        case .task(working: false):
+            Image(systemName: "checkmark.circle")
+                .font(PerryTheme.Icon.row)
+                .foregroundStyle(PerryTheme.Colors.success)
+        case .perry:
             PerryCharacterView(pose: PerryCharacterPose(), size: 22)
         case .suggestion:
             Image(systemName: "lightbulb")
                 .font(PerryTheme.Icon.row)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
+    }
+}
+
+private struct PeekSpinner: View {
+    @State private var spinning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.72)
+            .stroke(PerryTheme.Colors.accent, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            .frame(width: 13, height: 13)
+            .rotationEffect(.degrees(spinning ? 360 : 0))
+            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spinning)
+            .frame(width: 16, height: 16)
+            .onAppear { spinning = true }
     }
 }
 

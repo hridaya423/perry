@@ -36,7 +36,6 @@ struct NotchWorkspaceView: View {
             .animation(reduceMotion ? nil : PerryTheme.Motion.glide, value: model.sidebarSelection)
         }
         .foregroundStyle(PerryTheme.Colors.text)
-        .background(PerryTheme.Colors.canvas)
         .disabled(choosesTarget)
         .accessibilityHidden(choosesTarget)
         .overlay {
@@ -81,8 +80,7 @@ struct NotchWorkspaceView: View {
                 model.sidebarSelection = nil
             } label: {
                 HStack(spacing: 8) {
-                    PerryCharacter(mood: mood, size: 20)
-                        .padding(.trailing, 8)
+                    PerryCharacter(mood: .resting, size: 20)
                     Text("perry")
                         .font(PerryTheme.Scale.wordmark)
                 }
@@ -138,6 +136,39 @@ struct NotchWorkspaceView: View {
             ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if !model.threads.isEmpty {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            Text("Recent")
+                                .font(PerryTheme.Scale.meta)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                .padding(.horizontal, 8)
+                                .padding(.bottom, 2)
+                            ForEach(model.filteredThreads) { thread in
+                                Button {
+                                    model.sidebarSelection = .thread(thread.id)
+                                } label: {
+                                    Text(thread.title.isEmpty ? "Untitled" : thread.title)
+                                        .font(PerryTheme.Scale.body)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background { selectionPill(model.sidebarSelection == .thread(thread.id)) }
+                                        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                }
+                                .buttonStyle(RailRowStyle(cornerRadius: 8))
+                                .accessibilityAddTraits(model.sidebarSelection == .thread(thread.id) ? .isSelected : [])
+                                .help("\(thread.title.isEmpty ? "Untitled" : thread.title)\n\(thread.updatedAt.formatted(.relative(presentation: .named)))")
+                            }
+                            if !model.search.isEmpty, model.filteredThreads.isEmpty {
+                                Text("No matches")
+                                    .font(PerryTheme.Scale.secondary)
+                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                                    .padding(.horizontal, 8)
+                            }
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text("Perrys")
@@ -161,8 +192,9 @@ struct NotchWorkspaceView: View {
                                 searchFocused = false
                                 model.sidebarSelection = .perryEditor(nil)
                             } label: {
-                                Text("Make a helper for a job you repeat")
+                                Text("Make a helper")
                                     .font(PerryTheme.Scale.secondary)
+                                    .lineLimit(1)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 8)
@@ -170,6 +202,7 @@ struct NotchWorkspaceView: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(RailRowStyle(cornerRadius: 8))
+                            .help("Make a helper for a job you repeat")
                         }
                         ForEach(model.perrys) { perry in
                             Button {
@@ -197,53 +230,6 @@ struct NotchWorkspaceView: View {
                             .contextMenu {
                                 Button("Edit \(perry.name)…") { model.sidebarSelection = .perryEditor(perry.id) }
                             }
-                        }
-                    }
-
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        Text("Recent")
-                            .font(PerryTheme.Scale.meta)
-                            .foregroundStyle(PerryTheme.Colors.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.bottom, 2)
-                        ForEach(model.filteredThreads) { thread in
-                            Button {
-                                model.sidebarSelection = .thread(thread.id)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "doc.text")
-                                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                        .frame(width: 22)
-                                        .accessibilityHidden(true)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(thread.title.isEmpty ? "Untitled" : thread.title)
-                                            .font(PerryTheme.Scale.body)
-                                            .lineLimit(1)
-                                        Text(thread.updatedAt.formatted(.relative(presentation: .named)))
-                                            .font(PerryTheme.Scale.secondary)
-                                            .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background { selectionPill(model.sidebarSelection == .thread(thread.id)) }
-                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            }
-                            .buttonStyle(RailRowStyle(cornerRadius: 8))
-                            .accessibilityAddTraits(model.sidebarSelection == .thread(thread.id) ? .isSelected : [])
-                            .help(thread.title.isEmpty ? "Untitled" : thread.title)
-                        }
-                        if model.threads.isEmpty {
-                            Text("No conversations yet")
-                                .font(PerryTheme.Scale.secondary)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                .padding(.horizontal, 8)
-                        } else if !model.search.isEmpty, model.filteredThreads.isEmpty {
-                            Text("No matches")
-                                .font(PerryTheme.Scale.secondary)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                .padding(.horizontal, 8)
                         }
                     }
                 }
@@ -476,7 +462,7 @@ struct NotchWorkspaceView: View {
         return Button {
             choosesTarget = true
         } label: {
-            Label(target.map(CompactTargetChooser.targetName) ?? "Choose a window", systemImage: "macwindow")
+            Label(target.map(CompactTargetChooser.targetName) ?? "Window", systemImage: "macwindow")
                 .lineLimit(1)
         }
         .buttonStyle(ContextChipStyle())
@@ -609,14 +595,13 @@ private struct GestureHint: View {
         HStack(spacing: 6) {
             Text("Hold")
             Keycap(TalkGesture.keys)
-            Text("to talk, or double-tap")
-            Keycap("⌃")
-            Text("to type")
+            Text("to talk")
         }
         .font(PerryTheme.Scale.body)
         .foregroundStyle(PerryTheme.Colors.textSecondary)
+        .lineLimit(1)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(TalkGesture.talk). \(TalkGesture.type).")
+        .accessibilityLabel(TalkGesture.talk)
     }
 }
 

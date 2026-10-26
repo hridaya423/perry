@@ -48,12 +48,8 @@ struct CompactConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: cameraInset)
-                .overlay(alignment: .trailing) {
-                    if peeking { crownControls }
-                }
-            NotchInteractionHost(presentation: presentation,
-                                 onWorkspace: controller.showWorkspace,
-                                 onCollapse: controller.collapseNotch) {
+                .overlay { crown }
+            NotchInteractionHost(presentation: presentation) {
                 workspace
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -126,6 +122,30 @@ struct CompactConversationView: View {
 
     private var peeking: Bool {
         expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil
+    }
+
+    @ViewBuilder
+    private var crown: some View {
+        if peeking {
+            HStack {
+                Spacer()
+                crownControls
+            }
+        } else if presentation.current != nil, presentation.showsInteraction {
+            HStack {
+                Button(action: controller.showWorkspace) {
+                    Label("Workspace", systemImage: "chevron.left")
+                        .font(PerryTheme.Scale.chip)
+                        .padding(.horizontal, 6)
+                        .frame(height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                Spacer()
+                WindowControlButton(systemImage: "chevron.up", label: "Collapse", action: controller.collapseNotch)
+            }
+        }
     }
 
     private var crownControls: some View {
@@ -225,8 +245,6 @@ struct CompactTargetChooser: View {
 
 struct NotchInteractionHost<Workspace: View>: View {
     @ObservedObject var presentation: NotchPresentation
-    let onWorkspace: () -> Void
-    let onCollapse: () -> Void
     @ViewBuilder var workspace: () -> Workspace
     @State private var viewport: CGFloat = 0
 
@@ -247,34 +265,23 @@ struct NotchInteractionHost<Workspace: View>: View {
                     .disabled(showsInteraction)
             }
             if let entry = presentation.current, presentation.showsInteraction {
-                VStack(spacing: NotchLayout.headerGap) {
-                    HStack {
-                        Button("Workspace", systemImage: "chevron.left") { onWorkspace() }
-                            .buttonStyle(.borderless)
-                        Spacer()
-                        Button("Collapse", systemImage: "chevron.up") { onCollapse() }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.borderless)
-                    }
-                    .frame(height: NotchLayout.headerHeight)
-                    ScrollView {
-                        entry.content
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                                var transaction = Transaction()
-                                transaction.disablesAnimations = entry.contentHeight == nil
-                                withTransaction(transaction) { presentation.measure(entry.id, height: height) }
-                            }
-                    }
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
-                    .mask {
-                        VStack(spacing: 0) {
-                            Rectangle()
-                            LinearGradient(colors: [.white, (entry.contentHeight ?? 0) > viewport + 1 ? .clear : .white],
-                                           startPoint: .top, endPoint: .bottom)
-                                .frame(height: 16)
+                ScrollView {
+                    entry.content
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = entry.contentHeight == nil
+                            withTransaction(transaction) { presentation.measure(entry.id, height: height) }
                         }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewport = $0 }
+                .mask {
+                    VStack(spacing: 0) {
+                        Rectangle()
+                        LinearGradient(colors: [.white, (entry.contentHeight ?? 0) > viewport + 1 ? .clear : .white],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: 16)
                     }
                 }
                 .padding(.top, NotchLayout.topInset)

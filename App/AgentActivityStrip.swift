@@ -243,19 +243,20 @@ struct AgentActivityStripView: View {
     }
 
     private var header: some View {
-        HStack(spacing: PerryTheme.Spacing.header) {
+        VStack(alignment: .leading, spacing: PerryTheme.Spacing.header) {
             Button { onToggleExpanded() } label: {
                 HStack(alignment: .top, spacing: PerryTheme.Spacing.header) {
                     PerryCharacter(mood: state.phase == .failed ? .needsYou : state.phase == .paused ? .resting : .working, size: 24)
                         .padding(.trailing, 4)
+                        .padding(.top, 6)
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
                         HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
                             Text(state.title)
-                                .font(PerryTheme.Typography.panelTitle)
+                                .font(PerryTheme.Scale.rowTitle)
                                 .lineLimit(state.isExpanded ? nil : 1)
                             if let tier = state.tier {
                                 Text(tier.rawValue.capitalized)
-                                    .font(PerryTheme.Typography.panelMetadata.weight(.semibold))
+                                    .font(PerryTheme.Scale.section)
                                     .foregroundStyle(color(for: tier))
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
@@ -266,14 +267,14 @@ struct AgentActivityStripView: View {
                             if let startedAt = state.startedAt {
                                 TimelineView(.periodic(from: startedAt, by: 1)) { context in
                                     Text(Self.elapsedText(since: startedAt, now: context.date))
-                                        .font(PerryTheme.Typography.panelMetadata.monospacedDigit())
+                                        .font(PerryTheme.Scale.meta)
                                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 }
                             }
                         }
                         if !state.detail.isEmpty {
                             Text(state.detail)
-                                .font(PerryTheme.Typography.panelMetadata)
+                                .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                                 .lineLimit(state.isExpanded ? nil : 1)
                         }
@@ -287,7 +288,7 @@ struct AgentActivityStripView: View {
                                             .frame(width: proxy.size.width * min(max(progress, 0), 1))
                                     }
                             }
-                            .frame(maxWidth: 260)
+                            .frame(maxWidth: .infinity)
                             .frame(height: 4)
                                 .padding(.top, 4)
                                 .animation(.smooth(duration: 0.4), value: progress)
@@ -303,7 +304,7 @@ struct AgentActivityStripView: View {
             .accessibilityLabel(state.isExpanded ? "Collapse task details" : "Expand task details")
             .accessibilityValue(headerAccessibilityValue)
             .accessibilityHint(state.isExpanded ? "Hide task status and controls" : "Show task status and controls")
-            Spacer(minLength: PerryTheme.Spacing.tight)
+            .frame(maxWidth: .infinity, alignment: .leading)
             controls
         }
     }
@@ -325,7 +326,7 @@ struct AgentActivityStripView: View {
             if state.steps.isEmpty {
                 if state.detail.isEmpty || state.phase == .failed || state.phase == .reporting {
                     Text(emptyStepsLabel)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityLabel("Task steps")
@@ -336,7 +337,7 @@ struct AgentActivityStripView: View {
             }
             if let verification = state.verification {
                 Text("Read-back: \(verification)")
-                    .font(PerryTheme.Typography.panelMetadata)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Task verification")
@@ -350,7 +351,7 @@ struct AgentActivityStripView: View {
     private var stepsDetails: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
             Text("Steps")
-                .font(PerryTheme.Typography.panelMetadata)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .accessibilityAddTraits(.isHeader)
             ForEach(state.steps.indices, id: \.self) { index in
@@ -364,14 +365,14 @@ struct AgentActivityStripView: View {
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
                             Text(step.summary)
-                                .font(PerryTheme.Typography.note.weight(.medium))
+                                .font(PerryTheme.Scale.chip)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text("\(step.reversible ? "Reversible" : "One-way") · Trust tier \(step.tier.rawValue)")
-                                .font(PerryTheme.Typography.panelMetadata)
+                                .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                             if let verification = step.verification {
                                 Text("Outcome: \(verification)")
-                                    .font(PerryTheme.Typography.panelMetadata.weight(.medium))
+                                    .font(PerryTheme.Scale.chip)
                                     .foregroundStyle(verification.hasPrefix("Verified") ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
                             }
                         }
@@ -394,7 +395,7 @@ struct AgentActivityStripView: View {
                 Keycap(TalkGesture.keys)
                 Text("to steer")
             }
-            .font(PerryTheme.Typography.panelMetadata)
+            .font(PerryTheme.Scale.secondary)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(TalkGesture.steer)
@@ -402,7 +403,7 @@ struct AgentActivityStripView: View {
                 HStack(spacing: PerryTheme.Spacing.control) {
                     TextField("Steer before the next step", text: $steering)
                         .textFieldStyle(.roundedBorder)
-                        .font(PerryTheme.Typography.panelMetadata)
+                        .font(PerryTheme.Scale.secondary)
                         .focused($steeringFocused)
                         .accessibilityLabel("Steering instruction")
                         .accessibilityHint("Type an instruction for Perry before the next task step")
@@ -419,7 +420,7 @@ struct AgentActivityStripView: View {
                 .padding(.top, PerryTheme.Spacing.tight)
             } label: {
                 Text("Type instead")
-                    .font(PerryTheme.Typography.panelMetadata)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
@@ -430,13 +431,13 @@ struct AgentActivityStripView: View {
         HStack(spacing: 6) {
             if state.phase == .working || state.phase == .starting {
                 Button { onPause() } label: {
-                    Label("Pause", systemImage: "pause.fill")
+                    Label("Pause", systemImage: "pause")
                 }
                 .accessibilityLabel("Pause task")
                 .help("Pause before the next step")
             } else if state.phase == .paused {
                 Button { onResume() } label: {
-                    Label("Resume", systemImage: "play.fill")
+                    Label("Resume", systemImage: "play")
                 }
                 .accessibilityLabel(state.handedToHuman ? "Continue with Perry" : "Resume task")
                 .help(state.handedToHuman ? "Replan the remaining work from the current screen" : "Resume the task")
@@ -457,7 +458,7 @@ struct AgentActivityStripView: View {
             }
             if state.stopIsAvailable {
                 Button(role: .destructive) { onStop() } label: {
-                    Label("Stop", systemImage: "stop.fill")
+                    Label("Stop", systemImage: "stop")
                 }
                 .accessibilityLabel("Stop task")
                 .help("Stop the task")

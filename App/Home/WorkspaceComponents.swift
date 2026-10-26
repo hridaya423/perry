@@ -67,7 +67,7 @@ struct WorkspaceComposer: View {
                 .transition(.scale(scale: 0.6).combined(with: .opacity))
             } else if let onVoice {
                 Button(action: onVoice) {
-                    Image(systemName: "mic.fill")
+                    Image(systemName: "mic")
                         .font(PerryTheme.Icon.toolbar)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .frame(width: 28, height: 28)
@@ -86,7 +86,7 @@ struct WorkspaceComposer: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(PerryTheme.Colors.surface))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(focused || dropTargeted ? PerryTheme.Colors.accent.opacity(0.8) : PerryTheme.Colors.subtleSeparator, lineWidth: dropTargeted ? 2 : 1)
+                .strokeBorder(dropTargeted ? PerryTheme.Colors.accent.opacity(0.8) : focused ? PerryTheme.Colors.accent.opacity(0.35) : PerryTheme.Colors.subtleSeparator, lineWidth: dropTargeted ? 2 : 1)
         )
         .animation(.easeOut(duration: 0.15), value: focused)
         .animation(.easeOut(duration: 0.15), value: dropTargeted)

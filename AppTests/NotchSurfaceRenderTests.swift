@@ -69,7 +69,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         routine.name = "Prepare meeting notes"
         let routineView = RoutineReviewView(state: routine, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {})
         presentation.present(id: id, priority: .routine, content: routineView, reveal: false)
-        try await render(openNotch(controller), name: "routine-review", size: NSSize(width: 592, height: 492))
+        try await render(openNotch(controller), name: "routine-review", size: NSSize(width: 592, height: 492), wait: 0.8)
         let activity = AgentActivityStripState()
         activity.phase = .working
         activity.title = "Preparing meeting notes"

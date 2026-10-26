@@ -7,7 +7,7 @@ final class NotchLayoutTests: XCTestCase {
 
     func testFocusedHeightIsContentPlusChrome() {
         let size = NotchLayout.size(.focused(content: 100), cameraInset: 32, screen: screens[0])
-        XCTAssertEqual(size, CGSize(width: 440, height: 194))
+        XCTAssertEqual(size, CGSize(width: 440, height: 160))
     }
 
     func testEveryModeStaysInsideItsBounds() {
@@ -17,7 +17,7 @@ final class NotchLayoutTests: XCTestCase {
             XCTAssertLessThanOrEqual(cap.height, min(440, screen.height * 0.38))
             let window = NotchLayout.windowFrame(screen: CGRect(origin: .zero, size: screen), centerX: screen.width / 2)
             let modes: [(NotchLayout.Mode, CGFloat, ClosedRange<CGFloat>)] =
-                [nil, 0, 40, 120, 600, 10_000].map { (.focused(content: $0), 440, 160...320) } + [(.workspace, 560, 220...400)]
+                [nil, 0, 40, 120, 600, 10_000].map { (.focused(content: $0), 440, 120...320) } + [(.workspace, 560, 220...400)]
             for (mode, width, heights) in modes {
                 let size = NotchLayout.size(mode, cameraInset: 32, screen: screen)
                 XCTAssertEqual(size.width, min(width, cap.width), "\(mode) on \(screen)")

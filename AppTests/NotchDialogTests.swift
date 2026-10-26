@@ -108,7 +108,7 @@ final class NotchDialogTests: XCTestCase {
         let presentation = NotchPresentation()
         let probe = DialogSourceProbe()
         let host = NSHostingView(rootView: NotchInteractionHost(
-            presentation: presentation, onWorkspace: {}, onCollapse: {}) {
+            presentation: presentation) {
                 DialogSourceFixture(presentation: presentation, probe: probe)
             })
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 592, height: 320),

@@ -62,7 +62,7 @@ struct GuideControlsView: View {
                 PerryCharacterView(pose: PerryCharacterPose(), size: 20)
                     .accessibilityHidden(true)
                 Text("Step \(state.stepPosition)")
-                    .font(.callout.weight(.medium))
+                    .font(PerryTheme.Scale.chip)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .accessibilityLabel("Guide step position")
                     .accessibilityValue("Step \(state.stepPosition)")
@@ -71,7 +71,7 @@ struct GuideControlsView: View {
             }
             if let targetLabel = state.targetLabel, !targetLabel.isEmpty {
                 Text(targetLabel)
-                    .font(.title3.weight(.medium))
+                    .font(PerryTheme.Scale.title)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Current target")
                     .accessibilityValue(targetLabel)
@@ -96,7 +96,7 @@ struct GuideControlsView: View {
                     Button("Skip this step", action: onSkip)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.callout.weight(.semibold))
+                        .font(PerryTheme.Icon.toolbar)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
@@ -112,25 +112,15 @@ struct GuideControlsView: View {
     }
 
     private var stopButton: some View {
-        Button(action: onStop) {
-            Image(systemName: "xmark")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.06), in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .keyboardShortcut(.cancelAction)
-        .accessibilityLabel("Stop guide")
-        .help("Stop guide (Esc)")
+        WindowControlButton(systemImage: "xmark", label: "Stop guide (Esc)", action: onStop)
+            .keyboardShortcut(.cancelAction)
     }
 
     private var mapContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Pick a step to start from")
-                    .font(.title3.weight(.semibold))
+                    .font(PerryTheme.Scale.title)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 stopButton

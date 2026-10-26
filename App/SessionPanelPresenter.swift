@@ -41,7 +41,7 @@ final class SessionPanelPresenter {
             panel.orderFrontRegardless()
         }
         expand()
-        PerfMark.mark("panel.visible")
+        if expansion.peeking { PerfMark.mark("notch.peek_visible") } else { PerfMark.mark("panel.visible") }
     }
 
     private func expand() {

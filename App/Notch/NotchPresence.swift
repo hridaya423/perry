@@ -182,7 +182,7 @@ final class NotchPresence {
         if inside && !insideZone {
             insideZone = true
             eyes.hover(true)
-            PerfMark.mark("home.hover_start")
+            PerfMark.mark("notch.hover_enter")
             apply(intent.entered(at: now))
         } else if !inside && insideZone {
             insideZone = false

@@ -79,13 +79,13 @@ struct IntentCardView: View {
                         .fill(colorForTier)
                         .frame(width: 7, height: 7)
                     Text(tierLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .font(PerryTheme.Scale.section)
+                        .foregroundStyle(colorForTier)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Risk: \(tierLabel)")
                 Text(card.title)
-                    .font(.title3.weight(.semibold))
+                    .font(PerryTheme.Scale.title)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -120,7 +120,7 @@ struct IntentCardView: View {
                     if detail.count > 220 || detail.contains("\n") {
                         Button(showsFullDetail ? "Show less" : "Show more") { showsFullDetail.toggle() }
                             .buttonStyle(.plain)
-                            .font(.caption.weight(.medium))
+                            .font(PerryTheme.Scale.secondary)
                             .foregroundStyle(PerryTheme.Colors.accent)
                     }
                 }
@@ -152,7 +152,7 @@ struct IntentCardView: View {
                             .accessibilityHint("Re-observe the targets and show the preview again")
                     }
                     .buttonStyle(.plain)
-                    .font(.callout)
+                    .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 Spacer()
@@ -202,7 +202,7 @@ struct IntentCardView: View {
 
     private func detailText(_ detail: String) -> some View {
         Text(detail)
-            .font(.callout)
+            .font(PerryTheme.Scale.body)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
