@@ -40,7 +40,12 @@ There is one primary button, "Looks good". Each row has "Change", which opens it
 Rules:
 - **Hearing:** `SpeechAnalyzer` on macOS 26+ with a supported locale. It is local, free and the most accurate option measured. Otherwise on-device `SFSpeechRecognizer`. Cloud STT is never the default.
 - **Voice, best quality:** ElevenLabs Flash if a key exists, otherwise OpenAI TTS if a key exists. Otherwise the voice row offers "Add ElevenLabs for a human voice" (paste a key, 20 seconds) next to the best local option.
-- **Voice, private or no key:** an installed premium Apple voice. Otherwise a local neural voice (Kokoro, about 300 MB, one tap, needs approval below). Otherwise Perry replies in text only, with "Download a natural voice (free)". **No path ever falls back to compact, Siri, eloquence or novelty voices.**
+- **Voice, private or no key:** an installed premium Apple voice. Otherwise Perry offers a guided Apple voice download (below) and replies in text until the voice arrives.
+- **Guided premium voice download.** macOS has no public API to download Premium voices (Apple Developer Forums thread 787779, FB16307193). Perry reuses the drag-helper pattern:
+  - open Spoken Content's voice manager;
+  - dock a card that says "Pick Ava (Premium) and press the download arrow";
+  - watch `AVSpeechSynthesizer.availableVoicesDidChangeNotification`;
+  - switch to the new voice the moment it lands, and play the user's name in it. **No path ever falls back to compact, Siri, eloquence or novelty voices.**
 - **Brain:** a local model only if it passes the capability floor on this machine. Otherwise the best signed-in cloud brain. Private with no capable local model gets the plain warning "This Mac can chat privately but can't do tasks well."
 - **Privacy:** a cloud brain turns redaction on by default when the user leaned private. Otherwise Perry asks once, in this stage.
 
@@ -178,7 +183,7 @@ Each phase is a separate commit with renders inspected. The full suite runs on t
 ## Owner decisions needed
 
 1. **Default voice: decided.** The advisor picks it (§0). The bad system voices are never used.
-2. **Local neural voice dependency:** FluidAudio, a Swift package that runs Kokoro TTS and Parakeet STT on the Apple Neural Engine via Core ML. It would be the private-tier voice when no premium Apple voice is installed. The model is about 300 MB and downloads only when the user taps it.
+2. **Local neural voice: not now.** FluidAudio's Kokoro path phonemizes with eSpeak-NG, which is GPL-3.0 (per its docs), so it is a licensing risk for a closed app. Revisit if a permissively licensed phonemizer ships, or if FluidAudio's PocketTTS licence checks out. The guided Apple Premium download covers the private tier with no new dependency.
 3. **Approval for a loopback audio device on the mini,** for the STT drill. It is a test-only dependency.
 4. **Rampart weights** (CC BY 4.0, ~15 MB) bundled in the app, converted to Core ML. No runtime dependency.
 5. **Earcon set,** chosen from three candidates.
