@@ -9,6 +9,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "PerryCore", path: "Sources/PerryCore"),
-        .testTarget(name: "PerryCoreTests", dependencies: ["PerryCore"], path: "Tests/PerryCoreTests"),
+        .testTarget(name: "PerryCoreTests", dependencies: ["PerryCore"], path: "Tests/PerryCoreTests", resources: [.copy("Fixtures")]),
     ]
 )

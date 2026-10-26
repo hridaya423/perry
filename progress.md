@@ -105,6 +105,23 @@
   - Verified: 657/0 on the mini, with 0 constraint-loop lines. Renders inspected in `docs/evidence/first-impressions/3.12/`.
   - Not done live: recordings of hover open and close, peek, approval and listening, plus the click pass-through check. They need a notched display or a GUI session that can post events and record the screen.
 
+- 4.2 Done: `Packages/PerryCore/Sources/PerryCore/EndOfTurnDetector.swift` is a pure value type. It takes 20 ms RMS frames and partial transcripts and emits `speechStarted`, `silence(since:progress:)`, `commit(silence | hardCap | turnCap | userSent)` or `abort(noSpeech | cancelled)`.
+  - Onset needs 9 dB over an adaptive noise floor for 120 ms. The floor adapts only on unvoiced frames.
+  - Required silence depends on the transcript tail:
+    - 0.5 s after a clear sentence end (4+ words);
+    - 0.7 s base;
+    - 1.0 s with no punctuation;
+    - 1.2 s after a comma or a continuation word;
+    - +0.3 s per near miss (up to 3);
+    - capped at 2.5 s.
+  - It aborts after 8 s with no speech and caps a turn at 60 s.
+  - Fixtures: `scripts/voice/make-turn-fixtures.sh` builds 14 turns from `say` audio with seeded fan noise. They live in `Packages/PerryCore/Tests/PerryCoreTests/Fixtures/turns/` (168 KB).
+  - Verified: PerryCore 92/0 on the mini. Every fixture ends with the right event. Cut-off rate is 0 and median end latency is 0.72 s. The short question commits within 0.9 s, an "um" pause does not commit, and a fan bed alone is not speech.
+  - Deviations:
+    1. Unpunctuated text waits 1.0 s, not 0.7 s. The thinking-pause fixture has 0.85 s between words, and SFSpeech without `addsPunctuation` never sends a period. 4.3 turns `addsPunctuation` on.
+    2. The continuation list adds articles, prepositions, "is", "are" and "i".
+    3. The 4.1 merge is deferred. The detector does not depend on it.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.
