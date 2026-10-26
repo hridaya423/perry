@@ -227,8 +227,8 @@ struct BrainBeat: View {
         } detail: {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    card(.cloud, title: cloudRow == .apiKey ? "Your API key" : cloudRow.title, detail: cloudDetail, icon: "cloud", status: cloudReady ? readyDetail : nil)
-                    card(.local, title: "On this Mac", detail: "Private and offline. Nothing leaves this Mac.", icon: "laptopcomputer",
+                    card(.cloud, title: cloudRow == .apiKey ? "Your API key" : cloudRow.title, detail: cloudDetail, status: cloudReady ? readyDetail : nil)
+                    card(.local, title: "On this Mac", detail: "Private and offline. Nothing leaves this Mac.",
                          status: localReady ? nil : "Set up later in Settings")
                         .disabled(!localReady)
                 }
@@ -304,23 +304,19 @@ struct BrainBeat: View {
         }
     }
 
-    private func card(_ value: Route, title: String, detail: String, icon: String, status: String?) -> some View {
+    private func card(_ value: Route, title: String, detail: String, status: String?) -> some View {
         let isSelected = selected == value
         return Button { route = value } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .regular))
-                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.text)
+                    Text(title)
+                        .font(PerryTheme.Scale.rowTitle)
+                        .foregroundStyle(PerryTheme.Colors.text)
                     Spacer()
                     Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                         .font(PerryTheme.Icon.row)
                         .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.textTertiary)
                 }
-                .padding(.bottom, 4)
-                Text(title)
-                    .font(PerryTheme.Scale.rowTitle)
-                    .foregroundStyle(PerryTheme.Colors.text)
                 Text(detail)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)

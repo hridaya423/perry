@@ -261,11 +261,15 @@ struct ChoiceSketch: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            InkLine(points: InkStroke.rectangle(in: CGRect(x: 26, y: 30, width: 70, height: 48)), width: 2, seed: 41, progress: progress, color: tint(local))
-            InkLine(points: [CGPoint(x: 18, y: 84), CGPoint(x: 104, y: 84), CGPoint(x: 114, y: 92), CGPoint(x: 8, y: 92), CGPoint(x: 18, y: 84)], width: 2, seed: 42, progress: progress, color: tint(local))
-            InkLine(points: Self.cloud, width: 2.2, seed: 43, progress: progress, color: tint(!local), smooth: false)
+            ZStack(alignment: .topLeading) {
+                InkLine(points: InkStroke.rectangle(in: CGRect(x: 26, y: 30, width: 70, height: 48)), width: 2, seed: 41, progress: progress, color: tint(local))
+                InkLine(points: [CGPoint(x: 18, y: 84), CGPoint(x: 104, y: 84), CGPoint(x: 114, y: 92), CGPoint(x: 8, y: 92), CGPoint(x: 18, y: 84)], width: 2, seed: 42, progress: progress, color: tint(local))
+                InkLine(points: Self.cloud, width: 2.2, seed: 43, progress: progress, color: tint(!local), smooth: false)
+            }
+            .frame(width: 300, height: 110, alignment: .topLeading)
+            .scaleEffect(x: -1, y: 1)
             PerryCharacterView(pose: pose, size: 46)
-                .position(x: 152, y: 66)
+                .position(x: 148, y: 66)
         }
         .frame(width: 300, height: 110)
         .animation(.easeOut(duration: 0.2), value: local)
@@ -295,7 +299,7 @@ struct ChoiceSketch: View {
 
     private var pose: PerryCharacterPose {
         var pose = PerryCharacterPose()
-        pose.gaze = CGVector(dx: local ? -0.9 : 0.9, dy: -0.1)
+        pose.gaze = CGVector(dx: local ? 0.9 : -0.9, dy: -0.1)
         return pose
     }
 }
