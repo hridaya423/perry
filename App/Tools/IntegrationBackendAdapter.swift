@@ -17,6 +17,7 @@ struct AppIntegrationBackend: IntegrationBackend {
     let client: RemoteIntegrationClient
     let oauth: OAuthCoordinator
     let permissionStore: RemoteIntegrationPermissionStore
+    var calendar = SystemCalendar()
 
     func services() async throws -> [IntegrationService] {
         var result: [IntegrationService] = []
@@ -40,10 +41,26 @@ struct AppIntegrationBackend: IntegrationBackend {
                 operations: operations
             ))
         }
+        result.append(IntegrationService(
+            id: Self.calendarServiceID,
+            name: "Calendar (this Mac)",
+            connected: calendar.state == .granted,
+            writeEnabled: false,
+            operations: [IntegrationOperation(name: "upcoming", description: "Read upcoming events", isWrite: false)]
+        ))
         return result
     }
 
+    private static let calendarServiceID = "apple-calendar"
+
     func perform(service: String, operation: String, arguments: JSONValue) async throws -> JSONValue {
+        if service == Self.calendarServiceID {
+            guard operation == "upcoming" else {
+                throw IntegrationBackendError("integrations: \(service) has no operation \"\(operation)\"")
+            }
+            let days = arguments["days"]?.doubleValue.map { Int(min(max($0, 1), 14)) } ?? 7
+            return .object(["summary": .string(try calendar.upcoming(days: days))])
+        }
         guard let definition = RemoteIntegrationDefinition.catalog.first(where: { $0.id == service }) else {
             throw IntegrationBackendError("integrations: unknown service \"\(service)\"")
         }

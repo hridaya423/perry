@@ -11,6 +11,9 @@ struct AppsSettingsPage: View {
     var body: some View {
         SettingsScroll {
             SettingsCard(title: "Connected apps", footer: "Connections stay in this Mac’s Keychain. Each service starts read-only, and every change Perry makes still asks you first.") {
+                SystemCalendarRow()
+                    .settingsRowPadding()
+                SettingsDivider()
                 ForEach(RemoteIntegrationDefinition.catalog) { definition in
                     IntegrationRow(definition: definition, connections: controller.integrationConnections)
                         .settingsRowPadding()

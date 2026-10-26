@@ -81,6 +81,7 @@ targets:
         LSUIElement: true
         NSMicrophoneUsageDescription: "Perry hears you only while you hold the talk key — it never listens in the background."
         NSSpeechRecognitionUsageDescription: "Perry transcribes what you say with Apple Speech, on this Mac, so it can answer. Nothing leaves the Mac for speech."
+        NSCalendarsFullAccessUsageDescription: "Perry reads your upcoming events only when you ask about your schedule. It never changes your calendar."
         NSAppleEventsUsageDescription: "Perry can drive the app you're pointing at — only for a task you asked it to do, and you can undo or stop it."
         CFBundleURLTypes:
           - CFBundleURLName: "dev.perry.oauth"
