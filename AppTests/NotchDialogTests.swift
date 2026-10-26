@@ -142,7 +142,7 @@ final class NotchDialogTests: XCTestCase {
             message: "This removes the saved task and every file in its private Perry workspace.",
             cancelTitle: "Cancel",
             actions: [NotchDialog.Action("Delete task and workspace", role: .destructive) {}],
-            onCancel: {}), name: "dialog-inline", size: NSSize(width: 512, height: 200))
+            onCancel: {}), name: "dialog-inline", size: NSSize(width: 512, height: 232))
         try await render(NotchDialogView(
             title: "Report a problem",
             message: "Perry never uploads anything automatically. Export the redacted diagnostics file, then attach it to a new issue in Perry’s GitHub repository.",
@@ -151,13 +151,13 @@ final class NotchDialogTests: XCTestCase {
                 NotchDialog.Action("Export diagnostics first") {},
                 NotchDialog.Action("Open GitHub issues") {},
             ],
-            onCancel: {}), name: "dialog-stacked", size: NSSize(width: 512, height: 260))
+            onCancel: {}), name: "dialog-stacked", size: NSSize(width: 512, height: 292))
         try await render(NotchDialogView(
             title: "Perry could not save that setting",
             message: "The settings file could not be written.",
             cancelTitle: "OK",
             actions: [],
-            onCancel: {}), name: "dialog-ok-only", size: NSSize(width: 512, height: 180))
+            onCancel: {}), name: "dialog-ok-only", size: NSSize(width: 512, height: 212))
     }
 
     private func render<Content: View>(_ content: Content, name: String, size: NSSize) async throws {
@@ -168,7 +168,17 @@ final class NotchDialogTests: XCTestCase {
         let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
-        let host = NSHostingView(rootView: content)
+        let panel = NotchLayout.size(.focused(content: size.height - 28 - NotchLayout.bottomInset), cameraInset: 24, screen: CGSize(width: 1728, height: 1117))
+        let host = NSHostingView(rootView: content
+            .padding(.horizontal, NotchLayout.contentInset)
+            .padding(.top, NotchLayout.topInset)
+            .frame(width: panel.width - NotchShape.open.topRadius * 2, height: panel.height - 24 - NotchLayout.bottomInset, alignment: .topLeading)
+            .padding(.top, 24)
+            .padding(.horizontal, NotchShape.open.topRadius)
+            .frame(width: panel.width, height: panel.height, alignment: .top)
+            .background(alignment: .top) { NotchShape.open.surface(crown: 32, lifted: false).frame(width: panel.width, height: panel.height) }
+            .frame(width: size.width, height: size.height, alignment: .top)
+            .environment(\.colorScheme, .dark))
         host.sizingOptions = []
         window.contentView = host
         host.frame = frame

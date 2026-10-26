@@ -63,7 +63,7 @@ struct InkButtonStyle: ButtonStyle {
             return switch tier {
             case .primary: PerryTheme.Colors.onPrimaryAction
             case .secondary: PerryTheme.Colors.text
-            case .destructive: .white
+            case .destructive: PerryTheme.Colors.onPrimaryAction
             }
         }
 
