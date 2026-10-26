@@ -28,12 +28,12 @@ final class DictationControllerTests: XCTestCase {
         invocation.begin()
         let replacementID = invocation.id
 
-        controller.handleRecognition(.transcript("old command", isFinal: true, segments: []), generation: oldGeneration)
+        controller.handleRecognition(.transcript("old command", isFinal: true, words: []), generation: oldGeneration)
 
         XCTAssertTrue(transcripts.isEmpty)
         XCTAssertEqual(invocation.id, replacementID)
         let newGeneration = try controller.beginRecognitionFixture()
-        controller.handleRecognition(.transcript("new command", isFinal: true, segments: []), generation: newGeneration)
+        controller.handleRecognition(.transcript("new command", isFinal: true, words: []), generation: newGeneration)
         XCTAssertEqual(transcripts, ["new command"])
         XCTAssertNil(invocation.id)
     }
@@ -51,7 +51,7 @@ final class DictationControllerTests: XCTestCase {
         controller.finish()
 
         controller.handleRecognition(.failure(DictationController.DictationError.unavailable), generation: generation)
-        controller.handleRecognition(.transcript("run the task", isFinal: true, segments: []), generation: generation)
+        controller.handleRecognition(.transcript("run the task", isFinal: true, words: []), generation: generation)
 
         XCTAssertEqual(microphoneSelections, 0)
         XCTAssertEqual(failures, 1)
@@ -70,8 +70,8 @@ final class DictationControllerTests: XCTestCase {
         let generation = try controller.beginRecognitionFixture()
         controller.finish()
 
-        controller.handleRecognition(.transcript("open settings", isFinal: true, segments: []), generation: generation)
-        controller.handleRecognition(.transcript("open settings", isFinal: true, segments: []), generation: generation)
+        controller.handleRecognition(.transcript("open settings", isFinal: true, words: []), generation: generation)
+        controller.handleRecognition(.transcript("open settings", isFinal: true, words: []), generation: generation)
         controller.handleRecognition(.failure(DictationController.DictationError.unavailable), generation: generation)
 
         XCTAssertEqual(transcripts, ["open settings"])
@@ -88,8 +88,8 @@ final class DictationControllerTests: XCTestCase {
         let generation = try controller.beginRecognitionFixture()
         controller.cancel()
 
-        controller.handleRecognition(.transcript("late", isFinal: false, segments: []), generation: generation)
-        controller.handleRecognition(.transcript("late command", isFinal: true, segments: []), generation: generation)
+        controller.handleRecognition(.transcript("late", isFinal: false, words: []), generation: generation)
+        controller.handleRecognition(.transcript("late command", isFinal: true, words: []), generation: generation)
 
         XCTAssertTrue(transcripts.isEmpty)
         XCTAssertTrue(partials.isEmpty)
@@ -109,7 +109,7 @@ final class DictationControllerTests: XCTestCase {
             detectedIdentifier: "fr-FR"
         )
         controller.handleReroutedRecognition(
-            .transcript("ouvre les réglages", isFinal: true, segments: []),
+            .transcript("ouvre les réglages", isFinal: true, words: []),
             generation: generation,
             detectedIdentifier: "fr-FR"
         )

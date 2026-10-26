@@ -51,12 +51,8 @@ final class SFSpeechInput: TalkSpeechInput {
             onFailure: { [weak self] _ in
                 Task { @MainActor in self?.finish(transcript: nil) }
             },
-            onSegments: { [weak self] segments in
-                Task { @MainActor [weak self] in
-                    self?.latestWords = segments.map {
-                        SpokenWord(text: $0.substring, start: $0.timestamp, duration: $0.duration)
-                    }
-                }
+            onWords: { [weak self] words in
+                Task { @MainActor [weak self] in self?.latestWords = words }
             }
         )
         controller.configure(.default)

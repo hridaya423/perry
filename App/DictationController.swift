@@ -3,6 +3,7 @@ import AVFoundation
 import AudioToolbox
 import CoreAudio
 import Speech
+import PerryBrain
 import PerryCore
 
 struct DictationInputDevice: Equatable, Identifiable, Sendable {
@@ -12,7 +13,7 @@ struct DictationInputDevice: Equatable, Identifiable, Sendable {
 }
 
 enum DictationRecognitionEvent {
-    case transcript(String, isFinal: Bool, segments: [SFTranscriptionSegment])
+    case transcript(String, isFinal: Bool, words: [SpokenWord])
     case failure(Error)
 
     init?(result: SFSpeechRecognitionResult?, error: Error?) {
@@ -22,7 +23,9 @@ enum DictationRecognitionEvent {
             self = .transcript(
                 result.bestTranscription.formattedString,
                 isFinal: result.isFinal,
-                segments: result.bestTranscription.segments
+                words: result.bestTranscription.segments.map {
+                    SpokenWord(text: $0.substring, start: $0.timestamp, duration: $0.duration)
+                }
             )
         } else {
             return nil
@@ -110,12 +113,12 @@ final class DictationController {
     private let onFailure: (Error) -> Void
     private let onFallback: () -> Void
     private let onLanguageDetected: (String?) -> Void
-    private let onSegments: ([SFTranscriptionSegment]) -> Void
+    private let onWords: ([SpokenWord]) -> Void
     private let selectFallbackInput: (AVAudioEngine) -> Bool
     private let audioEngine = AVAudioEngine()
     private var recognizer: SFSpeechRecognizer?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
+    private var session: RecognitionSession?
+    private var analyzerTarget: AnalyzerTarget?
     private var inputTapInstalled = false
     private var fallbackAttempted = false
     private var languageMode: DictationLanguageMode = .automatic
@@ -138,9 +141,7 @@ final class DictationController {
         onFailure: @escaping (Error) -> Void = { _ in },
         onFallback: @escaping () -> Void = {},
         onLanguageDetected: @escaping (String?) -> Void = { _ in },
-        /// Word-timestamped segments per recognition event — the Talk loop's
-        /// deixis alignment input. Not used by plain dictation.
-        onSegments: @escaping ([SFTranscriptionSegment]) -> Void = { _ in },
+        onWords: @escaping ([SpokenWord]) -> Void = { _ in },
         selectFallbackInput: @escaping (AVAudioEngine) -> Bool = {
             MicrophoneDeviceSelector.select(on: $0.inputNode)
         }
@@ -151,9 +152,10 @@ final class DictationController {
         self.onFailure = onFailure
         self.onFallback = onFallback
         self.onLanguageDetected = onLanguageDetected
-        self.onSegments = onSegments
+        self.onWords = onWords
         self.selectFallbackInput = selectFallbackInput
         recognizer = Self.makeRecognizer(for: .automatic)
+        prepareAnalyzer()
     }
 
     func configure(_ preferences: DictationPreferences) {
@@ -162,6 +164,17 @@ final class DictationController {
         customWords = preferences.customWords
         inputDeviceID = preferences.inputDeviceID.map { AudioDeviceID($0) }
         recognizer = Self.makeRecognizer(for: preferences.language)
+        prepareAnalyzer()
+    }
+
+    private func prepareAnalyzer() {
+        analyzerTarget = nil
+        guard #available(macOS 26, *), let locale = recognizer?.locale else { return }
+        Task { @MainActor [weak self] in
+            let target = await AnalyzerRecognitionSession.prepare(locale: locale)
+            guard let self, self.recognizer?.locale == locale else { return }
+            self.analyzerTarget = target
+        }
     }
 
     static func availableInputDevices() -> [DictationInputDevice] {
@@ -247,7 +260,7 @@ final class DictationController {
         rerouting = false
         _ = recognitionGate.advance()
         fallbackAttempted = false
-        guard let recognizer, recognizer.supportsOnDeviceRecognition else {
+        guard analyzerTarget != nil || recognizer?.supportsOnDeviceRecognition == true else {
             throw DictationError.onDeviceUnavailable
         }
         do {
@@ -268,9 +281,9 @@ final class DictationController {
 
     func finish() {
         recognitionGate.finishInput()
-        guard isRunning || inputTapInstalled || request != nil || task != nil else { return }
+        guard isRunning || inputTapInstalled || session != nil else { return }
         stopAudioCapture()
-        request?.endAudio()
+        session?.endAudio()
         scheduleFinalizationTimeout()
     }
 
@@ -294,7 +307,7 @@ final class DictationController {
     func beginRecognitionFixture() throws -> Int {
         abortRecognition()
         languageMode = .fixed(identifier: "en-US")
-        request = try Self.makeOnDeviceRequest(supported: true, customWords: [])
+        session = SystemRecognitionSession(recognizer: nil, request: try Self.makeOnDeviceRequest(supported: true, customWords: []), onEvent: { _ in })
         return recognitionGate.advance()
     }
 
@@ -309,13 +322,10 @@ final class DictationController {
 #endif
 
     private func startEngine() throws {
-        guard let recognizer, recognizer.isAvailable else {
-            throw DictationError.unavailable
+        let generation = recognitionGate.generation
+        let recognitionSession = try makeSession { [weak self] event in
+            self?.handleRecognition(event, generation: generation)
         }
-        let recognitionRequest = try Self.makeOnDeviceRequest(
-            supported: recognizer.supportsOnDeviceRecognition,
-            customWords: customWords
-        )
         let input = audioEngine.inputNode
         if !fallbackAttempted, let inputDeviceID, !MicrophoneDeviceSelector.select(on: input, deviceID: inputDeviceID) {
             throw DictationError.deviceUnavailable
@@ -325,11 +335,11 @@ final class DictationController {
             throw DictationError.unavailable
         }
 
-        request = recognitionRequest
+        session = recognitionSession
 
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, when in
             self?.retainAudio(buffer)
-            recognitionRequest.append(buffer)
+            recognitionSession.append(buffer)
             self?.onLevel(AVAudioTime.seconds(forHostTime: when.hostTime), Self.rms(buffer))
         }
         inputTapInstalled = true
@@ -337,12 +347,20 @@ final class DictationController {
         audioEngine.prepare()
         try audioEngine.start()
         isRunning = true
+    }
 
-        let generation = recognitionGate.generation
-        task = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
-            guard let event = DictationRecognitionEvent(result: result, error: error) else { return }
-            self?.handleRecognition(event, generation: generation)
+    private func makeSession(onEvent: @escaping (DictationRecognitionEvent) -> Void) throws -> RecognitionSession {
+        if #available(macOS 26, *), let analyzerTarget {
+            return AnalyzerRecognitionSession(target: analyzerTarget, words: customWords, onEvent: onEvent)
         }
+        guard let recognizer, recognizer.isAvailable else {
+            throw DictationError.unavailable
+        }
+        return SystemRecognitionSession(
+            recognizer: recognizer,
+            request: try Self.makeOnDeviceRequest(supported: recognizer.supportsOnDeviceRecognition, customWords: customWords),
+            onEvent: onEvent
+        )
     }
 
     private func recoverFromInputFailure() {
@@ -372,8 +390,8 @@ final class DictationController {
     func handleRecognition(_ event: DictationRecognitionEvent, generation: Int) {
         guard recognitionGate.accepts(generation) else { return }
         switch event {
-        case .transcript(let transcript, isFinal: true, let segments):
-            onSegments(segments)
+        case .transcript(let transcript, isFinal: true, let words):
+            onWords(words)
             guard !transcript.isEmpty else {
                 abortRecognition()
                 onFailure(DictationError.unavailable)
@@ -400,8 +418,8 @@ final class DictationController {
                 return
             }
             deliverTranscript(transcript, generation: generation)
-        case .transcript(let transcript, isFinal: false, let segments):
-            onSegments(segments)
+        case .transcript(let transcript, isFinal: false, let words):
+            onWords(words)
             if !transcript.isEmpty {
                 onPartial(transcript)
             }
@@ -432,26 +450,19 @@ final class DictationController {
         guard !replay.isEmpty else { throw DictationError.unavailable }
 
         rerouting = true
-        task?.cancel()
-        request?.endAudio()
-        task = nil
-        request = nil
+        session?.cancel()
         recognizer = nextRecognizer
-        request = nextRequest
+        prepareAnalyzer()
         let generation = recognitionGate.advance()
         recognitionGate.finishInput()
-        task = nextRecognizer.recognitionTask(with: nextRequest) { [weak self] result, error in
-            guard let event = DictationRecognitionEvent(result: result, error: error) else { return }
-            self?.handleReroutedRecognition(
-                event,
-                generation: generation,
-                detectedIdentifier: identifier
-            )
+        let nextSession = SystemRecognitionSession(recognizer: nextRecognizer, request: nextRequest) { [weak self] event in
+            self?.handleReroutedRecognition(event, generation: generation, detectedIdentifier: identifier)
         }
+        session = nextSession
         for buffer in replay {
-            nextRequest.append(buffer)
+            nextSession.append(buffer)
         }
-        nextRequest.endAudio()
+        nextSession.endAudio()
         scheduleFinalizationTimeout()
     }
 
@@ -462,8 +473,8 @@ final class DictationController {
     ) {
         guard recognitionGate.accepts(generation) else { return }
         switch event {
-        case .transcript(let transcript, isFinal: true, let segments):
-            onSegments(segments)
+        case .transcript(let transcript, isFinal: true, let words):
+            onWords(words)
             rerouting = false
             detectedLanguageIdentifier = detectedIdentifier
             onLanguageDetected(detectedIdentifier)
@@ -473,8 +484,8 @@ final class DictationController {
                 return
             }
             deliverTranscript(transcript, generation: generation)
-        case .transcript(let transcript, isFinal: false, let segments):
-            onSegments(segments)
+        case .transcript(let transcript, isFinal: false, let words):
+            onWords(words)
             if !transcript.isEmpty { onPartial(transcript) }
         case .failure(let error):
             abortRecognition()
@@ -504,10 +515,8 @@ final class DictationController {
         finishCancellationWorkItem?.cancel()
         finishCancellationWorkItem = nil
         stopAudioCapture()
-        request?.endAudio()
-        task?.cancel()
-        request = nil
-        task = nil
+        session?.cancel()
+        session = nil
         rerouting = false
         clearAudioBuffer()
     }
@@ -534,7 +543,7 @@ final class DictationController {
         audioBufferLock.unlock()
     }
 
-    private static func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+    static func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
         guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength) else { return nil }
         copy.frameLength = buffer.frameLength
         let channelCount = Int(buffer.format.channelCount)
