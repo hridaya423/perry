@@ -440,6 +440,8 @@ enum PerryLiveErasureErasers {
                     PerryFileEraser.Target(identifier: "memory.json", url: $0.appendingPathComponent("memory.json")),
                     PerryFileEraser.Target(identifier: "PROFILE.md", url: $0.appendingPathComponent("PROFILE.md")),
                     PerryFileEraser.Target(identifier: "VOLATILE.md", url: $0.appendingPathComponent("VOLATILE.md")),
+                    PerryFileEraser.Target(identifier: "memory/PROFILE.md", url: $0.appendingPathComponent("memory/PROFILE.md")),
+                    PerryFileEraser.Target(identifier: "memory/CONTEXT.md", url: $0.appendingPathComponent("memory/CONTEXT.md")),
                 ]
             } ?? []
         )

@@ -153,6 +153,8 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
             (.memory, "memory.json.corrupt-fixture"),
             (.memory, "PROFILE.md"),
             (.memory, "VOLATILE.md"),
+            (.memory, "memory/PROFILE.md"),
+            (.memory, "memory/CONTEXT.md"),
             (.preferences, "voice-dictionary.json"),
             (.preferences, "voice-dictionary.json.backup"),
             (.preferences, "voice-dictionary.json.corrupt-fixture"),
@@ -165,6 +167,7 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
         let activityLog = ActivityLog(storageDirectory: supportDirectory)
         let transcriptStore = TranscriptStore(directory: supportDirectory)
         let memoryStore = MemoryStore(storageDirectory: supportDirectory)
+        try FileManager.default.createDirectory(at: supportDirectory.appendingPathComponent("memory"), withIntermediateDirectories: true)
         for (_, name) in fixtures {
             try Data(name.utf8).write(to: supportDirectory.appendingPathComponent(name))
         }

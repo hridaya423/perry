@@ -489,8 +489,13 @@ final class AppSubsystems {
         perrys: self.perryStore,
         workers: self.workers, workerLease: self.foregroundWorkerLease,
         memoryContext: { [memoryStore = self.memoryStore] in
-            let config = await self.memoryStore.currentConfiguration()
-            return (config.enabled, await self.memoryStore.promptContext(appBundleID: nil))
+            let config = await memoryStore.currentConfiguration()
+            let profile = AppController.supportDirectory.map {
+                MemoryFiles(directory: $0.appendingPathComponent("memory", isDirectory: true)).promptBlock()
+            }
+            let records = await memoryStore.promptContext(appBundleID: nil)
+            let text = [profile, records].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n\n")
+            return (config.enabled, text.isEmpty ? nil : text)
         },
         promptEnvironment: { [integrationBackend = self.integrationBackend] in
             let permissions = await PerryPermissionSnapshot.probe()

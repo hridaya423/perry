@@ -187,7 +187,7 @@ final class MemoryFilesTests: XCTestCase {
         try files.writeContext("ctx only")
         XCTAssertEqual(files.promptBlock(), "Current context:\nctx only")
         try files.writeProfile("prof")
-        XCTAssertTrue(files.promptBlock().contains("About the user:\nprof"))
+        XCTAssertTrue(files.promptBlock().contains("Profile:\nprof"))
         XCTAssertTrue(files.promptBlock().contains("Current context:\nctx only"))
     }
 

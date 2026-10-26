@@ -33,7 +33,7 @@ public struct MemoryFiles: Sendable {
         var sections: [String] = []
         let profile = profile().trimmingCharacters(in: .whitespacesAndNewlines)
         let context = context().trimmingCharacters(in: .whitespacesAndNewlines)
-        if !profile.isEmpty { sections.append("About the user:\n\(profile)") }
+        if !profile.isEmpty { sections.append("Profile:\n\(profile)") }
         if !context.isEmpty { sections.append("Current context:\n\(context)") }
         return sections.joined(separator: "\n\n")
     }
