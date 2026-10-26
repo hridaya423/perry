@@ -39,6 +39,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var talkSkillLibrary: AppSkillLibrary { subsystems.talkSkillLibrary }
     var talkSession: TalkSession { subsystems.talkSession }
     var modifierHoldMonitor: ModifierHoldMonitor { subsystems.modifierHoldMonitor }
+    var shortcutCheck: ShortcutCheck { subsystems.shortcutCheck }
     var voice: VoiceController { subsystems.voice }
     var oauthCoordinator: OAuthCoordinator { subsystems.oauthCoordinator }
     var remoteIntegrationPermissions: RemoteIntegrationPermissionStore { subsystems.remoteIntegrationPermissions }
@@ -295,6 +296,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         ensureSupportDirectory()
         installHotkey()
         voice.startInputListeners()
+        modifierHoldMonitor.interceptHold = { [weak self] in self?.subsystems.shortcutCheck.intercept() ?? false }
         modifierHoldMonitor.start()
         if let supportDirectory = AppController.supportDirectory {
             let refresher = CuaCapabilityManifest.Refresher(

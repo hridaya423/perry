@@ -37,6 +37,9 @@ final class ModifierHoldMonitor {
     private var fallbackLocalMonitors: [Any] = []
 
     private var holding = false
+    private var swallowing = false
+    private(set) var captureMode: PushToTalkController.CaptureMode?
+    var interceptHold: () -> Bool = { false }
     private var holdStartedAt: TimeInterval = 0
     private var committed = false
     private var commitTask: Task<Void, Never>?
@@ -113,9 +116,11 @@ final class ModifierHoldMonitor {
             if let runLoopSource {
                 CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
             }
+            captureMode = .eventTap
             return
         }
         installFallbackMonitors()
+        captureMode = .fallbackMonitors
     }
 
     func stop() {
@@ -131,6 +136,7 @@ final class ModifierHoldMonitor {
         for monitor in fallbackLocalMonitors { NSEvent.removeMonitor(monitor) }
         fallbackGlobalMonitors = []
         fallbackLocalMonitors = []
+        captureMode = nil
         resetCaptureState()
     }
 
@@ -181,9 +187,17 @@ final class ModifierHoldMonitor {
         }
         guard isFlagsChanged else { return }
 
-        if modifiers == talkHold() {
+        if swallowing {
+            if !modifiers.isSuperset(of: talkHold()) {
+                swallowing = false
+                holding = false
+            }
+        } else if modifiers == talkHold() {
             lastCleanControlRelease = nil
-            if !holding {
+            if !holding, interceptHold() {
+                holding = true
+                swallowing = true
+            } else if !holding {
                 holding = true
                 holdStartedAt = timestamp
                 committed = false
@@ -245,7 +259,7 @@ final class ModifierHoldMonitor {
     func handleKeyDown(keyCode: Int64 = -1) {
         lastCleanControlRelease = nil
         if controlDown { controlPressClean = false }
-        guard holding else { return }
+        guard holding, !swallowing else { return }
         holding = false
         committed = false
         commitTask?.cancel()
@@ -257,8 +271,9 @@ final class ModifierHoldMonitor {
     private func resetCaptureState() {
         commitTask?.cancel()
         commitTask = nil
-        let wasHolding = holding
+        let wasHolding = holding && !swallowing
         holding = false
+        swallowing = false
         committed = false
         controlDown = false
         controlPressClean = true

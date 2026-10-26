@@ -295,6 +295,8 @@ final class AppSubsystems {
         return controller
     }()
 
+    let shortcutCheck = ShortcutCheck()
+
     lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak app = app] in
             guard let app, !app.maintenance.isUnderMaintenance else { return }

@@ -162,6 +162,12 @@ struct SettingsView: View {
                 .onAppear(perform: refreshTalkCapture)
                 .onChange(of: pttShortcut) { _, _ in refreshTalkCapture() }
                 .onChange(of: wakeShortcut) { _, _ in refreshTalkCapture() }
+                ShortcutCheckRow(check: controller.shortcutCheck, gesture: talkCapture.saved) {
+                    controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
+                    if controller.shortcutCheck.result == .needsInputMonitoring {
+                        Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
+                    }
+                }
                 Toggle(isOn: $wakeWordEnabled) {
                     Text("Say “hey Perry” to wake")
                     Text("Listens on this Mac for the phrase and keeps no transcript.").settingNote()
