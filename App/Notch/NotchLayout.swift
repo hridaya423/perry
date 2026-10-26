@@ -2,6 +2,7 @@ import AppKit
 
 enum NotchLayout {
     enum Mode: Equatable {
+        case peek(content: CGFloat?)
         case focused(content: CGFloat?)
         case workspace
     }
@@ -32,9 +33,12 @@ enum NotchLayout {
     static let contentInset: CGFloat = 18
 
     @MainActor
-    static func mode(_ presentation: NotchPresentation) -> Mode {
-        guard presentation.showsInteraction, let entry = presentation.current else { return .workspace }
-        return .focused(content: entry.contentHeight)
+    static func mode(_ presentation: NotchPresentation, expansion: NotchExpansion) -> Mode {
+        if presentation.showsInteraction, let entry = presentation.current,
+           !(expansion.peeking && entry.priority == .activity) {
+            return .focused(content: entry.contentHeight)
+        }
+        return expansion.peeking ? .peek(content: expansion.peekHeight) : .workspace
     }
 
     static func cap(screen: CGSize) -> CGSize {
@@ -45,6 +49,9 @@ enum NotchLayout {
         let cap = cap(screen: screen)
         let width: CGFloat, height: CGFloat
         switch mode {
+        case .peek(let content):
+            width = 440
+            height = content.map { min(max(cameraInset + topInset + $0 + bottomInset, 120), 320) } ?? 320
         case .focused(let content):
             width = 440
             height = content.map { min(max(cameraInset + topInset + headerHeight + headerGap + $0 + bottomInset, 160), 320) } ?? 320

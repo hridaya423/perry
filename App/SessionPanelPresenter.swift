@@ -149,7 +149,12 @@ extension AppController {
         showPanel(activate: true)
     }
 
-    func showPanel(activate: Bool) {
+    func showPeek() {
+        showPanel(activate: false, peek: true)
+    }
+
+    func showPanel(activate: Bool, peek: Bool = false) {
+        sessionPanel.expansion.peeking = peek
         probe.pinInvocationTargetIfNeeded()
         homeController.prepareConversation(target: probe.presentationTarget())
         notchPresence.setConversationVisible(true)
@@ -164,7 +169,7 @@ extension AppController {
         guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return (.zero, .zero) }
         let presentation = NotchPresentation.shared
         let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchPresence.zoneRect(for: screen).midX)
-        let size = NotchLayout.size(NotchLayout.mode(presentation), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
+        let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: sessionPanel.expansion), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
         presentation.frame = NotchLayout.visibleFrame(size, in: window)
         return (window, presentation.frame)
     }

@@ -615,7 +615,7 @@ private struct GestureHint: View {
     }
 }
 
-private struct WindowControlButton: View {
+struct WindowControlButton: View {
     let systemImage: String
     let label: String
     let action: () -> Void

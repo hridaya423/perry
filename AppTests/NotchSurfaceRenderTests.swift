@@ -529,6 +529,48 @@ final class NotchSurfaceRenderTests: XCTestCase {
         print("notch.motion.frames=\(index)")
     }
 
+    func testRenderPeekStates() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        let controller = AppController(debugStorageDirectory: directory)
+        let model = controller.homeController.homeModel
+        defer {
+            for entry in presentation.entries { presentation.remove(entry.id) }
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        func shot(_ name: String) async throws {
+            controller.sessionPanel.expansion.peeking = true
+            controller.sessionPanel.expansion.peekHeight = nil
+            try await render(openNotch(controller), name: "peek-\(name)", size: NSSize(width: 592, height: 360), wait: 0.5)
+        }
+        model.sidebarSelection = nil
+        model.threads = []
+        model.perrys = []
+        model.suggestions = []
+        try await shot("empty")
+
+        let drafting = PerryThread(title: "Draft the launch email", turns: [.init(question: "Draft the launch email", answer: "")])
+        let notes = PerryThread(title: "Project notes", turns: [.init(question: "Summarize the meeting", answer: "The team agreed to finish the outline before Friday.")])
+        model.threads = [notes, drafting]
+        model.workingThreads = [drafting.id]
+        model.streamingAnswers = [drafting.id: "Subject: Perry is here\nWriting the second paragraph"]
+        try await shot("working")
+
+        presentation.present(id: UUID(), priority: .approval, content: Text("Approve?"))
+        presentation.showsInteraction = false
+        try await shot("needs-you")
+        for entry in presentation.entries { presentation.remove(entry.id) }
+
+        let long = PerryThread(title: "Compare every quarterly revenue spreadsheet in the finance folder and write a summary", turns: [.init(question: "Compare", answer: "Read eleven of the fourteen spreadsheets so far, and the totals for the second quarter do not match the board deck")])
+        model.threads = [long, drafting]
+        try await shot("long-titles")
+        model.workingThreads = []
+        model.streamingAnswers = [:]
+    }
+
     private func openNotch(_ controller: AppController) -> CompactConversationView {
         controller.sessionPanel.expansion.open = true
         controller.sessionPanel.expansion.contentShown = true

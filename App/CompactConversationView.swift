@@ -31,7 +31,7 @@ struct CompactConversationView: View {
     private var cameraInset: CGFloat { metrics.cameraInset }
 
     private var size: CGSize {
-        NotchLayout.size(NotchLayout.mode(presentation), cameraInset: cameraInset, screen: metrics.screen)
+        NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion), cameraInset: cameraInset, screen: metrics.screen)
     }
 
     private var grown: Bool { expansion.open || reduceMotion }
@@ -41,13 +41,16 @@ struct CompactConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: cameraInset)
+                .overlay(alignment: .trailing) {
+                    if peeking { crownControls }
+                }
             NotchInteractionHost(presentation: presentation,
                                  onWorkspace: controller.showWorkspace,
                                  onCollapse: controller.collapseNotch) {
                 workspace
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if presentation.current != nil, !presentation.showsInteraction {
+            if presentation.current != nil, !presentation.showsInteraction, !peeking {
                 HStack {
                     Spacer()
                     Button("Return to active task", systemImage: "arrow.up.right") {
@@ -82,8 +85,11 @@ struct CompactConversationView: View {
         .onChange(of: controller.pendingPromptText) { _, _ in consumePrompt() }
         .onChange(of: model.sidebarSelection) { _, _ in
             showsGuide = false
+            expansion.peeking = false
             controller.refreshNotchLayout()
         }
+        .onChange(of: expansion.peeking) { _, _ in controller.refreshNotchLayout() }
+        .onChange(of: expansion.peekHeight) { _, _ in controller.refreshNotchLayout() }
         .onChange(of: presentation.current?.id) { _, _ in controller.refreshNotchLayout() }
         .task(id: presentation.current?.contentHeight) { controller.refreshNotchLayout() }
     }
@@ -107,9 +113,42 @@ struct CompactConversationView: View {
                 }.buttonStyle(.borderless).padding(20)
                 SessionPanelView(controller: controller)
             }
+        } else if peeking {
+            NotchPeekView(model: model, presentation: presentation, onOpen: open, onExpand: controller.showPanel)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = expansion.peekHeight == nil
+                    withTransaction(transaction) { expansion.peekHeight = height }
+                }
+                .padding(.top, NotchLayout.topInset)
+                .frame(maxHeight: .infinity, alignment: .top)
         } else {
             NotchWorkspaceView(model: model)
         }
+    }
+
+    private var peeking: Bool {
+        expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil && !showsGuide
+    }
+
+    private var crownControls: some View {
+        HStack(spacing: 2) {
+            NotchCommandsMenu(controller: controller)
+                .frame(width: 28, height: 28)
+                .help("More")
+            WindowControlButton(systemImage: "xmark", label: "Close", action: controller.collapseNotch)
+        }
+    }
+
+    private func open(_ row: PeekRow) {
+        switch row.kind {
+        case .needsYou: presentation.showsInteraction = true
+        case .task: model.sidebarSelection = UUID(uuidString: row.id).map { .thread($0) } ?? .history
+        case .perry: model.sidebarSelection = .perryEditor(UUID(uuidString: row.id))
+        case .suggestion: model.sidebarSelection = .suggestions
+        }
+        controller.showPanel()
     }
 
     private func updateCameraInset() {

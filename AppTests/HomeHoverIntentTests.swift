@@ -135,6 +135,14 @@ final class NotchPeekTests: XCTestCase {
         XCTAssertTrue(controller.sessionPanel.isVisible)
     }
 
+    func testPeekRowsPutTheApprovalFirstThenTwoTasks() {
+        let approval = PeekRow(id: "a", kind: .needsYou, title: "Perry needs your OK", status: "Open it to continue")
+        let tasks = (1...3).map { PeekRow(id: "t\($0)", kind: .task(working: true), title: "Task \($0)", status: "Working…") }
+        let perry = PeekRow(id: "p", kind: .perry, title: "Morning brief", status: "Summarize newsletters")
+        XCTAssertEqual(PeekRow.rows(needsYou: approval, tasks: tasks, perrys: [perry], suggestions: []).map(\.id), ["a", "t1", "t2"])
+        XCTAssertEqual(PeekRow.rows(needsYou: nil, tasks: [], perrys: [perry, perry], suggestions: [perry]).count, 2)
+    }
+
     func testHoverOutDoesNotCancelAVoiceTurn() async throws {
         let (controller, cleanup) = try await peekingController()
         defer {

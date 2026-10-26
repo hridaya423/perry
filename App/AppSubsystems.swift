@@ -510,7 +510,7 @@ final class AppSubsystems {
 
     lazy var notchPresence: NotchPresence = {
         let presence = NotchPresence(home: self.homeController)
-        presence.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
+        presence.onPreviewConversation = { [weak app = app] in app?.showPeek() }
         presence.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
         presence.onEndPreview = { [weak app = app] in
             let presentation = NotchPresentation.shared
