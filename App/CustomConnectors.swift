@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PerryBrain
 import PerryCore
@@ -17,6 +18,7 @@ struct CustomConnector: Codable, Identifiable, Hashable {
     enum Secret: Codable, Hashable {
         case environment(String)
         case bearer
+        case oauth
     }
 
     var summary: String {
@@ -44,13 +46,29 @@ final class CustomConnectors: ObservableObject {
     private let host: PerryToolHost
     private let timeout: Duration
     private let keychain: KeychainStore
+    private let http: any MCPHTTPPerforming
+    private let authorizer: MCPAuthorizer
     private var live: [UUID: MCPConnector] = [:]
+    private var challenges: [UUID: MCPAuthChallenge] = [:]
 
-    init(directory: URL?, host: PerryToolHost, timeout: Duration = .seconds(20), keychain: KeychainStore = KeychainStore(service: CustomConnectors.keychainService)) {
+    static let browserUserAgent = LoopbackMCPAuthorizationUserAgent(open: { url in
+        await MainActor.run { NSWorkspace.shared.open(url) }
+    })
+
+    init(
+        directory: URL?,
+        host: PerryToolHost,
+        timeout: Duration = .seconds(20),
+        keychain: KeychainStore = KeychainStore(service: CustomConnectors.keychainService),
+        http: any MCPHTTPPerforming = URLSessionMCPHTTP(),
+        userAgent: any MCPAuthorizationUserAgent = CustomConnectors.browserUserAgent
+    ) {
         file = directory?.appendingPathComponent("connectors.json")
         self.host = host
         self.timeout = timeout
         self.keychain = keychain
+        self.http = http
+        authorizer = MCPAuthorizer(userAgent: userAgent, performer: http)
         if let file, let data = try? Data(contentsOf: file),
            let saved = try? JSONDecoder().decode([CustomConnector].self, from: data) {
             connectors = saved
@@ -59,7 +77,7 @@ final class CustomConnectors: ObservableObject {
 
     func connectAll() {
         for connector in connectors {
-            reconnect(connector.id)
+            reconnect(connector.id, signingIn: false)
         }
     }
 
@@ -95,7 +113,7 @@ final class CustomConnectors: ObservableObject {
             connector.secret = nil
         }
         connectors.append(connector)
-        let result = await connect(connector)
+        let result = await establish(connector, signingIn: true)
         if case .ready = result {
             save()
         } else {
@@ -106,10 +124,10 @@ final class CustomConnectors: ObservableObject {
         return result
     }
 
-    func reconnect(_ id: UUID) {
+    func reconnect(_ id: UUID, signingIn: Bool = true) {
         guard live[id] == nil, status[id] != .connecting, let connector = connectors.first(where: { $0.id == id }) else { return }
         status[id] = .connecting
-        Task { await connect(connector) }
+        Task { await establish(connector, signingIn: signingIn) }
     }
 
     func remove(_ id: UUID) {
@@ -128,6 +146,35 @@ final class CustomConnectors: ObservableObject {
     func forgetAll() {
         disconnectAll()
         connectors = []
+    }
+
+    @discardableResult
+    private func establish(_ connector: CustomConnector, signingIn: Bool) async -> Status {
+        let result = await connect(connector)
+        guard let challenge = challenges.removeValue(forKey: connector.id), signingIn,
+              case .url(let url) = connector.endpoint else { return result }
+        status[connector.id] = .connecting
+        let credential: MCPOAuthCredential
+        do {
+            credential = try await authorizer.signIn(resource: url, challenge: challenge)
+        } catch {
+            return fail(connector.id, error.localizedDescription)
+        }
+        guard let index = connectors.firstIndex(where: { $0.id == connector.id }) else { return .failed("Removed while connecting.") }
+        do {
+            try keychain.save(Self.encode(credential), account: connector.id.uuidString)
+        } catch {
+            return fail(connector.id, "Perry couldn’t save the sign-in to your keychain.")
+        }
+        connectors[index].secret = .oauth
+        return await connect(connectors[index])
+    }
+
+    private func fail(_ id: UUID, _ message: String) -> Status {
+        if connectors.contains(where: { $0.id == id }) {
+            status[id] = .failed(message)
+        }
+        return .failed(message)
     }
 
     @discardableResult
@@ -162,9 +209,12 @@ final class CustomConnectors: ObservableObject {
                 throw error
             }
         } catch {
+            if let unauthorized = error as? MCPUnauthorized, connector.secret != .bearer {
+                challenges[connector.id] = unauthorized.challenge
+            }
             result = ContinuousClock.now - started >= timeout
                 ? .failed("The server didn’t answer within \(timeout.formatted(.units(allowed: [.seconds], width: .wide))).")
-                : .failed(error.localizedDescription)
+                : .failed(error is MCPUnauthorized && connector.secret == .bearer ? "The server rejected the bearer token." : error.localizedDescription)
         }
         if connectors.contains(where: { $0.id == connector.id }) {
             status[connector.id] = result
@@ -191,10 +241,22 @@ final class CustomConnectors: ObservableObject {
         case (.command(let line), _, _):
             return try StdioMCPTransport(command: "/bin/zsh", arguments: ["-lc", line], onExit: onExit)
         case (.url(let url), .bearer, let value?):
-            return try HTTPMCPTransport(endpoint: url, headers: ["Authorization": "Bearer \(value)"])
+            return try HTTPMCPTransport(endpoint: url, headers: ["Authorization": "Bearer \(value)"], performer: http)
+        case (.url(let url), .oauth, let value?):
+            guard let credential = try? JSONDecoder().decode(MCPOAuthCredential.self, from: Data(value.utf8)) else {
+                return try HTTPMCPTransport(endpoint: url, performer: http)
+            }
+            let keychain = keychain
+            let account = id.uuidString
+            let session = MCPOAuthSession(credential: credential, performer: http, persist: { try? keychain.save(Self.encode($0), account: account) })
+            return try HTTPMCPTransport(endpoint: url, auth: session, performer: http)
         case (.url(let url), _, _):
-            return try HTTPMCPTransport(endpoint: url)
+            return try HTTPMCPTransport(endpoint: url, performer: http)
         }
+    }
+
+    private nonisolated static func encode(_ credential: MCPOAuthCredential) -> String {
+        String(decoding: (try? JSONEncoder().encode(credential)) ?? Data(), as: UTF8.self)
     }
 
     private func serverExited(_ id: UUID) {

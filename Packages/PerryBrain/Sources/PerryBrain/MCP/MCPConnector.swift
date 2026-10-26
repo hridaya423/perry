@@ -207,6 +207,7 @@ public actor HTTPMCPTransport: MCPTransport {
     private let endpoint: URL
     private let performer: any MCPHTTPPerforming
     private let headers: [String: String]
+    private let auth: MCPOAuthSession?
     private var sessionID: String?
     private var nextID = 0
     private var closed = false
@@ -214,12 +215,14 @@ public actor HTTPMCPTransport: MCPTransport {
     public init(
         endpoint: URL,
         headers: [String: String] = [:],
+        auth: MCPOAuthSession? = nil,
         performer: any MCPHTTPPerforming = URLSessionMCPHTTP()
     ) throws {
         try NetworkEndpointPolicy.requireSafe(endpoint)
         self.endpoint = endpoint
         self.performer = performer
         self.headers = headers
+        self.auth = auth
     }
 
     public func request(method: String, params: JSONValue?) async throws -> JSONValue {
@@ -259,13 +262,13 @@ public actor HTTPMCPTransport: MCPTransport {
     public func close() async {
         closed = true
         guard sessionID != nil else { return }
-        var request = baseRequest()
+        var request = baseRequest(token: await auth?.currentAccessToken)
         request.httpMethod = "DELETE"
         _ = try? await performer.data(for: request)
         sessionID = nil
     }
 
-    private func baseRequest() -> URLRequest {
+    private func baseRequest(token: String?) -> URLRequest {
         var request = URLRequest(url: endpoint)
         request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -276,6 +279,9 @@ public actor HTTPMCPTransport: MCPTransport {
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
         }
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.timeoutInterval = 120
         return request
     }
@@ -283,8 +289,14 @@ public actor HTTPMCPTransport: MCPTransport {
     /// POSTs one message and returns the response message. Handles both
     /// `application/json` and `text/event-stream` bodies; in the SSE case the
     /// matching `id` message ends the exchange per the MCP spec.
-    private func post(_ message: JSONValue) async throws -> JSONValue {
-        var request = baseRequest()
+    private func post(_ message: JSONValue, mayRefresh: Bool = true) async throws -> JSONValue {
+        let token: String?
+        do {
+            token = try await auth?.accessToken()
+        } catch MCPAuthError.signInRequired {
+            throw MCPUnauthorized(challenge: MCPAuthChallenge())
+        }
+        var request = baseRequest(token: token)
         request.httpMethod = "POST"
         request.httpBody = try message.data()
         let wantsID = message["id"]?.doubleValue.map(Int.init)
@@ -294,6 +306,16 @@ public actor HTTPMCPTransport: MCPTransport {
         let (response, lines) = try await performer.lines(for: request)
         if let session = response.value(forHTTPHeaderField: "Mcp-Session-Id"), !session.isEmpty {
             sessionID = session
+        }
+        if response.statusCode == 401 {
+            let challenge = MCPAuthChallenge(wwwAuthenticate: response.value(forHTTPHeaderField: "WWW-Authenticate"))
+            guard let auth, let token, mayRefresh else { throw MCPUnauthorized(challenge: challenge) }
+            do {
+                _ = try await auth.refreshed(after: token)
+            } catch MCPAuthError.signInRequired {
+                throw MCPUnauthorized(challenge: challenge)
+            }
+            return try await post(message, mayRefresh: false)
         }
         guard (200..<300).contains(response.statusCode) else {
             throw MCPError(code: -32000, message: "MCP HTTP \(response.statusCode)")
