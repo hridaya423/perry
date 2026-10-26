@@ -208,7 +208,6 @@ struct AgentActivityStripView: View {
             header
 
             if state.isExpanded {
-                Divider()
                 expandedDetails
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 if state.steeringIsAvailable {
@@ -245,10 +244,8 @@ struct AgentActivityStripView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.header) {
             Button { onToggleExpanded() } label: {
-                HStack(alignment: .top, spacing: PerryTheme.Spacing.header) {
-                    PerryCharacter(mood: state.phase == .failed ? .needsYou : state.phase == .paused ? .resting : .working, size: 24)
-                        .padding(.trailing, 4)
-                        .padding(.top, 6)
+                HStack(alignment: .top, spacing: 12) {
+                    PerryFaceTile(tint: tileTint, face: tileFace)
                     VStack(alignment: .leading, spacing: PerryTheme.Spacing.tight) {
                         HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.control) {
                             Text(state.title)
@@ -306,6 +303,24 @@ struct AgentActivityStripView: View {
             .accessibilityHint(state.isExpanded ? "Hide task status and controls" : "Show task status and controls")
             .frame(maxWidth: .infinity, alignment: .leading)
             controls
+                .padding(.leading, 50)
+        }
+    }
+
+    private var tileTint: Color {
+        switch state.phase {
+        case .failed, .confirming: PerryTheme.Colors.caution
+        case .paused: PerryTheme.Colors.icon
+        default: PerryCharacterView.fern
+        }
+    }
+
+    private var tileFace: PerryCharacterPose.Face {
+        switch state.phase {
+        case .failed, .confirming: .wide
+        case .paused: .asleep
+        case .reporting, .verifying: .happy
+        default: .focused
         }
     }
 
@@ -391,15 +406,16 @@ struct AgentActivityStripView: View {
     private var steeringControls: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
             HStack(spacing: 6) {
-                Text("Hold")
-                Keycap(TalkGesture.keys)
-                Text("to steer")
+                Text(TalkGesture.steer)
+                    .accessibilityLabel(TalkGesture.steer)
+                Text("·").accessibilityHidden(true)
+                Button(typedSteeringExpanded ? "Hide typing" : "Type") { typedSteeringExpanded.toggle() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PerryTheme.Colors.text)
             }
             .font(PerryTheme.Scale.secondary)
-            .foregroundStyle(PerryTheme.Colors.textSecondary)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(TalkGesture.steer)
-            DisclosureGroup(isExpanded: $typedSteeringExpanded) {
+            .foregroundStyle(PerryTheme.Colors.textTertiary)
+            if typedSteeringExpanded {
                 HStack(spacing: PerryTheme.Spacing.control) {
                     TextField("Steer before the next step", text: $steering)
                         .textFieldStyle(.roundedBorder)
@@ -417,11 +433,6 @@ struct AgentActivityStripView: View {
                         .accessibilityLabel("Send steering instruction")
                         .accessibilityHint("Send this instruction before my next step")
                 }
-                .padding(.top, PerryTheme.Spacing.tight)
-            } label: {
-                Text("Type instead")
-                    .font(PerryTheme.Scale.secondary)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
     }

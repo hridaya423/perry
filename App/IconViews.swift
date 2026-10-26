@@ -1,4 +1,5 @@
 import AppKit
+import PerryOverlay
 import SwiftUI
 
 struct LeadDisc: View {
@@ -13,6 +14,45 @@ struct LeadDisc: View {
             .offset(y: nudge)
             .frame(width: PerryTheme.Icon.slot, height: PerryTheme.Icon.slot)
             .background(tint.opacity(0.18), in: Circle())
+    }
+}
+
+enum TileTint {
+    static let blue = Color(red: 0.55, green: 0.71, blue: 1.0)
+    static let peach = Color(red: 1.0, green: 0.76, blue: 0.48)
+    static let lilac = Color(red: 0.79, green: 0.65, blue: 1.0)
+    static let pink = Color(red: 1.0, green: 0.62, blue: 0.72)
+    static let teal = Color(red: 0.44, green: 0.84, blue: 0.88)
+    static let all = [blue, peach, lilac, pink, teal]
+}
+
+struct SymbolTile: View {
+    let systemImage: String
+    let tint: Color
+    var size: CGFloat = 22
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: size * 0.48, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: size * 0.29, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
+struct PerryFaceTile: View {
+    let tint: Color
+    var face: PerryCharacterPose.Face = .open
+    var size: CGFloat = 38
+
+    var body: some View {
+        var pose = PerryCharacterPose()
+        pose.face = face
+        return PerryCharacterView(pose: pose, size: size * 0.63, tint: tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: size * 0.29, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
