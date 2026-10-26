@@ -149,7 +149,7 @@ struct WorkspaceEmptyState: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            PerryCharacterView(pose: { var pose = PerryCharacterPose(); pose.face = face; return pose }(), size: 34)
+            PerryCharacter(mood: face == .asleep ? .sleeping : .resting, size: 34)
                 .opacity(0.9)
                 .padding(.bottom, 4)
                 .accessibilityHidden(true)

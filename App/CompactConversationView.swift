@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import PerryBrain
 import PerryOverlay
@@ -14,6 +15,10 @@ final class CompactConversationPanel: NSPanel {
     }
 }
 
+extension EnvironmentValues {
+    @Entry var notchMood: PerryMood = .resting
+}
+
 struct CompactConversationView: View {
     @ObservedObject var controller: AppController
     @ObservedObject private var model: HomeModel
@@ -21,6 +26,7 @@ struct CompactConversationView: View {
     @ObservedObject private var expansion: NotchExpansion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var metrics: NotchLayout.Metrics
+    @State private var mood: PerryMood = .resting
 
     init(controller: AppController) {
         self.controller = controller
@@ -80,6 +86,10 @@ struct CompactConversationView: View {
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
+        .environment(\.notchMood, mood)
+        .environment(\.perryCharacterPaused, !expansion.contentShown)
+        .onReceive(controller.overlayState.$voiceState.combineLatest(controller.overlayState.$buddyState)
+            .map(PerryMood.init).removeDuplicates()) { mood = $0 }
         .onAppear { updateCameraInset() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in updateCameraInset() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { _ in updateCameraInset() }

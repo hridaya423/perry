@@ -4,6 +4,7 @@ import XCTest
 import PerryGuide
 import PerryBrain
 import PerryCapture
+import PerryOverlay
 @testable import Perry
 
 @MainActor
@@ -569,6 +570,29 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await shot("long-titles")
         model.workingThreads = []
         model.streamingAnswers = [:]
+    }
+
+    func testRenderMascotMoods() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
+        let controller = AppController(debugStorageDirectory: directory)
+        defer {
+            controller.overlayState.voiceState = .idle
+            controller.overlayState.buddyState = .idle
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        controller.homeController.homeModel.sidebarSelection = nil
+        let moods: [(String, PerryVoicePhase, PerryBuddyState)] = [
+            ("resting", .idle, .idle), ("listening", .listening, .idle),
+            ("working", .idle, .acting), ("needs-you", .idle, .awaitingApproval)
+        ]
+        for (name, voice, buddy) in moods {
+            controller.overlayState.voiceState = voice
+            controller.overlayState.buddyState = buddy
+            try await render(openNotch(controller), name: "mascot-\(name)", size: NSSize(width: 892, height: 552), wait: 0.6)
+        }
     }
 
     private func openNotch(_ controller: AppController) -> CompactConversationView {

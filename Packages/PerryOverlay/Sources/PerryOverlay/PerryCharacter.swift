@@ -523,6 +523,17 @@ final class PerryCharacterMotion {
     var isMoving: Bool { hypot(velocity.dx, velocity.dy) > 4 }
 }
 
+private struct PerryCharacterPausedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+public extension EnvironmentValues {
+    var perryCharacterPaused: Bool {
+        get { self[PerryCharacterPausedKey.self] }
+        set { self[PerryCharacterPausedKey.self] = newValue }
+    }
+}
+
 public struct PerryCharacter: View {
     let mood: PerryMood
     let position: CGPoint
@@ -530,6 +541,7 @@ public struct PerryCharacter: View {
     let size: CGFloat
     @State private var motion = PerryCharacterMotion()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.perryCharacterPaused) private var paused
 
     public init(mood: PerryMood, position: CGPoint = .zero, micLevel: Double = 0, size: CGFloat = 44) {
         self.mood = mood
@@ -539,7 +551,7 @@ public struct PerryCharacter: View {
     }
 
     public var body: some View {
-        TimelineView(.animation(minimumInterval: frameInterval)) { context in
+        TimelineView(.animation(minimumInterval: frameInterval, paused: paused)) { context in
             let rig = motion.rig(
                 at: context.date.timeIntervalSinceReferenceDate,
                 position: position,

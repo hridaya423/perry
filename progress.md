@@ -63,9 +63,13 @@
   - Verified: 655/0 on the mini (657 minus the two lint tests), with 0 constraint-loop lines. The guard passes on the tree and fails on a planted `.font(.system(size: 9))`. Renders inspected in `docs/evidence/first-impressions/3.10/`. The first renders showed two defects, now fixed: the model chip wrapped to two lines (now shows the model name, with "Model" in its help and accessibility label), and the routine detail column wrapped its title to three lines (list column 220 → 160).
   - Open: the rail's "Recent" label clips above the Apps footer. That predates this task; take it in 3.12.
 
+- 3.11 Done: the wordmark and greeting mascots in the workspace are now the animated `PerryCharacter`. Their mood comes from `PerryMood(voice:buddy:)`: `CompactConversationView` subscribes to a deduplicated `voiceState`/`buddyState` stream and passes the result down as `\.notchMood`. It does not observe the whole cursor state, so pointer moves do not re-render the notch. `PerryCharacter` reads a new `\.perryCharacterPaused` environment value and pauses its `TimelineView` while the notch content is hidden. Empty states and What's New use resting or sleeping mascots on the same timeline. The character draws on a canvas twice its size, so the two notch sites reserve 0.4 × size of trailing room for the mood badge.
+  - Verified: 656/0 on the mini, with 0 constraint-loop lines. PerryOverlay 28/0. `testRenderMascotMoods` renders the resting, listening, working and needs-you moods; inspected in `docs/evidence/first-impressions/3.11/`. The first renders showed the badge overlapping the greeting and the wordmark, now fixed. Idle probe on the mini, 60 s with the notch closed: avg CPU 0.025%, max 0.4%, RSS 103.7 MB (PASS).
+  - Not measured: CPU while the workspace is open. The probe cannot open the notch over ssh. The Perrys rail rows and the peek row leads stay static on purpose, so there is no timeline per row.
+
 ## Next
 
-- 3.11 an animated mascot in the notch.
+- 3.12 phase verification, with a blind Sonnet 5.5 critic against the HeyClicky screenshots.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

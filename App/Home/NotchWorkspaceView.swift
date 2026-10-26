@@ -13,6 +13,7 @@ struct NotchWorkspaceView: View {
     @FocusState private var searchFocused: Bool
     @FocusState private var targetBackFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.notchMood) private var mood
     @Namespace private var railNamespace
 
     var body: some View {
@@ -80,7 +81,8 @@ struct NotchWorkspaceView: View {
                 model.sidebarSelection = nil
             } label: {
                 HStack(spacing: 8) {
-                    PerryCharacterView(pose: PerryCharacterPose(), size: 20)
+                    PerryCharacter(mood: mood, size: 20)
+                        .padding(.trailing, 8)
                     Text("perry")
                         .font(PerryTheme.Scale.wordmark)
                 }
@@ -303,7 +305,8 @@ struct NotchWorkspaceView: View {
 
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .center, spacing: 14) {
-                    PerryCharacterView(pose: PerryCharacterPose(), size: 40)
+                    PerryCharacter(mood: mood, size: 40)
+                        .padding(.trailing, 16)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(greeting)

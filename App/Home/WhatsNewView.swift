@@ -14,7 +14,7 @@ struct WhatsNewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             HStack(spacing: 12) {
-                PerryCharacterView(pose: { var pose = PerryCharacterPose(); pose.face = .happy; return pose }(), size: 32)
+                PerryCharacter(mood: .resting, size: 32)
                     .accessibilityHidden(true)
                 Text("What’s new in Perry")
                     .font(PerryTheme.Scale.heading)
