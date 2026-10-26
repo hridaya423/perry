@@ -208,7 +208,7 @@ struct HelloGreetingView: View {
             finished = true
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("hello.")
+        .accessibilityLabel("Hello")
         .accessibilityAddTraits(.isImage)
     }
 }

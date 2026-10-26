@@ -47,8 +47,8 @@ enum FirstGoal: Equatable {
     func promise(_ goal: String) -> String {
         switch self {
         case .guide(let app): "I’ll open \(app) and walk you through it, one step at a time."
-        case .ask: "I’ll give you a short plan and one question to start."
-        case .make: "I’ll get it started. I ask before I change anything."
+        case .ask: "I’ll give you a short plan and one question."
+        case .make: "I’ll start on it and ask before I change anything."
         }
     }
 }
@@ -81,13 +81,13 @@ struct FirstGoalBeat: View {
             }
         } else {
             OnboardingBeatLayout(
-                title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "Let’s start with \(trimmed).",
+                title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "I’ll start with \(trimmed).",
                 message: trimmed.isEmpty || asking ? nil : route.promise(trimmed)
             ) {
                 Color.clear
             } detail: {
                 if trimmed.isEmpty || asking {
-                    TextField("Figma auto layout, Spanish, a pitch deck…", text: $goal)
+                    TextField("Figma auto layout, Spanish, SQL", text: $goal)
                         .textFieldStyle(.plain)
                         .font(PerryTheme.Scale.input)
                         .multilineTextAlignment(.center)

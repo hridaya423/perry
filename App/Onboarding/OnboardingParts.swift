@@ -170,9 +170,13 @@ struct RowButtonStyle: ButtonStyle {
 }
 
 struct GrantedMark: View {
+    var title = "On"
+
+    var title = "On"
+
     var body: some View {
         Label {
-            Text("Allowed")
+            Text(title)
         } icon: {
             StatusMark(.ok)
         }

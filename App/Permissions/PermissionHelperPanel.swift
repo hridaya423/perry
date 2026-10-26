@@ -132,7 +132,7 @@ struct PermissionHelperView: View {
                 HStack {
                     Text("macOS will ask for your password.")
                     Spacer(minLength: 8)
-                    Button("List not showing?", action: actions.reopenSettings)
+                    Button("Reopen list", action: actions.reopenSettings)
                         .buttonStyle(.plain)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .help("Open the \(pane.displayName()) list again")
@@ -140,7 +140,7 @@ struct PermissionHelperView: View {
                 .font(PerryTheme.Scale.meta)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             case .settingsClosed:
-                Button("Open Settings", action: actions.reopenSettings)
+                Button("Open System Settings", action: actions.reopenSettings)
                     .buttonStyle(InkButtonStyle(.primary))
                     .controlSize(.small)
                     .padding(.leading, 32)
@@ -184,8 +184,8 @@ struct PermissionHelperView: View {
     private var title: String {
         switch phase {
         case .instruction: "Drag Perry into the list above."
-        case .retry: "That didn’t go through."
-        case .settingsClosed: "System Settings closed."
+        case .retry: "Perry isn’t in the list yet."
+        case .settingsClosed: "Reopen System Settings."
         case .wrongLocation: "Move Perry to Applications first."
         case .restart: "Restart Perry to finish."
         case .granted: "Perry has access."
@@ -193,11 +193,11 @@ struct PermissionHelperView: View {
     }
 
     private var detail: Text? {
-        let name = Text(pane.displayName()).foregroundStyle(PerryTheme.Colors.text)
+        let name = Text(pane.displayName().replacingOccurrences(of: " ", with: "\u{00A0}")).foregroundStyle(PerryTheme.Colors.text)
         return switch phase {
-        case .instruction: Text("Then switch it on in \(name).")
-        case .retry: Text("Drag Perry into the list again.")
-        case .settingsClosed: Text("Open it again to finish turning on \(name).")
+        case .instruction: Text("Then turn it on.")
+        case .retry: Text("Drag Perry in again.")
+        case .settingsClosed: Text("Then turn on Perry in \(name).")
         case .wrongLocation: Text("Then open it from there and try again.")
         case .restart: Text("Choose \(Text("Quit & Reopen").foregroundStyle(PerryTheme.Colors.text)) if macOS asks, or restart here.")
         case .granted: nil

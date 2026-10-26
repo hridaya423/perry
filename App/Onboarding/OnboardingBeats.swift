@@ -74,7 +74,7 @@ private struct HelloBeat: View {
             HelloGreetingView()
                 .frame(maxWidth: 340, minHeight: 96, maxHeight: 116)
                 .padding(.top, 4)
-            Text("Hi, I’m Perry. I live in your notch.\nWhat should I call you?")
+            Text("I’m Perry. I live in your notch.\nWhat should I call you?")
                 .font(PerryTheme.Scale.input)
                 .lineSpacing(3)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -134,15 +134,15 @@ private struct AccessBeat: View {
     @ObservedObject var director: OnboardingDirector
 
     var body: some View {
-        OnboardingBeatLayout(title: "I need to see what you see.") {
+        OnboardingBeatLayout(title: "I need two permissions.") {
             PermissionSketch(lit: director.accessGranted)
                 .scaleEffect(0.46)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
-                row(.accessibility, title: "Accessibility", detail: "Reads buttons, menus and fields", icon: "accessibility",
+                row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read buttons, menus and fields, and click for you.", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
-                row(.microphone, title: "Microphone", detail: "Hears you only while you hold the shortcut", icon: "mic",
+                row(.microphone, title: "Microphone", detail: "So I can hear you when you talk to me.", icon: "mic",
                     granted: director.permissions?.microphone.isUsable == true)
             }
         } actions: {
@@ -171,7 +171,7 @@ private struct AccessBeat: View {
             if granted {
                 GrantedMark()
             } else {
-                Button("Allow") { Task { await director.grant(pane) } }
+                Button("Turn on") { Task { await director.grant(pane) } }
                     .buttonStyle(RowButtonStyle(prominent: true))
             }
         }
@@ -218,13 +218,13 @@ struct BrainBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: "How should I think?") {
+        OnboardingBeatLayout(title: "Choose a brain") {
             PerryCharacterView(pose: perryPose, size: 36)
         } detail: {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    card(.cloud, title: "Cloud", sketch: .cloud, detail: cloudDetail, status: cloudReady ? readyDetail : nil)
-                    card(.local, title: "On this Mac", sketch: .laptop, detail: "Private and offline. Nothing leaves this Mac.",
+                    card(.cloud, title: "Cloud", sketch: .cloud, detail: cloudRow.capability, status: cloudReady ? readyDetail : nil)
+                    card(.local, title: "On this Mac", sketch: .laptop, detail: "Works offline. Nothing leaves this Mac.",
                          status: localReady ? nil : "Set up later in Settings")
                         .disabled(!localReady)
                 }
@@ -253,14 +253,6 @@ struct BrainBeat: View {
         .task {
             if let catalog { await brain.refreshSetupStates(using: catalog) }
             await brain.refresh()
-        }
-    }
-
-    private var cloudDetail: String {
-        switch cloudRow {
-        case .chatGPT: "Sharper answers. Uses your ChatGPT account."
-        case .apiKey: "Sharper answers. Uses your API key."
-        default: "Sharper answers. Uses \(cloudRow.title)."
         }
     }
 
@@ -296,7 +288,7 @@ struct BrainBeat: View {
             } label: { OnboardingPrimaryLabel(title: "Connect ChatGPT") }
                 .keyboardShortcut(.defaultAction)
         } else {
-            Button(action: openSettings) { OnboardingPrimaryLabel(title: "Open Settings") }
+            Button(action: openSettings) { OnboardingPrimaryLabel(title: "Set up in Settings") }
                 .keyboardShortcut(.defaultAction)
         }
     }
@@ -377,7 +369,6 @@ private struct ShortcutsBeat: View {
                     .toggleStyle(.checkbox)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    .help("Open Perry when you log in to this Mac")
             } primary: {
                 Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
                     .buttonStyle(InkButtonStyle())

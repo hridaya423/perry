@@ -30,14 +30,14 @@ final class InterviewModel: ObservableObject {
 
     static func cloudLine(choice: BrainController.ModelChoice, hasSavedChoice: Bool) -> String? {
         guard hasSavedChoice else { return nil }
-        let provider: String? = switch choice {
+        let service: String? = switch choice {
         case .chatGPT: "ChatGPT"
         case .claudeCode: "Claude Code"
-        case .acp: "your agent"
-        case .direct: "your API provider"
+        case .acp: "your coding agent"
+        case .direct: "the service behind your API key"
         case .local: nil
         }
-        return provider.map { "I send these notes with your questions to \($0)." }
+        return service.map { "I send them to \($0) with your questions." }
     }
 
     @Published private(set) var step = Step.consent
@@ -215,7 +215,7 @@ struct InterviewBeat: View {
     private var consent: some View {
         OnboardingBeatLayout(
             title: "Tell me about you.",
-            message: (["Three quick questions. I keep short notes on this Mac so I can help your way, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " ")
+            message: (["Three questions. I keep notes on this Mac, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " ")
         ) {
             Color.clear
         } detail: {
@@ -247,7 +247,7 @@ struct InterviewBeat: View {
                 OnboardingProgress(current: index, count: ProfileExtraction.questions.count)
                     .padding(.trailing, 10)
             } primary: {
-                Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: "Next") }
+                Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: "Continue") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
@@ -318,7 +318,7 @@ struct InterviewBeat: View {
     }
 
     private var review: some View {
-        OnboardingBeatLayout(title: "Here’s what I got.", message: model.extracting ? "Tidying up…" : "Not saved yet.") {
+        OnboardingBeatLayout(title: "Here’s what I’ll remember.", message: model.extracting ? "Tidying up…" : "I haven’t saved this yet.") {
             Color.clear
         } detail: {
             VStack(spacing: 0) {
@@ -328,7 +328,7 @@ struct InterviewBeat: View {
                 SettingsDivider()
                 fact("Apps", $model.facts.apps)
                 SettingsDivider()
-                fact("Learning", $model.facts.goal)
+                fact("Learning goal", $model.facts.goal)
             }
             .padding(.vertical, 2)
             .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -340,7 +340,7 @@ struct InterviewBeat: View {
             OnboardingFooter {
                 Button(editing ? "Done" : "Edit") { editing.toggle() }
             } primary: {
-                Button { model.confirm() } label: { OnboardingPrimaryLabel(title: "Looks right") }
+                Button { model.confirm() } label: { OnboardingPrimaryLabel(title: "Save") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
@@ -361,7 +361,7 @@ struct InterviewBeat: View {
                     .textFieldStyle(.plain)
                     .font(PerryTheme.Scale.body)
             } else {
-                Text(value.wrappedValue.isEmpty ? "—" : value.wrappedValue)
+                Text(value.wrappedValue.isEmpty ? "Skipped" : value.wrappedValue)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(value.wrappedValue.isEmpty ? PerryTheme.Colors.textTertiary : PerryTheme.Colors.text)
                     .lineLimit(1)

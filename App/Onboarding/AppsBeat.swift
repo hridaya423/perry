@@ -15,7 +15,7 @@ enum AppsBeatPlan {
         (["linear"], Tile(id: "linear", title: "Linear", detail: "Read your issues and projects.", bundleID: "com.linear")),
         (["github"], Tile(id: "github", title: "GitHub", detail: "Read your notifications.", bundleID: "com.github.GitHubClient")),
         (["google drive", "google docs"], Tile(id: "google-drive", title: "Google Drive", detail: "Read files you open with Perry.", bundleID: "com.google.drivefs")),
-        (["outlook", "teams", "microsoft"], Tile(id: "microsoft", title: "Microsoft 365", detail: "Read your mail and files.", bundleID: "com.microsoft.Outlook")),
+        (["outlook", "teams", "microsoft"], Tile(id: "microsoft", title: "Microsoft 365", detail: "Read your mail, calendar and files.", bundleID: "com.microsoft.Outlook")),
         (["google calendar"], Tile(id: "google-calendar", title: "Google Calendar", detail: "Read your events.", bundleID: nil)),
     ]
 
@@ -48,8 +48,8 @@ struct AppsBeat: View {
 
     var body: some View {
         OnboardingBeatLayout(
-            title: "Want me to reach into your apps?",
-            message: tiles.isEmpty ? "Connect apps any time in Settings › Apps." : "Read-only to start. I ask before I change anything."
+            title: "Connect your apps",
+            message: tiles.isEmpty ? "Connect apps any time in Settings > Apps." : "Read-only to start. I ask before I change anything."
         ) {
             Color.clear
         } detail: {
@@ -71,14 +71,12 @@ struct AppsBeat: View {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
+                Button { director.skip() } label: { OnboardingPrimaryLabel(title: connected.isEmpty && !tiles.isEmpty ? "Skip" : "Continue") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
             } trailing: {
-                if connected.isEmpty && !tiles.isEmpty {
-                    Button("Skip") { director.skip() }
-                }
+                EmptyView()
             }
         }
     }
@@ -105,7 +103,7 @@ struct AppsBeat: View {
     @ViewBuilder
     private func trailing(_ tile: AppsBeatPlan.Tile) -> some View {
         if connected.contains(tile.id) {
-            GrantedMark()
+            GrantedMark(title: "Connected")
         } else {
             Button("Connect") { connect(tile) }
                 .buttonStyle(RowButtonStyle())
@@ -125,7 +123,7 @@ struct AppsBeat: View {
         controller.integrationConnections.connect(definition) { result in
             switch result {
             case .success: finish(tile, nil)
-            case .failure(let error): finish(tile, error.localizedDescription)
+            case .failure: finish(tile, "Couldn’t connect to \(tile.title). Try again.")
             }
         }
     }

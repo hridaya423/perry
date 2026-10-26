@@ -89,7 +89,7 @@ final class InterviewModelTests: XCTestCase {
     func testTheConsentLineNamesACloudBrainOnly() {
         XCTAssertNil(InterviewModel.cloudLine(choice: .local, hasSavedChoice: true))
         XCTAssertNil(InterviewModel.cloudLine(choice: .chatGPT, hasSavedChoice: false))
-        XCTAssertEqual(InterviewModel.cloudLine(choice: .chatGPT, hasSavedChoice: true), "I send these notes with your questions to ChatGPT.")
+        XCTAssertEqual(InterviewModel.cloudLine(choice: .chatGPT, hasSavedChoice: true), "I send them to ChatGPT with your questions.")
     }
 
     func testAppChipsComeFromInstalledApps() {
@@ -114,7 +114,7 @@ final class InterviewModelTests: XCTestCase {
         let host = NSHostingView(rootView: InterviewBeat(
             director: director,
             model: interview,
-            cloudLine: "I send these notes with your questions to ChatGPT.",
+            cloudLine: "I send them to ChatGPT with your questions.",
             appChips: ["Notion", "Figma", "Xcode"]
         )
         .padding(.horizontal, 24)

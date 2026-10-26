@@ -31,7 +31,7 @@ final class ProfileExtractionTests: XCTestCase {
     func testTheReactionPromptAsksForTwelveWordsAboutTheAnswer() {
         let prompt = ProfileExtraction.reactionPrompt(question: "What do you do?", answer: "I teach chemistry")
         XCTAssertTrue(prompt.contains("I teach chemistry"))
-        XCTAssertTrue(prompt.contains("12 words"))
+        XCTAssertTrue(prompt.contains("8 words"))
         XCTAssertEqual(ProfileExtraction.trimReaction("\"Chemistry teacher, nice. Lots of labs to plan, I bet.\"\n"), "Chemistry teacher, nice. Lots of labs to plan, I bet.")
         XCTAssertNil(ProfileExtraction.trimReaction(Array(repeating: "word", count: 20).joined(separator: " ")))
     }

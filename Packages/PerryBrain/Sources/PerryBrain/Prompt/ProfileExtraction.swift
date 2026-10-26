@@ -14,9 +14,9 @@ public struct ProfileFacts: Codable, Equatable, Sendable {
 
 public enum ProfileExtraction {
     public static let questions = [
-        "What do you do?",
+        "What’s your work?",
         "Which apps do you use most?",
-        "What’s something you’ve been wanting to learn lately?",
+        "What do you want to learn next?",
     ]
 
     public static let schema = #"{"work": string or null, "apps": [string], "learningGoal": string or null}"#
@@ -48,7 +48,7 @@ public enum ProfileExtraction {
     public static func reactionPrompt(question: String, answer: String) -> String {
         """
         You asked: "\(question)" They answered: "\(answer)"
-        React in at most 12 words. Name one specific thing they said. No question, no emoji, no exclamation mark.
+        Repeat one thing they said in at most 8 words. Do not add facts. No question, no emoji, no exclamation mark.
         Reply with the reaction only.
         """
     }
@@ -56,7 +56,7 @@ public enum ProfileExtraction {
     public static func trimReaction(_ text: String) -> String? {
         let line = text.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"“”")))
         let words = line.split(whereSeparator: \.isWhitespace)
-        guard !words.isEmpty, words.count <= 14 else { return nil }
+        guard !words.isEmpty, words.count <= 10 else { return nil }
         return line
     }
 
