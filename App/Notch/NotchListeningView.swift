@@ -4,7 +4,7 @@ import SwiftUI
 struct NotchListeningView: View {
     @ObservedObject var voice: TalkSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("perry.voice.pauseHintUses") private var pauseHintUses = 0
+    @AppStorage(PerryPreferences.$pauseHintUses.key) private var pauseHintUses = 0
     @State private var showsPauseHint = false
 
     var body: some View {

@@ -28,7 +28,7 @@ if grep -rn '\.system(size:' App/Notch App/Home App/CompactConversationView.swif
     echo "ci: fixed font size in a notch view; use PerryTheme.Scale or PerryTheme.Icon" >&2
     exit 1
 fi
-if grep -n '\.font(\.system(size:' App/AgentActivityStrip.swift App/IntegrationRow.swift App/IntentCardWindow.swift App/SettingsView.swift; then
+if grep -rn '\.font(\.system(size:' App/AgentActivityStrip.swift App/IntegrationRow.swift App/IntentCardWindow.swift App/Settings; then
     echo "ci: fixed font size outside the theme; use a PerryTheme token" >&2
     exit 1
 fi
