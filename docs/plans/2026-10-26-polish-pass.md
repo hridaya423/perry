@@ -12,11 +12,45 @@ Owner feedback, 2026-10-26:
 
 ---
 
+## 0. One setup stage that decides for the user
+
+Owner direction (2026-10-26): never ship a bad voice. Make the brain, voice and hearing one onboarding stage, personalized, without decision fatigue.
+
+**Shape.** The current Brain beat becomes "Your setup". It asks one question at most: "Keep everything on this Mac, or use the best quality?" The default is the best quality, unless the user leaned private earlier. Perry then shows one recommended setup:
+
+| Row | Shows | Example |
+|---|---|---|
+| Brain | name in plain words + why | "Cloud brain · can use your apps" |
+| Voice | voice name + play button that says the user's name | "Natural voice · ElevenLabs" |
+| Hearing | engine + why | "On this Mac · fast and private" |
+| Privacy | only when the brain is cloud | "Hide personal details · on" |
+
+There is one primary button, "Looks good". Each row has "Change", which opens its alternatives with the trade-off in a single line. The user makes no decision unless they want to.
+
+**Deterministic picker.** `SetupAdvisor.recommend(Facts) -> Setup` is a pure function, unit-tested over a table of machines. Its inputs:
+- chip and unified memory;
+- macOS version;
+- Apple Intelligence availability;
+- whether `SpeechAnalyzer` supports the locale;
+- installed premium or enhanced voices, with Siri, eloquence and novelty voices filtered out;
+- signed-in brains (ChatGPT, Claude Code) and Keychain keys (ElevenLabs, OpenAI, Cartesia);
+- the local capability-eval result for this machine (§5.1);
+- the private-or-best answer.
+
+Rules:
+- **Hearing:** `SpeechAnalyzer` on macOS 26+ with a supported locale. It is local, free and the most accurate option measured. Otherwise on-device `SFSpeechRecognizer`. Cloud STT is never the default.
+- **Voice, best quality:** ElevenLabs Flash if a key exists, otherwise OpenAI TTS if a key exists. Otherwise the voice row offers "Add ElevenLabs for a human voice" (paste a key, 20 seconds) next to the best local option.
+- **Voice, private or no key:** an installed premium Apple voice. Otherwise a local neural voice (Kokoro, about 300 MB, one tap, needs approval below). Otherwise Perry replies in text only, with "Download a natural voice (free)". **No path ever falls back to compact, Siri, eloquence or novelty voices.**
+- **Brain:** a local model only if it passes the capability floor on this machine. Otherwise the best signed-in cloud brain. Private with no capable local model gets the plain warning "This Mac can chat privately but can't do tasks well."
+- **Privacy:** a cloud brain turns redaction on by default when the user leaned private. Otherwise Perry asks once, in this stage.
+
+The same advisor runs again when facts change: a key is added, a voice is downloaded, or macOS updates. Settings shows "Recommended" next to its pick.
+
 ## 1. Voice output (TTS)
 
 **Root cause.** `VoiceController.resolveSpeakingVoice` picks the first `.premium` English voice, else the first `.enhanced` one. This Mac has no premium voices. Its enhanced voices are `com.apple.siri.natural.Simone` ("Voice 2"), `Aman.premium` and `Tara.premium` (both en-IN). A Siri voice played through `AVSpeechSynthesizer` sounds broken. Without an enhanced voice, the fallback is compact Samantha. Novelty and eloquence voices (Grandpa, Rocko) are also installed.
 
-**Plan.**
+**Plan.** The advisor in §0 chooses the engine. This section builds the engines.
 1. Add a `SpeechEngine` protocol with one call: stream sentences in, audio out, barge-in stop under 150 ms. It has three engines, and one owner (`VoiceController`) picks among them:
    - **System:** `AVSpeechSynthesizer`, restricted to premium or enhanced voices in the user's locale. Never Siri, eloquence or novelty voices. If no good voice is installed, Settings > Voice says so and offers the download (System Settings > Accessibility > Spoken Content). Perry does not quietly use compact Samantha.
    - **ElevenLabs:** WebSocket `stream-input` with `eleven_flash_v2_5` for latency (reported at about 75 ms to first audio). The user picks a voice from their library. The key lives in the Keychain. Pronunciation dictionaries are supported (see §3).
@@ -133,7 +167,7 @@ The current step has three typed questions (work, apps, learning goal) and one c
 | Phase | Work | Proof |
 |---|---|---|
 | A | §4 cursor bubble, §7.1 bottom edge, §7.2 icons | unit tests, renders |
-| B | §1 speech engines + `SpeechText`, system voice ranking | tests, owner listens to 3 candidates |
+| B | §1 speech engines + `SpeechText`, §0 advisor + setup stage | advisor table tests, renders, owner listens |
 | C | §3 pronunciation, §6 onboarding | renders, tests, owner run-through |
 | D | §2 SpeechAnalyzer STT, earcons, loopback drill | WAV drill transcript on the mini |
 | E | §5 eval, Brain page, redactor, Apple titles | eval table, redaction fixtures, renders |
@@ -143,7 +177,8 @@ Each phase is a separate commit with renders inspected. The full suite runs on t
 
 ## Owner decisions needed
 
-1. **Default spoken voice.** Recommendation: ElevenLabs when a key is present, otherwise the best installed premium system voice, with a prompt to download one. The owner picks the voice after hearing three.
-2. **Approval for a loopback audio device on the mini,** for the STT drill. It is a test-only dependency.
-3. **Rampart weights** (CC BY 4.0, ~15 MB) bundled in the app, converted to Core ML. No runtime dependency.
-4. **Earcon set,** chosen from three candidates.
+1. **Default voice: decided.** The advisor picks it (§0). The bad system voices are never used.
+2. **Local neural voice dependency:** FluidAudio, a Swift package that runs Kokoro TTS and Parakeet STT on the Apple Neural Engine via Core ML. It would be the private-tier voice when no premium Apple voice is installed. The model is about 300 MB and downloads only when the user taps it.
+3. **Approval for a loopback audio device on the mini,** for the STT drill. It is a test-only dependency.
+4. **Rampart weights** (CC BY 4.0, ~15 MB) bundled in the app, converted to Core ML. No runtime dependency.
+5. **Earcon set,** chosen from three candidates.
