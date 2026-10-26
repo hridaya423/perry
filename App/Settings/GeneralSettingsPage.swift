@@ -6,6 +6,7 @@ struct GeneralSettingsPage: View {
     @State private var opensAtLogin = LoginItem.isEnabled
     @AppStorage(PerryPreferences.$notchStatusEnabled.key) private var notchEyes = true
     @AppStorage(PerryPreferences.$notchHoverPeek.key) private var hoverPeek = true
+    @AppStorage(PerryPreferences.$soundsEnabled.key) private var sounds = true
     @State private var updateNote: String?
     @State private var error: String?
 
@@ -21,6 +22,12 @@ struct GeneralSettingsPage: View {
                 Toggle(isOn: $hoverPeek) {
                     Text("Quick peek on hover")
                     Text("Point at the notch to see what Perry is doing.").settingNote()
+                }
+                .settingsRowPadding()
+                SettingsDivider()
+                Toggle(isOn: $sounds) {
+                    Text("Sounds")
+                    Text("A soft cue when Perry starts listening and when a task is done.").settingNote()
                 }
                 .settingsRowPadding()
             }

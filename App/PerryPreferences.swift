@@ -56,6 +56,7 @@ enum PerryPreferences {
     @Preference("perry.voice.pauseHintUses") static var pauseHintUses = 0
     @Preference("perry.notchStatus.enabled") static var notchStatusEnabled = true
     @Preference("perry.notch.hoverPeek") static var notchHoverPeek = true
+    @Preference("perry.sounds.enabled") static var soundsEnabled = true
     @Preference("perry.home.frame") static var homeFrame: String? = nil
     @Preference("perry.lastSeenVersion") static var lastSeenVersion: String? = nil
 

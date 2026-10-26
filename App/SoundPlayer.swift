@@ -26,11 +26,14 @@ enum SoundPlayer {
         PerfMark.mark("sound.warmup")
     }
 
+    static let subtleVolume: Float = 0.45
+
     static func play(_ cue: Cue) {
-        guard !QuietHours.isActive else { return }
+        guard PerryPreferences.soundsEnabled, !QuietHours.isActive else { return }
         guard let sound = players[cue] ?? load(cue) else { return }
         sound.stop()
         sound.currentTime = 0
+        sound.volume = subtleVolume
         sound.play()
         PerfMark.markDynamic("sound.cue.\(cue.rawValue)")
     }

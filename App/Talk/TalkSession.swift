@@ -214,9 +214,6 @@ final class TalkSession: ObservableObject {
     /// Key-up: freeze the trace, finalize STT, resolve deixis, run the turn.
     func keyUp() {
         guard phase == .listening else { return }
-        // Ack earcon at release so the user hears Perry took the request
-        // immediately, whatever the brain (§Phase 1.4).
-        output?.guidePlay(.send)
         phase = .thinking
         overlayState.voiceState = .processing
         overlayState.buddyState = .thinking

@@ -210,7 +210,6 @@ extension AppController {
             overlayState.voiceState = .listening
             overlayState.taskBubbleText = nil
         case .thinking:
-            SoundPlayer.play(.send)
             overlayState.buddyState = .thinking
             overlayState.voiceState = .processing
             overlayState.taskBubbleText = "Working on your request"
