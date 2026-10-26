@@ -11,6 +11,7 @@ public enum RoutineReplayError: Error, Equatable {
     case missingParameter(String)
     case missingVisualBaseline(step: Int)
     case noExecutableSteps
+    case unsupportedShortcut(step: Int)
 }
 
 extension RoutineReplayError: LocalizedError {
@@ -23,6 +24,7 @@ extension RoutineReplayError: LocalizedError {
         case .missingParameter(let name): return "the routine needs a value for \"\(name)\""
         case .missingVisualBaseline(let step): return "step \(step + 1) could not capture a visual baseline"
         case .noExecutableSteps: return "the routine has no executable steps"
+        case .unsupportedShortcut(let step): return "step \(step + 1) uses a shortcut Perry cannot press"
         }
     }
 }
@@ -113,6 +115,9 @@ public enum RoutineReplay {
             case .pressKey(let key):
                 command = .pressKey(key, modifiers: [], target: selector)
                 postcondition = try visualBaseline(for: observation, step: index)
+            case .hotkey(let key, let modifiers):
+                command = .hotkey(key: key, modifiers: try keyModifiers(modifiers, step: index), target: selector)
+                postcondition = try visualBaseline(for: observation, step: index)
             case .wait:
                 continue
             }
@@ -170,6 +175,15 @@ public enum RoutineReplay {
             )
         default:
             return nil
+        }
+    }
+
+    private static func keyModifiers(_ names: [String], step: Int) throws -> [ExecutableAction.ComputerCommand.KeyModifier] {
+        try names.map {
+            guard let modifier = ExecutableAction.ComputerCommand.KeyModifier(rawValue: $0) else {
+                throw RoutineReplayError.unsupportedShortcut(step: step)
+            }
+            return modifier
         }
     }
 

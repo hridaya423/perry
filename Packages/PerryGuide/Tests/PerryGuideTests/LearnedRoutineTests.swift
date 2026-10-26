@@ -331,6 +331,34 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertEqual(keyBinding.baselineSHA256, expected)
     }
 
+    func testRecordedChordBecomesAHotkeyStepThatSurvivesSaveAndReplay() throws {
+        let routine = try RoutineInference.infer(
+            demonstration: RecordedDemonstration(bundleID: "com.example.app", events: [
+                .click(saveTarget),
+                .chord(key: "s", modifiers: ["command", "shift"])
+            ]),
+            name: "Save as"
+        )
+        XCTAssertEqual(routine.steps[1].summary, "Press Command-Shift-S")
+        XCTAssertEqual(routine.steps[1].action, .hotkey(key: "s", modifiers: ["command", "shift"]))
+        let reloaded = try RoutineDocument.decode(try RoutineDocument.encode(routine))
+        XCTAssertEqual(reloaded, routine)
+        let observation = makeObservation(elements: [makeElement(stableID: "ax-save", role: .button, label: "Save")])
+        let plan = try RoutineReplay.plan(routine: reloaded, observation: observation, taskID: TaskID("t"))
+        guard case .computer(_, let command) = plan.actions[1].operation else { return XCTFail("chord did not replay") }
+        XCTAssertEqual(command, .hotkey(key: "s", modifiers: [.command, .shift], target: nil))
+        guard case .visualChange = plan.actions[1].postcondition else { return XCTFail("chord has no visual postcondition") }
+    }
+
+    func testReplayRefusesAShortcutWithAnUnknownModifier() throws {
+        let routine = try LearnedRoutine(name: "Odd", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Press Hyper-S", action: .hotkey(key: "s", modifiers: ["hyper"]))
+        ])
+        XCTAssertThrowsError(try RoutineReplay.plan(
+            routine: routine, observation: makeObservation(elements: []), taskID: TaskID("t")
+        )) { XCTAssertEqual($0 as? RoutineReplayError, .unsupportedShortcut(step: 0)) }
+    }
+
     func testReplayPausesOnManualSteps() throws {
         let routine = try LearnedRoutine(name: "Mix", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click),

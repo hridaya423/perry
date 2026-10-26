@@ -125,13 +125,29 @@ final class DemonstrationRecorder {
 
     private func handleKey(_ event: NSEvent) {
         guard recording, events.count < Self.maximumEvents else { return }
-        recordKey(characters: event.characters, keyCode: event.keyCode, modifiers: event.modifierFlags)
+        recordKey(
+            characters: event.characters,
+            charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+            keyCode: event.keyCode,
+            modifiers: event.modifierFlags
+        )
     }
 
     /// Event classification, split out so tests drive it without NSEvent
     /// monitors: plain characters append typed text onto the last clicked
     /// target; named keys and modifier chords record a key press.
-    func recordKey(characters: String?, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) {
+    func recordKey(
+        characters: String?,
+        charactersIgnoringModifiers: String? = nil,
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags
+    ) {
+        if !modifiers.intersection([.command, .control, .option]).isEmpty {
+            if let key = Self.namedKey(keyCode: keyCode) ?? Self.chordCharacter(charactersIgnoringModifiers ?? characters) {
+                append(.chord(key: key, modifiers: Self.modifierNames(modifiers)))
+            }
+            return
+        }
         if let name = Self.namedKey(keyCode: keyCode) {
             append(.keyPress(name))
             return
@@ -157,6 +173,18 @@ final class DemonstrationRecorder {
                     && point.y >= frame.y && point.y <= frame.y + frame.height
             }
             .min { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
+
+    private static func chordCharacter(_ characters: String?) -> String? {
+        guard let character = characters?.lowercased(), character.count == 1,
+              character.first?.isLetter == true || character.first?.isNumber == true else { return nil }
+        return character
+    }
+
+    private static func modifierNames(_ modifiers: NSEvent.ModifierFlags) -> [String] {
+        [(NSEvent.ModifierFlags.command, "command"), (.control, "control"), (.option, "option"), (.shift, "shift")]
+            .filter { modifiers.contains($0.0) }
+            .map(\.1)
     }
 
     private static func namedKey(keyCode: UInt16) -> String? {

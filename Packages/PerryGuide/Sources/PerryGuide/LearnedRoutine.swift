@@ -203,6 +203,7 @@ public enum RoutineAction: Codable, Equatable, Sendable {
     case doubleClick
     case typeText(RoutineText)
     case pressKey(String)
+    case hotkey(key: String, modifiers: [String])
     case wait(milliseconds: Int)
 }
 
@@ -231,6 +232,7 @@ public enum RecordedEvent: Equatable, Sendable {
     case doubleClick(RoutineTarget)
     case typed(text: String, into: RoutineTarget?)
     case keyPress(String)
+    case chord(key: String, modifiers: [String])
 }
 
 /// Turns recorded events into candidate routine steps. The only compression:
@@ -270,6 +272,9 @@ public enum RoutineInference {
                 continue
             case .keyPress(let key):
                 steps.append(RoutineStep(summary: "Press \(key)", action: .pressKey(key)))
+            case .chord(let key, let modifiers):
+                let chord = (modifiers.map(\.capitalized) + [key.count == 1 ? key.uppercased() : key]).joined(separator: "-")
+                steps.append(RoutineStep(summary: "Press \(chord)", action: .hotkey(key: key, modifiers: modifiers)))
             }
             index += 1
         }
@@ -487,6 +492,7 @@ public enum RoutineSynthesis {
             case .parameter(let name, _): return "type {\(name)} into \(target)"
             }
         case .pressKey(let key): return "press \(key) on \(target)"
+        case .hotkey(let key, let modifiers): return "press \((modifiers + [key]).joined(separator: "-"))"
         case .wait(let ms): return "wait \(ms) ms"
         }
     }

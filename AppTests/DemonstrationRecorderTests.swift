@@ -91,13 +91,29 @@ final class DemonstrationRecorderTests: XCTestCase {
         let recorder = makeRecorder(elements: [])
         recorder.start()
         recorder.recordKey(characters: "\r", keyCode: 36, modifiers: [])
-        recorder.recordKey(characters: " ", keyCode: 49, modifiers: [.command])
+        recorder.recordKey(characters: " ", keyCode: 49, modifiers: [])
+        recorder.recordKey(characters: "a", keyCode: 0, modifiers: [.function])
         recorder.recordKey(characters: "a", keyCode: 0, modifiers: [])
         let demo = await recorder.stop()
         XCTAssertEqual(demo?.events, [
             .keyPress("return"),
             .keyPress("space"),
             .typed(text: "a", into: nil)
+        ])
+    }
+
+    func testCommandChordIsRecordedNotDropped() async {
+        let recorder = makeRecorder(elements: [])
+        recorder.start()
+        recorder.recordKey(characters: "c", keyCode: 8, modifiers: [.command])
+        recorder.recordKey(characters: "S", charactersIgnoringModifiers: "s", keyCode: 1, modifiers: [.command, .shift])
+        recorder.recordKey(characters: " ", keyCode: 49, modifiers: [.command])
+        recorder.recordKey(characters: ",", charactersIgnoringModifiers: ",", keyCode: 43, modifiers: [.command])
+        let demo = await recorder.stop()
+        XCTAssertEqual(demo?.events, [
+            .chord(key: "c", modifiers: ["command"]),
+            .chord(key: "s", modifiers: ["command", "shift"]),
+            .chord(key: "space", modifiers: ["command"])
         ])
     }
 }
