@@ -1,5 +1,6 @@
 import AppKit
 import PerryOverlay
+import SwiftUI
 
 /// The expanded notch: one borderless panel pinned under the camera housing.
 /// Built once, shown on invocation, and on hide hands focus back to the app
@@ -14,15 +15,20 @@ final class SessionPanelPresenter {
         self.makeContent = makeContent
     }
 
+    let expansion = NotchExpansion()
     var frame: CGRect? { isVisible ? visibleFrame : nil }
-    var isVisible: Bool { panel?.isVisible == true }
+    var isVisible: Bool { panel?.isVisible == true && expansion.contentShown }
     var isKey: Bool { panel?.isKeyWindow == true }
     var screen: NSScreen?
+    var keyboardInitiated = false
     private var visibleFrame: CGRect?
+    private var instant: Bool { keyboardInitiated || NSApp.currentEvent?.type == .keyDown }
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     func show(window: NSRect, visible: NSRect, activate: Bool) {
         let panel = ensurePanel()
         place(window: window, visible: visible)
+        panel.contentView?.layoutSubtreeIfNeeded()
         if activate {
             let ownPID = ProcessInfo.processInfo.processIdentifier
             if let frontmost = NSWorkspace.shared.frontmostApplication,
@@ -34,7 +40,23 @@ final class SessionPanelPresenter {
         } else {
             panel.orderFrontRegardless()
         }
+        expand()
         PerfMark.mark("panel.visible")
+    }
+
+    private func expand() {
+        guard !(expansion.open && expansion.contentShown) else { return }
+        if instant {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                expansion.open = true
+                expansion.contentShown = true
+            }
+            return
+        }
+        withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.open) { expansion.open = true }
+        withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.contentIn) { expansion.contentShown = true }
     }
 
     func place(window: NSRect, visible: NSRect) {
@@ -49,9 +71,34 @@ final class SessionPanelPresenter {
         ensurePanel().displayIfNeeded()
     }
 
-    func hide() {
-        guard let panel, isVisible else { return }
-        panel.orderOut(nil)
+    func hide(completion: @escaping () -> Void = {}) {
+        guard let panel, isVisible else { return completion() }
+        if instant {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                expansion.contentShown = false
+                expansion.open = false
+            }
+            panel.orderOut(nil)
+            completion()
+        } else {
+            let expansion = expansion
+            withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.contentOut) {
+                expansion.contentShown = false
+            } completion: { [reduceMotion] in
+                guard !expansion.contentShown else { return }
+                withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.close) {
+                    expansion.open = false
+                } completion: { [weak panel] in
+                    DispatchQueue.main.async {
+                        guard !expansion.open else { return }
+                        panel?.orderOut(nil)
+                        completion()
+                    }
+                }
+            }
+        }
         let ownPID = ProcessInfo.processInfo.processIdentifier
         if NSApp.isActive,
            NSWorkspace.shared.frontmostApplication?.processIdentifier == ownPID,
@@ -196,10 +243,11 @@ extension AppController {
     }
 
     private func hideSurfaces() {
-        sessionPanel.hide()
         overlayState.panelScreenFrame = nil
-        notchPresence.setConversationVisible(false)
-        notchStatus.setConversationVisible(false)
+        sessionPanel.hide { [weak self] in
+            self?.notchPresence.setConversationVisible(false)
+            self?.notchStatus.setConversationVisible(false)
+        }
     }
 
     func showBackgroundTasks() {

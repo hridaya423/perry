@@ -345,12 +345,26 @@ final class NotchPresence {
                 surface = .open
                 apply(intent.escape())
             }
-            dotPanels.forEach { $0.orderOut(nil) }
+            for panel in dotPanels where panel.isVisible {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.08
+                    panel.animator().alphaValue = 0
+                } completionHandler: {
+                    MainActor.assumeIsolated {
+                        guard self.surface != .resting else { return }
+                        panel.orderOut(nil)
+                        panel.alphaValue = 1
+                    }
+                }
+            }
         } else {
             surface = .resting
             if isEnabled {
                 showRestingDotIfNeeded()
-                dotPanels.forEach { $0.orderFrontRegardless() }
+                dotPanels.forEach {
+                    $0.alphaValue = 1
+                    $0.orderFrontRegardless()
+                }
             }
         }
     }

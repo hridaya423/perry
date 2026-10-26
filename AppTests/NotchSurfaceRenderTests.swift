@@ -30,7 +30,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         for _ in 0..<100 where !presentation.contains(presenter.requestID) { await Task.yield() }
         XCTAssertEqual(presentation.current?.id, presenter.requestID)
-        try await render(CompactConversationView(controller: controller), name: "task-question-notch", size: NSSize(width: 592, height: 400))
+        try await render(openNotch(controller), name: "task-question-notch", size: NSSize(width: 592, height: 400))
         presenter.cancel()
         do {
             try await asking.value
@@ -59,16 +59,16 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let guideView = GuideControlsView(state: guide, onDone: {}, onBack: {}, onSkip: {}, onRepoint: {}, onSelectMarker: { _ in }, onChooseInput: { _ in }, onTakeOver: {}, onStop: {})
         presentation.present(id: id, priority: .guide, content: guideView, reveal: false)
         presentation.showsInteraction = true
-        try await render(CompactConversationView(controller: controller), name: "guide-step", size: NSSize(width: 592, height: 420))
+        try await render(openNotch(controller), name: "guide-step", size: NSSize(width: 592, height: 420))
         guide.pendingPrompt = "Which version should I use?"
         guide.pendingChoices = ["The latest draft", "The version shared yesterday"]
-        try await render(CompactConversationView(controller: controller), name: "guide-question", size: NSSize(width: 592, height: 420))
+        try await render(openNotch(controller), name: "guide-question", size: NSSize(width: 592, height: 420))
         let routine = RoutineReviewState()
         routine.presentReview(steps: [RoutineStep(summary: "Open a new note", action: .click), RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))])
         routine.name = "Prepare meeting notes"
         let routineView = RoutineReviewView(state: routine, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {})
         presentation.present(id: id, priority: .routine, content: routineView, reveal: false)
-        try await render(CompactConversationView(controller: controller), name: "routine-review", size: NSSize(width: 592, height: 492))
+        try await render(openNotch(controller), name: "routine-review", size: NSSize(width: 592, height: 492))
         let activity = AgentActivityStripState()
         activity.phase = .working
         activity.title = "Preparing meeting notes"
@@ -77,13 +77,13 @@ final class NotchSurfaceRenderTests: XCTestCase {
         activity.isExpanded = true
         let activityView = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})
         presentation.present(id: id, priority: .activity, content: activityView, reveal: false)
-        try await render(CompactConversationView(controller: controller), name: "task-working", size: NSSize(width: 592, height: 492))
+        try await render(openNotch(controller), name: "task-working", size: NSSize(width: 592, height: 492))
         activity.phase = .failed
         activity.title = "The connection was interrupted"
         activity.detail = "Your request is saved. Retry when the connection returns."
         activity.progress = nil
         activity.canRetry = true
-        try await render(CompactConversationView(controller: controller), name: "task-failed", size: NSSize(width: 592, height: 492))
+        try await render(openNotch(controller), name: "task-failed", size: NSSize(width: 592, height: 492))
     }
 
     func testRenderNotchWorkspaceDestinations() async throws {
@@ -103,7 +103,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         ]
         for (name, selection) in selections {
             model.sidebarSelection = selection
-            try await render(CompactConversationView(controller: controller), name: name, size: NSSize(width: 892, height: 552))
+            try await render(openNotch(controller), name: name, size: NSSize(width: 892, height: 552))
         }
         let previousTab = UserDefaults.standard.object(forKey: PerryPreferences.$settingsTab.key)
         defer {
@@ -113,20 +113,20 @@ final class NotchSurfaceRenderTests: XCTestCase {
         model.sidebarSelection = .settings
         for tab in SettingsTab.allCases {
             UserDefaults.standard.set(tab.rawValue, forKey: PerryPreferences.$settingsTab.key)
-            try await render(CompactConversationView(controller: controller), name: "settings-\(tab.rawValue)", size: NSSize(width: 892, height: 552))
+            try await render(openNotch(controller), name: "settings-\(tab.rawValue)", size: NSSize(width: 892, height: 552))
         }
         UserDefaults.standard.set(SettingsTab.integrations.rawValue, forKey: PerryPreferences.$settingsTab.key)
-        try await render(CompactConversationView(controller: controller), name: "settings-integrations-tall", size: NSSize(width: 892, height: 1400))
+        try await render(openNotch(controller), name: "settings-integrations-tall", size: NSSize(width: 892, height: 1400))
         model.routines = [try LearnedRoutine(name: "Prepare project notes", appBundleIDs: ["com.apple.Notes"], steps: [
             RoutineStep(summary: "Open a new note", action: .click),
             RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))
         ])]
         model.sidebarSelection = .routines
-        try await render(CompactConversationView(controller: controller), name: "routines-populated", size: NSSize(width: 892, height: 552))
+        try await render(openNotch(controller), name: "routines-populated", size: NSSize(width: 892, height: 552))
         let thread = PerryThread(title: "Project notes", turns: [.init(question: "Summarize the meeting", answer: "The team agreed to finish the outline before Friday.\n\n## Next steps\n- Review the outline.\n- Share the open questions.")])
         model.threads = [thread]
         model.sidebarSelection = .thread(thread.id)
-        try await render(CompactConversationView(controller: controller), name: "conversation", size: NSSize(width: 892, height: 552))
+        try await render(openNotch(controller), name: "conversation", size: NSSize(width: 892, height: 552))
     }
 
     func testRenderOnboardingBeats() async throws {
@@ -152,9 +152,9 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         let size = NSSize(width: 592, height: 492)
         func shot(_ name: String, wait: Double = 1.1) async throws {
-            try await render(CompactConversationView(controller: controller), name: "onboarding-\(name)", size: size, wait: wait, folder: "onboarding-evidence")
+            try await render(openNotch(controller), name: "onboarding-\(name)", size: size, wait: wait, folder: "onboarding-evidence")
         }
-        try await render(CompactConversationView(controller: controller).environment(\._accessibilityReduceMotion, true), name: "onboarding-1-greet-reduced-motion", size: size, wait: 0.3, folder: "onboarding-evidence")
+        try await render(openNotch(controller).environment(\._accessibilityReduceMotion, true), name: "onboarding-1-greet-reduced-motion", size: size, wait: 0.3, folder: "onboarding-evidence")
         try await shot("1-greet", wait: HelloInk.peekDelay + 0.8)
         director.skip()
         try await shot("2-firstTalk")
@@ -267,10 +267,10 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await store.upsert(thread)
         model.threads = [thread]
         model.sidebarSelection = .thread(thread.id)
-        try await render(CompactConversationView(controller: controller), name: "conversation-narrow", size: NSSize(width: 720, height: 500))
+        try await render(openNotch(controller), name: "conversation-narrow", size: NSSize(width: 720, height: 500))
         XCTAssertEqual(model.threads.first?.title, thread.title)
         model.sidebarSelection = .settings
-        try await render(CompactConversationView(controller: controller), name: "settings-narrow", size: NSSize(width: 720, height: 500))
+        try await render(openNotch(controller), name: "settings-narrow", size: NSSize(width: 720, height: 500))
     }
 
     func testRenderGreetingMotionFrames() async throws {
@@ -325,7 +325,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
-        let host = NSHostingView(rootView: CompactConversationView(controller: controller))
+        let host = NSHostingView(rootView: openNotch(controller))
         host.sizingOptions = []
         window.contentView = host
         host.frame = frame
@@ -366,17 +366,17 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         let size = NSSize(width: 892, height: 552)
         model.sidebarSelection = .perryEditor(nil)
-        try await render(CompactConversationView(controller: controller), name: "perry-editor-new", size: size)
+        try await render(openNotch(controller), name: "perry-editor-new", size: size)
         let store = try XCTUnwrap(controller.perryStore)
         let perry = try await store.create(job: "Summarize my unread newsletters every morning", schedule: RoutineSchedule(kind: .daily(hour: 8, minute: 30)))
         model.perrys = await store.list()
         model.sidebarSelection = .perryEditor(perry.id)
-        try await render(CompactConversationView(controller: controller), name: "perry-editor-existing", size: NSSize(width: 892, height: 720), wait: 0.5)
+        try await render(openNotch(controller), name: "perry-editor-existing", size: NSSize(width: 892, height: 720), wait: 0.5)
 
         model.sidebarSelection = nil
         controller.presentFailure("Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.", recovery: .privacy("Privacy_ScreenCapture"))
         presentation.showsInteraction = true
-        try await render(CompactConversationView(controller: controller), name: "failure-notice", size: NSSize(width: 592, height: 420))
+        try await render(openNotch(controller), name: "failure-notice", size: NSSize(width: 592, height: 420))
         controller.clearFailure()
 
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "perry.render.\(UUID().uuidString)"))
@@ -426,7 +426,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         presentation.present(id: id, priority: .approval, content: Rectangle().fill(Color(red: 1, green: 0, blue: 0)).frame(height: 100), reveal: false)
         presentation.showsInteraction = true
-        let bitmap = try await render(CompactConversationView(controller: controller), name: "hug-100", size: NSSize(width: 696, height: 488), wait: 0.6)
+        let bitmap = try await render(openNotch(controller), name: "hug-100", size: NSSize(width: 696, height: 488), wait: 0.6)
         let scale = CGFloat(bitmap.pixelsHigh) / 488
         let screen = NotchPresence.screenUnderPointer()
         let column = bitmap.pixelsWide / 2
@@ -436,6 +436,103 @@ final class NotchSurfaceRenderTests: XCTestCase {
         XCTAssertEqual(CGFloat(red.count) / scale, 100, accuracy: 1, "content is clipped")
         XCTAssertEqual(CGFloat(shapeBottom - (red.last ?? 0)) / scale, NotchLayout.bottomInset, accuracy: 2, "slack under the content")
         XCTAssertEqual(CGFloat(shapeBottom + 1) / scale, NotchLayout.size(.focused(content: 100), cameraInset: max(24, screen?.safeAreaInsets.top ?? 0), screen: screen?.frame.size ?? .zero).height, accuracy: 2)
+    }
+
+    func testCloseRemovesContentThenShapeThenWindow() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        defer {
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let expansion = controller.sessionPanel.expansion
+        let existing = Set(NSApp.windows.map(ObjectIdentifier.init))
+        controller.showPanel(activate: false)
+        try await Task.sleep(for: .milliseconds(600))
+        let window = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "perry.session" && !existing.contains(ObjectIdentifier($0)) })
+        XCTAssertTrue(expansion.open && expansion.contentShown)
+
+        controller.hidePanel()
+        XCTAssertFalse(controller.sessionPanel.isVisible)
+        XCTAssertTrue(window.isVisible, "the window stays while the shape closes")
+        try await Task.sleep(for: .milliseconds(1000))
+        XCTAssertFalse(window.isVisible)
+        XCTAssertFalse(expansion.open)
+        XCTAssertEqual(controller.notchPresence.surface, .resting)
+
+        controller.showPanel(activate: false)
+        try await Task.sleep(for: .milliseconds(600))
+        controller.hidePanel()
+        try await Task.sleep(for: .milliseconds(40))
+        controller.showPanel(activate: false)
+        try await Task.sleep(for: .milliseconds(1000))
+        XCTAssertTrue(window.isVisible, "reopening during the close keeps the window")
+        XCTAssertTrue(expansion.open && expansion.contentShown)
+        controller.collapseNotch()
+    }
+
+    func testRenderOpenAndCloseMotionFrames() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        let id = UUID()
+        defer {
+            presentation.remove(id)
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let card = IntentCard(title: "Move two files into Archive", detail: "Both files keep their contents; nothing else changes.", tier: .orange, targetSummary: "draft-a.txt, draft-b.txt → Archive")
+        presentation.present(id: id, priority: .approval, content: IntentCardView(card: card) { _ in }, reveal: false)
+        presentation.showsInteraction = true
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/notch-motion")
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let frame = NSRect(x: 0, y: 0, width: 696, height: 400)
+        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.isOpaque = false
+        window.backgroundColor = NSColor(white: 0.85, alpha: 1)
+        let host = NSHostingView(rootView: CompactConversationView(controller: controller))
+        host.sizingOptions = []
+        window.contentView = host
+        window.orderFrontRegardless()
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(300))
+        let expansion = controller.sessionPanel.expansion
+        var index = 0
+        func capture(for seconds: Double) async throws {
+            let end = Date.now.addingTimeInterval(seconds)
+            while Date.now < end {
+                host.layoutSubtreeIfNeeded()
+                let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                    .write(to: destination.appendingPathComponent(String(format: "frame-%03d.png", index)))
+                index += 1
+                try await Task.sleep(for: .milliseconds(16))
+            }
+        }
+        withAnimation(NotchMotion.open) { expansion.open = true }
+        withAnimation(NotchMotion.contentIn) { expansion.contentShown = true }
+        try await capture(for: 0.7)
+        print("notch.motion.close.from=\(index)")
+        withAnimation(NotchMotion.contentOut) { expansion.contentShown = false } completion: {
+            withAnimation(NotchMotion.close) { expansion.open = false }
+        }
+        try await capture(for: 0.7)
+        print("notch.motion.frames=\(index)")
+    }
+
+    private func openNotch(_ controller: AppController) -> CompactConversationView {
+        controller.sessionPanel.expansion.open = true
+        controller.sessionPanel.expansion.contentShown = true
+        return CompactConversationView(controller: controller)
     }
 
     @discardableResult

@@ -16,21 +16,27 @@ struct CompactConversationView: View {
     @ObservedObject var controller: AppController
     @ObservedObject private var model: HomeModel
     @ObservedObject private var presentation = NotchPresentation.shared
-    @State private var cameraInset: CGFloat
-    @State private var screenSize: CGSize
+    @ObservedObject private var expansion: NotchExpansion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var metrics: NotchLayout.Metrics
     @State private var showsGuide = false
 
     init(controller: AppController) {
         self.controller = controller
         self.model = controller.homeController.homeModel
-        let screen = controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()
-        _cameraInset = State(initialValue: max(24, screen?.safeAreaInsets.top ?? 0))
-        _screenSize = State(initialValue: screen?.frame.size ?? .zero)
+        self.expansion = controller.sessionPanel.expansion
+        _metrics = State(initialValue: NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()))
     }
 
+    private var cameraInset: CGFloat { metrics.cameraInset }
+
     private var size: CGSize {
-        NotchLayout.size(NotchLayout.mode(presentation), cameraInset: cameraInset, screen: screenSize)
+        NotchLayout.size(NotchLayout.mode(presentation), cameraInset: cameraInset, screen: metrics.screen)
     }
+
+    private var grown: Bool { expansion.open || reduceMotion }
+    private var shape: NotchShape { grown ? .open : .closed }
+    private var shapeSize: CGSize { grown ? size : metrics.closed }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,10 +61,17 @@ struct CompactConversationView: View {
         }
         .padding(.horizontal, NotchShape.open.topRadius)
         .padding(.bottom, NotchLayout.bottomInset)
+        .opacity(expansion.contentShown ? 1 : 0)
+        .offset(y: expansion.contentShown || reduceMotion ? 0 : -8)
         .frame(width: size.width, height: size.height)
-        .background(NotchShape.open.surface(crown: cameraInset + 8))
+        .mask(alignment: .top) { shape.frame(width: shapeSize.width, height: shapeSize.height) }
+        .background(alignment: .top) {
+            shape.surface(crown: cameraInset + 8, lifted: expansion.open)
+                .frame(width: shapeSize.width, height: shapeSize.height)
+        }
+        .opacity(reduceMotion && !expansion.open ? 0 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(.spring(response: 0.32, dampingFraction: 0.9), value: size)
+        .animation(reduceMotion ? NotchMotion.reducedResize : NotchMotion.resize, value: size)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)
@@ -100,9 +113,7 @@ struct CompactConversationView: View {
     }
 
     private func updateCameraInset() {
-        let screen = controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()
-        cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
-        screenSize = screen?.frame.size ?? .zero
+        metrics = NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer())
     }
 
     private func consumePrompt() {

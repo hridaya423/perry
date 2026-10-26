@@ -6,6 +6,24 @@ enum NotchLayout {
         case workspace
     }
 
+    struct Metrics: Equatable {
+        var cameraInset: CGFloat
+        var screen: CGSize
+        var closed: CGSize
+
+        @MainActor
+        init(_ screen: NSScreen?) {
+            cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
+            self.screen = screen?.frame.size ?? .zero
+            if let screen, screen.safeAreaInsets.top > 0,
+               let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+                closed = CGSize(width: right.minX - left.maxX + NotchShape.closed.topRadius * 2, height: screen.safeAreaInsets.top)
+            } else {
+                closed = screen.map { NotchPresence.zoneRect(for: $0).size } ?? CGSize(width: 120, height: 24)
+            }
+        }
+    }
+
     static let shadowPadding: CGFloat = 48
     static let headerHeight: CGFloat = 28
     static let headerGap: CGFloat = 12

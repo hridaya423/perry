@@ -38,9 +38,14 @@
   - Verified: 647/0 on the mini. `NotchLayoutTests` checks every mode against the bounds table on five screen sizes. `testFocusedNotchHugsItsContent` renders a 100 pt block and measures pixels: the block is unclipped and the shape ends 16 pt below it. On a 32 pt notch a card of height c now takes c + 94 pt; before it took c + 168 pt, and the empty part showed as a black field. Renders inspected in `docs/evidence/first-impressions/3.4/`.
   - Not verified: clicks in the window's transparent area reach the app below. This relies on AppKit's default for clear windows that never set `ignoresMouseEvents`. A drill on the mini could not post events over ssh (`CGPreflightPostEventAccess` is false). Check it with a live click before Task 3.12. The shadow pixels around the shape still catch clicks.
 
+- 3.5 Done: `App/Notch/NotchMotion.swift` holds the r6 §7.6 values. `NotchExpansion` (`open`, `contentShown`) is owned by `SessionPanelPresenter`. Open: the shape grows from the closed notch size and radii (6/14 → 18/22) with the open spring; content fades in after 80 ms from y −8. Close: content leaves first (0.10 s), then the shape closes, then the window orders out, and only then do the eyes and status return. Content is laid out once at the open size and masked by the animated shape, so text never reflows during the spring. Shadow only while open. Keyboard opens and closes stay instant (the `keyboardInitiated` flag is back). Reduce Motion: opacity only. The notch eyes fade out over 80 ms instead of vanishing.
+  - Bug found and fixed on the way: the first open after launch resized the window inside the open animation's transaction, so SwiftUI animated the hosting view's own size and AppKit threw "more Update Constraints in Window passes than there are views". The presenter now lays the window out at its final frame before it starts the animation. Found by bisecting on the mini; the crash would have hit the real app on first open.
+  - Verified: 649/0 on the mini. `testCloseRemovesContentThenShapeThenWindow` checks the order and that reopening during a close keeps the window. `testRenderOpenAndCloseMotionFrames` writes frames every ~29 ms; frames 0, 3, 6, 9, 12, 24 and the close frames are inspected in `docs/evidence/first-impressions/3.5/`. Open settles in about 350 ms, close in about 400 ms.
+  - Not verified: a live 60 fps screen recording on a notched display. The mini has no notch and its ssh session cannot record or post events. Deviation: content out uses y −8, not −4, because one offset serves both directions.
+
 ## Next
 
-- 3.5 motion: `NotchMotion` springs, staged content, eyes fade on open. Open is instant until then, because the mask morph is gone.
+- 3.6 hover: swell, 180 ms peek dwell, 350 ms close, and the three presence bugs (peek never closes with a running task, hover-out cancels voice, peek not key).
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 
