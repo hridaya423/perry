@@ -179,7 +179,9 @@
 
 ## Next
 
-- Finish 3.12 (critic round 2), commit, then Phase 4.
+- 4.8 realtime providers: Grok (OpenAI wire dialect), Gemini Live, GPT-Live (beta) and the Voice settings page. Check each provider's current docs before writing transports; the plan's model names come from r9 and may have moved. One provider per commit, using recorded event fixtures only (no live keys).
+- Then Phases 5 to 9. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
+- Open items: migrate realtime transcription off `gpt-4o-transcribe` before 2027-02-26. Live checks still owed on a notched display: hover and peek recordings, click pass-through, the listening ring with a real microphone, and wake word in a room.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 
