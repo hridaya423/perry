@@ -221,6 +221,7 @@ extension AppController {
             overlayState.voiceState = .idle
             overlayState.buddyState = talkSession.answer.isEmpty ? .idle : .success
             overlayState.taskBubbleText = talkSession.answer.isEmpty ? nil : "Answer ready"
+            overlayState.expireTaskBubble(after: 2.5)
         case .failed:
             overlayState.buddyState = .blocked
             overlayState.voiceState = .idle

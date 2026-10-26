@@ -78,7 +78,7 @@ struct CompactConversationView: View {
             }
         }
         .padding(.horizontal, NotchShape.open.topRadius)
-        .padding(.bottom, NotchLayout.bottomInset)
+        .padding(.bottom, fillsToBottom ? 0 : NotchLayout.bottomInset)
         .opacity(expansion.contentShown ? 1 : 0)
         .offset(y: expansion.contentShown || reduceMotion ? 0 : -8)
         .frame(width: size.width, height: size.height)
@@ -132,6 +132,11 @@ struct CompactConversationView: View {
         } else {
             NotchWorkspaceView(model: model)
         }
+    }
+
+    private var fillsToBottom: Bool {
+        guard presentation.current == nil else { return false }
+        return model.sidebarSelection == .settings || (model.onboarding == nil && !peeking)
     }
 
     private var peeking: Bool {

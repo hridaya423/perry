@@ -291,7 +291,8 @@ struct NotchWorkspaceView: View {
                 .help("Settings")
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.top, 10)
+            .padding(.bottom, NotchLayout.bottomInset)
         }
     }
 

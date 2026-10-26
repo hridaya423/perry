@@ -180,7 +180,7 @@ extension VoiceController {
         guard !cleaned.isEmpty else { return }
         let preferences = Self.currentSpeechPreferences()
         guard preferences.outputEnabled else { return }
-        overlayState.taskBubbleText = cleaned
+        if overlayState.panelScreenFrame == nil { overlayState.taskBubbleText = cleaned }
         let outputAvailable = AudioRouteMonitor.defaultOutputAvailable()
         guard outputAvailable, !AudioRouteMonitor.defaultOutputMuted() else {
             currentSpeechText = nil
@@ -201,7 +201,7 @@ extension VoiceController {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         let preferences = Self.currentSpeechPreferences()
-        overlayState.taskBubbleText = cleaned
+        if overlayState.panelScreenFrame == nil { overlayState.taskBubbleText = cleaned }
         guard preferences.outputEnabled else {
             currentSpeechText = nil
             overlayState.voiceState = .idle
@@ -292,6 +292,9 @@ extension VoiceController: AVSpeechSynthesizerDelegate {
             if !self.dictation.isRunning {
                 self.overlayState.voiceState = .idle
             }
+            if !self.synthesizer.isSpeaking {
+                self.overlayState.expireTaskBubble(after: 1.5)
+            }
             if let guideIdentity {
                 self.hooks.guideSpeechFinished(guideIdentity)
             }
@@ -302,6 +305,9 @@ extension VoiceController: AVSpeechSynthesizerDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             let guideIdentity = self.guideSpeechIdentities.removeValue(forKey: ObjectIdentifier(utterance))
+            if !self.synthesizer.isSpeaking {
+                self.overlayState.expireTaskBubble(after: 1.5)
+            }
             if let guideIdentity {
                 self.hooks.guideSpeechFinished(guideIdentity)
             }

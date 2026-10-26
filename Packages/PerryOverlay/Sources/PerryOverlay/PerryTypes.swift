@@ -105,7 +105,10 @@ public enum PerryVoicePhase: Equatable {
 
 public final class PerryCursorState: ObservableObject {
     @Published public var buddyState: PerryBuddyState = .idle
-    @Published public var taskBubbleText: String?
+    @Published public var taskBubbleText: String? {
+        didSet { bubbleExpiry?.cancel() }
+    }
+    private var bubbleExpiry: DispatchWorkItem?
     @Published public var voiceState: PerryVoicePhase = .idle
     @Published public var currentAudioPowerLevel: CGFloat = 0
     @Published public var detectedElementScreenLocation: CGPoint?
@@ -125,6 +128,17 @@ public final class PerryCursorState: ObservableObject {
     @Published public var panelScreenFrame: CGRect?
 
     public init() {}
+
+    public func expireTaskBubble(after seconds: TimeInterval) {
+        let text = taskBubbleText
+        let expiry = DispatchWorkItem { [weak self] in
+            guard let self, self.taskBubbleText == text else { return }
+            self.taskBubbleText = nil
+        }
+        bubbleExpiry?.cancel()
+        bubbleExpiry = expiry
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: expiry)
+    }
 
     public func clearDetectedElementLocation() {
         detectedElementScreenLocation = nil

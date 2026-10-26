@@ -49,14 +49,27 @@ enum SettingsPage: String, CaseIterable {
 
     var systemImage: String {
         switch self {
-        case .general: "gearshape"
-        case .you: "person.crop.circle"
+        case .general: "gearshape.fill"
+        case .you: "person.crop.circle.fill"
         case .voice: "waveform"
-        case .dictation: "mic"
+        case .dictation: "mic.fill"
         case .shortcuts: "command"
         case .brain: "sparkles"
-        case .apps: "square.grid.2x2"
-        case .privacy: "lock"
+        case .apps: "square.grid.2x2.fill"
+        case .privacy: "lock.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .general: TileTint.blue
+        case .you: TileTint.peach
+        case .voice: TileTint.pink
+        case .dictation: TileTint.teal
+        case .shortcuts: TileTint.blue
+        case .brain: TileTint.lilac
+        case .apps: TileTint.pink
+        case .privacy: TileTint.teal
         }
     }
 
@@ -140,7 +153,8 @@ struct SettingsSidebar: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, NotchLayout.bottomInset)
             }
         }
         .accessibilityElement(children: .contain)
@@ -153,11 +167,7 @@ struct SettingsSidebar: View {
             stored = page.rawValue
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: page.systemImage)
-                    .font(PerryTheme.Icon.rail)
-                    .foregroundStyle(selected ? PerryTheme.Colors.text : PerryTheme.Colors.icon)
-                    .frame(width: 18)
-                    .accessibilityHidden(true)
+                SymbolTile(systemImage: page.systemImage, tint: page.tint)
                 Text(page.sidebarTitle)
                     .font(PerryTheme.Scale.body)
                     .lineLimit(1)

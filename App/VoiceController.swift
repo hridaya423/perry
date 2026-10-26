@@ -385,6 +385,7 @@ final class VoiceController: NSObject, ObservableObject {
         case .responseFinished:
             overlayState.voiceState = .idle
             overlayState.buddyState = .idle
+            overlayState.expireTaskBubble(after: 1.5)
         case .responseInterrupted, .speechStarted, .sessionReady:
             if voiceInvocation.inputOpen, realtimeVoiceSession?.state == .listening {
                 overlayState.voiceState = .listening
