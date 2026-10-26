@@ -94,7 +94,7 @@ private struct VoiceChoiceRow: View {
         HStack(spacing: 10) {
             Button(action: preview) {
                 Image(systemName: "play.fill")
-                    .font(PerryTheme.Icon.inline)
+                    .font(PerryTheme.Icon.utility).imageScale(.small)
                     .frame(width: 24, height: 24)
                     .background(PerryTheme.Colors.chip, in: Circle())
             }
