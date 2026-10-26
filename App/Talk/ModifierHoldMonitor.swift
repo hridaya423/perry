@@ -1,6 +1,7 @@
 import AppKit
 
-/// Talk's entry gesture: hold ⌃⌥ to talk, double-tap ⌃ for the typed composer.
+/// Talk's entry gesture: hold ⌃⌥ to talk, double-tap ⌃ for the typed composer
+/// (both are saved gestures; these are the defaults).
 /// The tap listens for keyDown as well as flagsChanged: a key pressed during
 /// a hold means a chorded shortcut (⌃⌥←, ⌃⌥⌘V…) — the hold cancels instead of
 /// submitting, and ⌃ chords typed normally (⌃A, ⌃E, ⌃C, ⌃V) can never fake a
@@ -12,7 +13,7 @@ enum TalkGesture {
     static var keys: String { PerryPreferences.talkGesture.keys }
     static var talk: String { "\(PerryPreferences.talkGesture.spoken) to talk" }
     static var steer: String { "\(PerryPreferences.talkGesture.spoken) to steer" }
-    static let type = "Double-tap ⌃ to type"
+    static var type: String { "\(PerryPreferences.typeGesture.spoken) to type" }
 }
 
 @MainActor
@@ -25,6 +26,7 @@ final class ModifierHoldMonitor {
 
     private let commitDelay: TimeInterval
     private let talkHold: () -> ModifierSet
+    private let typeTap: () -> ModifierSet
     private let onHoldStart: () -> Void
     private let onHoldCommit: () -> Void
     private let onHoldEnd: () -> Void
@@ -43,16 +45,17 @@ final class ModifierHoldMonitor {
     private var holdStartedAt: TimeInterval = 0
     private var committed = false
     private var commitTask: Task<Void, Never>?
-    private var controlDown = false
-    private var controlPressClean = true
-    private var controlPressAt: TimeInterval = 0
-    private var lastCleanControlRelease: TimeInterval?
+    private var typeDown = false
+    private var typePressClean = true
+    private var typePressAt: TimeInterval = 0
+    private var lastCleanTypeRelease: TimeInterval?
     private let doubleTapWindow: TimeInterval = 0.35
     private let tapMaxDuration: TimeInterval = 0.25
 
     init(
         commitDelay: TimeInterval = 0.12,
         talkHold: @escaping () -> ModifierSet = { PerryPreferences.talkGesture.holdModifiers ?? [.control, .option] },
+        typeTap: @escaping () -> ModifierSet = { PerryPreferences.typeGesture.doubleTapModifiers ?? [.control] },
         onHoldStart: @escaping () -> Void,
         onHoldCommit: @escaping () -> Void,
         onHoldEnd: @escaping () -> Void,
@@ -62,6 +65,7 @@ final class ModifierHoldMonitor {
     ) {
         self.commitDelay = commitDelay
         self.talkHold = talkHold
+        self.typeTap = typeTap
         self.onHoldStart = onHoldStart
         self.onHoldCommit = onHoldCommit
         self.onHoldEnd = onHoldEnd
@@ -177,7 +181,8 @@ final class ModifierHoldMonitor {
     }
 
     func handle(timestamp: TimeInterval, modifiers: ModifierSet, isFlagsChanged: Bool, tapDisabled: Bool) {
-        let control = modifiers.contains(.control)
+        let typeSet = typeTap()
+        let typeHeld = modifiers.isSuperset(of: typeSet)
         if tapDisabled {
             resetCaptureState()
             if let eventTap {
@@ -193,7 +198,7 @@ final class ModifierHoldMonitor {
                 holding = false
             }
         } else if modifiers == talkHold() {
-            lastCleanControlRelease = nil
+            lastCleanTypeRelease = nil
             if !holding, interceptHold() {
                 holding = true
                 swallowing = true
@@ -237,28 +242,28 @@ final class ModifierHoldMonitor {
             }
         }
 
-        if control && !controlDown {
-            controlPressClean = true
-            controlPressAt = timestamp
-            if modifiers == [.control], let last = lastCleanControlRelease, timestamp - last <= doubleTapWindow {
-                lastCleanControlRelease = nil
+        if typeHeld && !typeDown {
+            typePressClean = modifiers == typeSet
+            typePressAt = timestamp
+            if typePressClean, let last = lastCleanTypeRelease, timestamp - last <= doubleTapWindow {
+                lastCleanTypeRelease = nil
                 PerfMark.mark("composer.open")
                 onComposer()
             }
         }
-        if !control && controlDown, modifiers.isEmpty, controlPressClean,
-           timestamp - controlPressAt <= tapMaxDuration {
-            lastCleanControlRelease = timestamp
+        if !typeHeld && typeDown, modifiers.isSubset(of: typeSet), typePressClean,
+           timestamp - typePressAt <= tapMaxDuration {
+            lastCleanTypeRelease = timestamp
         }
-        controlDown = control
+        typeDown = typeHeld
     }
 
     /// A real key pressed while a modifier gesture is in flight. During a hold
     /// it means a chorded shortcut: cancel without submitting. Otherwise it
     /// just dirties the current ⌃ press and any pending double-tap.
     func handleKeyDown(keyCode: Int64 = -1) {
-        lastCleanControlRelease = nil
-        if controlDown { controlPressClean = false }
+        lastCleanTypeRelease = nil
+        if typeDown { typePressClean = false }
         guard holding, !swallowing else { return }
         holding = false
         committed = false
@@ -275,9 +280,9 @@ final class ModifierHoldMonitor {
         holding = false
         swallowing = false
         committed = false
-        controlDown = false
-        controlPressClean = true
-        lastCleanControlRelease = nil
+        typeDown = false
+        typePressClean = true
+        lastCleanTypeRelease = nil
         if wasHolding {
             PerfMark.mark("talk.cancel.reset")
             onHoldCancel()

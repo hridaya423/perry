@@ -1,44 +1,16 @@
 import AppKit
 import Carbon.HIToolbox
 
-enum WakeShortcut: String, CaseIterable, Identifiable {
-    case optionCommandP
-    case optionCommandO
-    case controlCommandP
-    case controlCommandO
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .optionCommandP: return "⌥⌘P"
-        case .optionCommandO: return "⌥⌘O"
-        case .controlCommandP: return "⌃⌘P"
-        case .controlCommandO: return "⌃⌘O"
-        }
-    }
-
-    var gesture: Gesture {
-        switch self {
-        case .optionCommandP: .chord([.option, .command], keyCode: 35)
-        case .optionCommandO: .chord([.option, .command], keyCode: 31)
-        case .controlCommandP: .chord([.control, .command], keyCode: 35)
-        case .controlCommandO: .chord([.control, .command], keyCode: 31)
-        }
-    }
-
-    var modifiers: UInt32 {
-        switch self {
-        case .optionCommandP, .optionCommandO: return UInt32(optionKey | cmdKey)
-        case .controlCommandP, .controlCommandO: return UInt32(controlKey | cmdKey)
-        }
-    }
-
-    var keyCode: UInt32 {
-        switch self {
-        case .optionCommandP, .controlCommandP: return UInt32(kVK_ANSI_P)
-        case .optionCommandO, .controlCommandO: return UInt32(kVK_ANSI_O)
-        }
+extension Gesture {
+    var carbonHotkey: (keyCode: UInt32, modifiers: UInt32)? {
+        guard case .chord(let set, let key) = self else { return nil }
+        var modifiers = 0
+        if set.contains(.control) { modifiers |= controlKey }
+        if set.contains(.option) { modifiers |= optionKey }
+        if set.contains(.shift) { modifiers |= shiftKey }
+        if set.contains(.command) { modifiers |= cmdKey }
+        guard modifiers != 0 else { return nil }
+        return (UInt32(key), UInt32(modifiers))
     }
 }
 
@@ -47,8 +19,8 @@ final class HotkeyController {
     private var eventHandler: EventHandlerRef?
     private let handler: () -> Void
     private let hotKeyID: EventHotKeyID
-    private var modifiers: UInt32
-    private var keyCode: UInt32
+    private(set) var modifiers: UInt32
+    private(set) var keyCode: UInt32
 
     init(
         modifiers: UInt32 = UInt32(optionKey | cmdKey),
@@ -161,6 +133,7 @@ final class HotkeyController {
         case eventHandler(status: OSStatus)
         case registration(status: OSStatus)
         case restoration
+        case needsModifier
 
         var errorDescription: String? {
             switch self {
@@ -170,6 +143,8 @@ final class HotkeyController {
                 return "That shortcut could not be registered (\(status)). Choose another shortcut."
             case .restoration:
                 return "Perry could not restore the previous shortcut. Choose a wake shortcut to try again."
+            case .needsModifier:
+                return "The wake shortcut needs ⌃, ⌥, ⇧ or ⌘ together with a key. Choose another shortcut."
             }
         }
     }

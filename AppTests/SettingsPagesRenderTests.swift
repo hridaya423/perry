@@ -37,6 +37,51 @@ final class SettingsPagesRenderTests: XCTestCase {
         }
     }
 
+    func testRenderShortcutsAtNotchContentWidth() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        defer { controller.notchPresence.stop() }
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/settings-pages")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var conflict = ShortcutRole.dictate.capture(gestures: ShortcutRole.current, hotkeys: [])
+        conflict.choose(.doubleTap([.control]))
+        let views: [(String, AnyView)] = [
+            ("shortcuts-narrow", AnyView(ShortcutsSettingsPage(controller: controller))),
+            ("shortcuts-conflict-narrow", AnyView(SettingsScroll {
+                SettingsCard {
+                    ShortcutRecorder(
+                        title: "Dictate",
+                        capture: .constant(conflict),
+                        presets: ShortcutRole.dictate.presets,
+                        presetLabel: ShortcutRole.dictate.label(for:)
+                    )
+                    .settingsRowPadding()
+                }
+            })),
+        ]
+        for (name, view) in views {
+            let frame = NSRect(x: 0, y: 0, width: 380, height: name == "shortcuts-narrow" ? 760 : 200)
+            let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            let host = NSHostingView(rootView: view.frame(width: frame.width, height: frame.height))
+            window.contentView = host
+            host.frame = frame
+            window.orderFrontRegardless()
+            try await Task.sleep(for: .milliseconds(500))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: destination.appendingPathComponent("\(name).png"))
+            window.close()
+        }
+    }
+
     func testRenderTheLocalBrainOnSmallAndLargeMacs() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -27,10 +27,17 @@ struct ShortcutCapture: Equatable {
         Owner(gesture: .hold([.function]), name: "the macOS fn key setting (Dictation or emoji)"),
     ]
 
+    enum ModifierKind {
+        case hold
+        case doubleTap
+        case unsupported
+    }
+
     private(set) var state: State = .idle
     private(set) var saved: Gesture
     let defaultGesture: Gesture
     var allowsChords = true
+    var modifierKind = ModifierKind.hold
     var perryOwners: [Owner] = []
     var systemHotkeys: [SymbolicHotkey] = []
     private var held: ModifierSet = []
@@ -38,6 +45,11 @@ struct ShortcutCapture: Equatable {
     init(saved: Gesture, defaultGesture: Gesture) {
         self.saved = saved
         self.defaultGesture = defaultGesture
+    }
+
+    var prompt: String {
+        if allowsChords { return "Press the keys…" }
+        return modifierKind == .doubleTap ? "Tap the keys…" : "Hold the keys…"
     }
 
     mutating func begin() {
@@ -49,9 +61,13 @@ struct ShortcutCapture: Equatable {
         guard state == .recording else { return }
         if modifiers.isEmpty {
             guard !held.isEmpty else { return }
-            let gesture = Gesture.hold(held)
+            let set = held
             held = []
-            evaluate(gesture)
+            switch modifierKind {
+            case .hold: evaluate(.hold(set))
+            case .doubleTap: evaluate(.doubleTap(set))
+            case .unsupported: break
+            }
         } else {
             held.formUnion(modifiers)
         }
@@ -68,7 +84,7 @@ struct ShortcutCapture: Equatable {
             state = .captured(defaultGesture)
         default:
             guard allowsChords, !modifiers.isEmpty else { return }
-            evaluate(.chord(modifiers, keyCode: keyCode))
+            evaluate(.chord(modifiers.withoutSide, keyCode: keyCode))
         }
     }
 
@@ -93,9 +109,14 @@ struct ShortcutCapture: Equatable {
     }
 
     private mutating func evaluate(_ gesture: Gesture) {
-        if case .hold(let set) = gesture, !(1...3).contains(set.subtracting(set.contains(.rightOption) ? .option : []).count) {
-            state = .recording
-            return
+        switch gesture {
+        case .hold(let set), .doubleTap(let set):
+            if !(1...3).contains(set.subtracting(set.contains(.rightOption) ? .option : []).count) {
+                state = .recording
+                return
+            }
+        case .chord:
+            break
         }
         if let owner = Self.reserved.first(where: { $0.gesture == gesture }) {
             state = .rejected(gesture, owner: owner.name)
@@ -110,6 +131,7 @@ struct ShortcutCapture: Equatable {
     }
 
     private func conflictOwner(for gesture: Gesture) -> String? {
+        if gesture == saved { return nil }
         if let owner = perryOwners.first(where: { $0.gesture == gesture }) { return "Perry’s \(owner.name)" }
         if case .chord(let set, let key) = gesture,
            SymbolicHotkeys.conflicts(keyCode: Int(key), modifiers: set.symbolicBits, in: systemHotkeys) {
@@ -120,7 +142,7 @@ struct ShortcutCapture: Equatable {
 }
 
 private extension ModifierSet {
-    var count: Int { [ModifierSet.control, .option, .command, .shift, .function, .rightOption].filter(contains).count }
+    var count: Int { [ModifierSet.control, .option, .command, .shift, .function, .rightOption, .capsLock].filter(contains).count }
 
     var symbolicBits: Int {
         (contains(.shift) ? 0x20000 : 0) | (contains(.control) ? 0x40000 : 0)
@@ -132,6 +154,7 @@ struct ShortcutRecorder: View {
     let title: String
     @Binding var capture: ShortcutCapture
     var presets: [Gesture] = []
+    var presetLabel: (Gesture) -> String = \.spoken
     var onSave: (Gesture) -> Void = { _ in }
     @State private var monitor: Any?
 
@@ -160,12 +183,15 @@ struct ShortcutRecorder: View {
                 HStack(spacing: 8) {
                     Text("\(owner) already uses this.")
                         .foregroundStyle(PerryTheme.Colors.caution)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Button("Pick another") { capture.pickAnother() }
+                        .fixedSize()
                     Button("Use anyway") {
                         capture.useAnyway()
                         onSave(capture.saved)
                     }
+                    .fixedSize()
                 }
                 .font(PerryTheme.Scale.secondary)
                 .buttonStyle(.plain)
@@ -174,13 +200,14 @@ struct ShortcutRecorder: View {
                 Text("\(gesture.keys) belongs to \(owner). Pick another.")
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.caution)
+                    .fixedSize(horizontal: false, vertical: true)
             case .idle, .recording, .captured:
                 EmptyView()
             }
             if !presets.isEmpty {
-                HStack(spacing: 6) {
+                WrappingRow(spacing: 6) {
                     ForEach(presets, id: \.self) { preset in
-                        Button(preset.spoken) { choose(preset) }
+                        Button(presetLabel(preset)) { choose(preset) }
                             .buttonStyle(PresetChipStyle(selected: capture.saved == preset))
                     }
                     Button("Custom…", action: toggle)
@@ -193,7 +220,7 @@ struct ShortcutRecorder: View {
 
     private var pillText: String {
         switch capture.state {
-        case .recording: capture.allowsChords ? "Press the keys…" : "Hold the keys…"
+        case .recording: capture.prompt
         case .conflict(let gesture, _), .rejected(let gesture, _): gesture.keys
         case .idle, .captured: capture.saved.keys
         }
@@ -233,12 +260,51 @@ struct ShortcutRecorder: View {
     }
 }
 
+private struct WrappingRow: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(width: proposal.width ?? .infinity, subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let origins = arrange(width: bounds.width, subviews).origins
+        for (subview, origin) in zip(subviews, origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(width: CGFloat, _ subviews: Subviews) -> (origins: [CGPoint], size: CGSize) {
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            x += size.width
+            widest = max(widest, x)
+            x += spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return (origins, CGSize(width: widest, height: y + rowHeight))
+    }
+}
+
 private struct PresetChipStyle: ButtonStyle {
     let selected: Bool
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(PerryTheme.Scale.meta)
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(selected ? PerryTheme.Colors.onAccent : PerryTheme.Colors.textSecondary)
             .padding(.horizontal, 10)
             .frame(height: 24)

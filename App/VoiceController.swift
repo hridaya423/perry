@@ -120,7 +120,7 @@ final class VoiceController: NSObject, ObservableObject {
     )
 
     private lazy var pushToTalk = PushToTalkController(
-        shortcut: PerryPreferences.pttShortcut,
+        gesture: PerryPreferences.dictateGesture,
         onPress: { [weak self] in self?.beginDictation() },
         onRelease: { [weak self] in self?.finishDictation() }
     )
@@ -273,7 +273,7 @@ final class VoiceController: NSObject, ObservableObject {
                 overlayState.voiceState = .listening
                 overlayState.buddyState = .listening
                 hooks.setStatus(dictationScopedTaskID == nil
-                    ? "Listening on \(dictation.activeInputDeviceName()). \(pushToTalk.shortcut.releaseHint)."
+                    ? "Listening on \(dictation.activeInputDeviceName()). \(pushToTalk.gesture.releaseHint)."
                     : "Listening. Release to steer the task.")
             } catch {
                 dictationAttemptID = nil
@@ -481,8 +481,8 @@ final class VoiceController: NSObject, ObservableObject {
 
     // MARK: Shortcuts and wake word
 
-    func updatePushToTalkShortcut(_ shortcut: PushToTalkShortcut) {
-        pushToTalk.update(shortcut: shortcut)
+    func updatePushToTalkGesture(_ gesture: Gesture) {
+        pushToTalk.update(gesture: gesture)
     }
 
     func updateWakeWordEnabled(_ enabled: Bool) {

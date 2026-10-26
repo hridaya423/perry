@@ -4,54 +4,37 @@ import SwiftUI
 struct ShortcutsSettingsPage: View {
     let controller: AppController
     @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
-    @AppStorage(PerryPreferences.$wakeShortcut.key) private var wakeShortcut = WakeShortcut.optionCommandP
-    @AppStorage(PerryPreferences.$pttShortcut.key) private var pttShortcut = PushToTalkShortcut.functionHold
-    @State private var talkCapture = ShortcutCapture(saved: PerryPreferences.talkGesture, defaultGesture: .defaultTalk)
-    @State private var pttSystemConflict = false
+    @State private var hotkeys: [SymbolicHotkey] = []
+    @State private var captures = Dictionary(uniqueKeysWithValues: ShortcutRole.allCases.map {
+        ($0, $0.capture(gestures: ShortcutRole.current, hotkeys: []))
+    })
     @State private var error: String?
 
     var body: some View {
         SettingsScroll {
-            SettingsCard(footer: pttSystemConflict ? "macOS already uses the dictation shortcut, so it may not reach Perry. Pick another, or change it in System Settings › Keyboard › Keyboard Shortcuts." : nil) {
-                ShortcutRecorder(
-                    title: "Talk",
-                    capture: $talkCapture,
-                    presets: [.hold([.function]), .hold([.option, .rightOption]), .defaultTalk],
-                    onSave: { PerryPreferences.talkGesture = $0 }
-                )
-                .settingsRowPadding()
-                SettingsDivider()
-                ShortcutCheckRow(check: controller.shortcutCheck, gesture: talkCapture.saved) {
-                    controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
-                    if controller.shortcutCheck.result == .needsInputMonitoring {
-                        Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
+            SettingsCard {
+                ForEach(ShortcutRole.allCases) { role in
+                    if role != .talk {
+                        SettingsDivider()
                     }
-                }
-                .settingsRowPadding()
-                SettingsDivider()
-                SettingsPicker(title: "Dictate", detail: pttShortcut.detail, selection: $pttShortcut) {
-                    ForEach(PushToTalkShortcut.allCases) { shortcut in
-                        Text(shortcut.title).tag(shortcut)
+                    ShortcutRecorder(
+                        title: role.title,
+                        capture: binding(for: role),
+                        presets: role.presets,
+                        presetLabel: role.label(for:),
+                        onSave: { save(role, $0) }
+                    )
+                    .settingsRowPadding()
+                    if role == .talk {
+                        SettingsDivider()
+                        ShortcutCheckRow(check: controller.shortcutCheck, gesture: captures[.talk]?.saved ?? .defaultTalk) {
+                            controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
+                            if controller.shortcutCheck.result == .needsInputMonitoring {
+                                Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
+                            }
+                        }
+                        .settingsRowPadding()
                     }
-                }
-                .onChange(of: pttShortcut) { _, shortcut in
-                    controller.voice.updatePushToTalkShortcut(shortcut)
-                    refreshConflicts()
-                }
-                SettingsDivider()
-                SettingsPicker(title: "Wake shortcut", selection: $wakeShortcut) {
-                    ForEach(WakeShortcut.allCases) { shortcut in
-                        Text(shortcut.title).tag(shortcut)
-                    }
-                }
-                .onChange(of: wakeShortcut) { _, shortcut in
-                    do {
-                        try controller.updateWakeShortcut(shortcut)
-                    } catch {
-                        wakeShortcut = PerryPreferences.wakeShortcut
-                        self.error = error.localizedDescription
-                    }
-                    refreshConflicts()
                 }
             }
             SettingsCard(title: "Wake word") {
@@ -65,22 +48,43 @@ struct ShortcutsSettingsPage: View {
                 }
             }
         }
-        .onAppear(perform: refreshConflicts)
+        .onAppear {
+            hotkeys = SymbolicHotkeys.load()
+            refreshConflicts()
+        }
         .settingsErrorDialog($error)
     }
 
+    private func binding(for role: ShortcutRole) -> Binding<ShortcutCapture> {
+        Binding(
+            get: { captures[role] ?? role.capture(gestures: ShortcutRole.current, hotkeys: hotkeys) },
+            set: { captures[role] = $0 }
+        )
+    }
+
+    private func save(_ role: ShortcutRole, _ gesture: Gesture) {
+        switch role {
+        case .wake:
+            do {
+                try controller.updateWakeShortcut(gesture)
+            } catch {
+                captures[.wake] = ShortcutRole.wake.capture(gestures: ShortcutRole.current, hotkeys: hotkeys)
+                self.error = error.localizedDescription
+            }
+        case .dictate:
+            role.saved = gesture
+            controller.voice.updatePushToTalkGesture(gesture)
+        case .talk, .type:
+            role.saved = gesture
+        }
+        refreshConflicts()
+    }
+
     private func refreshConflicts() {
-        let hotkeys = SymbolicHotkeys.load()
-        talkCapture.allowsChords = false
-        talkCapture.perryOwners = [
-            .init(gesture: .doubleTap([.control]), name: "typing gesture"),
-            .init(gesture: wakeShortcut.gesture, name: "wake shortcut"),
-        ] + (pttShortcut.gesture.map { [.init(gesture: $0, name: "dictation shortcut")] } ?? [])
-        talkCapture.systemHotkeys = hotkeys
-        if let chord = pttShortcut.symbolicChord {
-            pttSystemConflict = SymbolicHotkeys.conflicts(keyCode: chord.keyCode, modifiers: chord.modifiers, in: hotkeys)
-        } else {
-            pttSystemConflict = false
+        let gestures = ShortcutRole.current
+        for role in ShortcutRole.allCases {
+            captures[role]?.perryOwners = role.owners(gestures: gestures)
+            captures[role]?.systemHotkeys = hotkeys
         }
     }
 }

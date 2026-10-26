@@ -15,7 +15,7 @@ import PerryRuntimes
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
-    private var hotkey: HotkeyController?
+    private(set) var hotkey: HotkeyController?
     // Subsystem forwards; the composition graph lives in `subsystems`.
     var overlayState: PerryCursorState { subsystems.overlayState }
     var brain: BrainController { subsystems.brain }
@@ -116,7 +116,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         set { maintenance.debugUnsavedQuitDecision = newValue }
     }
 #endif
-    @Published var sessionStatus = "Press ⌥⌘P when you want Perry."
+    @Published var sessionStatus = "Press \(PerryPreferences.wakeGesture.keys) when you want Perry."
     @Published var transcriptPreview = ""
     let sessionController: SessionController
     private var sessionStateObservation: AnyCancellable?
@@ -381,14 +381,15 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: Wake / dismiss
 
     private func installHotkey() {
-        let shortcut = PerryPreferences.wakeShortcut
+        let gesture = PerryPreferences.wakeGesture
         do {
-            hotkey = try HotkeyController(modifiers: shortcut.modifiers, keyCode: shortcut.keyCode) { [weak self] in
+            guard let registration = gesture.carbonHotkey else { throw HotkeyController.HotkeyError.needsModifier }
+            hotkey = try HotkeyController(modifiers: registration.modifiers, keyCode: registration.keyCode) { [weak self] in
                 Task { @MainActor in self?.toggleSession() }
             }
         } catch {
             hotkey = nil
-            sessionStatus = "Perry could not register \(shortcut.title). Choose another wake shortcut in Settings."
+            sessionStatus = "Perry could not register \(gesture.keys). Choose another wake shortcut in Settings."
         }
     }
 
@@ -491,16 +492,17 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         openSettings(.brain)
     }
 
-    func updateWakeShortcut(_ shortcut: WakeShortcut) throws {
+    func updateWakeShortcut(_ gesture: Gesture) throws {
+        guard let registration = gesture.carbonHotkey else { throw HotkeyController.HotkeyError.needsModifier }
         if let hotkey {
-            try hotkey.update(modifiers: shortcut.modifiers, keyCode: shortcut.keyCode)
+            try hotkey.update(modifiers: registration.modifiers, keyCode: registration.keyCode)
         } else {
-            hotkey = try HotkeyController(modifiers: shortcut.modifiers, keyCode: shortcut.keyCode) { [weak self] in
+            hotkey = try HotkeyController(modifiers: registration.modifiers, keyCode: registration.keyCode) { [weak self] in
                 Task { @MainActor in self?.toggleSession() }
             }
         }
-        PerryPreferences.wakeShortcut = shortcut
-        sessionStatus = "Wake shortcut changed to \(shortcut.title)."
+        PerryPreferences.wakeGesture = gesture
+        sessionStatus = "Wake shortcut changed to \(gesture.keys)."
     }
 
 }

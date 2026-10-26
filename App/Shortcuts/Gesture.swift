@@ -9,9 +9,11 @@ struct ModifierSet: OptionSet, Hashable, Sendable {
     static let shift = ModifierSet(rawValue: 1 << 3)
     static let function = ModifierSet(rawValue: 1 << 4)
     static let rightOption = ModifierSet(rawValue: 1 << 5)
+    static let capsLock = ModifierSet(rawValue: 1 << 6)
 
     private static let rightOptionDeviceBit: UInt64 = 0x40
     private static let names: [(ModifierSet, String, String)] = [
+        (.capsLock, "capsLock", "Caps Lock"),
         (.function, "fn", "fn"),
         (.control, "control", "⌃"),
         (.rightOption, "rightOption", "right ⌥"),
@@ -39,6 +41,8 @@ struct ModifierSet: OptionSet, Hashable, Sendable {
         self.init(CGEventFlags(rawValue: UInt64(flags.rawValue)))
     }
 
+    var withoutSide: ModifierSet { subtracting(.rightOption) }
+
     var symbols: String {
         Self.names.filter { contains($0.0) && !($0.0 == .option && contains(.rightOption)) }.map(\.2).joined()
     }
@@ -64,6 +68,9 @@ enum Gesture: Equatable, Hashable, Sendable, RawRepresentable {
     case doubleTap(ModifierSet)
 
     static let defaultTalk = Gesture.hold([.control, .option])
+    static let defaultType = Gesture.doubleTap([.control])
+    static let defaultDictate = Gesture.hold([.function])
+    static let defaultWake = Gesture.chord([.option, .command], keyCode: 35)
 
     init?(rawValue: String) {
         let parts = rawValue.split(separator: ":").map(String.init)
@@ -95,9 +102,15 @@ enum Gesture: Equatable, Hashable, Sendable, RawRepresentable {
         return nil
     }
 
+    var doubleTapModifiers: ModifierSet? {
+        if case .doubleTap(let set) = self { return set }
+        return nil
+    }
+
     var keys: String {
         switch self {
-        case .hold(let set), .doubleTap(let set): set.symbols
+        case .hold(let set): set.symbols
+        case .doubleTap(let set): "2× \(set.symbols)"
         case .chord(let set, let key): set.symbols + KeyName.name(for: key)
         }
     }
@@ -107,6 +120,14 @@ enum Gesture: Equatable, Hashable, Sendable, RawRepresentable {
         case .hold(let set): "Hold \(set.symbols)"
         case .doubleTap(let set): "Double-tap \(set.symbols)"
         case .chord: "Press \(keys)"
+        }
+    }
+
+    var releaseHint: String {
+        switch self {
+        case .hold(let set): "Release \(set.symbols) when you’re done"
+        case .chord: "Release \(keys) when you’re done"
+        case .doubleTap(let set): "Tap \(set.symbols) when you’re done"
         }
     }
 }

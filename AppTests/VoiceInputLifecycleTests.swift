@@ -156,7 +156,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
 
     func testPushToTalkDisabledEventReleasesOnceAndIgnoresLaterKeyUp() {
         let state = PushToTalkTestState()
-        let controller = PushToTalkController(shortcut: .optionCommandSpace, onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
+        let controller = PushToTalkController(gesture: .chord([.option, .command], keyCode: 49), onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
 
         controller.handle(keyCode: 49, timestamp: 1, isKeyDown: true, isKeyUp: false, modifiers: true, tapDisabled: false)
         controller.handle(keyCode: 0, timestamp: 2, isKeyDown: false, isKeyUp: false, modifiers: false, tapDisabled: true)
@@ -168,7 +168,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
 
     func testPushToTalkStopReleasesOnceAndClearsLatchedState() {
         let state = PushToTalkTestState()
-        let controller = PushToTalkController(shortcut: .optionCommandSpace, onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
+        let controller = PushToTalkController(gesture: .chord([.option, .command], keyCode: 49), onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
 
         controller.handle(keyCode: 49, timestamp: 1, isKeyDown: true, isKeyUp: false, modifiers: true, tapDisabled: false)
         controller.stop()
@@ -181,10 +181,10 @@ final class VoiceInputLifecycleTests: XCTestCase {
 
     func testPushToTalkShortcutChangeReleasesOnceAndClearsLatchedState() {
         let state = PushToTalkTestState()
-        let controller = PushToTalkController(shortcut: .optionCommandSpace, onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
+        let controller = PushToTalkController(gesture: .chord([.option, .command], keyCode: 49), onPress: { state.presses += 1 }, onRelease: { state.releases += 1 })
 
         controller.handle(keyCode: 49, timestamp: 1, isKeyDown: true, isKeyUp: false, modifiers: true, tapDisabled: false)
-        controller.update(shortcut: .capsLockDoubleTap)
+        controller.update(gesture: .doubleTap([.capsLock]))
         controller.handle(keyCode: 49, timestamp: 2, isKeyDown: false, isKeyUp: true, modifiers: false, tapDisabled: false)
 
         XCTAssertEqual(state.presses, 1)
@@ -205,7 +205,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
     func testPushToTalkCapsLockDoubleTapWithinWindowPressesThenNextTapReleases() {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
-            shortcut: .capsLockDoubleTap,
+            gesture: .doubleTap([.capsLock]),
             onPress: { state.presses += 1 },
             onRelease: { state.releases += 1 }
         )
@@ -232,7 +232,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
     func testPushToTalkFunctionHoldGraceCommitsAndChordBusts() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
-            shortcut: .functionHold,
+            gesture: .hold([.function]),
             onPress: { state.presses += 1 },
             onRelease: { state.releases += 1 }
         )
@@ -260,7 +260,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
     func testPushToTalkControlOptionCommandHoldPressesAndExtraModifiersBust() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
-            shortcut: .controlOptionCommandHold,
+            gesture: .hold([.control, .option, .command]),
             onPress: { state.presses += 1 },
             onRelease: { state.releases += 1 }
         )
@@ -282,7 +282,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
     func testPushToTalkModifierHoldStopReleasesOnce() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
-            shortcut: .functionHold,
+            gesture: .hold([.function]),
             onPress: { state.presses += 1 },
             onRelease: { state.releases += 1 }
         )
@@ -300,7 +300,7 @@ final class VoiceInputLifecycleTests: XCTestCase {
     func testPushToTalkCapsLockTapsOutsideWindowDoNotPress() {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
-            shortcut: .capsLockDoubleTap,
+            gesture: .doubleTap([.capsLock]),
             onPress: { state.presses += 1 },
             onRelease: { state.releases += 1 }
         )

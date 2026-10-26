@@ -1,61 +1,5 @@
 import AppKit
 
-enum PushToTalkShortcut: String, CaseIterable, Identifiable {
-    case functionHold
-    case optionCommandSpace
-    case capsLockDoubleTap
-    case controlOptionCommandHold
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .functionHold: return "Hold fn (globe)"
-        case .optionCommandSpace: return "Hold ⌥⌘Space"
-        case .capsLockDoubleTap: return "Double-tap Caps Lock"
-        case .controlOptionCommandHold: return "Hold ⌃⌥⌘"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .functionHold: return "Hold to dictate, release to send"
-        case .optionCommandSpace: return "Hold to dictate, release to send"
-        case .capsLockDoubleTap: return "Double-tap to start, tap again to stop"
-        case .controlOptionCommandHold: return "Hold to dictate, release to send"
-        }
-    }
-
-    /// How the listening status line tells the user to end the take.
-    var releaseHint: String {
-        switch self {
-        case .functionHold: return "Release fn when you’re done"
-        case .optionCommandSpace: return "Release ⌥⌘Space when you’re done"
-        case .capsLockDoubleTap: return "Tap Caps Lock when you’re done"
-        case .controlOptionCommandHold: return "Release ⌃⌥⌘ when you’re done"
-        }
-    }
-
-    var gesture: Gesture? {
-        switch self {
-        case .functionHold: .hold([.function])
-        case .optionCommandSpace: .chord([.option, .command], keyCode: 49)
-        case .controlOptionCommandHold: .hold([.control, .option, .command])
-        case .capsLockDoubleTap: nil
-        }
-    }
-
-    /// The (keyCode, symbolichotkeys modifier bits) a chord-based shortcut
-    /// occupies, for conflict checks against com.apple.symbolichotkeys —
-    /// modifier-hold shortcuts own no key chord and cannot conflict.
-    var symbolicChord: (keyCode: Int, modifiers: Int)? {
-        switch self {
-        case .optionCommandSpace: return (49, 0x180000) // option | command
-        case .functionHold, .capsLockDoubleTap, .controlOptionCommandHold: return nil
-        }
-    }
-}
-
 @MainActor
 final class PushToTalkController {
     static let eventTapMask =
@@ -76,7 +20,7 @@ final class PushToTalkController {
     private let onPress: () -> Void
     private let onRelease: () -> Void
     private(set) var captureMode: CaptureMode?
-    private(set) var shortcut: PushToTalkShortcut
+    private(set) var gesture: Gesture
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var fallbackGlobalMonitor: Any?
@@ -94,19 +38,19 @@ final class PushToTalkController {
     private static let modifierHoldGrace: TimeInterval = 0.18
 
     init(
-        shortcut: PushToTalkShortcut = PerryPreferences.pttShortcut,
+        gesture: Gesture = PerryPreferences.dictateGesture,
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void
     ) {
-        self.shortcut = shortcut
+        self.gesture = gesture
         self.onPress = onPress
         self.onRelease = onRelease
     }
 
-    func update(shortcut: PushToTalkShortcut) {
-        guard self.shortcut != shortcut else { return }
+    func update(gesture: Gesture) {
+        guard self.gesture != gesture else { return }
         resetCaptureState()
-        self.shortcut = shortcut
+        self.gesture = gesture
     }
 
     func start() {
@@ -210,18 +154,17 @@ final class PushToTalkController {
             return
         }
         lastFlags = flags
-        switch shortcut {
-        case .optionCommandSpace:
-            guard keyCode == 49 else { return }
-            let modifiers = flags.intersection([.maskAlternate, .maskCommand]) == [.maskAlternate, .maskCommand]
-            if isKeyDown, modifiers, !pressed {
+        switch gesture {
+        case .chord(let modifiers, let chordKey):
+            guard keyCode == Int64(chordKey) else { return }
+            if isKeyDown, !pressed, ModifierSet(flags).withoutSide == modifiers.withoutSide {
                 pressed = true
                 PerfMark.mark("talk.keydown")
                 onPress()
             } else if isKeyUp, pressed {
                 releaseIfNeeded()
             }
-        case .capsLockDoubleTap:
+        case .doubleTap(let set) where set == [.capsLock]:
             guard keyCode == 57 else { return }
             if isKeyDown, !capsKeyDown {
                 capsKeyDown = true
@@ -239,8 +182,10 @@ final class PushToTalkController {
             } else if isKeyUp {
                 capsKeyDown = false
             }
-        case .functionHold, .controlOptionCommandHold:
+        case .hold:
             handleModifierHold(flags: flags, isKeyDown: isKeyDown)
+        case .doubleTap:
+            break
         }
     }
 
@@ -283,16 +228,8 @@ final class PushToTalkController {
     }
 
     private func holdModifiersHeld(_ flags: CGEventFlags) -> Bool {
-        switch shortcut {
-        case .functionHold:
-            return flags.contains(.maskSecondaryFn)
-        case .controlOptionCommandHold:
-            return flags.contains([.maskControl, .maskAlternate, .maskCommand])
-                && !flags.contains(.maskShift)
-                && !flags.contains(.maskSecondaryFn)
-        case .optionCommandSpace, .capsLockDoubleTap:
-            return false
-        }
+        guard case .hold(let set) = gesture else { return false }
+        return ModifierSet(flags) == set
     }
 
     private func releaseIfNeeded() {

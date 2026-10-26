@@ -59,8 +59,48 @@ enum PerryPreferences {
     // MARK: Invocation
 
     @Preference("perry.wakeWord.enabled") static var wakeWordEnabled = false
-    @Preference("perry.wakeShortcut") static var wakeShortcut = WakeShortcut.optionCommandP
-    @Preference("perry.ptt.shortcut") static var pttShortcut = PushToTalkShortcut.functionHold
+    @Preference("perry.gesture.type") static var typeGesture = Gesture.defaultType
+    @Preference("perry.gesture.dictate") static var storedDictateGesture: String? = nil
+    @Preference("perry.gesture.wake") static var storedWakeGesture: String? = nil
+    @Preference("perry.ptt.shortcut") static var legacyPttShortcut: String? = nil
+    @Preference("perry.wakeShortcut") static var legacyWakeShortcut: String? = nil
+
+    static var dictateGesture: Gesture {
+        get {
+            migrated($storedDictateGesture, from: $legacyPttShortcut, fallback: .defaultDictate, legacy: [
+                "functionHold": .hold([.function]),
+                "optionCommandSpace": .chord([.option, .command], keyCode: 49),
+                "capsLockDoubleTap": .doubleTap([.capsLock]),
+                "controlOptionCommandHold": .hold([.control, .option, .command]),
+            ])
+        }
+        set { storedDictateGesture = newValue.rawValue }
+    }
+
+    static var wakeGesture: Gesture {
+        get {
+            migrated($storedWakeGesture, from: $legacyWakeShortcut, fallback: .defaultWake, legacy: [
+                "optionCommandP": .chord([.option, .command], keyCode: 35),
+                "optionCommandO": .chord([.option, .command], keyCode: 31),
+                "controlCommandP": .chord([.control, .command], keyCode: 35),
+                "controlCommandO": .chord([.control, .command], keyCode: 31),
+            ])
+        }
+        set { storedWakeGesture = newValue.rawValue }
+    }
+
+    private static func migrated(
+        _ stored: Preference<String?>,
+        from old: Preference<String?>,
+        fallback: Gesture,
+        legacy table: [String: Gesture]
+    ) -> Gesture {
+        if let saved = stored.wrappedValue.flatMap(Gesture.init(rawValue:)) { return saved }
+        guard let value = old.wrappedValue, let gesture = table[value] else { return fallback }
+        stored.wrappedValue = gesture.rawValue
+        old.wrappedValue = nil
+        return gesture
+    }
 
     // MARK: Brain & providers
 
