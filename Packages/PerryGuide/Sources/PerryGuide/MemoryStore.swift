@@ -105,6 +105,16 @@ public actor MemoryStore {
         return true
     }
 
+    @discardableResult
+    public func forget(_ id: UUID) -> Bool {
+        let nextRecords = records.filter { $0.id != id }
+        guard persist(configuration: configuration, records: nextRecords, includeMarkdown: true) else {
+            return false
+        }
+        records = nextRecords
+        return true
+    }
+
     /// Recall used when planning; respects the same toggles as writing.
     public func recall(category: MemoryRecord.Category?, appBundleID: String?) -> [MemoryRecord] {
         guard configuration.enabled else { return [] }

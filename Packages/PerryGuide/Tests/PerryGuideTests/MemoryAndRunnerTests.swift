@@ -56,6 +56,19 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertEqual(recalled.map(\.summary), ["sorts by name"])
     }
 
+    func testForgettingOneRecordKeepsTheRestAcrossInstances() async {
+        let store = MemoryStore(storageDirectory: directory, configuration: MemoryConfiguration(enabled: true))
+        let keep = MemoryRecord(category: .preference, summary: "sorts by name")
+        let drop = MemoryRecord(category: .appWorkflow, summary: "exports as PDF")
+        await store.remember(keep)
+        await store.remember(drop)
+        let forgotten = await store.forget(drop.id)
+        XCTAssertTrue(forgotten)
+        let reloaded = MemoryStore(storageDirectory: directory)
+        let records = await reloaded.snapshot()
+        XCTAssertEqual(records.map(\.id), [keep.id])
+    }
+
     func testPersistsVersionedEnvelope() async throws {
         let record = MemoryRecord(
             id: UUID(uuidString: "B8E9DD5C-4F72-4EA5-B2A4-EA2B2B50F9BF")!,

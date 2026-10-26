@@ -705,3 +705,69 @@ private enum MicrophoneDeviceSelector {
     }
 
 }
+
+@MainActor
+final class MicrophoneLevelMeter: ObservableObject {
+    @Published private(set) var level = 0.0
+    @Published private(set) var isRunning = false
+    @Published private(set) var problem: String?
+    private var engine: AVAudioEngine?
+    private var timeout: Task<Void, Never>?
+
+    func start(deviceID: UInt32?) async {
+        stop()
+        problem = nil
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            break
+        case .notDetermined where await AVCaptureDevice.requestAccess(for: .audio):
+            break
+        default:
+            problem = "Perry can’t hear the microphone. Turn on Microphone in Privacy & Safety."
+            return
+        }
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        if let deviceID, !MicrophoneDeviceSelector.select(on: input, deviceID: AudioDeviceID(deviceID)) {
+            problem = "That microphone is unavailable; Perry will use the built-in fallback."
+            return
+        }
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            problem = "That microphone is unavailable; Perry will use the built-in fallback."
+            return
+        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            let value = Self.normalized(DictationController.rms(buffer))
+            Task { @MainActor in self?.level = value }
+        }
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            problem = "Perry couldn’t open that microphone."
+            return
+        }
+        self.engine = engine
+        isRunning = true
+        timeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard !Task.isCancelled else { return }
+            self?.stop()
+        }
+    }
+
+    func stop() {
+        timeout?.cancel()
+        timeout = nil
+        engine?.inputNode.removeTap(onBus: 0)
+        engine?.stop()
+        engine = nil
+        isRunning = false
+        level = 0
+    }
+
+    nonisolated static func normalized(_ rms: Double) -> Double {
+        min(max((20 * log10(max(rms, 1e-7)) + 60) / 50, 0), 1)
+    }
+}

@@ -74,7 +74,7 @@ struct SettingsView: View {
     var body: some View {
         Group {
             switch SettingsPage(stored: stored) {
-            case .general: GeneralSettingsPage()
+            case .general: GeneralSettingsPage(controller: controller)
             case .you: YouSettingsPage(controller: controller)
             case .voice: VoiceSettingsPage(controller: controller)
             case .dictation: DictationSettingsPage(controller: controller)
@@ -333,6 +333,36 @@ extension AppController {
     func openSettings(_ page: SettingsPage) {
         PerryPreferences.settingsTab = page.rawValue
         showSettings()
+    }
+
+    func setNotchEyes(_ enabled: Bool) {
+        notchStatus.setEnabled(enabled)
+        if enabled {
+            notchStatus.update(
+                isRecording: routineLibrary.isRecording,
+                backgroundCount: lastBackgroundCount,
+                awaitingApproval: lastAwaitingApprovalCount
+            )
+        }
+        notchPresence.screenLayoutChanged()
+    }
+
+    func memories() async -> [MemoryRecord] {
+        await memoryStore.snapshot().sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func forgetMemory(_ id: UUID) async -> Bool {
+        guard !maintenance.isErasureInProgress else { return false }
+        return await memoryStore.forget(id)
+    }
+
+    func eraseMemory() async -> Bool {
+        guard !maintenance.isErasureInProgress, await memoryStore.wipe() else { return false }
+        guard let memory = storageDirectory?.appendingPathComponent("memory", isDirectory: true) else { return true }
+        for name in ["PROFILE.md", "CONTEXT.md"] {
+            try? FileManager.default.removeItem(at: memory.appendingPathComponent(name))
+        }
+        return true
     }
 
     func currentMemoryConfiguration() async -> MemoryConfiguration {

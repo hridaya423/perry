@@ -52,6 +52,7 @@ enum PerryPreferences {
     @Preference("perry.onboarding.beat") static var onboardingBeat: String? = nil
     @Preference("perry.onboarding.practice") static var onboardingPractice: String? = nil
     @Preference("perry.notchStatus.enabled") static var notchStatusEnabled = true
+    @Preference("perry.notch.hoverPeek") static var notchHoverPeek = true
     @Preference("perry.home.frame") static var homeFrame: String? = nil
     @Preference("perry.lastSeenVersion") static var lastSeenVersion: String? = nil
 

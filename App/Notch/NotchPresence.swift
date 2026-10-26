@@ -297,7 +297,7 @@ final class NotchPresence {
     }
 
     private func showPeek() {
-        guard accepting, surface == .resting else { return }
+        guard accepting, surface == .resting, PerryPreferences.notchHoverPeek else { return }
         surface = .peeking
         onPreviewConversation?()
     }

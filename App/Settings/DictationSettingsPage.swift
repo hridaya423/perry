@@ -6,7 +6,7 @@ struct DictationSettingsPage: View {
     @AppStorage(PerryPreferences.$dictationLanguage.key) private var languageRaw = "automatic"
     @AppStorage(PerryPreferences.$dictationInputDeviceID.key) private var inputDeviceRaw = 0
     @State private var inputDevices: [DictationInputDevice] = []
-    @State private var inputDeviceStatus = ""
+    @StateObject private var meter = MicrophoneLevelMeter()
     @State private var entries: [String: String] = [:]
     @State private var newSpoken = ""
     @State private var newReplacement = ""
@@ -14,7 +14,7 @@ struct DictationSettingsPage: View {
 
     var body: some View {
         SettingsScroll {
-            SettingsCard(title: "Input", footer: inputDeviceStatus.isEmpty ? nil : inputDeviceStatus) {
+            SettingsCard(title: "Input", footer: meter.problem) {
                 SettingsPicker(title: "Microphone", selection: $inputDeviceRaw) {
                     Text("Automatic").tag(0)
                     ForEach(inputDevices) { device in
@@ -22,16 +22,24 @@ struct DictationSettingsPage: View {
                             .tag(Int(device.id))
                     }
                 }
-                .onChange(of: inputDeviceRaw) { _, _ in update() }
+                .onChange(of: inputDeviceRaw) { _, _ in
+                    meter.stop()
+                    update()
+                }
                 SettingsDivider()
-                SettingsRow(title: "Check the microphone") {
-                    Button("Test") {
-                        let deviceID = inputDeviceRaw == 0 ? nil : UInt32(inputDeviceRaw)
-                        inputDeviceStatus = DictationController.inputDeviceIsAvailable(deviceID)
-                            ? "Microphone is available."
-                            : "That microphone is unavailable; Perry will use the built-in fallback."
+                HStack(spacing: 12) {
+                    Text("Level")
+                    Spacer(minLength: 8)
+                    LevelBars(level: meter.level, active: meter.isRunning)
+                    Button(meter.isRunning ? "Stop" : "Test") {
+                        if meter.isRunning {
+                            meter.stop()
+                        } else {
+                            Task { await meter.start(deviceID: inputDeviceRaw == 0 ? nil : UInt32(inputDeviceRaw)) }
+                        }
                     }
                 }
+                .settingsRowPadding()
                 SettingsDivider()
                 SettingsPicker(title: "Language", selection: $languageRaw) {
                     Text("Automatic").tag("automatic")
@@ -83,6 +91,7 @@ struct DictationSettingsPage: View {
             reload()
             inputDevices = DictationController.availableInputDevices()
         }
+        .onDisappear { meter.stop() }
         .settingsErrorDialog($error)
     }
 
@@ -127,5 +136,25 @@ struct DictationSettingsPage: View {
                 inputDeviceID: inputDeviceRaw == 0 ? nil : UInt32(inputDeviceRaw)
             )
         )
+    }
+}
+
+private struct LevelBars: View {
+    let level: Double
+    let active: Bool
+    private let count = 18
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<count, id: \.self) { index in
+                Capsule()
+                    .fill(Double(index) < level * Double(count) ? PerryTheme.Colors.accent : Color.white.opacity(0.14))
+                    .frame(width: 4, height: 14)
+            }
+        }
+        .animation(.linear(duration: 0.06), value: level)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone level")
+        .accessibilityValue(active ? "\(Int(level * 100)) percent" : "Not testing")
     }
 }

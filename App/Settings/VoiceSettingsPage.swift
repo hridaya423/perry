@@ -18,7 +18,8 @@ struct VoiceSettingsPage: View {
                 Toggle("Speak replies", isOn: $speechOutputEnabled)
                     .settingsRowPadding()
                     .onChange(of: speechOutputEnabled) { _, _ in save() }
-                ForEach(VoiceController.recommendedSpeechVoices(), id: \.identifier) { voice in
+                    .onChange(of: speechVoiceIdentifier) { _, _ in save() }
+                ForEach(voices, id: \.identifier) { voice in
                     SettingsDivider()
                     VoiceChoiceRow(
                         voice: voice,
@@ -29,14 +30,6 @@ struct VoiceSettingsPage: View {
                     .settingsRowPadding()
                 }
                 SettingsDivider()
-                SettingsPicker(title: "All voices", selection: $speechVoiceIdentifier) {
-                    Text("Best available").tag("")
-                    ForEach(VoiceController.availableSpeechVoices(), id: \.identifier) { voice in
-                        Text("\(voice.name) · \(voice.language)").tag(voice.identifier)
-                    }
-                }
-                .onChange(of: speechVoiceIdentifier) { _, _ in save() }
-                SettingsDivider()
                 SettingsRow(title: "Speed") {
                     InkSlider(value: $speechRate, range: 0.5...1.5, step: 0.1, label: "Speech speed")
                         .frame(width: 180)
@@ -45,13 +38,11 @@ struct VoiceSettingsPage: View {
                         .font(PerryTheme.Typography.value)
                         .frame(width: PerryTheme.Sizing.speechRateValueWidth, alignment: .trailing)
                 }
-                if (AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice)?.quality == .default {
-                    SettingsDivider()
-                    SettingsRow(title: "This voice sounds robotic", detail: "Enhanced and Premium voices sound far more natural. They’re free.") {
-                        Button("Get one…") {
-                            guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
-                            NSWorkspace.shared.open(url)
-                        }
+                SettingsDivider()
+                SettingsRow(title: "More voices", detail: soundsRobotic ? "This voice sounds robotic. Enhanced and Premium voices sound far more natural, and they’re free." : "Download Enhanced and Premium voices in System Settings.") {
+                    Button("Open…") {
+                        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent") else { return }
+                        NSWorkspace.shared.open(url)
                     }
                 }
             }
@@ -69,6 +60,17 @@ struct VoiceSettingsPage: View {
             }
         }
         .settingsErrorDialog($error)
+    }
+
+    private var voices: [AVSpeechSynthesisVoice] {
+        let recommended = VoiceController.recommendedSpeechVoices()
+        guard let chosen = AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier),
+              !recommended.contains(where: { $0.identifier == chosen.identifier }) else { return recommended }
+        return [chosen] + recommended
+    }
+
+    private var soundsRobotic: Bool {
+        (AVSpeechSynthesisVoice(identifier: speechVoiceIdentifier) ?? VoiceController.speakingVoice)?.quality == .default
     }
 
     private func save() {

@@ -29,7 +29,7 @@ struct ShortcutsSettingsPage: View {
                 }
                 .settingsRowPadding()
                 SettingsDivider()
-                SettingsPicker(title: "Dictate", detail: "Hold it in any app to type by voice. Double-tap Caps Lock for hands-free.", selection: $pttShortcut) {
+                SettingsPicker(title: "Dictate", detail: pttShortcut.detail, selection: $pttShortcut) {
                     ForEach(PushToTalkShortcut.allCases) { shortcut in
                         Text(shortcut.title).tag(shortcut)
                     }

@@ -8,6 +8,7 @@ struct PrivacySettingsPage: View {
     let controller: AppController
     @State private var permissions: PerryPermissionSnapshot?
     @State private var showReportProblem = false
+    @AppStorage(PerryPreferences.$workspaceRoot.key) private var workspaceRoot: String?
 
     var body: some View {
         SettingsScroll {
@@ -19,6 +20,11 @@ struct PrivacySettingsPage: View {
                 permissionRow(.microphone, why: "Lets Perry hear you for talk and dictation.", granted: permissions?.microphone.isUsable)
                 SettingsDivider()
                 permissionRow(.inputMonitoring, why: "Lets Perry hear the dictation key while other apps are focused.", granted: permissions?.inputMonitoring)
+            }
+            SettingsCard(title: "Workspace folder", footer: "File tasks stay inside this folder.") {
+                SettingsRow(title: WorkspaceScope.root.lastPathComponent, detail: (WorkspaceScope.root.path as NSString).abbreviatingWithTildeInPath) {
+                    Button("Choose…", action: chooseWorkspace)
+                }
             }
             SettingsCard(title: "Always blocked", footer: "Perry never looks at or acts in these apps. Banking, sign-in, payment and checkout windows are refused the same way, in any app.") {
                 ForEach(Array(Self.blockedApps.enumerated()), id: \.element.bundleID) { index, app in
@@ -104,6 +110,17 @@ struct PrivacySettingsPage: View {
                     .accessibilityLabel("Checking \(name) permission")
             }
         }
+    }
+
+    private func chooseWorkspace() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = WorkspaceScope.root
+        panel.prompt = "Use as workspace"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        WorkspaceScope.setRoot(url)
     }
 
     private func fix(_ pane: PrivacyPane) {
