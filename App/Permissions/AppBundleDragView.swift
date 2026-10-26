@@ -3,7 +3,8 @@ import SwiftUI
 
 final class AppBundleDragView: NSView, NSDraggingSource {
     var appURL: URL
-    var onDragChange: (Bool) -> Void = { _ in }
+    var onDragBegan: () -> Void = {}
+    var onDragEnded: (Bool) -> Void = { _ in }
     private var mouseDownEvent: NSEvent?
 
     init(appURL: URL, content: NSView) {
@@ -59,11 +60,11 @@ final class AppBundleDragView: NSView, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
-        onDragChange(true)
+        onDragBegan()
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        onDragChange(false)
+        onDragEnded(!operation.isEmpty)
     }
 
     private func snapshot() -> NSImage {
@@ -78,12 +79,14 @@ final class AppBundleDragView: NSView, NSDraggingSource {
 
 struct AppBundleDragRow: NSViewRepresentable {
     let appURL: URL
-    var onDragChange: (Bool) -> Void = { _ in }
+    var onDragBegan: () -> Void = {}
+    var onDragEnded: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> AppBundleDragView {
         let content = NSHostingView(rootView: AppBundleRowContent(appURL: appURL))
         let view = AppBundleDragView(appURL: appURL, content: content)
-        view.onDragChange = onDragChange
+        view.onDragBegan = onDragBegan
+        view.onDragEnded = onDragEnded
         view.setAccessibilityElement(true)
         view.setAccessibilityRole(.button)
         view.setAccessibilityLabel("Perry. Drag into the list in System Settings.")
@@ -92,7 +95,8 @@ struct AppBundleDragRow: NSViewRepresentable {
 
     func updateNSView(_ view: AppBundleDragView, context: Context) {
         view.appURL = appURL
-        view.onDragChange = onDragChange
+        view.onDragBegan = onDragBegan
+        view.onDragEnded = onDragEnded
     }
 }
 

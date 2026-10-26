@@ -206,16 +206,14 @@ struct SettingsView: View {
                 why: "Lets Perry read and act on whatever you point at.",
                 granted: permissions?.accessibility
             ) {
-                _ = PerryPermissionProbe.requestAccessibility()
-                PrivacyPane.accessibility.open()
+                Task { await PermissionGuideCoordinator.guide(.accessibility) }
             }
             permissionRow(
                 name: PrivacyPane.screenRecording.displayName(),
                 why: "Lets Perry see window contents so answers stay grounded.",
                 granted: permissions?.screenRecording.isUsable
             ) {
-                _ = PerryPermissionProbe.requestScreenRecording()
-                PrivacyPane.screenRecording.open()
+                Task { await PermissionGuideCoordinator.guide(.screenRecording) }
             }
             permissionRow(
                 name: "Microphone",
@@ -232,8 +230,7 @@ struct SettingsView: View {
                 why: "Lets Perry hear the dictation key while other apps are focused.",
                 granted: permissions?.inputMonitoring
             ) {
-                _ = PerryPermissionProbe.requestInputMonitoring()
-                PrivacyPane.inputMonitoring.open()
+                Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
             }
             Text("Enabling Screen Recording may ask you to quit and reopen Perry.")
                 .settingNote()

@@ -68,12 +68,10 @@ final class OnboardingCoordinator {
         effects.mark = { PerfMark.mark($0) }
         effects.endTalk = { [weak self] in self?.endTalk() }
         effects.openScreenAccessSettings = {
-            _ = PerryPermissionProbe.requestAccessibility()
-            PrivacyPane.accessibility.open()
+            Task { await PermissionGuideCoordinator.guide(.accessibility) }
         }
         effects.openScreenRecordingSettings = {
-            _ = PerryPermissionProbe.requestScreenRecording()
-            PrivacyPane.screenRecording.open()
+            Task { await PermissionGuideCoordinator.guide(.screenRecording) }
         }
         effects.beginPractice = { [weak self] in
             guard let self else { return }

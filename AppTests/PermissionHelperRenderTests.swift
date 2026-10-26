@@ -14,6 +14,9 @@ final class PermissionHelperRenderTests: XCTestCase {
             ("screen-recording-instruction", .screenRecording, .instruction),
             ("screen-recording-restart", .screenRecording, .restart),
             ("accessibility-granted", .accessibility, .granted),
+            ("accessibility-retry", .accessibility, .retry),
+            ("accessibility-settings-closed", .accessibility, .settingsClosed),
+            ("wrong-location", .accessibility, .wrongLocation),
         ]
         for (name, pane, phase) in cases {
             let backdrop = NSRect(x: 0, y: 0, width: 440, height: 256)

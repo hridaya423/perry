@@ -81,16 +81,25 @@ final class PermissionHelperPanel: NSPanel {
 struct PermissionHelperView: View {
     enum Phase: Equatable {
         case instruction
+        case retry
+        case settingsClosed
+        case wrongLocation
         case restart
         case granted
+    }
+
+    struct Actions {
+        var dragBegan: () -> Void = {}
+        var dragEnded: (Bool) -> Void = { _ in }
+        var reopenSettings: () -> Void = {}
+        var restart: () -> Void = {}
+        var close: () -> Void = {}
     }
 
     let pane: PrivacyPane
     let appURL: URL
     var phase: Phase
-    var onDragChange: (Bool) -> Void = { _ in }
-    var onRestart: () -> Void = {}
-    var onClose: () -> Void = {}
+    var actions = Actions()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var nudged = false
 
@@ -112,24 +121,36 @@ struct PermissionHelperView: View {
                 }
                 Spacer(minLength: 4)
                 if phase != .granted {
-                    WindowControlButton(systemImage: "xmark", label: "Close", action: onClose)
+                    WindowControlButton(systemImage: "xmark", label: "Close", action: actions.close)
                         .padding(.top, -4)
                         .padding(.trailing, -4)
                 }
             }
             switch phase {
-            case .instruction:
-                AppBundleDragRow(appURL: appURL, onDragChange: onDragChange)
+            case .instruction, .retry:
+                AppBundleDragRow(appURL: appURL, onDragBegan: actions.dragBegan, onDragEnded: actions.dragEnded)
                     .frame(height: 52)
-                Text("macOS will ask for your password.")
-                    .font(PerryTheme.Scale.meta)
-                    .foregroundStyle(PerryTheme.Colors.textTertiary)
-            case .restart:
-                Button("Restart Perry", action: onRestart)
+                HStack {
+                    Text("macOS will ask for your password.")
+                    Spacer(minLength: 8)
+                    Button("List not showing?", action: actions.reopenSettings)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .help("Open the \(pane.displayName()) list again")
+                }
+                .font(PerryTheme.Scale.meta)
+                .foregroundStyle(PerryTheme.Colors.textTertiary)
+            case .settingsClosed:
+                Button("Open Settings", action: actions.reopenSettings)
                     .buttonStyle(InkButtonStyle(.primary))
                     .controlSize(.small)
                     .padding(.leading, 32)
-            case .granted:
+            case .restart:
+                Button("Restart Perry", action: actions.restart)
+                    .buttonStyle(InkButtonStyle(.primary))
+                    .controlSize(.small)
+                    .padding(.leading, 32)
+            case .wrongLocation, .granted:
                 EmptyView()
             }
         }
@@ -155,6 +176,10 @@ struct PermissionHelperView: View {
                 .foregroundStyle(PerryTheme.Colors.accent)
                 .offset(y: nudged ? -3 : 0)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: nudged)
+        case .retry, .settingsClosed, .wrongLocation:
+            Image(systemName: "exclamationmark.circle")
+                .font(PerryTheme.Icon.toolbar)
+                .foregroundStyle(PerryTheme.Colors.caution)
         case .restart:
             Image(systemName: "arrow.clockwise")
                 .font(PerryTheme.Icon.toolbar)
@@ -169,14 +194,21 @@ struct PermissionHelperView: View {
     private var title: String {
         switch phase {
         case .instruction: "Drag Perry into the list above."
+        case .retry: "That didn’t go through."
+        case .settingsClosed: "System Settings closed."
+        case .wrongLocation: "Move Perry to Applications first."
         case .restart: "Restart Perry to finish."
         case .granted: "Perry has access."
         }
     }
 
     private var detail: Text? {
-        switch phase {
-        case .instruction: Text("Then switch it on in \(Text(pane.displayName()).foregroundStyle(PerryTheme.Colors.text)).")
+        let name = Text(pane.displayName()).foregroundStyle(PerryTheme.Colors.text)
+        return switch phase {
+        case .instruction: Text("Then switch it on in \(name).")
+        case .retry: Text("Drag Perry into the list again.")
+        case .settingsClosed: Text("Open it again to finish turning on \(name).")
+        case .wrongLocation: Text("Then open it from there and try again.")
         case .restart: Text("Choose \(Text("Quit & Reopen").foregroundStyle(PerryTheme.Colors.text)) if macOS asks, or restart here.")
         case .granted: nil
         }
