@@ -42,7 +42,15 @@ struct HomeOnboardingView: View {
                 )
             }
         case .apps:
-            PendingBeat(director: director, title: "Your apps")
+            if let controller = model.deps.controller {
+                AppsBeat(director: director, controller: controller, tiles: AppsBeatPlan.tiles(
+                    apps: controller.memoryFiles?.profileField("Apps") ?? "",
+                    mentions: [controller.memoryFiles?.profileField("Work"), controller.memoryFiles?.profileField("Learning goal")].compactMap { $0 }.joined(separator: " "),
+                    available: { id in
+                        id == "apple-calendar" || RemoteIntegrationDefinition.catalog.first { $0.id == id }.map(controller.integrationConnections.hasBundledClient) == true
+                    }
+                ))
+            }
         case .firstGoal:
             FirstGoalBeat(
                 director: director,
@@ -375,25 +383,6 @@ private struct ShortcutsBeat: View {
                     Button("Keep defaults") { director.skip() }
                 }
             }
-        }
-    }
-}
-
-private struct PendingBeat: View {
-    @ObservedObject var director: OnboardingDirector
-    let title: String
-
-    var body: some View {
-        OnboardingBeatLayout(title: title) {
-            EmptyView()
-        } detail: {
-            EmptyView()
-        } actions: {
-            Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
-                .buttonStyle(InkButtonStyle())
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-                .padding(.bottom, 8)
         }
     }
 }
