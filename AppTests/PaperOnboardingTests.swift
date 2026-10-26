@@ -43,7 +43,7 @@ final class PaperOnboardingTests: XCTestCase {
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)
-        defer { window.close(); controller.conversationVoice.cancel() }
+        defer { window.close(); controller.talkSession.cancelClick() }
         let host = NSHostingView(rootView: CompactConversationView(controller: controller)
             .transaction { $0.disablesAnimations = true })
         window.contentView = host
@@ -51,7 +51,7 @@ final class PaperOnboardingTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(model.newConversationDraft, "Help me revise this request before running it.")
         XCTAssertEqual(model.composerMode, .ask)
-        XCTAssertEqual(controller.conversationVoice.state, .idle)
+        XCTAssertEqual(controller.talkSession.clickState, .idle)
         XCTAssertEqual(submissions, 0)
         host.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
@@ -66,7 +66,7 @@ final class PaperOnboardingTests: XCTestCase {
             controller.presentPrompt(prefill: prompt, mode: .task)
             XCTAssertEqual(model.newConversationDraft, prompt)
             XCTAssertEqual(model.composerMode, .task)
-            XCTAssertEqual(controller.conversationVoice.state, .idle)
+            XCTAssertEqual(controller.talkSession.clickState, .idle)
             XCTAssertEqual(submissions, 0)
         }
         host.layoutSubtreeIfNeeded()

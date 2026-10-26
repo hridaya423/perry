@@ -2,7 +2,7 @@ import PerryOverlay
 import SwiftUI
 
 struct NotchListeningView: View {
-    @ObservedObject var voice: VoiceConversationController
+    @ObservedObject var voice: TalkSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("perry.voice.pauseHintUses") private var pauseHintUses = 0
     @State private var showsPauseHint = false
@@ -15,7 +15,7 @@ struct NotchListeningView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(headline)
                             .font(PerryTheme.Scale.title)
-                            .foregroundStyle(voice.state == .failed ? PerryTheme.Colors.warning : PerryTheme.Colors.text)
+                            .foregroundStyle(voice.clickState == .failed ? PerryTheme.Colors.warning : PerryTheme.Colors.text)
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
                         if let detail {
@@ -31,10 +31,10 @@ struct NotchListeningView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { voice.sendNow() }
                 .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(voice.state == .listening ? .isButton : [])
-                .accessibilityHint(voice.state == .listening ? "Sends what you said" : "")
+                .accessibilityAddTraits(voice.clickState == .listening ? .isButton : [])
+                .accessibilityHint(voice.clickState == .listening ? "Sends what you said" : "")
 
-                if voice.state == .listening {
+                if voice.clickState == .listening {
                     Button(action: voice.sendNow) {
                         Image(systemName: "arrow.up")
                             .font(PerryTheme.Icon.toolbar)
@@ -48,20 +48,20 @@ struct NotchListeningView: View {
                     .help("Send now (Return)")
                 }
                 WindowControlButton(systemImage: "xmark", label: "Cancel (Esc)") {
-                    voice.state == .failed ? voice.resetConversation() : voice.cancel()
+                    voice.clickState == .failed ? voice.resetConversation() : voice.cancelClick()
                 }
                 .keyboardShortcut(.cancelAction)
             }
-            if voice.state == .failed {
-                Button("Try again") { voice.start() }
+            if voice.clickState == .failed {
+                Button("Try again") { voice.startClick() }
                     .buttonStyle(InkButtonStyle(.secondary))
                     .controlSize(.small)
             }
         }
         .onAppear {
-            if voice.state == .listening { countPauseHint() }
+            if voice.clickState == .listening { countPauseHint() }
         }
-        .onChange(of: voice.state) { _, state in
+        .onChange(of: voice.clickState) { _, state in
             switch state {
             case .listening:
                 countPauseHint()
@@ -96,7 +96,7 @@ struct NotchListeningView: View {
         .animation(reduceMotion ? nil : .linear(duration: 0.05), value: voice.level)
     }
 
-    private var listening: Bool { voice.state == .listening }
+    private var listening: Bool { voice.clickState == .listening }
 
     private func countPauseHint() {
         showsPauseHint = pauseHintUses < 3
@@ -104,7 +104,7 @@ struct NotchListeningView: View {
     }
 
     private var headline: String {
-        switch voice.state {
+        switch voice.clickState {
         case .idle, .requestingPermission: "Getting the microphone…"
         case .listening: voice.transcript.isEmpty ? "Listening…" : voice.transcript
         case .thinking: voice.transcript.isEmpty ? "Thinking…" : voice.transcript
@@ -114,7 +114,7 @@ struct NotchListeningView: View {
     }
 
     private var detail: String? {
-        switch voice.state {
+        switch voice.clickState {
         case .listening: showsPauseHint ? "Pause when you’re done." : nil
         case .thinking: voice.transcript.isEmpty ? nil : "Thinking…"
         default: nil

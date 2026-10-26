@@ -229,76 +229,64 @@ final class AppSubsystems {
         return built
     }
 
-    lazy var talkSession = TalkSession(
-        sessionController: app.sessionController,
-        overlayState: self.overlayState,
-        output: app.guideBridge,
-        services: TalkSession.Services(
-            makeInput: {
+    lazy var talkSession: TalkSession = {
+        let session = TalkSession(
+            sessionController: app.sessionController,
+            overlayState: self.overlayState,
+            output: app.guideBridge,
+            services: TalkSession.Services(
+                makeInput: {
 #if DEBUG
-                if let lab = TalkLabInput.makeInput(arguments: ProcessInfo.processInfo.arguments) {
-                    return lab
-                }
+                    if let lab = TalkLabInput.makeInput(arguments: ProcessInfo.processInfo.arguments) {
+                        return lab
+                    }
 #endif
-                let input: any TalkSpeechInput = self.realtimeTalkVoice()?.input ?? self.talkSpeechInput
-                return input
-            },
-            output: TalkSpeechOutputRouter(
-                realtime: { self.realtimeTalkVoice()?.output },
-                fallback: SharedTalkOutput(voice: self.voice)
-            ),
-            capture: { [weak app = app] in
-                guard let app else { throw CancellationError() }
-                return try await app.talkCapture.capture()
-            },
-            acceptInput: { [unowned app = app] in self.homeController.acceptInput($0, threadID: $1, contextKey: $2) },
-            targetHint: { [unowned app = app] in app.guideBridge.guideTargetHint() },
-            run: { [unowned app = app] input, spatial in
-                self.homeController.runSpokenTurn(input, spatial: spatial, coordinator: self.agentCoordinator)
-            },
-            waitForConversation: { [weak app = app] threadID in
-                await app?.agentCoordinator.waitForCompletion(threadID: threadID)
-            },
-            guide: { [weak app = app] input, spatial, full in
-                guard let app else { return }
-                let id = input.threadID
-                app.homeController.homeModel.sidebarSelection = .thread(id)
-                app.homeController.homeModel.conversationTargets[id] = spatial.target
-                app.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
-            },
-            warm: { [weak app = app] in
-                guard let app, let decision = try? await self.brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
-                await decision.provider.warm()
-            },
-            skill: { [weak app = app] observation in
-                app?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
-            }
-        )
-    )
-
-    lazy var conversationVoice: VoiceConversationController = {
-        let controller = VoiceConversationController(
-            services: .init(
-                makeInput: { [weak app = app] onTranscript, onPartial, onLevel, onFailure in
+                    let input: any TalkSpeechInput = self.realtimeTalkVoice()?.input ?? self.talkSpeechInput
+                    return input
+                },
+                output: TalkSpeechOutputRouter(
+                    realtime: { self.realtimeTalkVoice()?.output },
+                    fallback: SharedTalkOutput(voice: self.voice)
+                ),
+                capture: { [weak app = app] in
+                    guard let app else { throw CancellationError() }
+                    return try await app.talkCapture.capture()
+                },
+                acceptInput: { [unowned app = app] in self.homeController.acceptInput($0, threadID: $1, contextKey: $2) },
+                targetHint: { [unowned app = app] in app.guideBridge.guideTargetHint() },
+                run: { [unowned app = app] input, spatial in
+                    self.homeController.runSpokenTurn(input, spatial: spatial, coordinator: self.agentCoordinator)
+                },
+                waitForConversation: { [weak app = app] threadID in
+                    await app?.agentCoordinator.waitForCompletion(threadID: threadID)
+                },
+                guide: { [weak app = app] input, spatial, full in
+                    guard let app else { return }
+                    let id = input.threadID
+                    app.homeController.homeModel.sidebarSelection = .thread(id)
+                    app.homeController.homeModel.conversationTargets[id] = spatial.target
+                    app.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
+                },
+                warm: { [weak app = app] in
+                    guard let app, let decision = try? await self.brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
+                    await decision.provider.warm()
+                },
+                skill: { [weak app = app] observation in
+                    app?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
+                },
+                makeClickInput: { [weak app = app] onTranscript, onPartial, onLevel, onFailure in
                     let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onLevel: onLevel, onFailure: onFailure)
                     input.configure((try? app?.voice.currentDictationPreferences()) ?? .default)
                     return input
                 },
-                run: { [unowned self] text in
-                    self.homeController.runSpokenTurn(
-                        self.homeController.acceptInput(text),
-                        spatial: nil,
-                        coordinator: self.agentCoordinator
-                    )
-                },
                 stop: { [unowned self] threadID in self.agentCoordinator.stop(threadID: threadID) },
-                output: SharedTalkOutput(voice: self.voice)
+                clickOutput: SharedTalkOutput(voice: self.voice)
             )
         )
-        app.conversationVoiceObservation = controller.$state.removeDuplicates().dropFirst()
+        app.conversationVoiceObservation = session.$clickState.removeDuplicates().dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak app = app] state in app?.presentConversationVoice(state) }
-        return controller
+        return session
     }()
 
     let shortcutCheck = ShortcutCheck()
@@ -306,11 +294,11 @@ final class AppSubsystems {
     lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak app = app] in
             guard let app, !app.maintenance.isUnderMaintenance else { return }
-            if app.conversationVoice.state == .listening {
-                app.conversationVoice.sendNow()
+            if app.talkSession.clickState == .listening {
+                app.talkSession.sendNow()
                 return
             }
-            app.conversationVoice.cancel()
+            app.talkSession.cancelClick()
             app.probe.pinInvocationTarget()
             if app.isTaskActive {
                 app.modifierHoldIsSteering = true
@@ -349,7 +337,7 @@ final class AppSubsystems {
                 app.voice.cancelInput()
             } else if app.talkSession.phase == .listening {
                 app.talkSession.holdCancelled()
-                app.conversationVoice.start()
+                app.talkSession.startClick()
             }
         },
         onComposer: { [weak app = app] in app?.toggleSession() }

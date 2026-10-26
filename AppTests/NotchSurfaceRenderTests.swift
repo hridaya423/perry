@@ -602,20 +602,28 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
         var inputs: [Input] = []
         var clock: TimeInterval = 100
-        let voice = VoiceConversationController(services: .init(
-            requestPermission: { true },
-            makeInput: { _, onPartial, onLevel, _ in
-                let input = Input()
-                input.onPartial = onPartial
-                input.onLevel = onLevel
-                inputs.append(input)
-                return input
-            },
-            run: { _ in (UUID(), AsyncStream { _ in }, nil) },
-            output: Silent(),
-            now: { clock },
-            silenceTimeout: 60
-        ))
+        let voice = TalkSession(
+            sessionController: SessionController(),
+            overlayState: PerryCursorState(),
+            output: controller.guideBridge,
+            services: .init(
+                makeInput: { fatalError("hold input is not used") },
+                output: Silent(),
+                capture: { throw CancellationError() },
+                acceptInput: { text, _, _ in .init(threadID: UUID(), request: .init(text: text), saved: Task {}) },
+                run: { input, _ in (input.threadID, AsyncStream { _ in }, nil) },
+                requestPermission: { true },
+                makeClickInput: { _, onPartial, onLevel, _ in
+                    let input = Input()
+                    input.onPartial = onPartial
+                    input.onLevel = onLevel
+                    inputs.append(input)
+                    return input
+                },
+                now: { clock },
+                silenceTimeout: 60
+            )
+        )
         func hear(_ seconds: Double, rms: Double) async {
             for _ in 0..<Int((seconds / 0.02).rounded()) {
                 clock += 0.02
@@ -626,8 +634,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
         NotchPresentation.shared.present(id: AppController.voiceEntryID, priority: .voice, content: NotchListeningView(voice: voice))
         controller.overlayState.voiceState = .listening
 
-        voice.start()
-        for _ in 0..<50 where voice.state != .listening { try await Task.sleep(for: .milliseconds(10)) }
+        voice.startClick()
+        for _ in 0..<50 where voice.clickState != .listening { try await Task.sleep(for: .milliseconds(10)) }
         await hear(0.4, rms: 0.001)
         try await render(openNotch(controller), name: "listening-start", size: NSSize(width: 592, height: 360), wait: 0.5)
         await hear(0.6, rms: 0.08)
@@ -640,9 +648,9 @@ final class NotchSurfaceRenderTests: XCTestCase {
         controller.overlayState.voiceState = .processing
         try await render(openNotch(controller), name: "listening-thinking", size: NSSize(width: 592, height: 360), wait: 0.3)
 
-        voice.cancel()
-        voice.start()
-        for _ in 0..<50 where voice.state != .listening { try await Task.sleep(for: .milliseconds(10)) }
+        voice.cancelClick()
+        voice.startClick()
+        for _ in 0..<50 where voice.clickState != .listening { try await Task.sleep(for: .milliseconds(10)) }
         await hear(8.1, rms: 0.001)
         controller.overlayState.voiceState = .idle
         try await render(openNotch(controller), name: "listening-failed", size: NSSize(width: 592, height: 360), wait: 0.3)

@@ -112,7 +112,7 @@ final class TalkSessionAskTests: XCTestCase {
     /// SpatialContext it built.
     private func scriptedServices(
         accept: @escaping @MainActor (String, UUID?) -> HomeController.AcceptedInput,
-        run: @escaping @MainActor (HomeController.AcceptedInput, AgentCoordinator.SpatialContext) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
+        run: @escaping @MainActor (HomeController.AcceptedInput, AgentCoordinator.SpatialContext?) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
     ) -> TalkSession.Services {
         TalkSession.Services(
             makeInput: { StubTalkInput() },

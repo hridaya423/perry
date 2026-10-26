@@ -62,7 +62,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
     var homeController: HomeController { subsystems.homeController }
     var notchPresence: NotchPresence { subsystems.notchPresence }
-    var conversationVoice: VoiceConversationController { subsystems.conversationVoice }
     var conversationVoiceObservation: AnyCancellable?
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
     var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }

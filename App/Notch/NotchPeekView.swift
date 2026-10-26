@@ -92,7 +92,7 @@ struct NotchPeekView: View {
                 placeholder: "Ask Perry…",
                 canSend: !model.isCreatingConversation,
                 focusOnAppear: false,
-                onVoice: model.deps.controller.map { controller in { controller.conversationVoice.start() } }
+                onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } }
             ) {
                 model.onStartConversation?(model.newConversationDraft)
             }

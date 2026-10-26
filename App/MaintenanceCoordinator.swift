@@ -244,7 +244,7 @@ final class MaintenanceCoordinator {
         guard let host else { return }
         await host.mcp.discard()
         await host.brain.stopSetup()
-        host.conversationVoice.resetConversation()
+        host.talkSession.resetConversation()
         host.talkSession.cancelAsk()
         host.talkSession.cancel()
         await host.talkSession.joinInputSaves()

@@ -167,13 +167,13 @@ final class NotchPeekTests: XCTestCase {
     func testHoverOutDoesNotCancelAVoiceTurn() async throws {
         let (controller, cleanup) = try await peekingController()
         defer {
-            controller.conversationVoice.cancel()
+            controller.talkSession.cancelClick()
             cleanup()
         }
-        controller.conversationVoice.start()
-        XCTAssertEqual(controller.conversationVoice.state, .requestingPermission)
+        controller.talkSession.startClick()
+        XCTAssertEqual(controller.talkSession.clickState, .requestingPermission)
         XCTAssertEqual(controller.notchPresence.onEndPreview?(), true)
-        XCTAssertEqual(controller.conversationVoice.state, .requestingPermission)
+        XCTAssertEqual(controller.talkSession.clickState, .requestingPermission)
     }
 }
 

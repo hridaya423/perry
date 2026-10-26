@@ -111,7 +111,7 @@ struct HomeConversationView: View {
                     onVoice: isWorking || thread.pendingTurn != nil ? nil : model.deps.controller.map { controller in
                         {
                             model.sidebarSelection = .thread(thread.id)
-                            controller.conversationVoice.start()
+                            controller.talkSession.startClick()
                         }
                     }
                 ) {

@@ -144,7 +144,7 @@ extension AppController {
         model.sidebarSelection = nil
         model.updateNewDraft(prefill)
         model.composerMode = mode
-        conversationVoice.cancel()
+        talkSession.cancelClick()
         showPanel()
     }
 
@@ -179,7 +179,7 @@ extension AppController {
 
     static let voiceEntryID = UUID()
 
-    func presentConversationVoice(_ state: VoiceConversationController.State) {
+    func presentConversationVoice(_ state: TalkSession.ClickState) {
         let presentation = NotchPresentation.shared
         switch state {
         case .idle:
@@ -194,8 +194,8 @@ extension AppController {
             presentation.present(
                 id: Self.voiceEntryID,
                 priority: .voice,
-                content: NotchListeningView(voice: conversationVoice),
-                onDismiss: { [weak self] in self?.conversationVoice.cancel() }
+                content: NotchListeningView(voice: talkSession),
+                onDismiss: { [weak self] in self?.talkSession.cancelClick() }
             )
             if !sessionPanel.isVisible { showPanel(activate: false) }
             sessionPanel.focusWithoutActivating()
@@ -219,8 +219,8 @@ extension AppController {
             overlayState.taskBubbleText = "Speaking"
         case .idle:
             overlayState.voiceState = .idle
-            overlayState.buddyState = conversationVoice.answer.isEmpty ? .idle : .success
-            overlayState.taskBubbleText = conversationVoice.answer.isEmpty ? nil : "Answer ready"
+            overlayState.buddyState = talkSession.answer.isEmpty ? .idle : .success
+            overlayState.taskBubbleText = talkSession.answer.isEmpty ? nil : "Answer ready"
         case .failed:
             overlayState.buddyState = .blocked
             overlayState.voiceState = .idle
@@ -270,7 +270,7 @@ extension AppController {
     }
 
     func hidePanel() {
-        conversationVoice.cancel()
+        talkSession.cancelClick()
         hideSurfaces()
     }
 

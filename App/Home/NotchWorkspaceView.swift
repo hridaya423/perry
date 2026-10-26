@@ -316,7 +316,7 @@ struct NotchWorkspaceView: View {
                         ),
                         canSend: !model.isCreatingConversation,
                         focusOnAppear: focusComposer,
-                        onVoice: model.deps.controller.map { controller in { controller.conversationVoice.start() } }
+                        onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } }
                     ) {
                         model.onStartConversation?(model.newConversationDraft)
                     }
