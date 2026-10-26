@@ -35,6 +35,7 @@ struct NotchListeningView: View {
                 .accessibilityHint(voice.clickState == .listening ? "Sends what you said" : "")
 
                 if voice.clickState == .listening {
+                    meter
                     Button(action: voice.sendNow) {
                         Image(systemName: "arrow.up")
                             .font(PerryTheme.Icon.status)
@@ -73,27 +74,28 @@ struct NotchListeningView: View {
     }
 
     private var ring: some View {
-        ZStack {
-            Circle()
-                .stroke(PerryTheme.Colors.accent.opacity(listening ? 0.25 + 0.5 * voice.level : 0.2), lineWidth: 2)
-                .scaleEffect(listening && !reduceMotion ? 1 + 0.16 * voice.level : 1)
-            if listening, voice.endProgress > 0 {
-                if reduceMotion {
-                    Circle()
-                        .stroke(PerryTheme.Colors.accent, lineWidth: 2)
-                        .opacity(voice.endProgress < 0.5 ? 0.9 : 0.4)
-                } else {
-                    Circle()
-                        .trim(from: 0, to: 1 - voice.endProgress)
-                        .stroke(PerryTheme.Colors.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
+        var pose = PerryCharacterPose()
+        pose.face = voice.clickState == .failed ? .worried : listening ? .open : .focused
+        return PerryCharacterView(pose: pose, size: 26)
+            .frame(width: 44, height: 44)
+            .background(PerryCharacterView.fern.opacity(listening ? 0.14 + 0.22 * voice.level : 0.12),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: voice.level)
+            .accessibilityHidden(true)
+    }
+
+    private var meter: some View {
+        HStack(spacing: 3) {
+            ForEach(Array([0.55, 1, 0.75, 0.4].enumerated()), id: \.offset) { _, weight in
+                Capsule()
+                    .fill(PerryTheme.Colors.accent)
+                    .frame(width: 3, height: 4 + 16 * min(voice.level * 1.4, 1) * weight)
             }
-            PerryCharacter(mood: .resting, size: 26)
-                .accessibilityHidden(true)
         }
-        .frame(width: 48, height: 48)
-        .animation(reduceMotion ? nil : .linear(duration: 0.05), value: voice.level)
+        .frame(height: 20)
+        .opacity(1 - 0.6 * voice.endProgress)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: voice.level)
+        .accessibilityHidden(true)
     }
 
     private var listening: Bool { voice.clickState == .listening }
