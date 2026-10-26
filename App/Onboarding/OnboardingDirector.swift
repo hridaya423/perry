@@ -17,7 +17,7 @@ final class OnboardingDirector: ObservableObject {
         var saveName: (String) -> Void = { _ in }
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
-        var finish: () -> Void = {}
+        var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
     }
 
     static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
@@ -56,7 +56,7 @@ final class OnboardingDirector: ObservableObject {
 
     func skip() {
         guard let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
-        guard index + 1 < Beat.allCases.count else { return finish() }
+        guard index + 1 < Beat.allCases.count else { return finish(keepNotchOpen: false) }
         enter(Beat.allCases[index + 1], direction: .forward)
     }
 
@@ -110,11 +110,16 @@ final class OnboardingDirector: ObservableObject {
         if isFirstProbe, direction == .forward, accessGranted { skip() }
     }
 
-    private func finish() {
+    func beginFirstTask() {
+        guard beat == .firstGoal else { return }
+        finish(keepNotchOpen: true)
+    }
+
+    private func finish(keepNotchOpen: Bool) {
         stop()
         defaults?.removeObject(forKey: PerryPreferences.$onboardingBeat.key)
         effects.mark("onboarding.finish")
-        effects.finish()
+        effects.finish(keepNotchOpen)
     }
 
     private func enter(_ next: Beat, direction: Direction) {

@@ -44,7 +44,12 @@ struct HomeOnboardingView: View {
         case .apps:
             PendingBeat(director: director, title: "Your apps")
         case .firstGoal:
-            PendingBeat(director: director, title: "First goal")
+            FirstGoalBeat(
+                director: director,
+                model: model,
+                goal: FirstGoal.savedGoal(in: model.deps.controller?.memoryFiles) ?? "",
+                installedApps: FirstGoal.installedApps()
+            )
         case nil:
             EmptyView()
         }

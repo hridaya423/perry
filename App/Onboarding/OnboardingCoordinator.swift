@@ -57,7 +57,7 @@ final class OnboardingCoordinator {
             try? self?.home().homeModel.deps.controller?.memoryFiles?.setProfileField("Name", name)
         }
         effects.dismiss = { [weak self] in self?.tearDown() }
-        effects.finish = { [weak self] in self?.finish() }
+        effects.finish = { [weak self] keepNotchOpen in self?.finish(keepNotchOpen: keepNotchOpen) }
         let director = OnboardingDirector(effects: effects, defaults: .standard)
         self.director = director
         let home = home()
@@ -72,7 +72,7 @@ final class OnboardingCoordinator {
         director.start(resume: resume)
     }
 
-    private func finish() {
+    private func finish(keepNotchOpen: Bool) {
         let firstCompletion = !PerryPreferences.onboardingCompleted
         PerryPreferences.onboardingCompleted = true
 #if !DEBUG
@@ -80,15 +80,15 @@ final class OnboardingCoordinator {
 #else
         _ = firstCompletion
 #endif
-        tearDown()
+        tearDown(collapse: !keepNotchOpen)
     }
 
-    private func tearDown() {
+    private func tearDown(collapse: Bool = true) {
         beatObservation = nil
         director = nil
         let home = home()
         home.homeModel.onboarding = nil
-        home.homeModel.deps.controller?.collapseNotch()
+        if collapse { home.homeModel.deps.controller?.collapseNotch() }
     }
 
 #if DEBUG
