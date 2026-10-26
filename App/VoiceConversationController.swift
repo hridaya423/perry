@@ -28,9 +28,10 @@ final class VoiceConversationController: ObservableObject {
         var makeInput: (
             _ onTranscript: @escaping (String) -> Void,
             _ onPartial: @escaping (String) -> Void,
+            _ onLevel: @escaping (TimeInterval, Double) -> Void,
             _ onFailure: @escaping (Error) -> Void
-        ) -> any VoiceConversationInput = { onTranscript, onPartial, onFailure in
-            let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onFailure: onFailure)
+        ) -> any VoiceConversationInput = { onTranscript, onPartial, onLevel, onFailure in
+            let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onLevel: onLevel, onFailure: onFailure)
             input.configure(.default)
             return input
         }
@@ -38,7 +39,7 @@ final class VoiceConversationController: ObservableObject {
         var stop: (UUID) -> Void = { _ in }
         var output: any TalkSpeechOutput
         var speechDrain: (() async -> Void)?
-        var finalizeDelay: TimeInterval = 1.5
+        var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
         var silenceTimeout: TimeInterval = 20
         var finalTranscriptTimeout: TimeInterval = 2
     }
@@ -59,6 +60,7 @@ final class VoiceConversationController: ObservableObject {
     private var turnTask: Task<Void, Never>?
     private var activeThreadID: UUID?
     private var submitted = false
+    private var detector: EndOfTurnDetector?
 
     init(services: Services) {
         self.services = services
@@ -77,6 +79,7 @@ final class VoiceConversationController: ObservableObject {
         let input = services.makeInput(
             { [weak self] text in Task { @MainActor in self?.handleTranscript(text, generation: generation) } },
             { [weak self] text in Task { @MainActor in self?.handlePartial(text, generation: generation) } },
+            { [weak self] time, rms in Task { @MainActor in self?.handleLevel(rms, at: time, generation: generation) } },
             { [weak self] failure in Task { @MainActor in self?.handleFailure(failure, generation: generation) } }
         )
         self.input = input
@@ -98,6 +101,7 @@ final class VoiceConversationController: ObservableObject {
                 input.cancel()
                 return
             }
+            detector = EndOfTurnDetector(startedAt: services.now())
             state = .listening
             armSilenceTimeout(generation: generation)
         }
@@ -163,8 +167,20 @@ final class VoiceConversationController: ObservableObject {
     private func handlePartial(_ text: String, generation: Int) {
         guard self.generation == generation, state == .listening, !submitted, !text.isEmpty else { return }
         transcript = text
-        armFinalize(generation: generation)
+        _ = detector?.transcript(at: services.now(), text: text, lastWordEnd: 0)
         armSilenceTimeout(generation: generation)
+    }
+
+    private func handleLevel(_ rms: Double, at time: TimeInterval, generation: Int) {
+        guard self.generation == generation, state == .listening else { return }
+        switch detector?.frame(at: time, rms: rms) {
+        case .commit?:
+            finishListening()
+        case .abort?:
+            fail("I didn’t hear anything. Check that your microphone is on, then try again.")
+        default:
+            break
+        }
     }
 
     private func handleFailure(_ failure: Error, generation: Int) {
@@ -276,16 +292,6 @@ final class VoiceConversationController: ObservableObject {
         for _ in 0..<1200 {
             guard services.output.isSpeaking, !Task.isCancelled else { return }
             try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-    }
-
-    private func armFinalize(generation: Int) {
-        finalizeTask?.cancel()
-        let delay = services.finalizeDelay
-        finalizeTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard let self, !Task.isCancelled, self.generation == generation else { return }
-            self.finishListening()
         }
     }
 

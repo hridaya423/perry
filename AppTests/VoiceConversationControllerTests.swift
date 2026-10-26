@@ -7,6 +7,7 @@ final class VoiceConversationControllerTests: XCTestCase {
     private final class FakeInput: VoiceConversationInput {
         var onTranscript: (String) -> Void = { _ in }
         var onPartial: (String) -> Void = { _ in }
+        var onLevel: (TimeInterval, Double) -> Void = { _, _ in }
         var onFailure: (Error) -> Void = { _ in }
         var startError: Error?
         private(set) var startCalls = 0
@@ -42,12 +43,14 @@ final class VoiceConversationControllerTests: XCTestCase {
         var stopped: [UUID] = []
         var spoken: [String] = []
         var shutUps = 0
+        var clock: TimeInterval = 100
         var pending: AsyncStream<AgentLoopEvent>.Continuation?
     }
 
     private func makeController(
         probe: Probe,
         permission: @escaping () async -> Bool = { true },
+        silenceTimeout: TimeInterval = 0.2,
         events: @escaping (AsyncStream<AgentLoopEvent>.Continuation) -> Void = { continuation in
             continuation.yield(.finished(.completed))
             continuation.finish()
@@ -55,10 +58,11 @@ final class VoiceConversationControllerTests: XCTestCase {
     ) -> VoiceConversationController {
         VoiceConversationController(services: .init(
             requestPermission: permission,
-            makeInput: { onTranscript, onPartial, onFailure in
+            makeInput: { onTranscript, onPartial, onLevel, onFailure in
                 let input = FakeInput()
                 input.onTranscript = onTranscript
                 input.onPartial = onPartial
+                input.onLevel = onLevel
                 input.onFailure = onFailure
                 probe.inputs.append(input)
                 return input
@@ -77,8 +81,8 @@ final class VoiceConversationControllerTests: XCTestCase {
             stop: { probe.stopped.append($0) },
             output: FakeOutput(probe: probe),
             speechDrain: {},
-            finalizeDelay: 0.05,
-            silenceTimeout: 0.2,
+            now: { probe.clock },
+            silenceTimeout: silenceTimeout,
             finalTranscriptTimeout: 0.2
         ))
     }
@@ -179,32 +183,87 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(completions, 1)
     }
 
-    func testQuietGapAfterPartialFinalizesAndSubmits() async {
+    private func hear(_ input: FakeInput, probe: Probe, seconds: Double, rms: Double) async {
+        for _ in 0..<Int((seconds / 0.02).rounded()) {
+            probe.clock += 0.02
+            input.onLevel(probe.clock, rms)
+        }
+        for _ in 0..<5 { await Task.yield() }
+    }
+
+    func testSilenceAfterAClearQuestionEndsTheTurn() async {
         let probe = Probe()
-        let controller = makeController(probe: probe)
+        let controller = makeController(probe: probe, silenceTimeout: 30)
         controller.start()
         await waitUntil { controller.state == .listening }
         let input = probe.inputs[0]
 
-        input.onPartial("what is this")
+        await hear(input, probe: probe, seconds: 0.4, rms: 0.001)
+        await hear(input, probe: probe, seconds: 0.8, rms: 0.05)
+        input.onPartial("What time is it in Tokyo?")
+        await waitUntil { controller.transcript == "What time is it in Tokyo?" }
+        await hear(input, probe: probe, seconds: 0.4, rms: 0.001)
+        XCTAssertEqual(input.finishCalls, 0)
+        await hear(input, probe: probe, seconds: 0.2, rms: 0.001)
         await waitUntil { input.finishCalls == 1 }
-        input.onTranscript("what is this thing")
+        input.onTranscript("What time is it in Tokyo?")
 
         await waitUntil { probe.runs.count == 1 }
-        XCTAssertEqual(probe.runs, ["what is this thing"])
+        XCTAssertEqual(probe.runs, ["What time is it in Tokyo?"])
+    }
+
+    func testFillerPauseKeepsListeningUntilTheSentenceEnds() async {
+        let probe = Probe()
+        let controller = makeController(probe: probe, silenceTimeout: 30)
+        controller.start()
+        await waitUntil { controller.state == .listening }
+        let input = probe.inputs[0]
+
+        await hear(input, probe: probe, seconds: 0.4, rms: 0.001)
+        await hear(input, probe: probe, seconds: 0.8, rms: 0.05)
+        input.onPartial("Open my notes and um")
+        await waitUntil { controller.transcript == "Open my notes and um" }
+        await hear(input, probe: probe, seconds: 1.0, rms: 0.001)
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertEqual(input.finishCalls, 0)
+
+        await hear(input, probe: probe, seconds: 0.6, rms: 0.05)
+        input.onPartial("Open my notes and um the budget one.")
+        await waitUntil { controller.transcript == "Open my notes and um the budget one." }
+        await hear(input, probe: probe, seconds: 1.0, rms: 0.001)
+        await waitUntil { input.finishCalls == 1 }
     }
 
     func testInputThatGoesQuietAfterFinishStillSettles() async {
         let probe = Probe()
-        let controller = makeController(probe: probe)
+        let controller = makeController(probe: probe, silenceTimeout: 30)
         controller.start()
         await waitUntil { controller.state == .listening }
-        probe.inputs[0].onPartial("open my notes")
-        await waitUntil { probe.inputs[0].finishCalls == 1 }
+        let input = probe.inputs[0]
+        await hear(input, probe: probe, seconds: 0.4, rms: 0.001)
+        await hear(input, probe: probe, seconds: 0.6, rms: 0.05)
+        input.onPartial("Open my notes.")
+        await waitUntil { controller.transcript == "Open my notes." }
+        await hear(input, probe: probe, seconds: 1.0, rms: 0.001)
+        await waitUntil { input.finishCalls == 1 }
 
         await waitUntil { probe.runs.count == 1 }
 
-        XCTAssertEqual(probe.runs, ["open my notes"])
+        XCTAssertEqual(probe.runs, ["Open my notes."])
+    }
+
+    func testNoSpeechEndsListeningWithActionableError() async {
+        let probe = Probe()
+        let controller = makeController(probe: probe, silenceTimeout: 30)
+        controller.start()
+        await waitUntil { controller.state == .listening }
+
+        await hear(probe.inputs[0], probe: probe, seconds: 8.1, rms: 0.001)
+
+        await waitUntil { controller.state == .failed }
+        XCTAssertEqual(probe.inputs[0].cancelCalls, 1)
+        XCTAssertNotNil(controller.error)
+        XCTAssertTrue(probe.runs.isEmpty)
     }
 
     func testSilenceTimeoutStopsListeningWithActionableError() async {

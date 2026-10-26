@@ -62,6 +62,23 @@ final class EndOfTurnDetectorTests: XCTestCase {
         }
     }
 
+    func testSpeechFromTheFirstFrameIsNotCutOff() throws {
+        for fixture in try Self.fixtures() where fixture.speechEnd != nil {
+            let quiet = fixture.frames[0][1]
+            let onset = try XCTUnwrap(fixture.frames.firstIndex { $0[1] > quiet * 4 }, fixture.name)
+            let shift = fixture.frames[onset][0] - 0.02
+            let trimmed = Fixture(
+                name: fixture.name,
+                frames: fixture.frames[onset...].map { [$0[0] - shift, $0[1]] },
+                transcripts: fixture.transcripts.map { .init(t: $0.t - shift, text: $0.text, lastWordEnd: $0.lastWordEnd - shift) },
+                speechEnd: fixture.speechEnd.map { $0 - shift }
+            )
+            let outcome = Self.replay(trimmed)
+            XCTAssertEqual(outcome.event, .commit(.silence), fixture.name)
+            XCTAssertFalse(outcome.cutOff, "\(fixture.name) committed \(-(outcome.latency ?? 0)) s before the speech ended")
+        }
+    }
+
     func testShortQuestionCommitsWithin900msOfTheLastWord() throws {
         let fixture = try XCTUnwrap(Self.fixtures().first { $0.name == "short-question" })
         let latency = try XCTUnwrap(Self.replay(fixture).latency)

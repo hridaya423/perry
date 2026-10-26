@@ -28,6 +28,7 @@ final class ModifierHoldMonitor {
     private let onHoldCommit: () -> Void
     private let onHoldEnd: () -> Void
     private let onHoldCancel: () -> Void
+    private let onHoldTap: () -> Void
     private let onComposer: () -> Void
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -35,6 +36,7 @@ final class ModifierHoldMonitor {
     private var fallbackLocalMonitors: [Any] = []
 
     private var holding = false
+    private var holdStartedAt: TimeInterval = 0
     private var committed = false
     private var commitTask: Task<Void, Never>?
     private var controlDown = false
@@ -50,6 +52,7 @@ final class ModifierHoldMonitor {
         onHoldCommit: @escaping () -> Void,
         onHoldEnd: @escaping () -> Void,
         onHoldCancel: @escaping () -> Void,
+        onHoldTap: @escaping () -> Void,
         onComposer: @escaping () -> Void
     ) {
         self.commitDelay = commitDelay
@@ -57,6 +60,7 @@ final class ModifierHoldMonitor {
         self.onHoldCommit = onHoldCommit
         self.onHoldEnd = onHoldEnd
         self.onHoldCancel = onHoldCancel
+        self.onHoldTap = onHoldTap
         self.onComposer = onComposer
     }
 
@@ -174,6 +178,7 @@ final class ModifierHoldMonitor {
             lastCleanControlRelease = nil
             if !holding {
                 holding = true
+                holdStartedAt = timestamp
                 committed = false
                 PerfMark.mark("talk.keydown")
                 onHoldStart()
@@ -193,8 +198,12 @@ final class ModifierHoldMonitor {
             holding = false
             commitTask?.cancel()
             commitTask = nil
-            if committed {
-                committed = false
+            let wasCommitted = committed
+            committed = false
+            if timestamp - holdStartedAt < tapMaxDuration {
+                PerfMark.mark("talk.tap")
+                onHoldTap()
+            } else if wasCommitted {
                 PerfMark.mark("talk.keyup")
                 onHoldEnd()
             } else {

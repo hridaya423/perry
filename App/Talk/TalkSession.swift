@@ -244,6 +244,7 @@ final class TalkSession {
         do {
             try Task.checkCancellation()
             guard let speech = input else { throw CancellationError() }
+            try await Task.sleep(for: .milliseconds(250))
             let (transcript, words) = await speech.finalize()
             PerfMark.mark("talk.stt.final")
             // The utterance's job ends at finalize — clear so the next hold

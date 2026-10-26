@@ -1,7 +1,19 @@
+import AVFoundation
 import XCTest
 @testable import Perry
 
 final class DictationControllerTests: XCTestCase {
+    func testLevelIsTheRootMeanSquareOfTheBuffer() throws {
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024))
+        buffer.frameLength = 1024
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for index in 0..<1024 { samples[index] = index.isMultiple(of: 2) ? 0.5 : -0.5 }
+        XCTAssertEqual(DictationController.rms(buffer), 0.5, accuracy: 1e-6)
+        buffer.frameLength = 0
+        XCTAssertEqual(DictationController.rms(buffer), 0)
+    }
+
     func testCancelledFinalizationCannotDeliverIntoReplacementInvocation() throws {
         var invocation = VoiceInvocationGate()
         var transcripts: [String] = []

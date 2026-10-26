@@ -15,6 +15,7 @@ final class ModifierHoldMonitorTests: XCTestCase {
             onHoldCommit: { log.commits += 1 },
             onHoldEnd: { log.ends += 1 },
             onHoldCancel: { log.cancels += 1 },
+            onHoldTap: { log.taps += 1 },
             onComposer: { log.composers += 1 }
         )
         return (monitor, log)
@@ -25,6 +26,7 @@ final class ModifierHoldMonitorTests: XCTestCase {
         var commits = 0
         var ends = 0
         var cancels = 0
+        var taps = 0
         var composers = 0
     }
 
@@ -33,9 +35,10 @@ final class ModifierHoldMonitorTests: XCTestCase {
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
         monitor.handle(timestamp: 1.1, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.starts, 1)
-        monitor.handle(timestamp: 1.2, control: false, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.4, control: false, option: true, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.ends, 1)
         XCTAssertEqual(log.cancels, 0)
+        XCTAssertEqual(log.taps, 0)
     }
 
     func testBareOptionOrControlAloneDoesNotHold() {
@@ -59,15 +62,34 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.ends, 0)
     }
 
-    /// A hold released before the commit threshold was never a real utterance.
     func testReleaseBeforeCommitCancels() {
         let (monitor, log) = makeMonitor(commitDelay: 60)
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
-        monitor.handle(timestamp: 1.05, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.3, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.starts, 1)
         XCTAssertEqual(log.cancels, 1)
         XCTAssertEqual(log.ends, 0)
         XCTAssertEqual(log.commits, 0)
+        XCTAssertEqual(log.taps, 0)
+    }
+
+    func testPressShorterThan250msIsATapNotASend() {
+        let (monitor, log) = makeMonitor(commitDelay: 0)
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handle(timestamp: 1.2, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.commits, 1)
+        XCTAssertEqual(log.taps, 1)
+        XCTAssertEqual(log.ends, 0)
+        XCTAssertEqual(log.cancels, 0)
+    }
+
+    func testChordDuringAShortPressStillCancels() {
+        let (monitor, log) = makeMonitor(commitDelay: 60)
+        monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+        monitor.handleKeyDown()
+        monitor.handle(timestamp: 1.1, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+        XCTAssertEqual(log.cancels, 1)
+        XCTAssertEqual(log.taps, 0)
     }
 
     func testHoldCommitsAfterThresholdAndSubmitsOnRelease() async throws {
@@ -579,6 +601,38 @@ final class TalkCompletionTests: XCTestCase {
         let afterCancellation = await store.thread(id: thread.id)
         XCTAssertEqual(afterCancellation?.waitingInputs?.count, 1)
         XCTAssertTrue(afterCancellation?.turns.isEmpty == true)
+    }
+
+    func testReleaseKeepsListening250msBeforeFinalizing() async throws {
+        final class TimedInput: TalkSpeechInput {
+            var finalizedAt: ContinuousClock.Instant?
+            func start() async throws {}
+            func finalize() async -> (transcript: String, words: [SpokenWord]) {
+                finalizedAt = .now
+                return ("Explain this", [])
+            }
+            func cancel() {}
+        }
+        let input = TimedInput()
+        let output = Output()
+        let (home, coordinator, _) = try execution(provider: Provider(reason: .endTurn))
+        let talk = TalkSession(
+            sessionController: SessionController(), overlayState: PerryCursorState(), output: output,
+            services: .init(makeInput: { input }, output: output, capture: {
+                GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.Editor", windowTitle: "Document", elements: []))
+            }, acceptInput: { home.acceptInput($0, threadID: $1, contextKey: $2) }, run: { home.runSpokenTurn($0, spatial: $1, coordinator: coordinator) }),
+            tracer: PointerTraceRecorder(point: { .zero })
+        )
+        talk.keyDown()
+        talk.holdCommitted()
+        let released = ContinuousClock.now
+        talk.keyUp()
+        for _ in 0..<100 where input.finalizedAt == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let finalizedAt = try XCTUnwrap(input.finalizedAt)
+        XCTAssertGreaterThanOrEqual(finalizedAt - released, .milliseconds(250))
+        talk.cancel()
     }
 
     func testBargeInKeepsTheNewListeningSessionActive() async throws {

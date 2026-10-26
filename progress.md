@@ -122,6 +122,20 @@
     2. The continuation list adds articles, prepositions, "is", "are" and "i".
     3. The 4.1 merge is deferred. The detector does not depend on it.
 
+- 4.3 Done: click-to-talk turns now end on the detector instead of a fixed 1.5 s gap after the last partial.
+  - `DictationController` reports a level on every tap buffer (about 21 ms), as `(host time, RMS via vDSP_rmsqv)`, and sets `addsPunctuation`.
+  - `VoiceConversationController` builds an `EndOfTurnDetector` when listening starts. It feeds the detector the timestamped levels and partials. A commit runs the existing `finishListening()`; a no-speech abort fails with the microphone message. `finalizeDelay` is deleted, and the 20 s `silenceTimeout` stays as the fallback when no levels arrive.
+  - Hold-to-talk: a 250 ms tail after release before `finalize()`. `ModifierHoldMonitor` reports a clean press shorter than 250 ms as `onHoldTap`. The app turns that into hands-free listening (`conversationVoice.start()`) when the hold was listening, or a cancel while steering. A chord during a short press still cancels.
+  - Verified: 663/0 on the mini, with 0 constraint-loop lines, and PerryCore 93/0. New tests:
+    - A clear question commits between 0.4 and 0.6 s of silence.
+    - An "and um" pause keeps listening for 1.0 s and then ends after the sentence.
+    - 8 s of quiet aborts with an error.
+    - A press under 250 ms is a tap; a chord cancels it.
+    - Finalize starts at least 250 ms after release. This test failed at 0.9 ms with the tail removed.
+    - RMS of a ±0.5 buffer is 0.5.
+    - Every fixture with speech from the first frame still ends without a cut-off.
+  - Not verified live: endpointing on a real microphone and room. The mini's ssh session cannot drive the mic or post the hotkey.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.

@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import AudioToolbox
 import CoreAudio
@@ -105,6 +106,7 @@ struct VoiceInvocationGate {
 final class DictationController {
     private let onTranscript: (String) -> Void
     private let onPartial: (String) -> Void
+    private let onLevel: (TimeInterval, Double) -> Void
     private let onFailure: (Error) -> Void
     private let onFallback: () -> Void
     private let onLanguageDetected: (String?) -> Void
@@ -133,6 +135,7 @@ final class DictationController {
     init(
         onTranscript: @escaping (String) -> Void,
         onPartial: @escaping (String) -> Void = { _ in },
+        onLevel: @escaping (TimeInterval, Double) -> Void = { _, _ in },
         onFailure: @escaping (Error) -> Void = { _ in },
         onFallback: @escaping () -> Void = {},
         onLanguageDetected: @escaping (String?) -> Void = { _ in },
@@ -145,6 +148,7 @@ final class DictationController {
     ) {
         self.onTranscript = onTranscript
         self.onPartial = onPartial
+        self.onLevel = onLevel
         self.onFailure = onFailure
         self.onFallback = onFallback
         self.onLanguageDetected = onLanguageDetected
@@ -330,9 +334,10 @@ final class DictationController {
 
         request = recognitionRequest
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, when in
             self?.retainAudio(buffer)
             recognitionRequest.append(buffer)
+            self?.onLevel(AVAudioTime.seconds(forHostTime: when.hostTime), Self.rms(buffer))
         }
         inputTapInstalled = true
 
@@ -559,6 +564,13 @@ final class DictationController {
         return nil
     }
 
+    static func rms(_ buffer: AVAudioPCMBuffer) -> Double {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
+        var value: Float = 0
+        vDSP_rmsqv(samples, 1, &value, vDSP_Length(buffer.frameLength))
+        return Double(value)
+    }
+
     static func makeOnDeviceRequest(
         supported: Bool,
         customWords: [String]
@@ -567,6 +579,7 @@ final class DictationController {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = true
+        request.addsPunctuation = true
         request.contextualStrings = customWords
         return request
     }

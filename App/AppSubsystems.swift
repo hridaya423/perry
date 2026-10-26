@@ -272,8 +272,8 @@ final class AppSubsystems {
     lazy var conversationVoice: VoiceConversationController = {
         let controller = VoiceConversationController(
             services: .init(
-                makeInput: { [weak app = app] onTranscript, onPartial, onFailure in
-                    let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onFailure: onFailure)
+                makeInput: { [weak app = app] onTranscript, onPartial, onLevel, onFailure in
+                    let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onLevel: onLevel, onFailure: onFailure)
                     input.configure((try? app?.voice.currentDictationPreferences()) ?? .default)
                     return input
                 },
@@ -328,6 +328,16 @@ final class AppSubsystems {
                 app.voice.cancelInput()
             } else {
                 app.talkSession.holdCancelled()
+            }
+        },
+        onHoldTap: { [weak app = app] in
+            guard let app else { return }
+            if app.modifierHoldIsSteering {
+                app.modifierHoldIsSteering = false
+                app.voice.cancelInput()
+            } else if app.talkSession.phase == .listening {
+                app.talkSession.holdCancelled()
+                app.conversationVoice.start()
             }
         },
         onComposer: { [weak app = app] in app?.toggleSession() }
