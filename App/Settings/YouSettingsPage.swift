@@ -1,3 +1,5 @@
+import AppKit
+import PerryBrain
 import PerryGuide
 import SwiftUI
 
@@ -8,6 +10,13 @@ struct YouSettingsPage: View {
     @State private var records: [MemoryRecord] = []
     @State private var confirmsErase = false
     @State private var error: String?
+    @State private var profile: [String: String] = [:]
+    @State private var pasted = ""
+    @State private var copied = false
+    @State private var importing = false
+    @State private var importResult: String?
+
+    static let profileFields = ["Name", "Work", "Apps", "Learning goal", "Answer style"]
 
     var body: some View {
         SettingsScroll {
@@ -30,6 +39,20 @@ struct YouSettingsPage: View {
                     .disabled(!memoryEnabled)
                 }
             }
+            SettingsCard(title: "Profile", footer: "Perry reads this before every answer.") {
+                ForEach(Array(Self.profileFields.enumerated()), id: \.element) { index, field in
+                    if index > 0 { SettingsDivider() }
+                    HStack(spacing: 12) {
+                        Text(field)
+                            .foregroundStyle(PerryTheme.Colors.textSecondary)
+                            .frame(width: 110, alignment: .leading)
+                        TextField(field, text: Binding(get: { profile[field] ?? "" }, set: { profile[field] = $0 }), prompt: Text("Not set").foregroundStyle(PerryTheme.Colors.textTertiary))
+                            .textFieldStyle(.plain)
+                            .onSubmit { saveProfile(field) }
+                    }
+                    .settingsRowPadding()
+                }
+            }
             SettingsCard(title: "What Perry remembers") {
                 if records.isEmpty {
                     Text(memoryEnabled ? "Nothing yet. Perry adds notes as you use it." : "Nothing. Memory is off.")
@@ -42,7 +65,7 @@ struct YouSettingsPage: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(record.summary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            Text("\(Self.title(record.category)) · \(record.createdAt.formatted(.relative(presentation: .named)))")
+                            Text(Self.note(record))
                                 .settingNote()
                         }
                         Spacer(minLength: 8)
@@ -61,6 +84,35 @@ struct YouSettingsPage: View {
                         .accessibilityLabel("Forget: \(record.summary)")
                     }
                     .settingsRowPadding()
+                }
+            }
+            SettingsCard(title: "Bring notes from ChatGPT or Claude", footer: importResult) {
+                HStack(spacing: 12) {
+                    Text("Ask: \u{201C}\(MemoryExtraction.importRequest)\u{201D}")
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button(copied ? "Copied" : "Copy") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(MemoryExtraction.importRequest, forType: .string)
+                        copied = true
+                    }
+                }
+                .settingsRowPadding()
+                SettingsDivider()
+                TextEditor(text: $pasted)
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 64)
+                    .overlay(alignment: .topLeading) {
+                        if pasted.isEmpty {
+                            Text("Paste the answer").foregroundStyle(PerryTheme.Colors.textTertiary)
+                                .padding(.leading, 5).allowsHitTesting(false)
+                        }
+                    }
+                    .settingsRowPadding()
+                SettingsDivider()
+                SettingsRow(title: "Add to memory", detail: "Perry keeps the facts about you and drops the rest.") {
+                    Button(importing ? "Reading…" : "Add notes") { importNotes() }
+                        .disabled(importing || !canImport || pasted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             SettingsCard {
@@ -94,7 +146,49 @@ struct YouSettingsPage: View {
         let configuration = await controller.currentMemoryConfiguration()
         memoryEnabled = configuration.enabled
         categories = configuration.categoryToggles
-        records = await controller.memories()
+        records = await controller.memories().sorted { Self.standing($0) && !Self.standing($1) }
+        profile = Dictionary(uniqueKeysWithValues: Self.profileFields.map { ($0, controller.memoryFiles?.profileField($0) ?? "") })
+    }
+
+    private var canImport: Bool {
+        controller.brain.hasSavedChoice || controller.brain.onDeviceRouteAvailable
+    }
+
+    private func saveProfile(_ field: String) {
+        do {
+            try controller.memoryFiles?.setProfileField(field, profile[field] ?? "")
+        } catch {
+            self.error = "I could not save your \(field.lowercased()). Try again."
+        }
+    }
+
+    private func importNotes() {
+        importing = true
+        importResult = nil
+        Task {
+            defer { importing = false }
+            let known = Set(records.map { $0.summary.lowercased() })
+            let reply = try? await controller.brain.completeOnDevice(MemoryExtraction.importPrompt(pasted))
+            let facts = (reply.map(MemoryExtraction.decodeImport) ?? []).filter { !known.contains($0.text.lowercased()) }
+            guard reply != nil else {
+                error = "I could not read those notes. Check the brain in Brain settings, then try again."
+                return
+            }
+            await controller.saveImportedFacts(facts)
+            pasted = ""
+            importResult = facts.isEmpty ? "No new facts about you in that answer." : "Added \(facts.count) \(facts.count == 1 ? "note" : "notes")."
+            await reload()
+        }
+    }
+
+    private static func standing(_ record: MemoryRecord) -> Bool {
+        record.category == .aboutYou && record.expiresAt == nil
+    }
+
+    private static func note(_ record: MemoryRecord) -> String {
+        let when = record.expiresAt.map { "Until \($0.formatted(.dateTime.month(.abbreviated).day()))" }
+            ?? record.createdAt.formatted(.relative(presentation: .named))
+        return "\(title(record.category)) · \(when)"
     }
 
     private func forget(_ record: MemoryRecord) {

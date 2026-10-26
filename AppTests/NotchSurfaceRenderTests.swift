@@ -193,6 +193,19 @@ final class NotchSurfaceRenderTests: XCTestCase {
             PerryPreferences.speechEngine = engine
             try await render(openNotch(controller), name: "settings-voice-\(engine)", size: NSSize(width: 892, height: 552))
         }
+        await controller.setMemoryEnabled(true)
+        try controller.memoryFiles?.setProfileField("Name", "Ada")
+        try controller.memoryFiles?.setProfileField("Work", "Chemistry teacher")
+        _ = await controller.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Teaches year 10 chemistry", subject: "job"))
+        _ = await controller.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Is preparing for a school trip on Friday", subject: "trip", expiresAt: Date().addingTimeInterval(4 * 86_400)))
+        _ = await controller.memoryStore.remember(MemoryRecord(category: .preference, summary: "Likes answers as short bullet lists"))
+        try await render(
+            YouSettingsPage(controller: controller)
+                .frame(width: 560, height: 1100)
+                .background(PerryTheme.Colors.canvas)
+                .environment(\.colorScheme, .dark),
+            name: "settings-you-full", size: NSSize(width: 560, height: 1100), wait: 0.6
+        )
         model.routines = [try LearnedRoutine(name: "Prepare project notes", appBundleIDs: ["com.apple.Notes"], steps: [
             RoutineStep(summary: "Open a new note", action: .click),
             RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))
