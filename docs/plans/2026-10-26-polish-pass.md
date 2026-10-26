@@ -16,7 +16,7 @@ Owner feedback, 2026-10-26:
 
 Owner direction (2026-10-26): never ship a bad voice. Make the brain, voice and hearing one onboarding stage, personalized, without decision fatigue.
 
-**Shape.** The current Brain beat becomes "Your setup". It asks one question at most: "Keep everything on this Mac, or use the best quality?" The default is the best quality, unless the user leaned private earlier. Perry then shows one recommended setup:
+**Shape.** The current Brain beat becomes "Your setup". It asks no blanket local-or-cloud question; each part is chosen on its own. The advisor proposes a mix, such as hearing on this Mac, a cloud brain and a cloud voice. Perry shows that mix as one recommended setup:
 
 | Row | Shows | Example |
 |---|---|---|
@@ -25,7 +25,16 @@ Owner direction (2026-10-26): never ship a bad voice. Make the brain, voice and 
 | Hearing | engine + why | "On this Mac · fast and private" |
 | Privacy | only when the brain is cloud | "Hide personal details · on" |
 
-There is one primary button, "Looks good". Each row has "Change", which opens its alternatives with the trade-off in a single line. The user makes no decision unless they want to.
+There is one primary button, "Looks good". Each row has its own local/cloud switch and a "Change" link with the trade-off in one line. Any mix is valid, for example local hearing with everything else in the cloud. A small "Keep everything on this Mac" link sets every row to local at once.
+
+**Getting a voice key without friction.** Typing "add an API key" is a dead end for most people. The flow:
+1. The voice row says "Make Perry sound human: get a free ElevenLabs key (1 minute)".
+2. Perry opens the ElevenLabs API-keys page in the user's default browser and docks a small card beside it: "Sign in, press Create key, then Copy."
+3. Perry watches the clipboard for a key-shaped string. It checks the key with one cheap API call, saves it in the Keychain and clears the clipboard.
+4. Perry plays the user's name in the new voice.
+- The same flow covers OpenAI and Cartesia.
+- Pasting a key by hand still works.
+- A fully automatic "Do it for me" version through `cua-driver` is deferred. It would break whenever the site changes, and it would read a secret off a web page. Revisit after the guided flow ships.
 
 **Deterministic picker.** `SetupAdvisor.recommend(Facts) -> Setup` is a pure function, unit-tested over a table of machines. Its inputs:
 - chip and unified memory;
@@ -141,15 +150,21 @@ The same advisor runs again when facts change: a key is added, a voice is downlo
 
 The current step has three typed questions (work, apps, learning goal) and one cloud reaction per answer.
 
-- **Voice first, typing allowed.** Perry asks; the user can hold ⌃⌥ or type.
-- **Questions, in order:**
+- **Fixed openers.** Every user gets these:
   1. "What should I call you?" Then: "How do you say it?" Perry plays back its attempt, and the user can say it again or fix the spelling. This saves to the `PronunciationStore`.
   2. "What do you do most days?"
-  3. "What should I take off your plate first?"
-- **Apps come from the Mac**, not from a question: running and recently used apps, confirmed as a row of icons the user can deselect.
-- **Style preference** as one tap: "Short and direct" or "More detail". This feeds the prompt.
-- Reactions and extraction run on Apple's on-device model where available, so nothing leaves the Mac during onboarding.
-- **The end card is "What I know about you"**, editable, with name, pronunciation (play), work, apps, focus and style. The same card lives in Settings > You.
+- **Adaptive middle.** Perry keeps a set of profile slots, each with a confidence score: role, current focus, tools, the people they work with, preferred style and schedule. After each answer, an on-device policy decides the next move:
+  - **Dig** when the answer was rich, vague or opened a new thread. Example: "You mentioned investors. Are you raising right now?"
+  - **Move on** when the slot is filled.
+  - **Back off** after short or one-word answers, "skip", a long pause, or about 90 seconds in total. Never more than six questions.
+- **Apps come from the Mac.** Perry reads the running and recently used apps and shows them as a row of icons the user can deselect.
+- **Style** is one tap: "Short and direct" or "More detail". The answer feeds the prompt.
+- **Import from ChatGPT or Claude.** The screen says "Already told ChatGPT or Claude about yourself? Bring it over." Perry shows one prompt to copy: "Tell me everything you remember about me, as a list." The user pastes the answer back.
+  - The on-device model turns it into profile facts. The user sees the facts as a checklist and keeps what they want.
+  - The import also lives in Settings > You.
+- **Learning after onboarding.** When a task reveals something new ("your manager is Sam"), Perry asks once: "Want me to remember that?" At most one such question a day. A "Stop asking" switch lives in Settings > You.
+- **Privacy.** Reactions and extraction run on Apple's on-device model where available, so nothing leaves the Mac during this step.
+- **End card.** The step ends on an editable "What I know about you" card: name, pronunciation (play), work, apps, focus and style. The same card lives in Settings > You.
 
 ## 7. Native finish
 
