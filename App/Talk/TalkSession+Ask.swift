@@ -51,7 +51,7 @@ extension TalkSession {
             output?.guideShowOverlay()
             startAskTurn(question: question, askID: askID)
         case .guiding, .executing, .reporting, .failed, .talking:
-            output?.guideSetStatus("Finish or dismiss the current session before asking.")
+            output?.guideSetStatus("Finish or dismiss what I’m doing before you ask.")
         }
     }
 

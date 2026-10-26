@@ -325,29 +325,29 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "Perry’s screen helper couldn’t start. Open Settings, then Models, to repair it."
+            return "Screen control couldn’t start. Open Settings > Brain to fix it."
         case .processExited:
-            return "Perry’s screen helper stopped before it finished. Try again."
+            return "Screen control stopped before it finished. Try again."
         case .protocolFailure(let detail):
-            return "Perry’s screen helper sent an answer Perry couldn’t read: \(detail)"
+            return "Screen control sent an answer I couldn’t read. Try again."
         case .toolRejected(let detail):
-            return detail.isEmpty ? "Perry’s screen helper refused that action." : detail
+            return detail.isEmpty ? "Screen control refused that action." : detail
         case .noTargetWindow:
-            return "Perry couldn’t tell which window to use. Click the window, then try again."
+            return "I couldn’t tell which window to use. Click the window, then try again."
         case .noScreenshot:
-            return "Perry couldn’t capture that window. Check that Screen Recording is on for Perry."
+            return "I couldn’t capture that window. Check that Screen Recording is on for Perry."
         case .targetNotFound:
-            return "Perry couldn’t find that control in the window anymore."
+            return "I couldn’t find that control in the window anymore."
         case .targetSessionMismatch:
-            return "That control belongs to an older look at the screen. Perry needs to look again."
+            return "That control is from an earlier look at the screen. I need to look again."
         case .protectedTarget:
-            return "Perry refused to inspect or operate a sensitive window."
+            return "I won’t look at or use a window that holds sensitive information."
         case .unsupportedAction:
-            return "Perry can’t do that action in this window."
+            return "I can’t do that in this window."
         case .terminationUnconfirmed:
-            return "Perry couldn’t confirm that its screen helper stopped."
+            return "I couldn’t confirm that screen control stopped."
         case .targetMismatch:
-            return "The target window changed since the plan was made, so Perry stopped instead of acting on the wrong window."
+            return "The window changed since I made the plan, so I stopped instead of acting on the wrong window."
         }
     }
 

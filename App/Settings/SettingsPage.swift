@@ -312,10 +312,10 @@ extension View {
 
     func settingsErrorDialog(_ error: Binding<String?>) -> some View {
         notchDialog(
-            "Perry could not save that setting",
+            "Perry couldn’t save that setting",
             item: error,
-            message: error.wrappedValue ?? "Unknown settings error",
-            cancelTitle: "OK"
+            message: error.wrappedValue ?? "Something went wrong.",
+            cancelTitle: "Close"
         ) { _ in [] }
     }
 }

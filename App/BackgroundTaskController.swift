@@ -243,7 +243,7 @@ final class BackgroundTaskController: ObservableObject {
 
     func queue(goal: String) {
         guard !hooks.isErasureInProgress() else {
-            hooks.setStatus("Perry is finishing a data erase.")
+            hooks.setStatus("I’m finishing a data erase.")
             return
         }
         guard controlScope.acceptsControls else { return }

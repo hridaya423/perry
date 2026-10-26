@@ -1199,7 +1199,7 @@ enum OAuthCredentialStoreError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .keychainUnavailable(let account):
-            return "Perry could not read the saved credential for \(account). Check Keychain access and try again."
+            return "I couldn’t read the saved sign-in for \(account). Check Keychain access and try again."
         case .malformedCredential(let account):
             return "The saved credential for \(account) is damaged. Disconnect and reconnect this integration."
         }

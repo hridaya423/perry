@@ -142,7 +142,7 @@ struct RuntimeCLIDefinition {
         let ready: Bool
         switch authentication {
         case .configured:
-            message = "\(label) has configured credentials that Perry could not verify."
+            message = "\(label) has sign-in details I couldn’t confirm."
             ready = false
         case .authenticated:
             message = usesProviderAuthentication
@@ -156,7 +156,7 @@ struct RuntimeCLIDefinition {
             message = "\(label) is verified, but its \(signIn) has expired."
             ready = false
         case .unknown:
-            message = "\(label) is verified, but Perry could not confirm \(signIn)."
+            message = "\(label) is confirmed, but I couldn’t confirm \(signIn)."
             ready = false
         case .notRequired:
             message = "\(label) is verified."

@@ -46,7 +46,7 @@ struct PrivacySettingsPage: View {
                     Button("Export…") { controller.exportActivityLog() }
                 }
                 SettingsDivider()
-                SettingsRow(title: "Diagnostics", detail: "Setup and permission details only, never your requests, files, transcripts or memories.") {
+                SettingsRow(title: "Diagnostics", detail: "Setup and permission details only, never your messages, files, transcripts or memories.") {
                     Button("Export…") { controller.exportDiagnostics() }
                 }
                 SettingsDivider()

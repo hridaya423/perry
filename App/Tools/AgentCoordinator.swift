@@ -104,7 +104,7 @@ final class AgentCoordinator: ObservableObject {
         sink: @escaping @MainActor (AgentLoopEvent) -> Void
     ) -> Task<Void, Never>? {
         guard acceptsRuns else {
-            sink(.finished(.failed("Perry is finishing maintenance. Try again when it’s ready.")))
+            sink(.finished(.failed("I’m finishing up. Try again in a moment.")))
             return nil
         }
         guard runningThreads.insert(threadID).inserted else {
@@ -205,11 +205,11 @@ final class AgentCoordinator: ObservableObject {
         do {
             thread = try await threads.beginTurn(to: threadID, question: goal, perryID: perryID, runID: runID, waitingInputID: waitingInputID)
         } catch {
-            sink(.finished(.failed("Couldn’t save your request. No task was started. \(error.localizedDescription)")))
+            sink(.finished(.failed("Couldn’t save your message. I didn’t start a task.")))
             return
         }
         guard let pending = thread.pendingTurn else {
-            sink(.finished(.failed("The saved request is missing its task identity.")))
+            sink(.finished(.failed("I couldn’t find that saved message. Try again.")))
             return
         }
 

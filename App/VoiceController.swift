@@ -220,7 +220,7 @@ final class VoiceController: NSObject, ObservableObject {
             do {
                 apiKey = try readRealtimeVoiceAPIKey()
             } catch {
-                hooks.setStatus("Perry could not read the realtime voice credential from Keychain; continuing with on-device dictation.")
+                hooks.setStatus("I couldn’t read the live voice sign-in from the Keychain, so I’ll use dictation on this Mac.")
                 beginLocalDictation()
                 return
             }
@@ -293,7 +293,7 @@ final class VoiceController: NSObject, ObservableObject {
             realtimeVoiceSession.finishInputTranscribing()
             overlayState.voiceState = .processing
             overlayState.buddyState = .thinking
-            hooks.setStatus("Finalizing your request…")
+            hooks.setStatus("Working on it…")
             return
         }
         dictation.finish()
@@ -360,14 +360,14 @@ final class VoiceController: NSObject, ObservableObject {
             realtimeTranscriptBuffer = ""
             if message == RealtimeVoiceError.emptyInput.localizedDescription {
                 handleDictationFailure()
-                hooks.setStatus("No audio was recorded. Hold the shortcut to try again, or type your request.")
+                hooks.setStatus("I didn’t hear anything. Hold the shortcut to try again, or type your message.")
             } else if voiceInvocation.inputOpen {
                 hooks.setStatus("Realtime voice failed; continuing with on-device dictation.")
                 beginLocalDictation()
             } else {
                 voiceInvocation.cancel()
                 handleDictationFailure()
-                hooks.setStatus("Realtime voice failed after recording ended. Hold the shortcut to try again, or type your request.")
+                hooks.setStatus("Live voice stopped after you finished talking. Hold the shortcut to try again, or type your message.")
             }
             if !message.isEmpty {
                 hooks.setTranscriptPreview(message)
@@ -381,7 +381,7 @@ final class VoiceController: NSObject, ObservableObject {
             hooks.setStatus(text)
         case .responseStarted:
             overlayState.voiceState = .responding
-            hooks.setStatus("Perry is replying…")
+            hooks.setStatus("Replying…")
         case .responseFinished:
             overlayState.voiceState = .idle
             overlayState.buddyState = .idle
@@ -435,7 +435,7 @@ final class VoiceController: NSObject, ObservableObject {
         voiceInvocation.cancel()
         overlayState.voiceState = .idle
         overlayState.buddyState = .blocked
-        hooks.setStatus(error?.localizedDescription ?? "Voice input failed; you can type the request.")
+        hooks.setStatus(error?.localizedDescription ?? "I couldn’t hear you. Type your message instead.")
     }
 
     static func bluetoothPrerollDelay(isBluetooth: Bool) -> TimeInterval {

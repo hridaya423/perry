@@ -218,7 +218,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             try operation()
             return true
         } catch {
-            sessionStatus = "Perry stopped because its session state changed unexpectedly."
+            sessionStatus = "I stopped because something changed unexpectedly. Try again."
             return false
         }
     }
@@ -374,7 +374,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
                 try FileManager.default.createDirectory(at: codexRuntimeHome, withIntermediateDirectories: true)
             }
         } catch {
-            sessionStatus = "Perry could not prepare its local data directory."
+            sessionStatus = "I couldn’t prepare my data folder."
         }
     }
 
@@ -389,7 +389,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             }
         } catch {
             hotkey = nil
-            sessionStatus = "Perry could not register \(gesture.keys). Choose another wake shortcut in Settings."
+            sessionStatus = "I couldn’t set \(gesture.keys). Choose another shortcut in Settings > Shortcuts."
         }
     }
 

@@ -120,7 +120,7 @@ struct ModelProfilesSection: View {
             Button(loadingModels ? "Loading list…" : "Load list") { loadModels() }
                 .disabled(loadingModels || endpointURL == nil)
             if !availableModels.isEmpty {
-                Text("\(availableModels.count) models").settingNote()
+                Text("\(availableModels.count) brains").settingNote()
             }
         }
         if availableModels.isEmpty {

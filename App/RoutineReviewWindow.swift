@@ -109,7 +109,7 @@ struct RoutineReviewView: View {
             }
             .frame(maxHeight: 104)
             .fixedSize(horizontal: false, vertical: true)
-            Text("Check each step before you save. Perry asks for typed text each time it runs unless you turn that off for a step.")
+            Text("Check each step before you save. I ask for typed text each time it runs unless you turn that off for a step.")
                 .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {

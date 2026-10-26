@@ -16,7 +16,7 @@ final class CommandRouterTests: XCTestCase {
     func testRoutesTodaysCommands() {
         let moved = "That task already moved on. Hold the shortcut again to steer the current one."
         let busy = "A task started while you were speaking. Hold the shortcut again to steer it."
-        let locked = "Perry can’t take direction right now. Use the task controls, or say “stop”."
+        let locked = "I can’t take direction right now. Use the task controls, or say “stop”."
         expect(nil, .idle, nil, .showPanel)
         expect("", .idle, nil, .showPanel)
         expect("what can you help me with", .idle, nil, .ask("what can you help me with"))

@@ -49,7 +49,7 @@ extension VoiceController {
         ) {
             guard let frontmostApplication else {
                 dictationSpeechEndedAt = nil
-                deliverVoiceReply("I couldn't identify the target app, so I stopped.")
+                deliverVoiceReply("I couldn’t tell which app to type in, so I stopped.")
                 return
             }
             insertTextIntoFrontmostApp(insertion, target: frontmostApplication)

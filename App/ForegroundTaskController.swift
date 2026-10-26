@@ -192,7 +192,7 @@ final class ForegroundTaskController: ObservableObject {
             try operation()
             return true
         } catch {
-            hooks.setStatus("Perry stopped because its session state changed unexpectedly.")
+            hooks.setStatus("I stopped because something changed unexpectedly. Try again.")
             return false
         }
     }
@@ -272,8 +272,8 @@ final class ForegroundTaskController: ObservableObject {
             }
         } catch {
             guard !(error is CancellationError), taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus("Perry could not complete the task safely: \(error.localizedDescription)")
-            voice.speak("Perry could not complete the task safely: \(error.localizedDescription)")
+            hooks.setStatus("I couldn’t finish the task. Try again.")
+            voice.speak("I couldn’t finish the task. Try again.")
             return nil
         }
     }
@@ -359,7 +359,7 @@ final class ForegroundTaskController: ObservableObject {
             if let replay = error as? RoutineReplayError, let step = RoutineRunCopy.step(of: replay) {
                 message = RoutineRunCopy.stopped(routine: routine, step: step, error: replay, reason: replay.localizedDescription)
             } else {
-                message = "Perry could not run the routine: \(error.localizedDescription)"
+                message = "I couldn’t run the routine. Try again."
             }
             hooks.setStatus(message)
             voice.speak(message)
@@ -447,7 +447,7 @@ final class ForegroundTaskController: ObservableObject {
         overlayState.agentTaskBubbleText = "Working on \(goal)…"
         showActivityStrip()
         guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
-        hooks.setStatus("Perry is working.")
+        hooks.setStatus("Working…")
 
         let threadID = conversationID ?? UUID()
         activeAgentThreadID = threadID
@@ -622,7 +622,7 @@ final class ForegroundTaskController: ObservableObject {
             handoffGoal = nil
             activityStripState.handedToHuman = false
             guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
-            hooks.setStatus("Continuing. Perry will check what you did.")
+            hooks.setStatus("Continuing. I’ll check what you did.")
             agentCoordinator?.resume(threadID: threadID)
             agentCoordinator?.steer(
                 "The user took over and did the current step themselves. Verify the result on screen, then continue the goal.",
@@ -634,7 +634,7 @@ final class ForegroundTaskController: ObservableObject {
         handoffToHuman = false
         handoffGoal = nil
         activityStripState.handedToHuman = false
-        hooks.setStatus("Replanning the remaining work from the current screen.")
+        hooks.setStatus("Planning the rest from the current screen.")
         Task { @MainActor [weak self] in
             guard let self else { return }
             await activeSupervisor.cancel()
@@ -642,7 +642,7 @@ final class ForegroundTaskController: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             guard self.activeSupervisor == nil else {
-                hooks.setStatus("Perry is still settling the paused task. Try Continue again in a moment.")
+                hooks.setStatus("I’m still stopping the paused task. Try Resume again in a moment.")
                 return
             }
             self.start(goal: goal)
@@ -769,9 +769,9 @@ final class ForegroundTaskController: ObservableObject {
         let completion = finalization.completion
         let summary: String
         if finalization.issues.contains(.transcriptPersistence) {
-            summary = "\(completion.summary) Perry could not save this task to history."
+            summary = "\(completion.summary) I couldn’t save this task to History."
         } else if finalization.issues.contains(.memoryPersistence) {
-            summary = "\(completion.summary) Perry could not update local memory."
+            summary = "\(completion.summary) I couldn’t update my notes."
         } else {
             summary = completion.summary
         }

@@ -72,7 +72,7 @@ final class MaintenanceCoordinator {
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
                 host.backgroundTasks.reopenControls()
-                host.sessionStatus = "Perry could not stop its computer-use workers safely."
+                host.sessionStatus = "I couldn’t stop my work safely."
                 sender.reply(toApplicationShouldTerminate: false)
             }
         }
@@ -137,11 +137,11 @@ final class MaintenanceCoordinator {
     private func conflictMessage() -> String {
         switch owner {
         case .termination:
-            return "Perry is already preparing to quit."
+            return "I’m already getting ready to quit."
         case .erasure:
-            return "Perry is finishing a data erase."
+            return "I’m finishing a data erase."
         case nil:
-            return "Perry is already stopping its workers."
+            return "I’m already stopping my work."
         }
     }
 
@@ -196,7 +196,7 @@ final class MaintenanceCoordinator {
             }
             host.voice.speak(report.summary)
         } catch {
-            host.sessionStatus = "Perry could not stop its computer-use workers before erasing data."
+            host.sessionStatus = "I couldn’t stop my work before erasing data."
         }
     }
 

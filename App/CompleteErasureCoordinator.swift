@@ -183,7 +183,7 @@ struct PerryErasureReport: Equatable, Sendable {
             return "Perry data erasure is incomplete: \(failures.count) operation\(failures.count == 1 ? "" : "s") failed."
         }
         if !ownedDataFailures.isEmpty {
-            return "Perry data erasure is incomplete: Perry could not verify all owned storage."
+            return "I couldn’t confirm that I erased everything. Try again."
         }
         if !residualOwnedPaths.isEmpty {
             return "Perry data erasure is incomplete: \(residualOwnedPaths.count) owned storage path\(residualOwnedPaths.count == 1 ? "" : "s") remain."

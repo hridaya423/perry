@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import PerryCore
 import PerryGuide
 import PerryOverlay
 import PerryRuntimes
@@ -57,6 +58,17 @@ final class IntentCardWindow {
         completion(decision)
         previousFrontmostApplication?.activate(options: [.activateAllWindows])
         previousFrontmostApplication = nil
+    }
+}
+
+extension TrustTier {
+    var riskLabel: String {
+        switch self {
+        case .green: "Reads only"
+        case .yellow: "Small change"
+        case .orange: "Bigger change"
+        case .red: "High stakes"
+        }
     }
 }
 
@@ -229,14 +241,7 @@ struct IntentCardView: View {
         return label.prefix(1).uppercased() + label.dropFirst()
     }
 
-    private var tierLabel: String {
-        switch card.tier {
-        case .green: "Reads only"
-        case .yellow: "Small change"
-        case .orange: "Bigger change"
-        case .red: "High stakes"
-        }
-    }
+    private var tierLabel: String { card.tier.riskLabel }
 
     private var colorForTier: Color {
         switch card.tier {

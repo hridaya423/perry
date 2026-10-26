@@ -238,7 +238,7 @@ private struct BackgroundTaskRow: View {
                 } else if !undoDescriptions.isEmpty {
                     Button("Undo…") { showUndoConfirmation = true }
                         .controlSize(.small)
-                        .accessibilityLabel("Undo Perry's changes for \(record.goal)")
+                        .accessibilityLabel("Undo my changes for \(record.goal)")
                 }
                 Button("Delete…", role: .destructive) { showDeleteConfirmation = true }
                     .controlSize(.small)

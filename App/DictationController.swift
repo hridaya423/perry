@@ -723,18 +723,18 @@ final class MicrophoneLevelMeter: ObservableObject {
         case .notDetermined where await AVCaptureDevice.requestAccess(for: .audio):
             break
         default:
-            problem = "Perry can’t hear the microphone. Turn on Microphone in Privacy & Safety."
+            problem = "I can’t hear the microphone. Turn on Microphone in Privacy."
             return
         }
         let engine = AVAudioEngine()
         let input = engine.inputNode
         if let deviceID, !MicrophoneDeviceSelector.select(on: input, deviceID: AudioDeviceID(deviceID)) {
-            problem = "That microphone is unavailable; Perry will use the built-in fallback."
+            problem = "That microphone isn’t available, so I’ll use the built-in one."
             return
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
-            problem = "That microphone is unavailable; Perry will use the built-in fallback."
+            problem = "That microphone isn’t available, so I’ll use the built-in one."
             return
         }
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
@@ -745,7 +745,7 @@ final class MicrophoneLevelMeter: ObservableObject {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            problem = "Perry couldn’t open that microphone."
+            problem = "I couldn’t open that microphone."
             return
         }
         self.engine = engine

@@ -255,14 +255,14 @@ struct AgentActivityStripView: View {
                                 .font(PerryTheme.Scale.rowTitle)
                                 .lineLimit(state.isExpanded ? nil : 1)
                             if let tier = state.tier {
-                                Text(tier.rawValue.capitalized)
+                                Text(tier.riskLabel)
                                     .font(PerryTheme.Scale.section)
                                     .foregroundStyle(color(for: tier))
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1)
                                     .background(color(for: tier).opacity(0.15), in: Capsule())
-                                    .accessibilityLabel("Trust tier")
-                                    .accessibilityValue(tier.rawValue)
+                                    .accessibilityLabel("Risk")
+                                    .accessibilityValue(tier.riskLabel)
                             }
                             if let startedAt = state.startedAt {
                                 TimelineView(.periodic(from: startedAt, by: 1)) { context in

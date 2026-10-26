@@ -165,7 +165,7 @@ final class TalkSession: ObservableObject {
                 try sessionController.startTalk(talk, attemptID: attemptID)
             case .asking, .guiding, .executing:
                 output?.guidePlay(.fail)
-                output?.guideReportFailure("Perry is still on your last request. Finish or stop it, then hold ⌃⌥ again.", recovery: nil)
+                output?.guideReportFailure("I’m still on your last task. Finish or stop it, then hold ⌃⌥ again.", recovery: nil)
                 return
             }
         } catch {

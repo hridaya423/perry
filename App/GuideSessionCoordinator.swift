@@ -332,7 +332,7 @@ final class GuideSessionCoordinator {
         guard guideAdmissionOpen else { return nil }
         let attemptID = sessionController.currentOrFreshAttemptID
         guard beginInvokingIfNeeded(attemptID: attemptID) else {
-            output?.guideSetStatus("Finish or stop the current session first.")
+            output?.guideSetStatus("Finish or stop what I’m doing first.")
             return nil
         }
         guard let scope = startGuideSession(goal: goal, full: full, threadID: threadID, targetHint: targetHint, attemptID: attemptID, waitingInput: waitingInput),

@@ -575,7 +575,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
 
         let reply = controller.applicationShouldTerminate(NSApplication.shared)
         XCTAssertEqual(reply, .terminateLater)
-        XCTAssertEqual(controller.sessionStatus, "Perry is finishing a data erase.")
+        XCTAssertEqual(controller.sessionStatus, "I’m finishing a data erase.")
         XCTAssertFalse(controller.backgroundTasks.acceptsControls)
 
         await gate.release()

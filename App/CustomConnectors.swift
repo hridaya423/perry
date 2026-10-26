@@ -107,7 +107,7 @@ final class CustomConnectors: ObservableObject {
             do {
                 try keychain.save(value, account: connector.id.uuidString)
             } catch {
-                return .failed("Perry couldn’t save the key to your keychain.")
+                return .failed("I couldn’t save the key to your Keychain.")
             }
         } else {
             connector.secret = nil
@@ -164,7 +164,7 @@ final class CustomConnectors: ObservableObject {
         do {
             try keychain.save(Self.encode(credential), account: connector.id.uuidString)
         } catch {
-            return fail(connector.id, "Perry couldn’t save the sign-in to your keychain.")
+            return fail(connector.id, "I couldn’t save the sign-in to your Keychain.")
         }
         connectors[index].secret = .oauth
         return await connect(connectors[index])

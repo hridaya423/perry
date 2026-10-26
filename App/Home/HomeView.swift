@@ -250,7 +250,7 @@ struct RoutinesView: View {
             .notchDialog(
                 "Delete this routine?",
                 item: $deleting,
-                message: "Perry removes the saved routine from this Mac."
+                message: "I’ll delete the saved routine from this Mac."
             ) { routine in
                 [NotchDialog.Action("Delete routine", role: .destructive) {
                     model.onRoutineRemove?(routine)

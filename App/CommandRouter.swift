@@ -52,7 +52,7 @@ final class CommandRouter {
             }
             if case .dismiss = intent { return .dismiss }
             guard execution.lifecycle == .running || execution.lifecycle == .paused else {
-                return .status("Perry can’t take direction right now. Use the task controls, or say “stop”.")
+                return .status("I can’t take direction right now. Use the task controls, or say “stop”.")
             }
             return .steer(text)
         }

@@ -353,7 +353,7 @@ final class HomeController {
                 } catch is CancellationError {
                     return .interrupted
                 } catch {
-                    return .failed("Couldn’t save your request. Open Requests not saved to recover it. \(error.localizedDescription)")
+                    return .failed("Couldn’t save your message. Open Messages not saved to recover it.")
                 }
             }
             if finish == .interrupted {

@@ -62,7 +62,7 @@ struct CompactConversationView: View {
             if presentation.current != nil, !presentation.showsInteraction, !peeking {
                 HStack {
                     Spacer()
-                    Button("Return to active task", systemImage: "arrow.up.right") {
+                    Button("Back to task", systemImage: "arrow.up.right") {
                         presentation.showsInteraction = true
                         controller.showPanel()
                     }.buttonStyle(.borderless)

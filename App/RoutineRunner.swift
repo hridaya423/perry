@@ -154,7 +154,7 @@ final class RoutineRunner {
             initialWarnings: []
         )
         guard links.beginExecution(execution, attemptID) else { return .notStarted }
-        hooks.setStatus("Perry is preparing a safe sandbox with \(sandboxLabel).")
+        hooks.setStatus("Getting ready with \(sandboxLabel).")
         hooks.setTranscriptPreview(goal)
         hooks.stopSpatialMonitoring()
         hooks.stopGuideObservation()
@@ -390,7 +390,7 @@ final class RoutineRunner {
             guard links.transition({ try sessionController.setPlannedStepCount(steps) }) else { return }
         case .started:
             guard links.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
-            hooks.setStatus("Perry is working in a private sandbox.")
+            hooks.setStatus("Working…")
         case .paused:
             guard links.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
             hooks.setStatus("Paused before the next step.")
@@ -408,7 +408,7 @@ final class RoutineRunner {
                 )
             }) else { return }
             overlayState.buddyState = .awaitingApproval
-            hooks.setStatus("Perry is waiting for your approval.")
+            hooks.setStatus("Waiting for your OK.")
             if rehearsalContext != nil {
                 if rehearsalContext!.seenPlanRequest {
                     repaintRehearsalMarks()

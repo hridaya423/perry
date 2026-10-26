@@ -430,7 +430,7 @@ final class BrainController: ObservableObject {
                 case .textDelta(let delta):
                     text += delta
                     guard text.utf8.count <= 65_536 else {
-                        throw ModelProviderError(kind: .malformed, provider: selected.id, message: "The Guide response was too large. Try a more specific request.")
+                        throw ModelProviderError(kind: .malformed, provider: selected.id, message: "The guide answer was too long. Try a more specific question.")
                     }
                 case .done(.endTurn): completed = true
                 case .done, .toolCall:
@@ -628,7 +628,7 @@ final class BrainController: ObservableObject {
                 var firstDelta: Int?
                 for try await event in decision.provider.stream(ModelRequest(
                     system: "Answer in one short sentence.",
-                    messages: [.user([.text("Say hello from Perry's brain.")])],
+                    messages: [.user([.text("Say hello from Perry’s brain.")])],
                     tier: .fast
                 )) {
                     if case .textDelta(let delta) = event {

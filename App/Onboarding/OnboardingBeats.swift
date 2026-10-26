@@ -155,7 +155,7 @@ private struct AccessBeat: View {
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Not now, I’ll type") { director.skip() }
+                    Button("I’ll type instead") { director.skip() }
                 }
             } trailing: {
                 EmptyView()
@@ -288,7 +288,7 @@ struct BrainBeat: View {
             } label: { OnboardingPrimaryLabel(title: "Connect ChatGPT") }
                 .keyboardShortcut(.defaultAction)
         } else {
-            Button(action: openSettings) { OnboardingPrimaryLabel(title: "Set up in Settings") }
+            Button(action: openSettings) { OnboardingPrimaryLabel(title: "Open Brain settings") }
                 .keyboardShortcut(.defaultAction)
         }
     }
