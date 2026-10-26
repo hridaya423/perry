@@ -242,6 +242,7 @@ public enum RecordedEvent: Equatable, Sendable {
     case typed(text: String, into: RoutineTarget?)
     case keyPress(String)
     case chord(key: String, modifiers: [String])
+    case unrecognizedClick
 }
 
 /// Turns recorded events into candidate routine steps. The only compression:
@@ -279,6 +280,8 @@ public enum RoutineInference {
                 steps.append(typeStep(text: merged, target: target))
                 index = next
                 continue
+            case .unrecognizedClick:
+                steps.append(RoutineStep(summary: "Click something I could not identify", action: .click, requiresHuman: true))
             case .keyPress(let key):
                 steps.append(RoutineStep(summary: "Press \(key)", action: .pressKey(key)))
             case .chord(let key, let modifiers):

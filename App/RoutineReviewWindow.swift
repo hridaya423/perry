@@ -5,7 +5,7 @@ import PerryOverlay
 import SwiftUI
 
 /// Floating Watch & Learn surface. While recording it shows the bounded
-/// event count and Stop; after the demonstration ends it morphs into the
+/// step count and Done; after the demonstration ends it morphs into the
 /// review — the inferred steps, a name field, and Save/Discard. Nothing is
 /// saved until the user reviews it.
 final class RoutineReviewState: ObservableObject {
@@ -59,6 +59,7 @@ struct RoutineReviewView: View {
     let onStopRecording: () -> Void
     let onDiscard: () -> Void
     let onSave: () -> Void
+    let onSaveAndTry: () -> Void
     let onRun: () -> Void
 
     var body: some View {
@@ -75,31 +76,30 @@ struct RoutineReviewView: View {
     }
 
     private var recordingContent: some View {
-        VStack(alignment: .leading, spacing: PerryTheme.Spacing.control) {
-            Text("Recording your demonstration")
-                .font(.headline)
-            Text("Show the steps, then stop to review them.")
-                .font(.callout)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-            Text("\(state.eventCount) steps captured")
-                .font(.subheadline)
-                .monospacedDigit()
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-            HStack {
-                Button("Cancel") { onDiscard() }
-                    .buttonStyle(InkButtonStyle(.secondary))
-                    .keyboardShortcut(.cancelAction)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 10, height: 10)
+                    .accessibilityHidden(true)
+                Text("\(state.eventCount) \(state.eventCount == 1 ? "step" : "steps")")
+                    .font(.headline)
+                    .monospacedDigit()
+                    .accessibilityLabel("Recording, \(state.eventCount) \(state.eventCount == 1 ? "step" : "steps")")
                 Spacer(minLength: 0)
-                Button("Stop & review") { onStopRecording() }
+                Button("Done") { onStopRecording() }
                     .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
             }
+            Text("Press Esc twice to cancel. Nothing is saved.")
+                .font(.caption)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
 
     private var reviewContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Review what I learned")
+            Text("Check what I learned.")
                 .font(.headline)
             TextField("Name this routine", text: $state.name)
                 .textFieldStyle(.roundedBorder)
@@ -107,7 +107,7 @@ struct RoutineReviewView: View {
                 stepList.fixedSize(horizontal: false, vertical: true)
                 ScrollView { stepList }
             }
-            .frame(maxHeight: 220)
+            .frame(maxHeight: 104)
             .fixedSize(horizontal: false, vertical: true)
             Text("Check each step before you save. Perry asks for typed text each time it runs unless you turn that off for a step.")
                 .font(.caption)
@@ -117,6 +117,9 @@ struct RoutineReviewView: View {
                     .buttonStyle(InkButtonStyle(.secondary))
                     .keyboardShortcut(.cancelAction)
                 Spacer(minLength: 0)
+                Button("Save & try it") { onSaveAndTry() }
+                    .buttonStyle(InkButtonStyle(.secondary))
+                    .disabled(state.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 Button("Save routine") { onSave() }
                     .buttonStyle(InkButtonStyle())
                     .keyboardShortcut(.defaultAction)
@@ -139,7 +142,11 @@ struct RoutineReviewView: View {
                         Text(step.summary)
                             .font(.callout)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        if case .typeText = step.action {
+                        if step.requiresHuman {
+                            Text("You do this one")
+                                .font(.caption)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        } else if case .typeText = step.action {
                             Toggle(isOn: Binding(
                                 get: { state.parameterizedSteps.contains(index) },
                                 set: { _ in state.toggleParameter(index) }
@@ -194,12 +201,13 @@ final class RoutineReviewWindow {
         onStopRecording: @escaping () -> Void,
         onDiscard: @escaping () -> Void,
         onSave: @escaping () -> Void,
+        onSaveAndTry: @escaping () -> Void,
         onRun: @escaping () -> Void,
         presentation: NotchPresentation? = nil
     ) {
         self.presentation = presentation ?? .shared
         content = RoutineReviewView(state: state, onStopRecording: onStopRecording,
-                                    onDiscard: onDiscard, onSave: onSave, onRun: onRun)
+                                    onDiscard: onDiscard, onSave: onSave, onSaveAndTry: onSaveAndTry, onRun: onRun)
     }
 
     func show() {

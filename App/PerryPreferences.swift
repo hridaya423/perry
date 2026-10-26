@@ -58,6 +58,8 @@ enum PerryPreferences {
     @Preference("perry.home.frame") static var homeFrame: String? = nil
     @Preference("perry.lastSeenVersion") static var lastSeenVersion: String? = nil
 
+    @Preference("perry.routine.offered") static var routineOffered = false
+
     // MARK: Invocation
 
     @Preference("perry.wakeWord.enabled") static var wakeWordEnabled = false

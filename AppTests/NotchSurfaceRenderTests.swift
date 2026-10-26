@@ -67,7 +67,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let routine = RoutineReviewState()
         routine.presentReview(steps: [RoutineStep(summary: "Open a new note", action: .click), RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))])
         routine.name = "Prepare meeting notes"
-        let routineView = RoutineReviewView(state: routine, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {})
+        let routineView = RoutineReviewView(state: routine, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {})
         presentation.present(id: id, priority: .routine, content: routineView, reveal: false)
         try await render(openNotch(controller), name: "routine-review", size: NSSize(width: 592, height: 492), wait: 0.8)
         let activity = AgentActivityStripState()
@@ -85,6 +85,71 @@ final class NotchSurfaceRenderTests: XCTestCase {
         activity.progress = nil
         activity.canRetry = true
         try await render(openNotch(controller), name: "task-failed", size: NSSize(width: 592, height: 492))
+    }
+
+    func testRenderRoutineOfferStates() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        var id = UUID()
+        defer {
+            presentation.remove(id)
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let size = NSSize(width: 592, height: 420)
+        presentation.present(id: id, priority: .routine, content: RoutineOfferView(onShowMe: {}, onNotNow: {}), reveal: false)
+        presentation.showsInteraction = true
+        try await render(openNotch(controller), name: "offer", size: size, wait: 0.8, folder: "first-impressions-7.11")
+
+        let recording = RoutineReviewState()
+        recording.eventCount = 4
+        let noop = {}
+        presentation.remove(id)
+        id = UUID()
+        presentation.present(id: id, priority: .routine, content: RoutineReviewView(state: recording, onStopRecording: noop, onDiscard: noop, onSave: noop, onSaveAndTry: noop, onRun: noop), reveal: false)
+        try await render(openNotch(controller), name: "recording", size: size, wait: 0.8, folder: "first-impressions-7.11")
+
+        let review = RoutineReviewState()
+        review.presentReview(steps: [
+            RoutineStep(summary: "Click File", target: RoutineTarget(role: "menuItem", label: "File"), action: .click),
+            RoutineStep(summary: "Click Export", target: RoutineTarget(role: "menuItem", label: "Export"), action: .click),
+            RoutineStep(summary: "Click something I could not identify", action: .click, requiresHuman: true),
+            RoutineStep(summary: "Type \"Weekly report\" into Name", target: RoutineTarget(role: "textField", label: "Name"), action: .typeText(.literal("Weekly report")))
+        ])
+        review.name = "Export the weekly report"
+        presentation.remove(id)
+        id = UUID()
+        presentation.present(id: id, priority: .routine, content: RoutineReviewView(state: review, onStopRecording: noop, onDiscard: noop, onSave: noop, onSaveAndTry: noop, onRun: noop), reveal: false)
+        try await render(openNotch(controller), name: "review", size: NSSize(width: 592, height: 420), wait: 1.6, folder: "first-impressions-7.11")
+
+        let longReview = RoutineReviewState()
+        longReview.presentReview(steps: (1...8).map { RoutineStep(summary: "Click Menu item \($0)", target: RoutineTarget(role: "menuItem", label: "Menu item \($0)"), action: .click) } + [RoutineStep(summary: "Click something I could not identify", action: .click, requiresHuman: true)])
+        longReview.name = "Export the weekly report"
+        presentation.remove(id)
+        id = UUID()
+        presentation.present(id: id, priority: .routine, content: RoutineReviewView(state: longReview, onStopRecording: noop, onDiscard: noop, onSave: noop, onSaveAndTry: noop, onRun: noop), reveal: false)
+        try await render(openNotch(controller), name: "review-long", size: NSSize(width: 592, height: 420), wait: 1.6, folder: "first-impressions-7.11")
+
+        let routine = try LearnedRoutine(name: "Export the weekly report", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click File", target: RoutineTarget(role: "menuItem", label: "File"), action: .click),
+            RoutineStep(summary: "Click Edit", target: RoutineTarget(role: "menuItem", label: "Edit"), action: .click),
+            RoutineStep(summary: "Click Export", target: RoutineTarget(role: "button", label: "Export"), action: .click)
+        ])
+        let activity = AgentActivityStripState()
+        activity.phase = .reporting
+        activity.title = "Task complete"
+        activity.detail = try XCTUnwrap(RoutineRunCopy.success(priorVerifiedRuns: 0))
+        let strip = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})
+        presentation.remove(id)
+        id = UUID()
+        presentation.present(id: id, priority: .activity, content: strip, reveal: false)
+        try await render(openNotch(controller), name: "rehearsal-success", size: size, wait: 0.8, folder: "first-impressions-7.11")
+        activity.title = "Task stopped"
+        activity.detail = RoutineRunCopy.stopped(routine: routine, step: 2, error: .targetNotFound(step: 2), reason: "") + " 2 of 3 actions finished and were verified; everything after that point was left untouched."
+        try await render(openNotch(controller), name: "rehearsal-failure", size: size, wait: 0.8, folder: "first-impressions-7.11")
     }
 
     func testRenderNotchWorkspaceDestinations() async throws {

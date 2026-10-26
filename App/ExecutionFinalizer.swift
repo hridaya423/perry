@@ -45,9 +45,10 @@ struct ExecutionFinalizer: Sendable {
     func finalize(
         execution: ExecutionSessionState,
         outcome: DoOutcome,
-        finishedAt: Date = Date()
+        finishedAt: Date = Date(),
+        headline: String? = nil
     ) async -> ExecutionFinalizationResult {
-        let completion = Self.completion(execution: execution, outcome: outcome, finishedAt: finishedAt)
+        let completion = Self.completion(execution: execution, outcome: outcome, finishedAt: finishedAt, headline: headline)
         if let beforeTranscriptAppend {
             await beforeTranscriptAppend()
         }
@@ -69,7 +70,8 @@ struct ExecutionFinalizer: Sendable {
     static func completion(
         execution: ExecutionSessionState,
         outcome: DoOutcome,
-        finishedAt: Date
+        finishedAt: Date,
+        headline: String? = nil
     ) -> ExecutionCompletion {
         let transcriptOutcome: TranscriptEntry.Outcome
         let summary: String
@@ -77,14 +79,14 @@ struct ExecutionFinalizer: Sendable {
         case .completed(let steps):
             transcriptOutcome = .completed
             summary = execution.warnings.isEmpty
-                ? "Finished \(steps) step\(steps == 1 ? "" : "s")."
+                ? headline ?? "Finished \(steps) step\(steps == 1 ? "" : "s")."
                 : "Finished, but Perry could not independently verify: \(execution.warnings.joined(separator: "; "))."
         case .blocked(let reason):
             transcriptOutcome = .stopped
             summary = recoverySummary(headline: "Stopped: \(reason).", execution: execution, pendingMayHaveApplied: false)
         case .failed(let step, let reason):
             transcriptOutcome = .failed
-            summary = recoverySummary(headline: "Stopped at \(step): \(reason).", execution: execution, pendingMayHaveApplied: true)
+            summary = recoverySummary(headline: headline ?? "Stopped at \(step): \(reason).", execution: execution, pendingMayHaveApplied: true)
         }
 
         let verified: Bool?

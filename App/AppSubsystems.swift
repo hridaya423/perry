@@ -429,7 +429,8 @@ final class AppSubsystems {
             stopSpatialMonitoring: { [weak app = app] in app?.spatial.stopMonitoring() },
             stopGuideObservation: { [weak app = app] in app?.guideCoordinator.stopClickObservation() },
             makeConfirmer: { [weak app = app] in app?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) },
-            routineVerified: { [weak app = app] id in app?.routineLibrary.recordVerifiedRun(id) }
+            routineVerified: { [weak app = app] id in app?.routineLibrary.recordVerifiedRun(id) },
+            guiTaskCompleted: { [weak app = app] in app?.routineOffer.taskFinished(usedGUI: true) }
         )
 #if DEBUG
         let controller = ForegroundTaskController(
@@ -620,11 +621,49 @@ final class AppSubsystems {
                 awaitingApproval: app?.lastAwaitingApprovalCount ?? 0
             )
         },
+        showRing: { [weak self] frame in self?.showRecognizedControlRing(frame) },
         providerCompleter: { [weak app = app] in
             guard let brain = app?.brain else { return nil }
             return { prompt in try await self.brain.completeText(prompt) }
         }
     )
+
+    private var routineOfferWindow: RoutineOfferWindow?
+
+    lazy var routineOffer = RoutineOffer(
+        isOnboarding: { [weak app = app] in app?.homeController.homeModel.onboarding != nil },
+        present: { [weak self] in self?.presentRoutineOffer() }
+    )
+
+    private func presentRoutineOffer() {
+        let window = RoutineOfferWindow(
+            onShowMe: { [weak self] in
+                self?.closeRoutineOffer()
+                Task { await self?.routineLibrary.beginRecording() }
+            },
+            onNotNow: { [weak self] in self?.closeRoutineOffer() }
+        )
+        routineOfferWindow = window
+        window.show()
+    }
+
+    private func closeRoutineOffer() {
+        routineOfferWindow?.close()
+        routineOfferWindow = nil
+    }
+
+    private func showRecognizedControlRing(_ frame: AXElementFrame) {
+        let rect = AXCoordinateConverter.appKitRect(
+            axX: frame.x, axY: frame.y, width: frame.width, height: frame.height,
+            primaryScreenMaxY: Double(NSScreen.screens.first?.frame.maxY ?? 0)
+        )
+        let ring = PerryGuidanceOverlay.ellipse(rect: rect.insetBy(dx: -6, dy: -6), accentHex: "#F59E0B", lineWidth: 3, fillOpacity: 0, duration: 1.2)
+        overlayState.visualGuidanceOverlays.append(ring)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            self?.overlayState.visualGuidanceOverlays.removeAll { $0.id == ring.id }
+        }
+    }
 
     lazy var backgroundTaskContextStore = BackgroundTaskContextStore(storageDirectory: self.storageDirectory)
 

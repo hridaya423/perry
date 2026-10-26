@@ -64,6 +64,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoiceObservation: AnyCancellable?
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
+    var routineOffer: RoutineOffer { subsystems.routineOffer }
     var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
     var backgroundTasks: BackgroundTaskController { subsystems.backgroundTasks }
     var completeErasure: CompleteErasureCoordinator { subsystems.completeErasure }

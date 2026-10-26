@@ -78,6 +78,25 @@ final class ExecutionFinalizerTests: XCTestCase {
         XCTAssertEqual(completion.notification.kind, .completed)
     }
 
+    func testAHeadlineReplacesTheSuccessAndFailureOpening() {
+        let success = ExecutionFinalizer.completion(
+            execution: execution(),
+            outcome: .completed(stepsRun: 2),
+            finishedAt: finishedAt,
+            headline: "Done. That worked. I will remember it."
+        )
+        XCTAssertEqual(success.summary, "Done. That worked. I will remember it.")
+
+        let failure = ExecutionFinalizer.completion(
+            execution: execution(),
+            outcome: .failed(stepSummary: "Click Export", reason: "gone"),
+            finishedAt: finishedAt,
+            headline: "I stopped at step 3. I could not find 'Export'."
+        )
+        XCTAssertTrue(failure.summary.hasPrefix("I stopped at step 3. I could not find 'Export'. "))
+        XCTAssertFalse(failure.summary.contains("Stopped at Click Export"))
+    }
+
     func testTranscriptCarriesTheSelectedProviderRoute() {
         var state = execution()
         state = ExecutionSessionState(

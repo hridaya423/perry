@@ -7,7 +7,7 @@ import PerryRuntimes
 
 enum RoutineOutcome {
     case notStarted
-    case finished(DoOutcome)
+    case finished(DoOutcome, headline: String?)
 }
 
 @MainActor
@@ -32,6 +32,8 @@ final class RoutineRunner {
 
     var activeSupervisor: DoSupervisor?
     private var rehearsalContext: RehearsalContext?
+    private var lastStartedStep: Int?
+    private var lastBindingError: RoutineReplayError?
 
     private struct RehearsalContext {
         var plan: ExecutionPlan
@@ -128,6 +130,8 @@ final class RoutineRunner {
         sandboxLabel: String
     ) async throws -> RoutineOutcome {
         let taskUUID = UUID(uuidString: plan.taskID.rawValue) ?? UUID()
+        lastStartedStep = nil
+        lastBindingError = nil
         try ExecutionPlanValidator.validate(
             plan,
             capabilities: ExecutionPlanValidator.Capabilities(
@@ -192,8 +196,13 @@ final class RoutineRunner {
             worker: worker,
             workspace: workspace,
             journal: runJournal,
-            bindComputerCommand: { action in
-                try RoutineReplay.binding(for: action, of: routine, in: try await observe())
+            bindComputerCommand: { [weak self] action in
+                do {
+                    return try RoutineReplay.binding(for: action, of: routine, in: try await observe())
+                } catch let error as RoutineReplayError {
+                    await self?.noteBindingFailure(error)
+                    throw error
+                }
             }
         )
         let outcome = await supervisor.run(
@@ -204,7 +213,27 @@ final class RoutineRunner {
         )
         clearRehearsalMarks()
         await runJournal?.settle()
-        return .finished(outcome)
+        return .finished(outcome, headline: headline(for: outcome, routine: routine))
+    }
+
+    private func noteBindingFailure(_ error: RoutineReplayError) {
+        lastBindingError = error
+    }
+
+    private func headline(for outcome: DoOutcome, routine: LearnedRoutine) -> String? {
+        switch outcome {
+        case .completed:
+            return RoutineRunCopy.success(priorVerifiedRuns: routine.verifiedRuns)
+        case .failed(_, let reason):
+            return RoutineRunCopy.stopped(
+                routine: routine,
+                step: lastBindingError.flatMap(RoutineRunCopy.step(of:)) ?? lastStartedStep,
+                error: lastBindingError,
+                reason: reason
+            )
+        case .blocked:
+            return nil
+        }
     }
 
     private func paintRehearsalMarks(
@@ -408,6 +437,7 @@ final class RoutineRunner {
               !execution.isFinalized else { return }
         switch event {
         case .actionStarted(let index, let action, let tier):
+            lastStartedStep = RoutineReplay.stepIndex(of: action)
             clearRehearsalMarks()
             guard links.transition({
                 try sessionController.recordExecutionStep(

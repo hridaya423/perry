@@ -396,6 +396,28 @@ final class LearnedRoutineTests: XCTestCase {
         )) { XCTAssertEqual($0 as? RoutineReplayError, .unsupportedShortcut(step: 0)) }
     }
 
+    func testAClickPerryCouldNotIdentifyBecomesAStepThePersonDoes() throws {
+        let routine = try RoutineInference.infer(
+            demonstration: RecordedDemonstration(bundleID: "com.example.app", events: [
+                .click(saveTarget),
+                .unrecognizedClick
+            ]),
+            name: "Mixed"
+        )
+        XCTAssertEqual(routine.steps.map(\.requiresHuman), [false, true])
+        XCTAssertEqual(routine.steps[1].summary, "Click something I could not identify")
+    }
+
+    func testStepIndexComesFromTheActionID() throws {
+        let routine = try LearnedRoutine(name: "Two", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click),
+            RoutineStep(summary: "Click Save again", target: saveTarget, action: .click)
+        ])
+        let observation = makeObservation(elements: [makeElement(stableID: "ax-save", role: .button, label: "Save")])
+        let plan = try RoutineReplay.plan(routine: routine, observation: observation, taskID: TaskID("t"))
+        XCTAssertEqual(plan.actions.map(RoutineReplay.stepIndex(of:)), [0, 1])
+    }
+
     func testReplayPausesOnManualSteps() throws {
         let routine = try LearnedRoutine(name: "Mix", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click),

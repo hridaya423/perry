@@ -34,13 +34,47 @@ final class DemonstrationRecorderTests: XCTestCase {
         XCTAssertEqual(demo?.bundleID, "com.example.app")
     }
 
-    func testClickOutsideEveryElementIsDropped() async {
+    func testClickOutsideEveryElementIsKeptAsAStepThePersonDoes() async {
         let element = makeElement(stableID: "ax-save", label: "Save", frame: AXElementFrame(x: 10, y: 10, width: 40, height: 20))
         let recorder = makeRecorder(elements: [element])
         recorder.start()
         await recorder.recordClick(axPoint: CGPointShim(x: 500, y: 500))
         let demo = await recorder.stop()
-        XCTAssertNil(demo)
+        XCTAssertEqual(demo?.events, [.unrecognizedClick])
+    }
+
+    func testRecognizedClickReportsTheControlFrameForTheRing() async {
+        let frame = AXElementFrame(x: 10, y: 10, width: 40, height: 20)
+        let element = makeElement(stableID: "ax-save", label: "Save", frame: frame)
+        var rings: [AXElementFrame] = []
+        let recorder = DemonstrationRecorder(
+            observe: { GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.app", windowTitle: "Main", elements: [element])) },
+            bundleIDProvider: { "com.example.app" },
+            onRecognizedControl: { rings.append($0) }
+        )
+        recorder.start()
+        await recorder.recordClick(axPoint: CGPointShim(x: 20, y: 15))
+        await recorder.recordClick(axPoint: CGPointShim(x: 500, y: 500))
+        _ = await recorder.stop()
+        XCTAssertEqual(rings, [frame])
+    }
+
+    func testEscapePressedTwiceInARowRequestsCancelButOnceDoesNot() async {
+        var cancels = 0
+        let recorder = DemonstrationRecorder(
+            observe: { GuideObservation(snapshot: AXSnapshot(appBundleID: "com.example.app", windowTitle: "Main", elements: [])) },
+            bundleIDProvider: { "com.example.app" },
+            onCancelRequested: { cancels += 1 }
+        )
+        recorder.start()
+        recorder.recordKey(characters: "\u{1B}", keyCode: 53, modifiers: [])
+        XCTAssertEqual(cancels, 0)
+        recorder.recordKey(characters: "a", keyCode: 0, modifiers: [])
+        recorder.recordKey(characters: "\u{1B}", keyCode: 53, modifiers: [])
+        XCTAssertEqual(cancels, 0)
+        recorder.recordKey(characters: "\u{1B}", keyCode: 53, modifiers: [])
+        XCTAssertEqual(cancels, 1)
+        _ = await recorder.stop()
     }
 
     func testTypedTextFollowsLastClickTargetAndSecureFieldsDropText() async {

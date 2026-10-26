@@ -14,6 +14,9 @@ final class RoutineLibraryController {
     private let speak: (String) -> Void
     private let runRoutine: (LearnedRoutine, [String: String]) -> Void
     private let onRecordingChanged: (Bool) -> Void
+    private let showRing: (AXElementFrame) -> Void
+    private let inputMonitoringGranted: () -> Bool
+    private let guideInputMonitoring: () async -> GrantMonitor.Status
 
     private var recorder: DemonstrationRecorder?
     private var pendingRoutine: LearnedRoutine?
@@ -29,6 +32,9 @@ final class RoutineLibraryController {
         speak: @escaping (String) -> Void,
         runRoutine: @escaping (LearnedRoutine, [String: String]) -> Void,
         onRecordingChanged: @escaping (Bool) -> Void = { _ in },
+        showRing: @escaping (AXElementFrame) -> Void = { _ in },
+        inputMonitoringGranted: @escaping () -> Bool = { PermissionCheck.granted(.inputMonitoring) },
+        guideInputMonitoring: @escaping () async -> GrantMonitor.Status = { await PermissionGuideCoordinator.guide(.inputMonitoring) },
         providerCompleter: @escaping @MainActor () -> (@Sendable (String) async throws -> String)? = { nil }
     ) {
         self.providerCompleter = providerCompleter
@@ -39,6 +45,9 @@ final class RoutineLibraryController {
         self.speak = speak
         self.runRoutine = runRoutine
         self.onRecordingChanged = onRecordingChanged
+        self.showRing = showRing
+        self.inputMonitoringGranted = inputMonitoringGranted
+        self.guideInputMonitoring = guideInputMonitoring
     }
 
     private let providerCompleter: @MainActor () -> (@Sendable (String) async throws -> String)?
@@ -100,8 +109,26 @@ final class RoutineLibraryController {
         if isRecording {
             Task { await stopRecordingForReview() }
         } else {
-            startRecording()
+            Task { await beginRecording() }
         }
+    }
+
+    func beginRecording() async {
+        guard !isRecording else { return }
+        if !inputMonitoringGranted() {
+            switch await guideInputMonitoring() {
+            case .granted:
+                break
+            case .needsRelaunch:
+                setStatus("Input Monitoring is on. Restart Perry, then start the recording again.")
+                speak("Input Monitoring is on. Restart Perry, then start the recording again.")
+                return
+            case .notGranted:
+                setStatus("I need Input Monitoring to see your typing, so I have not started recording.")
+                return
+            }
+        }
+        startRecording()
     }
 
     func stop() {
@@ -117,6 +144,13 @@ final class RoutineLibraryController {
             onEventCount: { [weak self] count in
                 self?.reviewState.eventCount = count
             },
+            onRecognizedControl: { [weak self] frame in
+                self?.showRing(frame)
+            },
+            onCancelRequested: { [weak self] in
+                self?.discardPendingReview()
+                self?.setStatus("Recording cancelled. Nothing was saved.")
+            },
             onLimitWarning: { [weak self] in
                 self?.setStatus("Recording stops in 30 seconds. Finish the step you’re on.")
                 self?.speak("Recording stops in 30 seconds.")
@@ -131,8 +165,8 @@ final class RoutineLibraryController {
         showReviewWindow()
         recorder.start()
         onRecordingChanged(true)
-        setStatus("Recording a demonstration. Show me the workflow, then choose Stop & review.")
-        speak("Recording. Show me the workflow, then stop and review.")
+        setStatus("Recording a demonstration. Show me the workflow, then choose Done.")
+        speak("Recording. Show me the workflow, then choose Done.")
     }
 
     private func stopRecordingForReview() async {
@@ -161,7 +195,7 @@ final class RoutineLibraryController {
         }
     }
 
-    private func savePendingRoutine() {
+    private func savePendingRoutine(thenRun: Bool = false) {
         guard var routine = pendingRoutine else { return }
         routine.name = reviewState.name
         for index in reviewState.parameterizedSteps {
@@ -174,22 +208,25 @@ final class RoutineLibraryController {
             routine.steps[index].summary = "Type text I'll give you into \(field)"
         }
         routine.provenance = .reviewed
+        var saved = false
         do {
             try store.save(routine)
+            saved = true
             setStatus("Saved routine \"\(routine.name)\". Run it from the menu.")
         } catch {
             setStatus("The routine could not be saved: \(error.localizedDescription)")
         }
         pendingRoutine = nil
         closeReview()
+        if saved, thenRun { run(routine) }
     }
 
     private func discardPendingReview() {
         pendingRoutine = nil
         pendingRun = nil
-        Task { _ = await recorder?.stop() }
-        if recorder != nil {
-            recorder = nil
+        if let recorder {
+            Task { _ = await recorder.stop() }
+            self.recorder = nil
             onRecordingChanged(false)
         }
         closeReview()
@@ -207,6 +244,7 @@ final class RoutineLibraryController {
                 onStopRecording: { [weak self] in Task { await self?.stopRecordingForReview() } },
                 onDiscard: { [weak self] in self?.discardPendingReview() },
                 onSave: { [weak self] in self?.savePendingRoutine() },
+                onSaveAndTry: { [weak self] in self?.savePendingRoutine(thenRun: true) },
                 onRun: { [weak self] in self?.runPendingRoutine() }
             )
         }

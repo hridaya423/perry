@@ -42,10 +42,10 @@ final class InteractivePanelTests: XCTestCase {
         parameters.beginFillParameters(routineName: "Prepare project notes", parameters: [("heading", "Project heading")])
         let surfaces: [(String, AnyView)] = [
             ("whats-new", AnyView(WhatsNewView(onDone: {}))),
-            ("routine-recording", AnyView(RoutineReviewView(state: recording, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {}))),
-            ("routine-review", AnyView(RoutineReviewView(state: review, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {}))),
-            ("routine-long-review", AnyView(RoutineReviewView(state: longReview, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {}))),
-            ("routine-parameters", AnyView(RoutineReviewView(state: parameters, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {}))),
+            ("routine-recording", AnyView(RoutineReviewView(state: recording, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}))),
+            ("routine-review", AnyView(RoutineReviewView(state: review, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}))),
+            ("routine-long-review", AnyView(RoutineReviewView(state: longReview, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}))),
+            ("routine-parameters", AnyView(RoutineReviewView(state: parameters, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}))),
             ("approval", AnyView(IntentCardView(card: card, onAnswer: { _ in }))),
             ("approval-step-through", AnyView(IntentCardView(card: card, allowsStepThrough: true, onAnswer: { _ in }))),
             ("guide", AnyView(GuideControlsView(state: guide, onDone: {}, onBack: {}, onSkip: {}, onRepoint: {}, onSelectMarker: { _ in }, onChooseInput: { _ in }, onTakeOver: {}, onStop: {}))),
@@ -95,7 +95,7 @@ final class InteractivePanelTests: XCTestCase {
         let presentation = NotchPresentation()
         let state = RoutineReviewState()
         state.presentReview(steps: [RoutineStep(summary: "Open a note", action: .click)])
-        let review = RoutineReviewWindow(state: state, onStopRecording: {}, onDiscard: {}, onSave: {}, onRun: {}, presentation: presentation)
+        let review = RoutineReviewWindow(state: state, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}, presentation: presentation)
         review.show()
         XCTAssertEqual(presentation.current?.priority, .routine)
         review.close()

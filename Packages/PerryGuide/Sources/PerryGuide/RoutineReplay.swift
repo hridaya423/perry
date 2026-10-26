@@ -138,14 +138,18 @@ public enum RoutineReplay {
         )
     }
 
+    public static func stepIndex(of action: ExecutableAction) -> Int? {
+        guard action.id.rawValue.hasPrefix(stepIDPrefix) else { return nil }
+        return Int(action.id.rawValue.dropFirst(stepIDPrefix.count))
+    }
+
     public static func binding(
         for action: ExecutableAction,
         of routine: LearnedRoutine,
         in observation: GuideObservation
     ) throws -> RoutineStepBinding? {
         guard case .computer(_, let command) = action.operation,
-              action.id.rawValue.hasPrefix(stepIDPrefix),
-              let index = Int(action.id.rawValue.dropFirst(stepIDPrefix.count)),
+              let index = stepIndex(of: action),
               routine.steps.indices.contains(index) else { return nil }
         let selector = try routine.steps[index].target.map {
             ExecutableAction.Selector.accessibilityID(try resolve($0, in: observation.snapshot.elements, step: index))

@@ -13,6 +13,8 @@ final class DemonstrationRecorder {
     private let observe: () async throws -> GuideObservation
     private let bundleIDProvider: () -> String?
     private let onEventCount: (Int) -> Void
+    private let onRecognizedControl: (AXElementFrame) -> Void
+    private let onCancelRequested: () -> Void
     private let maximumDuration: Duration
     private let warningLead: Duration
     private let onLimitWarning: () -> Void
@@ -23,6 +25,7 @@ final class DemonstrationRecorder {
     private var bundleID: String?
     private var lastClickTarget: RoutineTarget?
     private var typingBlocked = false
+    private var consecutiveEscapes = 0
     private var recording = false
     private var correlationChain: Task<Void, Never>?
     private var limitTask: Task<Void, Never>?
@@ -31,6 +34,8 @@ final class DemonstrationRecorder {
         observe: @escaping () async throws -> GuideObservation,
         bundleIDProvider: @escaping () -> String?,
         onEventCount: @escaping (Int) -> Void = { _ in },
+        onRecognizedControl: @escaping (AXElementFrame) -> Void = { _ in },
+        onCancelRequested: @escaping () -> Void = {},
         maximumDuration: Duration = .seconds(600),
         warningLead: Duration = .seconds(30),
         onLimitWarning: @escaping () -> Void = {},
@@ -39,6 +44,8 @@ final class DemonstrationRecorder {
         self.observe = observe
         self.bundleIDProvider = bundleIDProvider
         self.onEventCount = onEventCount
+        self.onRecognizedControl = onRecognizedControl
+        self.onCancelRequested = onCancelRequested
         self.maximumDuration = maximumDuration
         self.warningLead = warningLead
         self.onLimitWarning = onLimitWarning
@@ -63,10 +70,6 @@ final class DemonstrationRecorder {
             }
         ].compactMap { $0 }
         localMonitors = [
-            NSEvent.addLocalMonitorForEvents(matching: mouse) { [weak self] event in
-                self?.handleMouse(event)
-                return event
-            },
             NSEvent.addLocalMonitorForEvents(matching: keys) { [weak self] event in
                 self?.handleKey(event)
                 return event
@@ -101,6 +104,7 @@ final class DemonstrationRecorder {
 
     private func handleMouse(_ event: NSEvent) {
         guard recording, events.count < Self.maximumEvents else { return }
+        consecutiveEscapes = 0
         let cgPoint = event.cgEvent?.location ?? CGPoint(x: event.locationInWindow.x, y: event.locationInWindow.y)
         let axPoint = CGPointShim(x: Double(cgPoint.x), y: Double(cgPoint.y))
         // Correlations resolve in click order against fresh observations.
@@ -112,10 +116,16 @@ final class DemonstrationRecorder {
 
     /// Click correlation, split out so tests drive it without NSEvent
     /// monitors: resolve the AX point against a fresh observation and record
-    /// the element anchor. Clicks that hit nothing actionable are dropped.
+    /// the element anchor. A click that hits nothing actionable is kept as a
+    /// step the person does themselves.
     func recordClick(axPoint: CGPointShim) async {
-        guard recording, let observation = try? await observe() else { return }
-        guard let element = element(at: axPoint, in: observation.snapshot.elements) else { return }
+        guard recording else { return }
+        guard let observation = try? await observe(),
+              let element = element(at: axPoint, in: observation.snapshot.elements) else {
+            append(.unrecognizedClick)
+            return
+        }
+        onRecognizedControl(element.frame)
         lastClickTarget = RoutineTarget(role: element.role.rawValue, label: element.label, subrole: element.subrole)
         // Secure or unknown-sensitivity fields keep their click but typing
         // into them is dropped — a routine must never hold a secret.
@@ -142,6 +152,16 @@ final class DemonstrationRecorder {
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags
     ) {
+        if keyCode == 53, modifiers.intersection([.command, .control, .option, .shift]).isEmpty {
+            consecutiveEscapes += 1
+            if consecutiveEscapes >= 2 {
+                consecutiveEscapes = 0
+                onCancelRequested()
+                return
+            }
+        } else {
+            consecutiveEscapes = 0
+        }
         if !modifiers.intersection([.command, .control, .option]).isEmpty {
             if let key = Self.namedKey(keyCode: keyCode) ?? Self.chordCharacter(charactersIgnoringModifiers ?? characters) {
                 append(.chord(key: key, modifiers: Self.modifierNames(modifiers)))

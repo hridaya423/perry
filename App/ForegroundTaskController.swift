@@ -27,6 +27,7 @@ final class ForegroundTaskController: ObservableObject {
         var stopGuideObservation: () -> Void = {}
         var makeConfirmer: () -> any Confirmer = { InteractiveConfirmer(controller: nil) }
         var routineVerified: (UUID) -> Void = { _ in }
+        var guiTaskCompleted: () -> Void = {}
     }
 
     private let sessionController: SessionController
@@ -347,15 +348,21 @@ final class ForegroundTaskController: ObservableObject {
             return try await workers.withWorker(scope: .foreground, resources: []) { worker in
                 switch try await self.routines.run(routine, parameters: parameters, attemptID: attemptID, worker: worker) {
                 case .notStarted: return nil
-                case .finished(let outcome):
+                case .finished(let outcome, let headline):
                     if case .completed = outcome { self.hooks.routineVerified(routine.id) }
-                    return await self.finalizeTask(with: outcome)
+                    return await self.finalizeTask(with: outcome, headline: headline)
                 }
             }
         } catch {
             guard !(error is CancellationError), taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus("Perry could not run the routine: \(error.localizedDescription)")
-            voice.speak("Perry could not run the routine: \(error.localizedDescription)")
+            let message: String
+            if let replay = error as? RoutineReplayError, let step = RoutineRunCopy.step(of: replay) {
+                message = RoutineRunCopy.stopped(routine: routine, step: step, error: replay, reason: replay.localizedDescription)
+            } else {
+                message = "Perry could not run the routine: \(error.localizedDescription)"
+            }
+            hooks.setStatus(message)
+            voice.speak(message)
             return nil
         }
     }
@@ -453,6 +460,7 @@ final class ForegroundTaskController: ObservableObject {
 
         var answer = ""
         var stepIndex = 0
+        var usedGUI = false
         var terminal: AgentFinish?
         for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target, task: true) {
             guard case .executing(let current) = sessionController.state,
@@ -470,6 +478,7 @@ final class ForegroundTaskController: ObservableObject {
                 answer += delta
                 hooks.setTranscriptPreview(answer)
             case .toolCallStarted(let call):
+                usedGUI = usedGUI || Self.isGUITool(call.name)
                 let summary = Self.toolStepSummary(call)
                 _ = transitionSession {
                     try sessionController.recordExecutionStep(
@@ -506,7 +515,13 @@ final class ForegroundTaskController: ObservableObject {
               current.taskID == taskUUID, !current.isFinalized else {
             return .blocked(reason: "the execution session changed")
         }
-        return await finalizeTask(with: Self.doOutcome(terminal ?? .interrupted, stepsRun: stepIndex))
+        let outcome = await finalizeTask(with: Self.doOutcome(terminal ?? .interrupted, stepsRun: stepIndex))
+        if usedGUI, case .completed = outcome { hooks.guiTaskCompleted() }
+        return outcome
+    }
+
+    static func isGUITool(_ name: String) -> Bool {
+        name.hasPrefix("ui.")
     }
 
     /// One-line strip/status text for a tool call — name plus the most
@@ -715,7 +730,7 @@ final class ForegroundTaskController: ObservableObject {
         await doStartTask?.value
     }
 
-    private func finalizeTask(with reportedOutcome: DoOutcome) async -> DoOutcome {
+    private func finalizeTask(with reportedOutcome: DoOutcome, headline: String? = nil) async -> DoOutcome {
         guard case .executing = sessionController.state else { return reportedOutcome }
         let execution: ExecutionSessionState
         let outcome: DoOutcome
@@ -742,7 +757,8 @@ final class ForegroundTaskController: ObservableObject {
         }
         let finalization = await executionFinalizer.finalize(
             execution: committedExecution,
-            outcome: finalizationOutcome
+            outcome: finalizationOutcome,
+            headline: headline
         )
         guard case .executing(let currentExecution) = sessionController.state,
               currentExecution.taskID == execution.taskID,
