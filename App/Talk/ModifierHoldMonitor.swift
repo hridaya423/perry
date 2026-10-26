@@ -37,6 +37,7 @@ final class ModifierHoldMonitor {
     private var runLoopSource: CFRunLoopSource?
     private var fallbackGlobalMonitors: [Any] = []
     private var fallbackLocalMonitors: [Any] = []
+    private var tapRetry: Timer?
 
     private var holding = false
     private var swallowing = false
@@ -125,9 +126,20 @@ final class ModifierHoldMonitor {
         }
         installFallbackMonitors()
         captureMode = .fallbackMonitors
+        tapRetry = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.retryEventTap() }
+        }
+    }
+
+    private func retryEventTap() {
+        guard captureMode == .fallbackMonitors, CGPreflightListenEventAccess() || AXIsProcessTrusted() else { return }
+        stop()
+        start()
     }
 
     func stop() {
+        tapRetry?.invalidate()
+        tapRetry = nil
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
