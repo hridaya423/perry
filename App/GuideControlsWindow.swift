@@ -96,9 +96,9 @@ struct GuideControlsView: View {
                     Button("Skip this step", action: onSkip)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(PerryTheme.Icon.toolbar)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .frame(width: 28, height: 28)
+                        .font(PerryTheme.Icon.utility)
+                        .foregroundStyle(PerryTheme.Colors.icon)
+                        .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)

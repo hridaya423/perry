@@ -194,7 +194,7 @@ struct NotchEyesView: View {
                     NotchShape.closed.fill(PerryTheme.Colors.crown)
                         .shadow(color: .black.opacity(model.swollen ? 0.3 : 0), radius: 6)
                     HStack(spacing: 0) {
-                        glyph.frame(width: Self.wing)
+                        Color.clear.frame(width: Self.wing)
                         Spacer(minLength: 0)
                         eyes.frame(width: Self.wing)
                     }
@@ -209,16 +209,6 @@ struct NotchEyesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: active)
         .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
-    private var glyph: some View {
-        if active {
-            Image(systemName: model.mood == .listening ? "waveform" : model.mood == .needsYou ? "exclamationmark" : "ellipsis")
-                .font(PerryTheme.Icon.inline)
-                .foregroundStyle(model.mood == .needsYou ? PerryTheme.Colors.caution : PerryTheme.Colors.accent)
-                .frame(height: height)
-        }
     }
 
     private var eyes: some View {

@@ -103,7 +103,8 @@ struct NotchWorkspaceView: View {
             HStack(spacing: 6) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .font(PerryTheme.Icon.rail)
+                        .foregroundStyle(PerryTheme.Colors.icon)
                         .accessibilityHidden(true)
                     TextField("Search…", text: $model.search)
                         .textFieldStyle(.plain)
@@ -118,12 +119,12 @@ struct NotchWorkspaceView: View {
                     focusComposer = true
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(PerryTheme.Icon.toolbar)
-                        .frame(width: 28, height: 28)
+                        .font(PerryTheme.Icon.utility)
+                        .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(RailRowStyle(cornerRadius: 7))
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                .foregroundStyle(PerryTheme.Colors.icon)
                 .keyboardShortcut("n", modifiers: .command)
                 .accessibilityLabel("New conversation")
                 .help("New conversation (⌘N)")
@@ -186,9 +187,10 @@ struct NotchWorkspaceView: View {
                                 searchFocused = false
                                 model.sidebarSelection = .perryEditor(nil)
                             } label: {
-                                Image(systemName: "plus").font(PerryTheme.Scale.section)
+                                Image(systemName: "plus").font(PerryTheme.Icon.utility).imageScale(.small)
                             }
                             .buttonStyle(.plain)
+                            .foregroundStyle(PerryTheme.Colors.icon)
                             .accessibilityLabel("New Perry")
                             .help("Make a Perry: a named helper with its own job, schedule, and memory")
                         }
@@ -267,8 +269,12 @@ struct NotchWorkspaceView: View {
                 Button {
                     openSettings(.apps)
                 } label: {
-                    Label("Apps", systemImage: "square.grid.2x2")
-                        .font(PerryTheme.Scale.body)
+                    Label {
+                        Text("Apps")
+                    } icon: {
+                        Image(systemName: "square.grid.2x2").foregroundStyle(PerryTheme.Colors.icon)
+                    }
+                    .font(PerryTheme.Scale.body)
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Open connected apps settings")
@@ -278,7 +284,8 @@ struct NotchWorkspaceView: View {
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                         .labelStyle(.iconOnly)
-                        .font(PerryTheme.Scale.body)
+                        .font(PerryTheme.Icon.rail)
+                        .foregroundStyle(PerryTheme.Colors.icon)
                 }
                 .buttonStyle(.plain)
                 .help("Settings")
@@ -329,7 +336,7 @@ struct NotchWorkspaceView: View {
                             }
                         }
                     }
-                    .buttonStyle(ContextChipStyle())
+                    .buttonStyle(ChipStyle())
                 }
             }
             .frame(maxWidth: 500, alignment: .leading)
@@ -340,7 +347,7 @@ struct NotchWorkspaceView: View {
             VStack(spacing: 8) {
                 UnsavedInputRecoveryButton(model: model)
                 if let error = model.storageError {
-                    Label(error, systemImage: "exclamationmark.triangle")
+                    StatusLabel(error, .attention)
                         .font(PerryTheme.Scale.body)
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -374,7 +381,8 @@ struct NotchWorkspaceView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .font(PerryTheme.Icon.rail)
+                    .foregroundStyle(model.sidebarSelection == selection ? PerryTheme.Colors.text : PerryTheme.Colors.icon)
                     .frame(width: 18)
                     .accessibilityHidden(true)
                 Text(title)
@@ -466,10 +474,18 @@ struct NotchWorkspaceView: View {
         return Button {
             choosesTarget = true
         } label: {
-            Label(target.map(CompactTargetChooser.targetName) ?? "Window", systemImage: "macwindow")
-                .lineLimit(1)
+            Label {
+                Text(target.map(CompactTargetChooser.targetName) ?? "Window")
+            } icon: {
+                if let bundleID = target.flatMap(CompactTargetChooser.bundleID) {
+                    BrandMark(id: bundleID, name: target.map(CompactTargetChooser.applicationName), bundleID: bundleID, size: 16)
+                } else {
+                    Image(systemName: "macwindow")
+                }
+            }
+            .lineLimit(1)
         }
-        .buttonStyle(ContextChipStyle())
+        .buttonStyle(ChipStyle())
         .help(target?.windowTitle ?? "Choose which window Perry can inspect")
         .disabled(threadID.map { model.workingThreads.contains($0) || model.pendingQuestions[$0] != nil } ?? false)
     }
@@ -574,12 +590,12 @@ struct WindowControlButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(PerryTheme.Icon.toolbar)
-                .frame(width: 28, height: 28)
+                .font(PerryTheme.Icon.utility)
+                .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                 .contentShape(Rectangle())
         }
         .buttonStyle(RailRowStyle(cornerRadius: 7))
-        .foregroundStyle(PerryTheme.Colors.textSecondary)
+        .foregroundStyle(PerryTheme.Colors.icon)
         .accessibilityLabel(label)
         .help(label)
     }
@@ -626,7 +642,7 @@ private struct ComposerModeChip: View {
         }
         .menuStyle(.button)
         .menuIndicator(.hidden)
-        .buttonStyle(ContextChipStyle())
+        .buttonStyle(ChipStyle())
         .fixedSize()
         .accessibilityLabel("Mode: \(mode.title)")
         .help("Ask, guide, or do")

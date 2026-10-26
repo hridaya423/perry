@@ -81,7 +81,7 @@ struct NotchPeekView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                         if index > 0 {
-                            Rectangle().fill(.white.opacity(0.08)).frame(height: 1).padding(.leading, 34)
+                            Rectangle().fill(.white.opacity(0.08)).frame(height: 1).padding(.leading, PeekRowMetrics.textInset)
                         }
                         PeekRowView(row: row) { onOpen(row) }
                     }
@@ -105,11 +105,17 @@ struct NotchPeekView: View {
                 Spacer(minLength: 0)
                 WindowControlButton(systemImage: "arrow.up.left.and.arrow.down.right", label: "Open the workspace", action: onExpand)
             }
-            .buttonStyle(PeekChipStyle())
+            .buttonStyle(ChipStyle())
         }
         .padding(.horizontal, NotchLayout.contentInset)
         .foregroundStyle(PerryTheme.Colors.text)
     }
+}
+
+private enum PeekRowMetrics {
+    static let inset = CGFloat(6)
+    static let leadSpacing = CGFloat(12)
+    static let textInset = inset + PerryTheme.Icon.slot + leadSpacing
 }
 
 private struct PeekRowView: View {
@@ -119,8 +125,8 @@ private struct PeekRowView: View {
 
     var body: some View {
         Button(action: open) {
-            HStack(spacing: 12) {
-                lead.frame(width: 22, height: 22)
+            HStack(spacing: PeekRowMetrics.leadSpacing) {
+                lead.frame(width: PerryTheme.Icon.slot, height: PerryTheme.Icon.slot)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.title)
                         .font(PerryTheme.Scale.rowTitle)
@@ -142,7 +148,7 @@ private struct PeekRowView: View {
                 }
             }
             .padding(.vertical, 6)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, PeekRowMetrics.inset)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
             .contentShape(Rectangle())
         }
@@ -155,61 +161,17 @@ private struct PeekRowView: View {
     private var lead: some View {
         switch row.kind {
         case .needsYou:
-            Image(systemName: "exclamationmark.circle")
-                .font(PerryTheme.Icon.row)
-                .foregroundStyle(PerryTheme.Colors.caution)
+            LeadDisc(systemImage: "exclamationmark", tint: PerryTheme.Colors.caution)
         case .task(working: true):
-            PeekSpinner()
+            LeadSpinner()
         case .task(working: false):
-            Image(systemName: "checkmark.circle")
-                .font(PerryTheme.Icon.row)
-                .foregroundStyle(PerryTheme.Colors.success)
+            LeadDisc(systemImage: "checkmark", tint: PerryTheme.Colors.success)
         case .perry:
-            PerryCharacterView(pose: PerryCharacterPose(), size: 22)
+            PerryCharacterView(pose: PerryCharacterPose(), size: PerryTheme.Icon.slot)
         case .setup:
-            Image(systemName: "arrow.forward.circle")
-                .font(PerryTheme.Icon.row)
-                .foregroundStyle(PerryTheme.Colors.accent)
+            LeadDisc(systemImage: "arrow.right", tint: PerryTheme.Colors.accent)
         case .suggestion:
-            Image(systemName: "lightbulb")
-                .font(PerryTheme.Icon.row)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-        }
-    }
-}
-
-private struct PeekSpinner: View {
-    @State private var spinning = false
-
-    var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.72)
-            .stroke(PerryTheme.Colors.accent, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-            .frame(width: 13, height: 13)
-            .rotationEffect(.degrees(spinning ? 360 : 0))
-            .animation(.linear(duration: 0.9).repeatForever(autoreverses: false), value: spinning)
-            .frame(width: 16, height: 16)
-            .onAppear { spinning = true }
-    }
-}
-
-struct PeekChipStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(PerryTheme.Scale.chip)
-            .labelStyle(PeekChipLabelStyle())
-            .foregroundStyle(PerryTheme.Colors.textSecondary)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(Capsule().fill(PerryTheme.Colors.chip.opacity(configuration.isPressed ? 0.7 : 1)))
-    }
-}
-
-private struct PeekChipLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 5) {
-            configuration.icon.font(PerryTheme.Icon.inline)
-            configuration.title
+            LeadDisc(systemImage: "lightbulb", tint: PerryTheme.Colors.icon)
         }
     }
 }

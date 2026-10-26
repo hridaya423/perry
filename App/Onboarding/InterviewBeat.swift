@@ -276,9 +276,9 @@ struct InterviewBeat: View {
                 }
             } label: {
                 Image(systemName: listener.listening ? "waveform" : "mic")
-                    .font(PerryTheme.Icon.row)
-                    .foregroundStyle(listener.listening ? PerryTheme.Colors.accent : PerryTheme.Colors.textSecondary)
-                    .frame(width: 30, height: 30)
+                    .font(PerryTheme.Icon.utility)
+                    .foregroundStyle(listener.listening ? PerryTheme.Colors.accent : PerryTheme.Colors.icon)
+                    .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -312,7 +312,7 @@ struct InterviewBeat: View {
                             model.answer(option)
                         }
                     }
-                    .buttonStyle(PeekChipStyle())
+                    .buttonStyle(ChipStyle())
                 }
             }
         }

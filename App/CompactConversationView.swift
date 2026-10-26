@@ -134,7 +134,7 @@ struct CompactConversationView: View {
         } else if presentation.current != nil, presentation.showsInteraction {
             HStack {
                 Button(action: controller.showWorkspace) {
-                    Label("Workspace", systemImage: "chevron.left")
+                    Label("Workspace", systemImage: "chevron.left").imageScale(.small)
                         .font(PerryTheme.Scale.chip)
                         .padding(.horizontal, 6)
                         .frame(height: 28)
@@ -227,7 +227,11 @@ struct CompactTargetChooser: View {
         .onAppear { targets = EnvironmentProbe.availableTargets() }
     }
 
-    private static func applicationName(_ target: CuaTargetHint) -> String {
+    static func bundleID(_ target: CuaTargetHint) -> String? {
+        target.bundleID ?? target.processID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
+    }
+
+    static func applicationName(_ target: CuaTargetHint) -> String {
         if let pid = target.processID,
            let name = NSRunningApplication(processIdentifier: pid)?.localizedName { return name }
         if let bundleID = target.bundleID,

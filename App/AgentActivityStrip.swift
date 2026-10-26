@@ -464,7 +464,7 @@ struct AgentActivityStripView: View {
                 .help("Stop the task")
             }
         }
-        .buttonStyle(ContextChipStyle(iconOnly: !state.isExpanded))
+        .buttonStyle(ChipStyle(iconOnly: !state.isExpanded))
         .fixedSize()
     }
 

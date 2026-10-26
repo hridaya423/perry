@@ -67,7 +67,7 @@ struct NotchCommandsMenu: NSViewRepresentable {
         button.isBordered = false
         button.imagePosition = .imageOnly
         (button.cell as? NSPopUpButtonCell)?.arrowPosition = .noArrow
-        button.contentTintColor = .secondaryLabelColor
+        button.contentTintColor = PerryTheme.Colors.iconNS
         button.menu = Self.menu(for: controller)
         button.setAccessibilityLabel("More Perry controls")
         return button
@@ -81,7 +81,7 @@ struct NotchCommandsMenu: NSViewRepresentable {
         let menu = controller.buildMenu()
         let face = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         face.image = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More")?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
         menu.insertItem(face, at: 0)
         return menu
     }

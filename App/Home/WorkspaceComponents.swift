@@ -54,9 +54,9 @@ struct WorkspaceComposer: View {
             if hasText {
                 Button(action: send) {
                     Image(systemName: "arrow.up")
-                        .font(PerryTheme.Icon.toolbar)
+                        .font(PerryTheme.Icon.status)
                         .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
-                        .frame(width: 28, height: 28)
+                        .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .background(PerryTheme.Colors.primaryAction, in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -68,9 +68,9 @@ struct WorkspaceComposer: View {
             } else if let onVoice {
                 Button(action: onVoice) {
                     Image(systemName: "mic")
-                        .font(PerryTheme.Icon.toolbar)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .frame(width: 28, height: 28)
+                        .font(PerryTheme.Icon.utility)
+                        .foregroundStyle(PerryTheme.Colors.icon)
+                        .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -108,7 +108,7 @@ struct WorkspaceComposer: View {
     }
 }
 
-struct ContextChipStyle: ButtonStyle {
+struct ChipStyle: ButtonStyle {
     var iconOnly = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -133,7 +133,7 @@ private struct ChipLabelStyle: LabelStyle {
             Label(configuration).labelStyle(.iconOnly)
         } else {
             HStack(spacing: 5) {
-                configuration.icon
+                configuration.icon.imageScale(.small)
                 configuration.title
             }
         }

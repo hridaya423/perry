@@ -37,9 +37,9 @@ struct NotchListeningView: View {
                 if voice.clickState == .listening {
                     Button(action: voice.sendNow) {
                         Image(systemName: "arrow.up")
-                            .font(PerryTheme.Icon.toolbar)
+                            .font(PerryTheme.Icon.status)
                             .foregroundStyle(PerryTheme.Colors.onPrimaryAction)
-                            .frame(width: 28, height: 28)
+                            .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                             .background(PerryTheme.Colors.primaryAction, in: Circle())
                     }
                     .buttonStyle(.plain)
