@@ -1,3 +1,4 @@
+import PerryBrain
 import PerryCore
 import PerryGuide
 import SwiftUI
@@ -345,6 +346,10 @@ extension AppController {
             )
         }
         notchPresence.screenLayoutChanged()
+    }
+
+    var memoryFiles: MemoryFiles? {
+        storageDirectory.map { MemoryFiles(directory: $0.appendingPathComponent("memory", isDirectory: true)) }
     }
 
     func memories() async -> [MemoryRecord] {

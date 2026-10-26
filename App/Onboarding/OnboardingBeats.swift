@@ -12,7 +12,10 @@ struct HomeOnboardingView: View {
     var body: some View {
         switch director.beat {
         case .hello:
-            GreetBeat(director: director)
+            HelloBeat(
+                director: director,
+                name: OnboardingDirector.suggestedName(saved: model.deps.controller?.memoryFiles?.profileField("Name"), fullName: NSFullUserName())
+            )
         case .brain:
             if let brain {
                 BrainChoiceBeat(director: director, brain: brain, openSettings: openSettings)
@@ -33,25 +36,40 @@ struct HomeOnboardingView: View {
     }
 }
 
-private struct GreetBeat: View {
+private struct HelloBeat: View {
     @ObservedObject var director: OnboardingDirector
+    @State var name: String
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             HelloGreetingView()
-                .frame(maxWidth: 420, minHeight: 150, maxHeight: 210)
-                .padding(.top, 16)
-            Text("I’m Perry. I live up in your notch and help with whatever is on your screen.")
-                .font(.system(size: 16))
+                .frame(maxWidth: 340, minHeight: 104, maxHeight: 128)
+                .padding(.top, 4)
+            Text("Hi, I’m Perry. I live in your notch.\nWhat should I call you?")
+                .font(PerryTheme.Scale.input)
                 .lineSpacing(3)
-                .foregroundStyle(PerryTheme.Colors.text.opacity(0.78))
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 2)
                 .modifier(LateEntrance(delay: HelloInk.lift.upperBound))
+            ZStack {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(PerryTheme.Colors.surface)
+                    .strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
+                TextField("Your name", text: $name)
+                    .textFieldStyle(.plain)
+                    .font(PerryTheme.Scale.input)
+                    .multilineTextAlignment(.center)
+                    .focused($focused)
+                    .onSubmit { director.acceptName(name) }
+                    .padding(.horizontal, 18)
+            }
+            .frame(width: 220, height: 40)
+            .padding(.top, 16)
+            .modifier(LateEntrance(delay: HelloInk.lift.upperBound + 0.04))
             Spacer(minLength: 12)
-            Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Let’s begin") }
+            Button { director.acceptName(name) } label: { OnboardingPrimaryLabel(title: "Continue") }
                 .buttonStyle(InkButtonStyle())
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
@@ -59,6 +77,10 @@ private struct GreetBeat: View {
                 .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound))
+            focused = true
+        }
     }
 }
 

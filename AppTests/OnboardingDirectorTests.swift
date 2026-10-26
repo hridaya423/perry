@@ -134,6 +134,28 @@ final class OnboardingDirectorTests: XCTestCase {
         resumed.stop()
     }
 
+    func testHelloSavesTheNameAndMovesOn() {
+        var saved: [String] = []
+        var effects = OnboardingDirector.Effects()
+        effects.saveName = { saved.append($0) }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        director.acceptName("  Ada \n")
+        XCTAssertEqual(saved, ["Ada"])
+        XCTAssertEqual(director.beat, .brain)
+        director.acceptName("Grace")
+        XCTAssertEqual(saved, ["Ada"], "only Hello takes a name")
+        director.goBack()
+        director.acceptName("   ")
+        XCTAssertEqual(saved, ["Ada"], "a blank name keeps the saved one")
+        XCTAssertEqual(director.beat, .brain)
+        director.stop()
+
+        XCTAssertEqual(OnboardingDirector.suggestedName(saved: nil, fullName: "Ada Lovelace"), "Ada")
+        XCTAssertEqual(OnboardingDirector.suggestedName(saved: "Countess", fullName: "Ada Lovelace"), "Countess")
+        XCTAssertEqual(OnboardingDirector.suggestedName(saved: nil, fullName: ""), "")
+    }
+
     func testEveryBeatIsMarkedAndTheRunIsBracketed() {
         var marks: [String] = []
         var effects = OnboardingDirector.Effects()

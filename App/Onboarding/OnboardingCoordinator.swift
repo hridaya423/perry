@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import PerryBrain
 import PerryCapture
 
 @MainActor
@@ -51,6 +52,9 @@ final class OnboardingCoordinator {
             } else {
                 await PermissionGuideCoordinator.guide(pane)
             }
+        }
+        effects.saveName = { [weak self] name in
+            try? self?.home().homeModel.deps.controller?.memoryFiles?.setProfileField("Name", name)
         }
         effects.dismiss = { [weak self] in self?.tearDown() }
         effects.finish = { [weak self] in self?.finish() }

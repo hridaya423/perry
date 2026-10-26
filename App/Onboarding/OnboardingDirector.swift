@@ -14,6 +14,7 @@ final class OnboardingDirector: ObservableObject {
     struct Effects {
         var permissionProbe: () async -> PerryPermissionSnapshot = { await PerryPermissionSnapshot.probe() }
         var grant: (PrivacyPane) async -> Void = { _ in }
+        var saveName: (String) -> Void = { _ in }
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
         var finish: () -> Void = {}
@@ -57,6 +58,17 @@ final class OnboardingDirector: ObservableObject {
         guard let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
         guard index + 1 < Beat.allCases.count else { return finish() }
         enter(Beat.allCases[index + 1], direction: .forward)
+    }
+
+    func acceptName(_ name: String) {
+        guard beat == .hello else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { effects.saveName(trimmed) }
+        skip()
+    }
+
+    static func suggestedName(saved: String?, fullName: String) -> String {
+        saved ?? fullName.split(separator: " ").first.map(String.init) ?? ""
     }
 
     func goBack() {

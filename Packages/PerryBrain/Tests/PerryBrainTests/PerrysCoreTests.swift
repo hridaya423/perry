@@ -191,6 +191,20 @@ final class MemoryFilesTests: XCTestCase {
         XCTAssertTrue(files.promptBlock().contains("Current context:\nctx only"))
     }
 
+    func testProfileFieldsUpsertOneLineEach() throws {
+        XCTAssertNil(files.profileField("Name"))
+        try files.writeProfile("prefers terse answers")
+        try files.setProfileField("Name", "Ada")
+        XCTAssertEqual(files.profile(), "prefers terse answers\n- Name: Ada\n")
+        try files.setProfileField("Name", "  Ada Lovelace ")
+        try files.setProfileField("Work", "Designer")
+        XCTAssertEqual(files.profile(), "prefers terse answers\n- Name: Ada Lovelace\n- Work: Designer\n")
+        XCTAssertEqual(files.profileField("name"), "Ada Lovelace")
+        try files.setProfileField("Name", "")
+        XCTAssertNil(files.profileField("Name"))
+        XCTAssertEqual(files.profile(), "prefers terse answers\n- Work: Designer\n")
+    }
+
     func testAtomicWriteLeavesNoTmp() throws {
         try files.writeProfile("x")
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: dir.path)
