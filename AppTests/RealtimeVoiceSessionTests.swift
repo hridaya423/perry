@@ -25,6 +25,49 @@ enum FixtureTransportError: Error, LocalizedError, Equatable, Sendable {
 
 @MainActor
 final class RealtimeVoiceSessionTests: XCTestCase {
+    func testOpenAIConnectionsUseTheCurrentInterfaceUnlessBetaIsChosen() {
+        let openAI = URL(string: "wss://api.openai.com/v1/realtime")!
+        let automatic = OpenAICompatibleRealtimeVoiceTransport.request(
+            for: RealtimeVoiceConfiguration(endpoint: openAI, model: "gpt-realtime-2.1"), apiKey: "key"
+        )
+        XCTAssertNil(automatic.value(forHTTPHeaderField: "OpenAI-Beta"))
+        XCTAssertEqual(automatic.value(forHTTPHeaderField: "Authorization"), "Bearer key")
+        let beta = OpenAICompatibleRealtimeVoiceTransport.request(
+            for: RealtimeVoiceConfiguration(endpoint: openAI, model: "gpt-realtime-2.1", protocolMode: .openAIBeta), apiKey: "key"
+        )
+        XCTAssertEqual(beta.value(forHTTPHeaderField: "OpenAI-Beta"), "realtime=v1")
+    }
+
+    func testTranscriptionModelComesFromTheConfiguration() async {
+        let transport = OpenAICompatibleRealtimeVoiceTransport(
+            configuration: RealtimeVoiceConfiguration(
+                endpoint: URL(string: "wss://api.openai.com/v1/realtime")!, model: "gpt-realtime-2.1", transcriptionModel: "gpt-transcribe"
+            ),
+            apiKey: "key"
+        )
+        let payload = await transport.sessionUpdatePayload()
+        let session = payload["session"] as? [String: Any]
+        let audio = session?["audio"] as? [String: Any]
+        let input = audio?["input"] as? [String: Any]
+        let transcription = input?["transcription"] as? [String: Any]
+        XCTAssertEqual(transcription?["model"] as? String, "gpt-transcribe")
+        XCTAssertTrue(input?["turn_detection"] is NSNull)
+    }
+
+    func testOpenAIDefaultsToTheSupportedRealtimeModel() {
+        let defaults = UserDefaults.standard
+        let keys = [PerryPreferences.$realtimeVoiceEndpoint.key, PerryPreferences.$realtimeVoiceModel.key]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        defaults.set("wss://api.openai.com/v1/realtime", forKey: keys[0])
+        for stored in ["", "gpt-realtime"] {
+            defaults.set(stored, forKey: keys[1])
+            XCTAssertEqual(VoiceController.currentRealtimeVoiceConfiguration()?.model, "gpt-realtime-2.1", "stored \"\(stored)\"")
+        }
+        defaults.set("gpt-realtime-2.1-mini", forKey: keys[1])
+        XCTAssertEqual(VoiceController.currentRealtimeVoiceConfiguration()?.model, "gpt-realtime-2.1-mini")
+    }
+
     func testProviderJSONKeepsLateTranscriptsBoundToTheirOriginalUtterance() async throws {
         let transport = OpenAICompatibleRealtimeVoiceTransport(
             configuration: RealtimeVoiceConfiguration(endpoint: URL(string: "wss://example.invalid")!, model: "test"),

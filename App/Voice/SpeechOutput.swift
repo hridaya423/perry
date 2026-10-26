@@ -168,7 +168,9 @@ extension VoiceController {
               ["wss", "ws"].contains(scheme),
               url.host != nil else { return nil }
         let configuredModel = PerryPreferences.realtimeVoiceModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let model = configuredModel.isEmpty && url.host?.contains("api.openai.com") == true ? "gpt-realtime" : configuredModel
+        let isOpenAI = url.host?.contains("api.openai.com") == true
+        let usesDefault = configuredModel.isEmpty || RealtimeVoiceConfiguration.retiredOpenAIModels.contains(configuredModel)
+        let model = isOpenAI && usesDefault ? RealtimeVoiceConfiguration.openAIModel : configuredModel
         guard !model.isEmpty else { return nil }
         let protocolMode = RealtimeVoiceProtocolMode(rawValue: PerryPreferences.realtimeVoiceProtocol) ?? .automatic
         let responseSpeed = PerryPreferences.realtimeVoiceSpeed

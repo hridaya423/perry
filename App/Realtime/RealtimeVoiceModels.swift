@@ -67,6 +67,9 @@ struct RealtimeFirstAudioTimer {
 }
 
 struct RealtimeVoiceConfiguration: Equatable, Sendable {
+    static let openAIModel = "gpt-realtime-2.1"
+    static let retiredOpenAIModels: Set<String> = ["gpt-realtime", "gpt-4o-realtime"]
+
     let endpoint: URL
     let model: String
     let voice: String
@@ -74,6 +77,7 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
     let instructions: String
     let protocolMode: RealtimeVoiceProtocolMode
     let inputLanguage: String?
+    let transcriptionModel: String
 
     init(
         endpoint: URL,
@@ -82,7 +86,8 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
         responseSpeed: Double = 1,
         instructions: String = "You are Perry, a concise and helpful desktop voice assistant. Speak naturally and keep replies short unless the user asks for detail.",
         protocolMode: RealtimeVoiceProtocolMode = .automatic,
-        inputLanguage: String? = nil
+        inputLanguage: String? = nil,
+        transcriptionModel: String = "gpt-4o-transcribe"
     ) {
         self.endpoint = endpoint
         self.model = model
@@ -93,6 +98,7 @@ struct RealtimeVoiceConfiguration: Equatable, Sendable {
         self.protocolMode = protocolMode
         let normalizedLanguage = inputLanguage?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.inputLanguage = normalizedLanguage?.isEmpty == true ? nil : normalizedLanguage
+        self.transcriptionModel = transcriptionModel
     }
 }
 

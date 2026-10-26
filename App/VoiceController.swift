@@ -291,7 +291,7 @@ final class VoiceController: NSObject, ObservableObject {
         dictationAttemptID = nil
         dictationSpeechEndedAt = DispatchTime.now().uptimeNanoseconds
         if let realtimeVoiceSession {
-            realtimeVoiceSession.finishInput()
+            realtimeVoiceSession.finishInputTranscribing()
             overlayState.voiceState = .processing
             overlayState.buddyState = .thinking
             hooks.setStatus("Finalizing your request…")

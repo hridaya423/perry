@@ -11,12 +11,7 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
     private var correlation = RealtimeVoiceTransportCorrelation()
 
     init(configuration: RealtimeVoiceConfiguration, apiKey: String) {
-        var request = URLRequest(url: configuration.endpoint)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        if configuration.protocolMode == .openAIBeta || (configuration.protocolMode == .automatic && configuration.endpoint.host?.contains("api.openai.com") == true) {
-            request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
-        }
-        self.task = URLSession.shared.webSocketTask(with: request)
+        self.task = URLSession.shared.webSocketTask(with: Self.request(for: configuration, apiKey: apiKey))
         self.configuration = configuration
         switch configuration.protocolMode {
         case .automatic:
@@ -24,6 +19,15 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
         case .openAIGA, .openAIBeta, .compatible:
             self.mode = configuration.protocolMode
         }
+    }
+
+    static func request(for configuration: RealtimeVoiceConfiguration, apiKey: String) -> URLRequest {
+        var request = URLRequest(url: configuration.endpoint)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if configuration.protocolMode == .openAIBeta {
+            request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
+        }
+        return request
     }
 
     func connect() async throws {
@@ -261,7 +265,7 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
 
     func sessionUpdatePayload() -> [String: Any] {
         let inputFormat: [String: Any] = ["type": "audio/pcm", "rate": 24_000]
-        var transcription: [String: Any] = ["model": "gpt-4o-transcribe"]
+        var transcription: [String: Any] = ["model": configuration.transcriptionModel]
         if let inputLanguage = configuration.inputLanguage {
             transcription["language"] = inputLanguage
         }

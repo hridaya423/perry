@@ -169,6 +169,14 @@
 
 - 4.6 Done: `VoiceController.swift` went from 1,082 to 551 lines. Speech out (voice resolution, speaking, the synthesizer delegate) moved to `App/Voice/SpeechOutput.swift`, and transcript handling, insertion into the frontmost app and dictation learning moved to `App/Voice/DictationInsertion.swift`, both as `extension VoiceController`. The only other edit: the 18 stored members those extensions use lost `private`, because Swift's `private` does not reach an extension in another file. The compiler listed each one, and only those changed. Verified: build and 672/0 on the mini.
 
+- 4.7 Done, in two commits. First, `App/RealtimeVoiceSession.swift` (2,401 lines) became seven files under `App/Realtime/` with no logic change. The only access edit is `RealtimeVoicePipeline.Operation.tag`, which went from `private` to internal because the session now lives in another file. Then three defects were fixed, each with a test that failed first:
+  - **Beta header.** Automatic mode sent `OpenAI-Beta: realtime=v1` to api.openai.com alongside the GA payload. OpenAI removed that interface on 2026-05-12 (its deprecations page), so the default OpenAI realtime connection was being rejected. The header is now sent only when "OpenAI beta" is chosen explicitly.
+  - **Model.** The default is `gpt-realtime-2.1`. A stored `gpt-realtime` or `gpt-4o-realtime` maps to it, since both shut down on 2027-01-20 (OpenAI deprecations page). The "Use OpenAI Realtime defaults" button writes the new name.
+  - **Transcription model.** It is now `RealtimeVoiceConfiguration.transcriptionModel`; 4.8 sets it per provider. It stays `gpt-4o-transcribe`, which shuts down 2027-02-26 with `gpt-transcribe` / `gpt-live-transcribe` as replacements. I did not switch, because I could not check the new model's session fields without a live call on your key. Open item: migrate before 2027-02-26.
+  - **Double answer.** Push-to-talk dictation over realtime called `finishInput()`, which sends `response.create`, so the realtime model answered as well as Perry's brain. It now calls `finishInputTranscribing()`, and only the brain answers.
+  - Verified: 676/0 on the mini. `turn_detection` stays null, which the payload test checks.
+  - Deviation: hands-free realtime (detector plus manual commit) arrives with the providers in 4.8. Today realtime is used only on hold paths, where release commits.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.

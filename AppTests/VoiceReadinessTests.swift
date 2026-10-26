@@ -142,6 +142,34 @@ final class VoiceReadinessTests: XCTestCase {
         XCTAssertEqual(overlayState.buddyState, .idle)
     }
 
+    func testRealtimeDictationCommitsForTranscriptionSoTheBrainAnswers() async throws {
+        var made: RealtimeVoiceSession?
+        var fixture: ResponseStreamFixture?
+        configureRealtime { configuration, apiKey, onEvent in
+            let transport = ResponseStreamFixture(configuration: configuration, frames: [], acceptsFinishInput: true, acceptsAudio: true)
+            fixture = transport
+            let session = RealtimeVoiceSession(configuration: configuration, apiKey: apiKey, transport: transport, onEvent: onEvent)
+            session.beginEmptyInputFixture()
+            made = session
+            return session
+        }
+        controller.beginDictation()
+        let session = try XCTUnwrap(made)
+        let transport = try XCTUnwrap(fixture)
+        let ingress = RealtimeVoiceAudioIngress(capacity: 1)
+        session.installAudioIngressFixtureForTesting(ingress)
+        ingress.yield(RealtimeVoiceAudioPacket(data: Data([1, 0]), sessionID: 1, utteranceGeneration: 1))
+        let audioLanded = await transport.waitUntilAudioCount(1, timeout: .seconds(1))
+        XCTAssertTrue(audioLanded)
+
+        controller.finishDictation()
+
+        let committed = await transport.waitUntilOperationCount(1)
+        XCTAssertTrue(committed)
+        let operations = await transport.operationLog()
+        XCTAssertEqual(operations, [.commitInput(RealtimeVoicePacketTag(sessionID: 1, utteranceGeneration: 1))])
+    }
+
     func testRealtimeSessionClaimsListeningOnlyWhenReady() async throws {
         let transport = ReadinessRealtimeTransport(events: [.sessionReady])
         var session: RealtimeVoiceSession?

@@ -370,7 +370,7 @@ struct SettingsView: View {
                     HStack(spacing: PerryTheme.Spacing.inline) {
                         Button("Use OpenAI Realtime defaults") {
                             realtimeVoiceEndpoint = "wss://api.openai.com/v1/realtime"
-                            if realtimeVoiceModel.isEmpty { realtimeVoiceModel = "gpt-realtime" }
+                            if realtimeVoiceModel.isEmpty || RealtimeVoiceConfiguration.retiredOpenAIModels.contains(realtimeVoiceModel) { realtimeVoiceModel = RealtimeVoiceConfiguration.openAIModel }
                             realtimeVoiceProtocolRaw = RealtimeVoiceProtocolMode.automatic.rawValue
                         }
                         Button("Save realtime voice API key") {
