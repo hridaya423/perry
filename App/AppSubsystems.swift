@@ -513,11 +513,13 @@ final class AppSubsystems {
         presence.onPreviewConversation = { [weak app = app] in app?.showPanel(activate: false) }
         presence.previewFrame = { [weak app = app] in app?.sessionPanel.frame }
         presence.onEndPreview = { [weak app = app] in
-            guard let app, app.sessionPanel.isVisible, !app.sessionPanel.isKey,
-                  NotchPresentation.shared.current == nil else { return false }
-            app.hidePanel()
+            let presentation = NotchPresentation.shared
+            guard let app, app.sessionPanel.isVisible,
+                  !(presentation.showsInteraction && (presentation.current?.priority ?? .activity) != .activity) else { return false }
+            app.endPeek()
             return true
         }
+        presence.onFocusPeek = { [weak app = app] in app?.sessionPanel.focusWithoutActivating() }
         presence.onDismissConversation = { [weak app = app] in
             guard let app, app.sessionPanel.isVisible else { return false }
             app.collapseNotch()

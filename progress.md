@@ -43,9 +43,13 @@
   - Verified: 649/0 on the mini. `testCloseRemovesContentThenShapeThenWindow` checks the order and that reopening during a close keeps the window. `testRenderOpenAndCloseMotionFrames` writes frames every ~29 ms; frames 0, 3, 6, 9, 12, 24 and the close frames are inspected in `docs/evidence/first-impressions/3.5/`. Open settles in about 350 ms, close in about 400 ms.
   - Not verified: a live 60 fps screen recording on a notched display. The mini has no notch and its ssh session cannot record or post events. Deviation: content out uses y −8, not −4, because one offset serves both directions.
 
+- 3.6 Done: dwell 180 ms, tuck 350 ms (re-entry still cancels), a click in the notch still opens at once. The notch hover zone is the eyes silhouette plus 6 pt left, right and below (it was a 220 pt minimum and 8 pt below). Bugs: the peek now closes on hover-out unless a non-activity entry (approval, question, guide, routine) is revealed (c3 #3); the peek close path calls `endPeek()`, which hides surfaces without `conversationVoice.cancel()` (c3 #10); the peek becomes key without activating Perry while the pointer is over it, and a click or key inside it promotes it to open so hover-out no longer closes it (c3 #19).
+  - Deviations: (1) c3 #19 uses the audit's "pointer entry" option, not "first key event": a global monitor cannot swallow that first key, so it would also land in the user's document. (2) The swell (+6 pt wide, +4 pt down at 0 ms) moves to 3.7, which rebuilds the eyes panel it animates. (3) The voice test holds a turn in `.requestingPermission`, the first in-flight state a test can reach without a microphone.
+  - Verified: 652/0 on the mini. `HomeHoverIntentTests` covers the new timings; `NotchPeekTests` covers close-with-task, stay-for-approval and no-cancel. Not verified live: that key focus returns to the user's app when the peek closes (needs a GUI session).
+
 ## Next
 
-- 3.6 hover: swell, 180 ms peek dwell, 350 ms close, and the three presence bugs (peek never closes with a running task, hover-out cancels voice, peek not key).
+- 3.7 eyes: `NotchEyes` in one 38 pt right wing, event-driven blinks and glances, moods, and the hover swell.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

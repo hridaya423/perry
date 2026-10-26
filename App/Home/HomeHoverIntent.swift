@@ -20,8 +20,8 @@ struct HomeHoverIntent: Equatable {
         case hidePeek
     }
 
-    var dwell: TimeInterval = 0.110
-    var tuck: TimeInterval = 0.250
+    var dwell: TimeInterval = 0.180
+    var tuck: TimeInterval = 0.350
     private(set) var state: State = .closed
 
     var pendingDeadline: TimeInterval? {

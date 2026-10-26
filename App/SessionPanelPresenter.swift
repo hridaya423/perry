@@ -65,6 +65,11 @@ final class SessionPanelPresenter {
         panel.setFrame(window, display: true)
     }
 
+    func focusWithoutActivating() {
+        guard let panel, isVisible, !panel.isKeyWindow else { return }
+        panel.makeKey()
+    }
+
     /// Pays the one-time render cost so a first invocation only orders an
     /// already-rendered window on screen.
     func warm() {
@@ -239,6 +244,10 @@ extension AppController {
 
     func hidePanel() {
         conversationVoice.cancel()
+        hideSurfaces()
+    }
+
+    func endPeek() {
         hideSurfaces()
     }
 

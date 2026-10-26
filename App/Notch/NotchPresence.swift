@@ -28,6 +28,7 @@ final class NotchPresence {
     var onPreviewConversation: (() -> Void)?
     var previewFrame: (() -> CGRect?)?
     var onEndPreview: (() -> Bool)?
+    var onFocusPeek: (() -> Void)?
     var onDismissConversation: (() -> Bool)?
 
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
@@ -64,6 +65,7 @@ final class NotchPresence {
             MainActor.assumeIsolated { self?.mouseDown() }
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            self?.engaged()
             self?.mouseDown()
             return event
         } as Any)
@@ -74,6 +76,7 @@ final class NotchPresence {
             if event.keyCode == 53, event.window?.performKeyEquivalent(with: event) == true {
                 return nil
             }
+            if event.keyCode != 53 { self?.engaged() }
             self?.keyDown(event)
             return event
         } as Any)
@@ -116,6 +119,7 @@ final class NotchPresence {
     // MARK: - Zone geometry
 
     nonisolated static let notchEar: CGFloat = 26
+    nonisolated static let zonePadding: CGFloat = 6
 
     nonisolated static func zoneRect(for screen: NSScreen) -> CGRect {
         let top = screen.frame.maxY
@@ -123,11 +127,11 @@ final class NotchPresence {
             let left = screen.auxiliaryTopLeftArea?.maxX ?? screen.frame.midX - 100
             let right = screen.auxiliaryTopRightArea?.minX ?? screen.frame.midX + 100
             let center = (left + right) / 2
-            let width = max(220, right - left + notchEar * 2 + 12)
+            let width = right - left + (notchEar + zonePadding) * 2
             return CGRect(x: center - width / 2,
-                          y: top - screen.safeAreaInsets.top - 8,
+                          y: top - screen.safeAreaInsets.top - zonePadding,
                           width: width,
-                          height: screen.safeAreaInsets.top + 8)
+                          height: screen.safeAreaInsets.top + zonePadding)
         }
         let menuBar = max(24, screen.frame.maxY - screen.visibleFrame.maxY)
         return CGRect(x: screen.frame.midX - 60, y: top - menuBar, width: 120, height: menuBar)
@@ -171,7 +175,9 @@ final class NotchPresence {
             return
         }
         let point = NSEvent.mouseLocation
-        let inside = zones.contains { $0.contains(point) } || (surface == .peeking && previewFrame?()?.contains(point) == true)
+        let overPeek = surface == .peeking && previewFrame?()?.contains(point) == true
+        let inside = zones.contains { $0.contains(point) } || overPeek
+        if overPeek { onFocusPeek?() }
         if inside && !insideZone {
             insideZone = true
             PerfMark.mark("home.hover_start")
@@ -196,6 +202,12 @@ final class NotchPresence {
         if surface == .peeking { surface = .open }
         apply(intent.escape())
         home?.onOpenConversation?()
+    }
+
+    private func engaged() {
+        guard surface == .peeking else { return }
+        surface = .open
+        apply(intent.escape())
     }
 
     private func endPreview() {
