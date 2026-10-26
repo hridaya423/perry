@@ -4,13 +4,13 @@ import SwiftUI
 
 enum PerryTheme {
     enum Colors {
-        static let canvas = color(light: 0xF5F3EE, dark: 0x1A1B1D)
-        static let surface = color(light: 0xFFFEFA, dark: 0x232427)
-        static let chip = color(light: 0xEDEAE3, dark: 0x2C2D31)
+        static let canvas = color(light: 0xF5F3EE, dark: 0x000000)
+        static let surface = color(light: 0xFFFEFA, dark: 0x161618)
+        static let chip = color(light: 0xEDEAE3, dark: 0x232326)
         static let text = color(light: 0x202420, dark: 0xF5F2EA)
         static let textSecondary = color(light: 0x666D66, dark: 0xA6A59F)
         static let textTertiary = color(light: 0x6E736E, dark: 0x8B8A85)
-        static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x2C2D2F)
+        static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x2A2A2D)
         static let primaryAction = color(light: 0x202420, dark: 0xF5F2EA)
         static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
         static let crown = Color.black

@@ -1,56 +1,41 @@
+import AppKit
 import SwiftUI
 
 enum AppsBeatPlan {
-    enum Action: Equatable {
-        case connect, later, comingSoon, useOwnApp
-    }
-
     struct Tile: Equatable, Identifiable {
         let id: String
         let title: String
         let detail: String
-        var action: Action
+        let bundleID: String?
     }
 
-    private static let known: [(keywords: [String], id: String, title: String, detail: String)] = [
-        (["notion"], "notion", "Notion", "Read your pages and databases."),
-        (["slack"], "slack", "Slack", "Read your channels and messages."),
-        (["linear"], "linear", "Linear", "Read your issues and projects."),
-        (["github"], "github", "GitHub", "Read your notifications."),
-        (["gmail"], "google-gmail", "Gmail", "Read your mail."),
-        (["google drive", "google docs"], "google-drive", "Google Drive", "Read files you open with Perry."),
-        (["outlook", "teams", "microsoft"], "microsoft", "Microsoft 365", "Read your mail and files."),
-        (["google calendar"], "google-calendar", "Google Calendar", "Read your events."),
+    private static let known: [(keywords: [String], tile: Tile)] = [
+        (["notion"], Tile(id: "notion", title: "Notion", detail: "Read your pages and databases.", bundleID: "notion.id")),
+        (["slack"], Tile(id: "slack", title: "Slack", detail: "Read your channels and messages.", bundleID: "com.tinyspeck.slackmacgap")),
+        (["linear"], Tile(id: "linear", title: "Linear", detail: "Read your issues and projects.", bundleID: "com.linear")),
+        (["github"], Tile(id: "github", title: "GitHub", detail: "Read your notifications.", bundleID: "com.github.GitHubClient")),
+        (["google drive", "google docs"], Tile(id: "google-drive", title: "Google Drive", detail: "Read files you open with Perry.", bundleID: "com.google.drivefs")),
+        (["outlook", "teams", "microsoft"], Tile(id: "microsoft", title: "Microsoft 365", detail: "Read your mail and files.", bundleID: "com.microsoft.Outlook")),
+        (["google calendar"], Tile(id: "google-calendar", title: "Google Calendar", detail: "Read your events.", bundleID: nil)),
     ]
 
-    private static let calendar = (id: "apple-calendar", title: "Calendar", detail: "Read the events on this Mac.")
+    private static let calendar = Tile(id: "apple-calendar", title: "Calendar", detail: "Read the events on this Mac.", bundleID: "com.apple.iCal")
 
     static func tiles(apps: String, mentions: String, available: (String) -> Bool) -> [Tile] {
         let named = apps.lowercased()
         var tiles = known
             .compactMap { entry -> (Range<String.Index>, Tile)? in
                 guard let range = entry.keywords.compactMap({ named.range(of: $0) }).min(by: { $0.lowerBound < $1.lowerBound }) else { return nil }
-                return (range, Tile(id: entry.id, title: entry.title, detail: entry.detail, action: .later))
+                return (range, entry.tile)
             }
             .sorted { $0.0.lowerBound < $1.0.lowerBound }
             .map(\.1)
         let everything = (named + " " + mentions).lowercased()
         if !tiles.contains(where: { $0.id == "google-calendar" }),
            ["calendar", "meeting", "schedule"].contains(where: everything.contains) {
-            tiles.append(Tile(id: calendar.id, title: calendar.title, detail: calendar.detail, action: .later))
+            tiles.append(calendar)
         }
-        var suggested = false
-        for index in tiles.indices {
-            if tiles[index].id == "google-gmail" {
-                tiles[index].action = .useOwnApp
-            } else if !available(tiles[index].id) {
-                tiles[index].action = .comingSoon
-            } else if !suggested {
-                tiles[index].action = .connect
-                suggested = true
-            }
-        }
-        return Array(tiles.prefix(4))
+        return Array(tiles.filter { available($0.id) }.prefix(4))
     }
 }
 
@@ -65,7 +50,7 @@ struct AppsBeat: View {
         OnboardingBeatLayout(
             title: "Want me to reach into your apps?",
             message: tiles.isEmpty ? "Connect apps any time in Settings › Apps." : "Read-only to start. I ask before I change anything.",
-            artHeight: tiles.isEmpty ? 40 : 0
+            artHeight: tiles.isEmpty ? 40 : 24
         ) {
             Color.clear
         } detail: {
@@ -101,6 +86,7 @@ struct AppsBeat: View {
 
     private func row(_ tile: AppsBeatPlan.Tile) -> some View {
         HStack(spacing: 12) {
+            AppTileIcon(tile: tile)
             VStack(alignment: .leading, spacing: 2) {
                 Text(tile.title)
                     .font(PerryTheme.Scale.rowTitle)
@@ -122,25 +108,9 @@ struct AppsBeat: View {
         if connected.contains(tile.id) {
             GrantedMark()
         } else {
-            switch tile.action {
-            case .connect:
-                Button("Connect") { connect(tile) }
-                    .buttonStyle(RowButtonStyle(prominent: true))
-            case .later:
-                note("Later in Settings › Apps")
-            case .comingSoon:
-                note("Coming soon")
-            case .useOwnApp:
-                Button("Use my own app") { controller.openSettings(.apps) }
-                    .buttonStyle(RowButtonStyle(prominent: false))
-            }
+            Button("Connect") { connect(tile) }
+                .buttonStyle(RowButtonStyle())
         }
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .font(PerryTheme.Scale.meta)
-            .foregroundStyle(PerryTheme.Colors.textTertiary)
     }
 
     private func connect(_ tile: AppsBeatPlan.Tile) {
@@ -167,6 +137,24 @@ struct AppsBeat: View {
         } else {
             states[tile.id] = nil
             connected.insert(tile.id)
+        }
+    }
+}
+
+private struct AppTileIcon: View {
+    let tile: AppsBeatPlan.Tile
+
+    var body: some View {
+        if let url = tile.bundleID.flatMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                .resizable()
+                .frame(width: 28, height: 28)
+        } else {
+            Text(tile.title.prefix(1))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(PerryTheme.Colors.text)
+                .frame(width: 28, height: 28)
+                .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
     }
 }

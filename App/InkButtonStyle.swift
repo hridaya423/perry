@@ -51,7 +51,7 @@ struct InkButtonStyle: ButtonStyle {
                     }
                 }
                 .padding(-2)
-                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.45)
+                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : tier == .primary ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
                 .onHover { hovering = $0 }
                 .animation(PerryTheme.Motion.snap, value: configuration.isPressed)
@@ -59,7 +59,8 @@ struct InkButtonStyle: ButtonStyle {
         }
 
         private var foreground: Color {
-            switch tier {
+            if !isEnabled && tier == .primary { return PerryTheme.Colors.textTertiary }
+            return switch tier {
             case .primary: PerryTheme.Colors.onPrimaryAction
             case .secondary: PerryTheme.Colors.text
             case .destructive: .white
@@ -67,7 +68,8 @@ struct InkButtonStyle: ButtonStyle {
         }
 
         private var background: Color {
-            switch tier {
+            if !isEnabled && tier == .primary { return Color.white.opacity(0.08) }
+            return switch tier {
             case .primary: PerryTheme.Colors.primaryAction
             case .secondary: Color.white.opacity(0.06)
             case .destructive: PerryTheme.Colors.danger

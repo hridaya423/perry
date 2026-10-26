@@ -215,14 +215,12 @@ struct InterviewBeat: View {
     private var consent: some View {
         OnboardingBeatLayout(
             title: "Tell me about you.",
-            message: (["I keep short notes on this Mac so I can help your way. You can read and delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " "),
-            artHeight: 40
+            message: (["Three quick questions. I keep short notes on this Mac so I can help your way, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " "),
+            artHeight: 64
         ) {
             Color.clear
         } detail: {
-            Text("Three quick questions.")
-                .font(PerryTheme.Scale.secondary)
-                .foregroundStyle(PerryTheme.Colors.textTertiary)
+            EmptyView()
         } actions: {
             OnboardingFooter {
                 EmptyView()
@@ -247,9 +245,8 @@ struct InterviewBeat: View {
             }
         } actions: {
             OnboardingFooter {
-                Text("\(index + 1) of \(ProfileExtraction.questions.count)")
-                    .font(PerryTheme.Scale.meta)
-                    .foregroundStyle(PerryTheme.Colors.textTertiary)
+                OnboardingProgress(current: index, count: ProfileExtraction.questions.count)
+                    .padding(.trailing, 10)
             } primary: {
                 Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: "Next") }
                     .buttonStyle(InkButtonStyle())
@@ -269,6 +266,7 @@ struct InterviewBeat: View {
                 .textFieldStyle(.plain)
                 .font(PerryTheme.Scale.input)
                 .focused($focused)
+                .focusEffectDisabled()
                 .onSubmit { model.answer(model.draft) }
             Button {
                 if listener.listening {

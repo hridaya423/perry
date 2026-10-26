@@ -90,6 +90,7 @@ private struct HelloBeat: View {
                     .font(PerryTheme.Scale.input)
                     .multilineTextAlignment(.center)
                     .focused($focused)
+                    .focusEffectDisabled()
                     .onSubmit { director.acceptName(name) }
                     .padding(.horizontal, 18)
             }
@@ -108,6 +109,8 @@ private struct HelloBeat: View {
         .task {
             try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound))
             focused = true
+            await Task.yield()
+            NSApp.sendAction(#selector(NSResponder.moveToEndOfDocument(_:)), to: nil, from: nil)
         }
     }
 }
@@ -136,7 +139,7 @@ private struct AccessBeat: View {
                 .scaleEffect(0.6)
                 .modifier(InkDrawOn())
         } detail: {
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 row(.accessibility, title: "Accessibility", detail: "Reads buttons, menus and fields", icon: "hand.point.up.left",
                     granted: director.permissions?.accessibility == true)
                 row(.microphone, title: "Microphone", detail: "Hears you only while you hold the shortcut", icon: "mic",
@@ -162,10 +165,10 @@ private struct AccessBeat: View {
     }
 
     private func row(_ pane: PrivacyPane, title: String, detail: String, icon: String, granted: Bool) -> some View {
-        OnboardingRow(title: title, detail: detail, selected: granted) {
+        OnboardingRow(title: title, detail: detail) {
             Image(systemName: icon)
                 .font(PerryTheme.Icon.row)
-                .foregroundStyle(granted ? PerryTheme.Colors.accent : PerryTheme.Colors.text)
+                .foregroundStyle(PerryTheme.Colors.text)
         } trailing: {
             if granted {
                 GrantedMark()
@@ -223,13 +226,15 @@ struct BrainBeat: View {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
                     card(.cloud, title: cloudRow == .apiKey ? "Your API key" : cloudRow.title, detail: cloudDetail, icon: "cloud", status: cloudReady ? readyDetail : nil)
-                    card(.local, title: "On this Mac", detail: "Private and offline. Simpler answers.", icon: "laptopcomputer",
+                    card(.local, title: "On this Mac", detail: "Private and offline. Nothing leaves this Mac.", icon: "laptopcomputer",
                          status: localReady ? nil : "Set up later in Settings")
                         .disabled(!localReady)
                 }
-                Text(brain.signInError ?? "You can switch in Settings.")
-                    .font(PerryTheme.Scale.secondary)
-                    .foregroundStyle(PerryTheme.Colors.textTertiary)
+                if let error = brain.signInError {
+                    Text(error)
+                        .font(PerryTheme.Scale.secondary)
+                        .foregroundStyle(PerryTheme.Colors.caution)
+                }
             }
         } actions: {
             OnboardingFooter {
@@ -241,8 +246,8 @@ struct BrainBeat: View {
             } trailing: {
                 if brain.isSigningIn {
                     Button("Cancel") { brain.cancelSignIn() }
-                } else {
-                    Button("Later") { director.skip() }
+                } else if selected == .cloud && !cloudReady {
+                    Button("Skip") { director.skip() }
                 }
             }
         }
@@ -303,8 +308,8 @@ struct BrainBeat: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: icon)
-                        .font(PerryTheme.Icon.row)
-                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.textSecondary)
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(isSelected ? PerryTheme.Colors.accent : PerryTheme.Colors.text)
                     Spacer()
                     Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                         .font(PerryTheme.Icon.row)
@@ -352,10 +357,10 @@ private struct ShortcutsBeat: View {
     private var talk: Gesture { Gesture(rawValue: talkRaw) ?? .defaultTalk }
 
     var body: some View {
-        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", artHeight: 0) {
+        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", message: "Click the key to change it.", artHeight: 40) {
             Color.clear
         } detail: {
-            ShortcutRecorders(controller: controller, roles: [.talk, .dictate], presetLimit: 3)
+            ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
                 .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -379,8 +384,8 @@ private struct ShortcutsBeat: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(check.result == .needsInputMonitoring)
             } trailing: {
-                if check.result != .heard {
-                    Button("Keep defaults") { director.skip() }
+                if check.result == .needsInputMonitoring {
+                    Button("Skip") { director.skip() }
                 }
             }
         }

@@ -101,11 +101,11 @@ struct OnboardingProgress: View {
     let count: Int
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             ForEach(0..<count, id: \.self) { index in
                 Capsule()
-                    .fill(index == current ? PerryTheme.Colors.accent : PerryTheme.Colors.text.opacity(index < current ? 0.5 : 0.16))
-                    .frame(width: index == current ? 18 : 6, height: 4)
+                    .fill(index == current ? PerryTheme.Colors.accent : PerryTheme.Colors.text.opacity(index < current ? 0.7 : 0.4))
+                    .frame(width: index == current ? 18 : 6, height: 6)
             }
         }
         .accessibilityElement(children: .ignore)

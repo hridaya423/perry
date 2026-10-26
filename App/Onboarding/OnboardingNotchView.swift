@@ -31,9 +31,8 @@ struct OnboardingNotchView: View {
                     Spacer()
                     Button { director.close() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 12, weight: .semibold))
                             .frame(width: 26, height: 26)
-                            .background(Color.white.opacity(0.07), in: Circle())
                     }
                     .buttonStyle(OnboardingLinkStyle())
                     .accessibilityLabel("Close")

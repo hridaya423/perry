@@ -15,7 +15,7 @@ public struct ProfileFacts: Codable, Equatable, Sendable {
 public enum ProfileExtraction {
     public static let questions = [
         "What do you do?",
-        "Which apps do you spend your day in?",
+        "Which apps do you use most?",
         "What’s something you’ve been wanting to learn lately?",
     ]
 

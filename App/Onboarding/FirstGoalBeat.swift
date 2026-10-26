@@ -46,7 +46,7 @@ enum FirstGoal: Equatable {
 
     func promise(_ goal: String) -> String {
         switch self {
-        case .guide(let app): "I’ll open \(app) and show you, one step at a time."
+        case .guide(let app): "I’ll open \(app) and walk you through it, one step at a time."
         case .ask: "I’ll give you a short plan and one question to start."
         case .make: "I’ll get it started. I ask before I change anything."
         }
@@ -82,7 +82,7 @@ struct FirstGoalBeat: View {
         } else {
             OnboardingBeatLayout(
                 title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "Let’s start with \(trimmed).",
-                message: trimmed.isEmpty || asking ? nil : [route.promise(trimmed), needsScreenAccess ? "To show you, I need to see your screen." : nil].compactMap { $0 }.joined(separator: " "),
+                message: trimmed.isEmpty || asking ? nil : route.promise(trimmed),
                 artHeight: 64
             ) {
                 Color.clear
@@ -93,21 +93,21 @@ struct FirstGoalBeat: View {
                         .font(PerryTheme.Scale.input)
                         .multilineTextAlignment(.center)
                         .focused($focused)
+                        .focusEffectDisabled()
                         .onSubmit { asking = false }
                         .padding(.horizontal, 16)
                         .frame(width: 360, height: 44)
                         .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 22))
                         .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(PerryTheme.Colors.subtleSeparator) }
                         .task { focused = true }
-                } else {
-                    Button("Something else") { asking = true }
-                        .buttonStyle(OnboardingLinkStyle())
                 }
             } actions: {
                 OnboardingFooter {
-                    EmptyView()
+                    if !trimmed.isEmpty && !asking {
+                        Button("Something else") { asking = true }
+                    }
                 } primary: {
-                    Button(action: start) { OnboardingPrimaryLabel(title: needsScreenAccess ? "Allow and start" : "Start") }
+                    Button(action: start) { OnboardingPrimaryLabel(title: "Start") }
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)

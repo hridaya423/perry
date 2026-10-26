@@ -8,13 +8,11 @@ final class AppsBeatTests: XCTestCase {
     func testTilesComeFromTheAppsNamedInTheInterview() {
         let tiles = AppsBeatPlan.tiles(apps: "Notion, Figma, Slack", mentions: "", available: { _ in true })
         XCTAssertEqual(tiles.map(\.id), ["notion", "slack"])
-        XCTAssertEqual(tiles.map(\.action), [.connect, .later], "at most one connect is suggested")
     }
 
-    func testGmailNeverShowsConnect() {
+    func testGmailNeverShows() {
         let tiles = AppsBeatPlan.tiles(apps: "Gmail and Linear", mentions: "", available: { _ in true })
-        XCTAssertEqual(tiles.first { $0.id == "google-gmail" }?.action, .useOwnApp)
-        XCTAssertEqual(tiles.first { $0.id == "linear" }?.action, .connect)
+        XCTAssertEqual(tiles.map(\.id), ["linear"])
     }
 
     func testMeetingsBringInTheCalendar() {
@@ -22,9 +20,9 @@ final class AppsBeatTests: XCTestCase {
         XCTAssertEqual(AppsBeatPlan.tiles(apps: "Google Calendar", mentions: "", available: { _ in true }).map(\.id), ["google-calendar"])
     }
 
-    func testAppsWithoutPerrysSignInSayComingSoon() {
+    func testAppsWithoutPerrysSignInAreLeftOut() {
         let tiles = AppsBeatPlan.tiles(apps: "Slack, Notion", mentions: "calendar", available: { $0 == "apple-calendar" })
-        XCTAssertEqual(tiles.map(\.action), [.comingSoon, .comingSoon, .connect])
+        XCTAssertEqual(tiles.map(\.id), ["apple-calendar"])
     }
 
     func testNothingNamedMeansNoTiles() {
@@ -44,7 +42,7 @@ final class AppsBeatTests: XCTestCase {
         director.start(resume: false)
         while director.beat != .apps { director.skip() }
         defer { director.stop() }
-        let tiles = AppsBeatPlan.tiles(apps: "Notion, Slack, Gmail", mentions: "weekly meetings", available: { $0 != "slack" })
+        let tiles = AppsBeatPlan.tiles(apps: "Notion, Slack, Gmail, Linear", mentions: "weekly meetings", available: { $0 != "slack" })
         let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: 380)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
