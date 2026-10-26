@@ -162,9 +162,30 @@ The current step has three typed questions (work, apps, learning goal) and one c
 - **Import from ChatGPT or Claude.** The screen says "Already told ChatGPT or Claude about yourself? Bring it over." Perry shows one prompt to copy: "Tell me everything you remember about me, as a list." The user pastes the answer back.
   - The on-device model turns it into profile facts. The user sees the facts as a checklist and keeps what they want.
   - The import also lives in Settings > You.
-- **Learning after onboarding.** When a task reveals something new ("your manager is Sam"), Perry asks once: "Want me to remember that?" At most one such question a day. A "Stop asking" switch lives in Settings > You.
+- **Learning after onboarding.** Perry decides on its own what to remember (§6.1). It does not ask.
 - **Privacy.** Reactions and extraction run on Apple's on-device model where available, so nothing leaves the Mac during this step.
 - **End card.** The step ends on an editable "What I know about you" card: name, pronunciation (play), work, apps, focus and style. The same card lives in Settings > You.
+
+## 6.1 Memory that Perry manages itself
+
+Owner direction (2026-10-26): Perry decides what goes into memory. Today memory is two Markdown files (`PROFILE.md`, `CONTEXT.md`) that the model rewrites through `memory.write`, a yellow-tier tool.
+
+**Supermemory, checked 2026-10-26.** It is not a fit.
+- The self-hosted server is a closed binary, free only "within its lite license limit". The SDKs are open; the engine is not.
+- It runs as a separate server with telemetry on by default, a 768-dimension embedding model download and a separate LLM for extraction.
+- Its LongMemEval numbers are vendor-reported (81.6% to 95% depending on the source). No independent run exists.
+- Perry holds hundreds of facts, not millions. A server and a vector index cost more than they return at that size.
+
+**What Perry takes from it:** a static profile beside dynamic facts, newer facts that replace older ones, expiry for short-lived facts, and retrieval by relevance.
+
+**Design.**
+- `MemoryStore` keeps facts in one JSON file beside the Markdown files: text, kind (`profile`, `preference`, `person`, `project`, `event`), source thread, created date, optional expiry, and the fact it replaces.
+- After each finished conversation, Apple's on-device model reads the exchange and returns new or changed facts as a `@Generable` value. Rules: keep durable, specific facts about the user; skip secrets, one-off requests and anything already known; mark project and event facts with an expiry.
+- Where Apple Intelligence is off, the same extraction runs on the active brain with the same rules. A cloud brain only sees the redacted text (§5.3).
+- A new fact with the same subject replaces the old one, and the old one is kept as history.
+- Prompts get the profile facts plus the eight facts most relevant to the request, ranked with Apple's `NLEmbedding`. No server, no download.
+- The notch shows a quiet "Remembered: your manager is Sam" line with Undo for three seconds. Settings > You lists every fact with delete, and has a "Pause memory" switch.
+- `memory.write` stays for explicit requests ("remember that…") and becomes green-tier, since the user can see and undo every write.
 
 ## 7. Native finish
 
@@ -192,7 +213,7 @@ The current step has three typed questions (work, apps, learning goal) and one c
 |---|---|---|
 | A | §4 cursor bubble, §7.1 bottom edge, §7.2 icons | unit tests, renders |
 | B | §1 speech engines + `SpeechText`, §0 advisor + setup stage | advisor table tests, renders, owner listens |
-| C | §3 pronunciation, §6 onboarding | renders, tests, owner run-through |
+| C | §3 pronunciation, §6 onboarding, §6.1 memory | renders, tests, owner run-through |
 | D | §2 SpeechAnalyzer STT, earcons, loopback drill | WAV drill transcript on the mini |
 | E | §5 eval, Brain page, redactor, Apple titles | eval table, redaction fixtures, renders |
 | F | §7.3–7.5 system pass | contact sheet, full suite, install |
