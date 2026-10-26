@@ -325,7 +325,7 @@ struct BrainBeat: View {
                 if let status {
                     Text(status)
                         .font(PerryTheme.Scale.meta)
-                        .foregroundStyle(PerryTheme.Colors.textTertiary)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)

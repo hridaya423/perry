@@ -43,14 +43,14 @@ enum PerryTheme {
         static let panelTitle = Font.system(.headline, weight: .semibold)
         static let panelBody = Font.body
         static let panelSubtitle = Font.subheadline
-        static let panelMetadata = Font.caption.weight(.medium)
-        static let panelClose = Font.caption.weight(.semibold)
+        static let panelMetadata = Font.system(size: 12, weight: .medium)
+        static let panelClose = Font.system(size: 12, weight: .semibold)
         static let panelIcon = Font.callout.weight(.semibold)
         static let action = Font.callout.weight(.medium)
         static let settingsStatus = Font.callout
-        static let note = Font.caption
-        static let mono = Font.system(.caption, design: .monospaced)
-        static let monoSmall = Font.system(.caption2, design: .monospaced)
+        static let note = Font.system(size: 12)
+        static let mono = Font.system(size: 12, design: .monospaced)
+        static let monoSmall = Font.system(size: 11, design: .monospaced)
         static let value = Font.callout.monospacedDigit()
     }
 
@@ -63,7 +63,7 @@ enum PerryTheme {
         static let rowTitle = Font.system(size: 14, weight: .semibold)
         static let body = Font.system(size: 13)
         static let chip = Font.system(size: 13, weight: .medium)
-        static let secondary = Font.system(size: 12.5)
+        static let secondary = Font.system(size: 12)
         static let keycap = Font.system(size: 12, weight: .medium, design: .rounded)
         static let code = Font.system(size: 12, design: .monospaced)
         static let meta = Font.system(size: 11, weight: .medium).monospacedDigit()

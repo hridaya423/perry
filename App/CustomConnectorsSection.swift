@@ -53,7 +53,7 @@ struct CustomConnectorsSection: View {
                         .font(PerryTheme.Typography.panelBody)
                     if connector.secret != nil {
                         Image(systemName: "key.fill")
-                            .font(.caption2)
+                            .font(PerryTheme.Icon.inline)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                             .help("Uses a key from your keychain")
                             .accessibilityLabel("Uses a key")

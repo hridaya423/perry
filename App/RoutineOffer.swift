@@ -48,7 +48,7 @@ struct RoutineOfferView: View {
                     .keyboardShortcut(.defaultAction)
             }
             Text("Works best for steps inside one app window. I cannot see passwords.")
-                .font(.caption)
+                .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

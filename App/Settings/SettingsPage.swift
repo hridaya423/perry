@@ -129,7 +129,7 @@ struct SettingsSidebar: View {
                                 Text(title.uppercased())
                                     .font(PerryTheme.Scale.section)
                                     .kerning(0.4)
-                                    .foregroundStyle(PerryTheme.Colors.textTertiary)
+                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                                     .padding(.horizontal, 8)
                                     .padding(.bottom, 2)
                             }

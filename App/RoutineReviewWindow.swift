@@ -92,7 +92,7 @@ struct RoutineReviewView: View {
                     .keyboardShortcut(.defaultAction)
             }
             Text("Press Esc twice to cancel. Nothing is saved.")
-                .font(.caption)
+                .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
@@ -110,7 +110,7 @@ struct RoutineReviewView: View {
             .frame(maxHeight: 104)
             .fixedSize(horizontal: false, vertical: true)
             Text("Check each step before you save. Perry asks for typed text each time it runs unless you turn that off for a step.")
-                .font(.caption)
+                .font(PerryTheme.Typography.note)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {
                 Button("Discard") { onDiscard() }
@@ -133,7 +133,7 @@ struct RoutineReviewView: View {
             ForEach(Array(state.steps.enumerated()), id: \.offset) { index, step in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("\(index + 1)")
-                        .font(.caption.weight(.semibold))
+                        .font(PerryTheme.Typography.panelClose)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .frame(width: 20, height: 20)
@@ -144,7 +144,7 @@ struct RoutineReviewView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if step.requiresHuman {
                             Text("You do this one")
-                                .font(.caption)
+                                .font(PerryTheme.Typography.note)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                         } else if case .typeText = step.action {
                             Toggle(isOn: Binding(
@@ -152,7 +152,7 @@ struct RoutineReviewView: View {
                                 set: { _ in state.toggleParameter(index) }
                             )) {
                                 Text("Ask me for this text each time")
-                                    .font(.caption)
+                                    .font(PerryTheme.Typography.note)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                             }
                             .toggleStyle(InkSwitchStyle())

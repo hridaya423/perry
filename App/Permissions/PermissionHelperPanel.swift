@@ -138,7 +138,7 @@ struct PermissionHelperView: View {
                         .help("Open the \(pane.displayName()) list again")
                 }
                 .font(PerryTheme.Scale.meta)
-                .foregroundStyle(PerryTheme.Colors.textTertiary)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
             case .settingsClosed:
                 Button("Open Settings", action: actions.reopenSettings)
                     .buttonStyle(InkButtonStyle(.primary))
