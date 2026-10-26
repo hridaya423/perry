@@ -693,10 +693,10 @@ if cua_driver["licenses"] != [{"license": {"id": "MIT"}}]:
 properties = {item["name"]: item["value"] for item in cua_driver["properties"]}
 expected_properties = {
     "perry:runtime-target": "aarch64-apple-darwin",
-    "perry:source-revision": "c60ef6ad2db8774fb342938843e2f17f26c68240",
-    "perry:archive-sha256": "1ef80b48b0b4ccd3b2eadd72c3c66735a65e15306db92816fb04f963d202155d",
-    "perry:archive-binary-sha256": "3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d",
-    "perry:binary-sha256": "c8343fb4ce61af8091bd3a08d8c6c812b5b45488f78a72d110685e5eb2b80cc9",
+    "perry:source-revision": "85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19",
+    "perry:archive-sha256": "5f71191c082ca07c9dfc13b7c9a6eec60a82818c245a93534cc0eb7911471d72",
+    "perry:archive-binary-sha256": "92067848d0eeb9de76929fbd06a137af801b0ff6caedbb3109bd7a6cc84a1f9f",
+    "perry:binary-sha256": "6320105f0df8174175f75b68e59523fece754b83e62936ee9fbdead98fe15d9c",
     "perry:signing-identifier": "cua-driver",
     "perry:signing-team": "YCK386LBJ7",
 }

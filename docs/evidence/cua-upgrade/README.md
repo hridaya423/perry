@@ -122,3 +122,44 @@ The release notes list none. I diffed the `describe` schemas of every tool in Pe
 8. New tools Perry does not use: `run_steps`, `run_script`, `get_guide`, `browser_select`, `parse_visual_regions`, `install_extension`.
 
 Unchanged: capability manifest format (v3, the 100-app manifest loaded without change), signing team and identifier, designated requirement, `element_token` format (`s<8 hex>:<row>`), MCP flags `mcp --direct --embedded --host-bundle-id`.
+
+## Pin bump to 0.38.0
+
+0.38.0 is compatible with small adapter changes, so the pin moved.
+
+Changes:
+
+- `scripts/cua-driver.lock`: version, tag, asset, URL, the three hashes and the source revision. Signing identifier and team are unchanged.
+- `App/CuaDriverClient.swift`: `get_window_state` now sends `tree_format: "both"` (capture) and `"elements"` (token lookup).
+- `AppTests/CuaDriverClientTests.swift`: `testCaptureAsksForBothTreeFormatsBecauseTheDriverDefaultsToMarkdown`. It passes with the change and fails without it (verified by removing the line on the mini).
+- `scripts/test-cua-driver.sh`, `scripts/test-release-automation.sh`, `docs/release-readiness/{cua-driver.md,sbom.cdx.json,third-party-licenses.json}`: the same version, hash and revision values, replaced in place.
+- `App/CuaCapabilityManifest.swift`: the doc comment now says 0.38.0 still has no any-app mode.
+
+Verification, all on the mini in `~/Honey/perry-cua` with `DEVELOPER_DIR=~/Applications/Xcode-27.app/Contents/Developer`. Logs are in `verify/`.
+
+| check | result |
+| --- | --- |
+| `fetch-cua-driver.sh --check-lock`, `--fetch`, `--check` | pass; the real 0.38.0 archive matched the lock and the signature check passed |
+| `scripts/test-cua-driver.sh` | pass |
+| `scripts/test-cua-host-lifecycle.sh` against the built Debug `Perry.app` | pass ("Cua worker exited with its host") |
+| xcodegen 2.46.0 generate, `xcodebuild build` Debug arm64 with `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=` | BUILD SUCCEEDED |
+| `xcodebuild test -only-testing:PerryTests` | 677 tests, 7 skipped, 0 failures (676 and 0 failures before the new test was added) |
+| `swift test` PerryCore | 94 tests, 0 failures |
+| `swift test` PerryOverlay | 10 tests, 0 failures |
+| `swift test` PerryCapture | 6 tests, 0 failures |
+| `swift test` PerryRuntimes | 106 tests, 0 failures |
+| `swift test` PerryGuide | 266 tests, 1 failure: `HardwareAndKeysTests.testKeychainRoundTrip`, `unhandled(-25308)` (`errSecInteractionNotAllowed`). The keychain is not usable from an ssh session. The package does not touch the Cua driver. |
+
+Two repo checks fail at `HEAD` before my changes, so they could not confirm the bump end to end. I ran both against a `git archive HEAD` copy on the mini:
+
+- `scripts/generate-release-metadata.sh --check` fails with `third-party package is not pinned: perrycore` at `HEAD` and after. The SBOM and license files were therefore edited by value substitution, not regenerated.
+- `scripts/test-release-automation.sh` fails at `HEAD` with `features[10].evidence[0] names a missing file: App/RealtimeVoiceSession.swift`, before it reaches the Cua checks. In my copy it stops earlier, on a `docs/evidence` file the rsync excludes.
+
+Not done: no real-driver run of the whole Perry app. `PerryTests` and the lifecycle script use fake drivers. The real-driver evidence is the benchmark above, which exercised `check_permissions`, `list_apps`, `list_windows`, `get_window_state` with `tree_format: both`, `click` and `type_text` against 0.38.0 with Perry's flags, manifest and environment. `start_session`, `end_session`, `verify_state`, `invoke_menu`, `launch_app` and the browser tools were checked against the schemas only.
+
+Follow-ups worth a decision:
+
+- `CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS`: 300 ms of the remaining click time and 358 ms of type time, at the cost of focus protection.
+- `timeout_ms` on `get_window_state` (new default 1000): Perry's 6 s read timeout is far above it, so heavy windows will now come back truncated instead of slow.
+- Move to the `post_action_wait` tool argument when a build with PR #6033 ships. It is per call, so Perry could skip the wait only on reads it makes itself.
+- The `standard`-mode no-manifest option, as a security call.

@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import PerryCore
 
-/// Plan §6.5: driver 0.22.1 has no `any` app mode, so the capability ceiling is
+/// Plan §6.5: driver 0.38.0 still has no `any` app mode, so the capability ceiling is
 /// generated at each worker spawn from installed and running apps minus the
 /// TrustGuard blocklist, and `Refresher` rewrites it when an app the last scan
 /// didn't cover launches. TrustGuard still gates every capture at runtime; this

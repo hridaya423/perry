@@ -551,6 +551,7 @@ actor CuaDriverClient {
                 "include_screenshot": includeScreenshot,
                 "max_elements": 300,
                 "max_depth": 12,
+                "tree_format": "both",
                 "session": sessionID,
             ],
             generation: generation,
@@ -1212,6 +1213,7 @@ actor CuaDriverClient {
                 "query": targetLabel,
                 "max_elements": 300,
                 "max_depth": 12,
+                "tree_format": "elements",
                 "session": sessionID,
             ],
             timeout: Self.readTimeout

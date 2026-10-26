@@ -263,6 +263,22 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
     }
 
+    func testCaptureAsksForBothTreeFormatsBecauseTheDriverDefaultsToMarkdown() async throws {
+        let client = makeClient()
+        addTeardownBlock {
+            await client.shutdown()
+        }
+
+        _ = try await client.capture(
+            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            sessionID: "tree-format"
+        )
+
+        let stateRequests = requestLines().filter { $0.contains("\"name\":\"get_window_state\"") }
+        XCTAssertFalse(stateRequests.isEmpty)
+        XCTAssertTrue(stateRequests.allSatisfy { $0.contains("\"tree_format\":\"both\"") })
+    }
+
     func testCaptureSeparatesSecureAndUnknownFieldValues() async throws {
         FileManager.default.createFile(
             atPath: testDirectory.appendingPathComponent("secure-fields").path,

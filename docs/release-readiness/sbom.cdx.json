@@ -83,11 +83,11 @@
       "externalReferences": [
         {
           "type": "distribution",
-          "url": "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.22.1/cua-driver-rs-0.22.1-darwin-arm64.tar.gz"
+          "url": "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/cua-driver-rs-0.38.0-darwin-arm64.tar.gz"
         },
         {
           "type": "license",
-          "url": "https://github.com/trycua/cua/blob/c60ef6ad2db8774fb342938843e2f17f26c68240/LICENSE"
+          "url": "https://github.com/trycua/cua/blob/85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19/LICENSE"
         },
         {
           "type": "vcs",
@@ -109,19 +109,19 @@
         },
         {
           "name": "perry:source-revision",
-          "value": "c60ef6ad2db8774fb342938843e2f17f26c68240"
+          "value": "85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19"
         },
         {
           "name": "perry:archive-sha256",
-          "value": "1ef80b48b0b4ccd3b2eadd72c3c66735a65e15306db92816fb04f963d202155d"
+          "value": "5f71191c082ca07c9dfc13b7c9a6eec60a82818c245a93534cc0eb7911471d72"
         },
         {
           "name": "perry:archive-binary-sha256",
-          "value": "3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d"
+          "value": "92067848d0eeb9de76929fbd06a137af801b0ff6caedbb3109bd7a6cc84a1f9f"
         },
         {
           "name": "perry:binary-sha256",
-          "value": "c8343fb4ce61af8091bd3a08d8c6c812b5b45488f78a72d110685e5eb2b80cc9"
+          "value": "6320105f0df8174175f75b68e59523fece754b83e62936ee9fbdead98fe15d9c"
         },
         {
           "name": "perry:signing-identifier",
@@ -134,7 +134,7 @@
       ],
       "scope": "required",
       "type": "application",
-      "version": "0.22.1"
+      "version": "0.38.0"
     },
     {
       "bom-ref": "swift:perrycapture@unspecified",

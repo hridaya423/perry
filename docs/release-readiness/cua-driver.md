@@ -4,20 +4,20 @@ Perry pins the Apple Silicon Cua Driver to the official `trycua/cua` release bel
 
 | Field | Pinned value |
 | --- | --- |
-| Version | `0.22.1` |
+| Version | `0.38.0` |
 | Target | `aarch64-apple-darwin` |
-| Release tag | [`cua-driver-rs-v0.22.1`](https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.22.1) |
-| Asset | `cua-driver-rs-0.22.1-darwin-arm64.tar.gz` |
-| Asset URL | `https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.22.1/cua-driver-rs-0.22.1-darwin-arm64.tar.gz` |
-| Archive SHA256 | `1ef80b48b0b4ccd3b2eadd72c3c66735a65e15306db92816fb04f963d202155d` |
-| Binary member | `cua-driver-rs-0.22.1-darwin-arm64/cua-driver` |
-| Archive member SHA256 | `3bb9fb04c147cefa92bb5e83365b233110762b0d2a295a3f761d66147f88486d` |
-| Distribution binary SHA256 | `c8343fb4ce61af8091bd3a08d8c6c812b5b45488f78a72d110685e5eb2b80cc9` |
+| Release tag | [`cua-driver-rs-v0.38.0`](https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.38.0) |
+| Asset | `cua-driver-rs-0.38.0-darwin-arm64.tar.gz` |
+| Asset URL | `https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/cua-driver-rs-0.38.0-darwin-arm64.tar.gz` |
+| Archive SHA256 | `5f71191c082ca07c9dfc13b7c9a6eec60a82818c245a93534cc0eb7911471d72` |
+| Binary member | `cua-driver-rs-0.38.0-darwin-arm64/cua-driver` |
+| Archive member SHA256 | `92067848d0eeb9de76929fbd06a137af801b0ff6caedbb3109bd7a6cc84a1f9f` |
+| Distribution binary SHA256 | `6320105f0df8174175f75b68e59523fece754b83e62936ee9fbdead98fe15d9c` |
 | Signing identifier | `cua-driver` |
 | Signing team | `YCK386LBJ7` |
-| Source revision | [`c60ef6ad2db8774fb342938843e2f17f26c68240`](https://github.com/trycua/cua/commit/c60ef6ad2db8774fb342938843e2f17f26c68240) |
+| Source revision | [`85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19`](https://github.com/trycua/cua/commit/85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19) |
 
-The archive SHA256 is published by the release in [`checksums.txt`](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.22.1/checksums.txt). The archive member is universal despite the asset name. Perry verifies its hash and Cua AI signature, extracts its arm64 slice, then verifies the derived hash, exact architecture, signing identifier, and signing team before installation. The slice-specific Cua signature remains valid after thinning.
+The archive SHA256 is published by the release in [`checksums.txt`](https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/checksums.txt). The archive member is universal despite the asset name. Perry verifies its hash and Cua AI signature, extracts its arm64 slice, then verifies the derived hash, exact architecture, signing identifier, and signing team before installation. The slice-specific Cua signature remains valid after thinning.
 
 Run the checks from the repository root:
 

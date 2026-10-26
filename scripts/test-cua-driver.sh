@@ -68,12 +68,12 @@ printf '%s\n' \
   > "${CODESIGN_SCRIPT}"
 chmod 755 "${CODESIGN_SCRIPT}"
 
-ARCHIVE_ROOT="${TMP_DIR}/archive-root/cua-driver-rs-0.22.1-darwin-arm64"
+ARCHIVE_ROOT="${TMP_DIR}/archive-root/cua-driver-rs-0.38.0-darwin-arm64"
 mkdir -p "${ARCHIVE_ROOT}"
 printf '%s\n' 'cua test driver' > "${ARCHIVE_ROOT}/cua-driver"
 chmod 755 "${ARCHIVE_ROOT}/cua-driver"
-ARCHIVE_FILE="${TMP_DIR}/cua-driver-rs-0.22.1-darwin-arm64.tar.gz"
-tar -czf "${ARCHIVE_FILE}" -C "${TMP_DIR}/archive-root" cua-driver-rs-0.22.1-darwin-arm64/cua-driver
+ARCHIVE_FILE="${TMP_DIR}/cua-driver-rs-0.38.0-darwin-arm64.tar.gz"
+tar -czf "${ARCHIVE_FILE}" -C "${TMP_DIR}/archive-root" cua-driver-rs-0.38.0-darwin-arm64/cua-driver
 ARCHIVE_SHA256="$(shasum -a 256 "${ARCHIVE_FILE}" | awk '{print $1}')"
 BINARY_SHA256="$(shasum -a 256 "${ARCHIVE_ROOT}/cua-driver" | awk '{print $1}')"
 TEST_LOCK="${TMP_DIR}/cua-driver.lock"
@@ -99,10 +99,10 @@ export PERRY_CUA_TEST_ARCHIVE="${ARCHIVE_FILE}"
 export PERRY_CUA_TEST_CURL_MARKER="${CURL_MARKER}"
 PERRY_CUA_DRIVER_LOCK="${TEST_LOCK}" PERRY_CUA_DRIVER_DEST="${DEST}" "${FETCH_SCRIPT}" --fetch >/dev/null
 [ -x "${DEST}/bin/cua-driver" ] || die "fetch did not install an executable"
-[ "$(cat "${DEST}/.version")" = "0.22.1" ] || die "fetch wrote the wrong version marker"
+[ "$(cat "${DEST}/.version")" = "0.38.0" ] || die "fetch wrote the wrong version marker"
 [ "$(shasum -a 256 "${DEST}/bin/cua-driver" | awk '{print $1}')" = "${BINARY_SHA256}" ] || die "fetch installed the wrong binary"
 [ "$(PERRY_CUA_DRIVER_DEST="${DEST}" lipo -archs "${DEST}/bin/cua-driver")" = arm64 ] || die "fetch did not install an arm64-only binary"
-[ "$(cat "${CURL_MARKER}")" = "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.22.1/cua-driver-rs-0.22.1-darwin-arm64.tar.gz" ] || die "fetch used the wrong release URL"
+[ "$(cat "${CURL_MARKER}")" = "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/cua-driver-rs-0.38.0-darwin-arm64.tar.gz" ] || die "fetch used the wrong release URL"
 
 printf '%s\n' offline > "${CURL_MARKER}"
 PERRY_CUA_DRIVER_LOCK="${TEST_LOCK}" PERRY_CUA_DRIVER_DEST="${DEST}" "${FETCH_SCRIPT}" --check >/dev/null
@@ -120,7 +120,7 @@ fi
 [ "$(cat "${CURL_MARKER}")" = offline ] || die "failed --check attempted a network download"
 
 LATEST_LOCK="${TMP_DIR}/latest.lock"
-awk -v asset="cua-driver-rs-0.22.1-darwin-arm64.tar.gz" '
+awk -v asset="cua-driver-rs-0.38.0-darwin-arm64.tar.gz" '
   /^CUA_DRIVER_ASSET_URL=/ {
     print "CUA_DRIVER_ASSET_URL=https://github.com/trycua/cua/releases/latest/" asset
     next

@@ -1,0 +1,13 @@
+=== 15:16:05 fetch-lock
+cua-driver 0.38.0 lock verified
+=== 15:16:05 fetch
+downloading pinned cua-driver 0.38.0 for Apple Silicon
+vendored cua-driver 0.38.0 arm64 driver -> /Users/hridyaagrawal/Honey/perry-cua/App/Resources/CuaDriver/bin/cua-driver
+=== 15:16:08 check
+cua-driver 0.38.0 arm64 driver verified
+=== 15:16:08 test-cua-driver
+cua driver self-tests passed
+=== 15:16:10 xcodegen-fetch
+xcodegen 2.46.0 verified
+=== 15:16:11 xcodegen
+Spec validation error: Target "Perry" has a missing source directory "/Users/hridyaagrawal/honey/perry-cua/App/Resources/CodexRuntime"

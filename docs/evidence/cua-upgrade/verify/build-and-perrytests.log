@@ -1,0 +1,63 @@
+=== 15:16:41 xcodegen
+⚙️  Generating plists...
+⚙️  Generating project...
+⚙️  Writing project...
+Created project at /Users/hridyaagrawal/honey/perry-cua/Perry.xcodeproj
+=== 15:16:41 build
+    cd /Users/hridyaagrawal/honey/perry-cua
+    builtin-lsregisterurl --record-path /Users/hridyaagrawal/honey/perry-cua/build/debug-p1/Build/Intermediates.noindex/XCBuildData/registered-launchservices.txt -- /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f -R -trusted /Users/hridyaagrawal/honey/perry-cua/build/debug-p1/Build/Products/Debug/Perry.app
+
+PruneExplicitPrecompiledModules /Users/hridyaagrawal/honey/perry-cua/build/debug-p1/SDKExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/hridyaagrawal/honey/perry-cua/build/debug-p1/Build/Intermediates.noindex/ExplicitPrecompiledModules
+
+PruneExplicitPrecompiledModules /Users/hridyaagrawal/honey/perry-cua/build/debug-p1/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules
+
+note: Disabling hardened runtime with ad-hoc codesigning. (in target 'perry-mcp' from project 'Perry')
+note: Disabling hardened runtime with ad-hoc codesigning. (in target 'Perry' from project 'Perry')
+note: Run script build phase 'FetchCodexRuntime' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'Perry' from project 'Perry')
+note: Run script build phase 'FetchCuaDriver' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'Perry' from project 'Perry')
+** BUILD SUCCEEDED **
+
+=== 15:17:12 test
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeBeginInputWhileConnectingDoesNotClaimListening]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeBeginInputWhileConnectingDoesNotClaimListening]' passed (0.016 seconds).
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeDictationCommitsForTranscriptionSoTheBrainAnswers]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeDictationCommitsForTranscriptionSoTheBrainAnswers]' passed (0.017 seconds).
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeSessionClaimsListeningOnlyWhenReady]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testRealtimeSessionClaimsListeningOnlyWhenReady]' passed (0.004 seconds).
+Test Case '-[PerryTests.VoiceReadinessTests testReleaseBeforePermissionResultDoesNotClaimListening]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testReleaseBeforePermissionResultDoesNotClaimListening]' passed (0.516 seconds).
+Test Case '-[PerryTests.VoiceReadinessTests testSessionReadyAfterCancelDoesNotReactivateListening]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testSessionReadyAfterCancelDoesNotReactivateListening]' passed (0.008 seconds).
+Test Case '-[PerryTests.VoiceReadinessTests testSessionReadyAfterReleaseDoesNotReactivateListening]' started.
+Test Case '-[PerryTests.VoiceReadinessTests testSessionReadyAfterReleaseDoesNotReactivateListening]' passed (0.009 seconds).
+Test Suite 'VoiceReadinessTests' passed at 2026-10-26 15:19:55.223.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 1.153 (1.157) seconds
+Test Suite 'VoiceSettingsPersistenceTests' started at 2026-10-26 15:19:55.224.
+Test Case '-[PerryTests.VoiceSettingsPersistenceTests testSpeechSettingsRoundTripAndClearVoiceSelection]' started.
+Test Case '-[PerryTests.VoiceSettingsPersistenceTests testSpeechSettingsRoundTripAndClearVoiceSelection]' passed (0.004 seconds).
+Test Case '-[PerryTests.VoiceSettingsPersistenceTests testSpeechSettingsUseProductDefaultsWhenUnset]' started.
+Test Case '-[PerryTests.VoiceSettingsPersistenceTests testSpeechSettingsUseProductDefaultsWhenUnset]' passed (0.001 seconds).
+Test Suite 'VoiceSettingsPersistenceTests' passed at 2026-10-26 15:19:55.229.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'WorkerFinalizationTests' started at 2026-10-26 15:19:55.229.
+Test Case '-[PerryTests.WorkerFinalizationTests testMaintenanceWaitsForFinalizationBeforeErasingPersistedStores]' started.
+Test Case '-[PerryTests.WorkerFinalizationTests testMaintenanceWaitsForFinalizationBeforeErasingPersistedStores]' passed (0.524 seconds).
+Test Suite 'WorkerFinalizationTests' passed at 2026-10-26 15:19:55.754.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.524 (0.525) seconds
+Test Suite 'PerryTests.xctest' passed at 2026-10-26 15:19:55.754.
+	 Executed 676 tests, with 7 tests skipped and 0 failures (0 unexpected) in 151.755 (151.948) seconds
+Test Suite 'All tests' passed at 2026-10-26 15:19:55.755.
+	 Executed 676 tests, with 7 tests skipped and 0 failures (0 unexpected) in 151.755 (151.950) seconds
+2026-10-26 15:19:56.100 xcodebuild[95035:22344887] [MT] IDETestOperationsObserverDebug: 154.553 elapsed -- Testing started completed.
+2026-10-26 15:19:56.100 xcodebuild[95035:22344887] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-10-26 15:19:56.100 xcodebuild[95035:22344887] [MT] IDETestOperationsObserverDebug: 154.553 sec, +154.553 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/hridyaagrawal/honey/perry-cua/build/debug-p1/Logs/Test/Test-Perry-2026.10.26_15-17-13-+0000.xcresult
+
+** TEST SUCCEEDED **
+
+Testing started
+=== 15:19:56 done
