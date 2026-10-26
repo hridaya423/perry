@@ -38,6 +38,17 @@ final class SystemRecognitionSession: RecognitionSession {
 struct AnalyzerTarget {
     let locale: Locale
     let format: AVAudioFormat
+
+    private static let lock = NSLock()
+    private static var prepared: [String: AnalyzerTarget] = [:]
+
+    static func cached(for locale: Locale) -> AnalyzerTarget? {
+        lock.withLock { prepared[locale.identifier] }
+    }
+
+    static func remember(_ target: AnalyzerTarget, for locale: Locale) {
+        lock.withLock { prepared[locale.identifier] = target }
+    }
 }
 
 @available(macOS 26, *)

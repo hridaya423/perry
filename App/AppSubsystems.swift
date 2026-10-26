@@ -213,7 +213,11 @@ final class AppSubsystems {
     /// Shared Talk speech input: its DictationController carries the
     /// engine + recognizer built once, so hold-to-talk re-arms them
     /// instead of rebuilding audio infrastructure per key-down.
-    lazy var talkSpeechInput = SFSpeechInput()
+    lazy var talkSpeechInput: SFSpeechInput = {
+        let input = SFSpeechInput()
+        input.preferences = { [weak app] in (try? app?.voice.currentDictationPreferences()) ?? .default }
+        return input
+    }()
 
     /// BYOK realtime Talk voice (§1.5), built once when configured and
     /// reused per hold. Re-checked per makeInput so a Settings change can

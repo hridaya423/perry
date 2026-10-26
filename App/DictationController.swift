@@ -168,10 +168,15 @@ final class DictationController {
     }
 
     private func prepareAnalyzer() {
-        analyzerTarget = nil
-        guard #available(macOS 26, *), let locale = recognizer?.locale else { return }
+        guard #available(macOS 26, *), let locale = recognizer?.locale else {
+            analyzerTarget = nil
+            return
+        }
+        analyzerTarget = AnalyzerTarget.cached(for: locale)
+        guard analyzerTarget == nil else { return }
         Task { @MainActor [weak self] in
-            let target = await AnalyzerRecognitionSession.prepare(locale: locale)
+            guard let target = await AnalyzerRecognitionSession.prepare(locale: locale) else { return }
+            AnalyzerTarget.remember(target, for: locale)
             guard let self, self.recognizer?.locale == locale else { return }
             self.analyzerTarget = target
         }

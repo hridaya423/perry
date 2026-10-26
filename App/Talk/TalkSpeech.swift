@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import PerryBrain
+import PerryCore
 import Speech
 
 /// Word-timestamped speech input for a Talk hold. Implementations produce
@@ -55,9 +56,9 @@ final class SFSpeechInput: TalkSpeechInput {
                 Task { @MainActor [weak self] in self?.latestWords = words }
             }
         )
-        controller.configure(.default)
         return controller
     }()
+    var preferences: () -> DictationPreferences = { .default }
     private var latestWords: [SpokenWord] = []
     private var latestTranscript = ""
     private var settled = false
@@ -94,6 +95,7 @@ final class SFSpeechInput: TalkSpeechInput {
         latestWords = []
         latestTranscript = ""
         settled = false
+        dictation.configure(preferences())
         try dictation.start()
         recording = true
     }
