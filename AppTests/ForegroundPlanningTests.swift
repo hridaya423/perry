@@ -484,7 +484,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(settled)
         XCTAssertFalse(captured)
         XCTAssertTrue(controller.agentCoordinator.runningThreads.isEmpty)
-        XCTAssertTrue(controller.sessionStatus.contains("Couldn’t save your request"))
+        XCTAssertTrue(controller.sessionStatus.contains("Couldn’t save your message"))
         XCTAssertEqual(controller.sessionState, .idle)
     }
 
@@ -738,7 +738,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         let controller = AppController(sessionController: session)
         XCTAssertEqual(controller.foreground.debugActivityState.phase, .reporting)
-        XCTAssertEqual(controller.foreground.debugActivityState.title, "Task stopped")
+        XCTAssertEqual(controller.foreground.debugActivityState.title, "Stopped")
     }
 
     func testStoppingDuringForegroundFinalizationReportsStopped() async throws {
@@ -768,7 +768,7 @@ final class ForegroundPlanningTests: XCTestCase {
             return XCTFail("expected a stopped report")
         }
         XCTAssertEqual(report.outcome, .stopped)
-        XCTAssertEqual(controller.foreground.debugActivityState.title, "Task stopped")
+        XCTAssertEqual(controller.foreground.debugActivityState.title, "Stopped")
     }
 
     func testStopDuringFinalizationPersistenceKeepsCommittedCompletion() async throws {
@@ -896,7 +896,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(history.first?.outcome, .failed)
         XCTAssertEqual(
             history.first?.summary,
-            "Perry could not prepare the guide: fixture full-guide planner failure"
+            "I couldn’t prepare the guide. Try again."
         )
     }
 

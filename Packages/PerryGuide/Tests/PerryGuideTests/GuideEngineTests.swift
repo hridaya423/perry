@@ -333,7 +333,7 @@ final class GuideEngineTests: XCTestCase {
         guard case .blocked(let reason) = result else {
             return XCTFail("expected blocked, got \(result)")
         }
-        XCTAssertTrue(reason.contains("could not verify"))
+        XCTAssertTrue(reason.contains("couldn’t confirm"))
         let phase = await engine.phase
         XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
     }
@@ -378,7 +378,7 @@ final class GuideEngineTests: XCTestCase {
         guard case .blocked(let reason) = result else {
             return XCTFail("expected blocked, got \(result)")
         }
-        XCTAssertTrue(reason.contains("could not verify"))
+        XCTAssertTrue(reason.contains("couldn’t confirm"))
         let phase = await engine.phase
         XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
     }

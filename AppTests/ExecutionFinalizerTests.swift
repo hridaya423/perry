@@ -164,7 +164,7 @@ final class ExecutionFinalizerTests: XCTestCase {
         )
 
         XCTAssertTrue(completion.summary.contains("checked 1 of them"))
-        XCTAssertTrue(completion.summary.contains("can’t tell whether step 2"))
+        XCTAssertTrue(completion.summary.contains("can’t tell whether the last step"))
         XCTAssertTrue(completion.summary.contains("didn’t touch the rest"))
         XCTAssertTrue(completion.summary.contains("try again"))
     }

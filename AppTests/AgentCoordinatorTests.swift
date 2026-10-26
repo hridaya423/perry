@@ -237,7 +237,7 @@ final class AgentCoordinatorTests: XCTestCase {
         }, onFinish: { finish = $0 }))
         await task.value
         guard case .failed(let message) = finish else { return XCTFail("Expected storage failure") }
-        XCTAssertTrue(message.contains("Couldn’t save your request"))
+        XCTAssertTrue(message.contains("Couldn’t save your message"))
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
     }
 

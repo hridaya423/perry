@@ -141,7 +141,7 @@ struct ExecutionFinalizer: Sendable {
         var sentence = "\(headline) I finished \(finished) of \(max(execution.totalSteps, finished)) steps and checked "
         sentence += verifiedCount == finished ? "each one." : "\(verifiedCount) of them."
         if pendingMayHaveApplied {
-            sentence += " I can’t tell whether step \(finished + 1) took effect."
+            sentence += " I can’t tell whether the last step took effect."
         }
         return "\(sentence) I didn’t touch the rest. Check what changed, then try again."
     }

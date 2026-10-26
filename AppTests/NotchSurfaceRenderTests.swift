@@ -152,7 +152,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         id = UUID()
         presentation.present(id: id, priority: .activity, content: strip, reveal: false)
         try await render(openNotch(controller), name: "rehearsal-success", size: size, wait: 0.8, folder: "first-impressions-7.11")
-        activity.title = "Task stopped"
+        activity.title = "Stopped"
         activity.detail = RoutineRunCopy.stopped(routine: routine, step: 2, error: .targetNotFound(step: 2), reason: "") + " I finished 2 of 3 steps and checked each one. I didn’t touch the rest."
         try await render(openNotch(controller), name: "rehearsal-failure", size: size, wait: 0.8, folder: "first-impressions-7.11")
     }

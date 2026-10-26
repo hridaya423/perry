@@ -51,7 +51,7 @@ final class IntentCardTests: XCTestCase {
     }
 
     func testSpokenLineMatchesTier() {
-        XCTAssertTrue(card(.orange).spokenLine.contains("Approve or stop"))
+        XCTAssertTrue(card(.orange).spokenLine.contains("Approve or deny"))
         XCTAssertTrue(card(.red).spokenLine.contains("Confirm on screen"))
     }
 }
