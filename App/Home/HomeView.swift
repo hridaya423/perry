@@ -65,9 +65,16 @@ struct SuggestionsView: View {
 
     private func suggestionCard(_ card: SuggestionCard, example: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(example ? "Example" : card.sourceServiceName.map { "From \($0)" } ?? "Suggestion")
-                .font(PerryTheme.Scale.secondary)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
+            HStack(spacing: 8) {
+                if let id = card.sourceServiceID {
+                    BrandMark(id: id, name: card.sourceServiceName, size: 20)
+                } else {
+                    SymbolTile(systemImage: "lightbulb.fill", tint: TileTint.peach, size: 20)
+                }
+                Text(example ? "Example" : card.sourceServiceName.map { "From \($0)" } ?? "Suggestion")
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            }
             Text(card.title).font(PerryTheme.Scale.rowTitle)
             Text(card.body)
                 .font(PerryTheme.Scale.body)

@@ -26,7 +26,7 @@ struct NotchWorkspaceView: View {
                     rail
                 }
             }
-            .frame(width: 148)
+            .frame(width: 184)
             Rectangle()
                 .fill(PerryTheme.Colors.subtleSeparator)
                 .frame(width: 1)
@@ -132,11 +132,11 @@ struct NotchWorkspaceView: View {
             .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 1) {
-                railLink("Tasks", systemImage: "checklist", selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
-                railLink("Routines", systemImage: "repeat", selection: .routines, shortcut: "2")
-                railLink("Files", systemImage: "folder", selection: .files, shortcut: "3")
-                railLink("Suggestions", systemImage: "lightbulb", selection: .suggestions, shortcut: "4", count: model.suggestions.count)
-                railLink("History", systemImage: "clock.arrow.circlepath", selection: .history, shortcut: "5")
+                railLink("Tasks", systemImage: "bolt.fill", tint: PerryCharacterView.fern, selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
+                railLink("Routines", systemImage: "repeat", tint: TileTint.blue, selection: .routines, shortcut: "2")
+                railLink("Files", systemImage: "folder.fill", tint: TileTint.teal, selection: .files, shortcut: "3")
+                railLink("Suggestions", systemImage: "lightbulb.fill", tint: TileTint.peach, selection: .suggestions, shortcut: "4", count: model.suggestions.count)
+                railLink("History", systemImage: "clock.fill", tint: TileTint.lilac, selection: .history, shortcut: "5")
             }
             .padding(.horizontal, 8)
             .padding(.top, 12)
@@ -272,7 +272,7 @@ struct NotchWorkspaceView: View {
                     Label {
                         Text("Apps")
                     } icon: {
-                        Image(systemName: "square.grid.2x2").foregroundStyle(PerryTheme.Colors.icon)
+                        SymbolTile(systemImage: "square.grid.2x2.fill", tint: TileTint.pink)
                     }
                     .font(PerryTheme.Scale.body)
                 }
@@ -327,16 +327,10 @@ struct NotchWorkspaceView: View {
                     ) {
                         model.onStartConversation?(model.newConversationDraft)
                     }
-                    HStack(spacing: 6) {
-                        ComposerModeChip(mode: $model.composerMode)
-                        targetButton
-                        if let brain = model.deps.brain {
-                            ModelSettingsButton(brain: brain) {
-                                openSettings(.brain)
-                            }
-                        }
-                    }
-                    .buttonStyle(ChipStyle())
+                    ComposerModeChip(mode: $model.composerMode,
+                                     window: model.newConversationTarget.map(CompactTargetChooser.targetName),
+                                     chooseWindow: { choosesTarget = true },
+                                     clearWindow: { model.newConversationTarget = nil })
                 }
             }
             .frame(maxWidth: 500, alignment: .leading)
@@ -374,17 +368,13 @@ struct NotchWorkspaceView: View {
         }
     }
 
-    private func railLink(_ title: String, systemImage: String, selection: HomeModel.Selection, shortcut: KeyEquivalent, count: Int = 0) -> some View {
+    private func railLink(_ title: String, systemImage: String, tint: Color, selection: HomeModel.Selection, shortcut: KeyEquivalent, count: Int = 0) -> some View {
         Button {
             searchFocused = false
             model.sidebarSelection = selection
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(PerryTheme.Icon.rail)
-                    .foregroundStyle(model.sidebarSelection == selection ? PerryTheme.Colors.text : PerryTheme.Colors.icon)
-                    .frame(width: 18)
-                    .accessibilityHidden(true)
+                SymbolTile(systemImage: systemImage, tint: tint)
                 Text(title)
                     .font(PerryTheme.Scale.body)
                 Spacer(minLength: 0)
@@ -631,6 +621,9 @@ struct RailRowStyle: ButtonStyle {
 
 private struct ComposerModeChip: View {
     @Binding var mode: HomeModel.ComposerMode
+    var window: String?
+    var chooseWindow: () -> Void
+    var clearWindow: () -> Void
 
     var body: some View {
         Menu {
@@ -641,8 +634,14 @@ private struct ComposerModeChip: View {
             }
             .pickerStyle(.inline)
             .labelsHidden()
+            Divider()
+            Button("Share a window…", systemImage: "macwindow", action: chooseWindow)
+            if window != nil {
+                Button("Stop sharing", systemImage: "xmark", action: clearWindow)
+            }
         } label: {
-            Label(mode.title, systemImage: mode.systemImage)
+            Label(window.map { "\(mode.title) · \($0)" } ?? mode.title, systemImage: mode.systemImage)
+                .lineLimit(1)
         }
         .menuStyle(.button)
         .menuIndicator(.hidden)

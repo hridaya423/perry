@@ -223,27 +223,6 @@ struct HomeConnectionView: View {
     }
 }
 
-struct ModelSettingsButton: View {
-    @ObservedObject var brain: BrainController
-    let openSettings: () -> Void
-
-    private var title: String {
-        let choice = brain.modelChoice
-        if choice == .chatGPT, case .signedOut = brain.account { return "Choose brain" }
-        return choice.title
-    }
-
-    var body: some View {
-        Button(action: openSettings) {
-            Label(title, systemImage: brain.modelChoice == .local ? "laptopcomputer" : "cloud")
-        }
-        .fixedSize()
-        .accessibilityLabel("Brain: \(title)")
-        .accessibilityHint("Open brain settings")
-        .help("Brain")
-    }
-}
-
 private struct ConversationScrollObservation: NSViewRepresentable {
     let position: HomeModel.ConversationScrollPosition
     let onScroll: (HomeModel.ConversationScrollPosition) -> Void
