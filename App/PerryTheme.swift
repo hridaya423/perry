@@ -10,6 +10,8 @@ enum PerryTheme {
         static let text = color(light: 0x202420, dark: 0xF5F2EA)
         static let textSecondary = color(light: 0x666D66, dark: 0xA6A59F)
         static let textTertiary = color(light: 0x6E736E, dark: 0x8B8A85)
+        static let icon = color(light: 0x4A504A, dark: 0xD2D0C9)
+        static let iconNS = nsColor(light: 0x4A504A, dark: 0xD2D0C9)
         static let subtleSeparator = color(light: 0xDCDDD5, dark: 0x343432)
         static let primaryAction = color(light: 0x202420, dark: 0xF5F2EA)
         static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
@@ -21,16 +23,19 @@ enum PerryTheme {
         static let caution = color(light: 0xA05A00, dark: 0xFF9F0A)
         static let warning = caution
         static let danger = color(light: 0xD70015, dark: 0xFF6B63)
-        static let active = Color(nsColor: .systemBlue)
 
         private static func color(light: Int, dark: Int) -> Color {
-            Color(nsColor: NSColor(name: nil) { appearance in
+            Color(nsColor: nsColor(light: light, dark: dark))
+        }
+
+        private static func nsColor(light: Int, dark: Int) -> NSColor {
+            NSColor(name: nil) { appearance in
                 let rgb = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
                 return NSColor(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
                                green: CGFloat((rgb >> 8) & 0xFF) / 255,
                                blue: CGFloat(rgb & 0xFF) / 255,
                                alpha: 1)
-            })
+            }
         }
     }
 
@@ -66,9 +71,11 @@ enum PerryTheme {
     }
 
     enum Icon {
-        static let toolbar = Font.system(size: 13, weight: .medium)
-        static let row = Font.system(size: 15, weight: .medium)
-        static let inline = Font.system(size: 11, weight: .semibold)
+        static let utility = Font.system(size: 13, weight: .medium)
+        static let rail = Font.system(size: 13)
+        static let status = Font.system(size: 13, weight: .semibold)
+        static let slot = CGFloat(28)
+        static let hit = CGFloat(28)
     }
 
     enum Spacing {
