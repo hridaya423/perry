@@ -37,7 +37,8 @@ final class PaperOnboardingTests: XCTestCase {
         let model = controller.homeController.homeModel
         var submissions = 0
         model.onStartConversation = { _ in submissions += 1 }
-        controller.pendingPromptText = "Help me revise this request before running it."
+        defer { controller.collapseNotch(); controller.notchPresence.stop() }
+        controller.presentPrompt(prefill: "Help me revise this request before running it.")
         let frame = NSRect(x: 0, y: 0, width: 480, height: 380)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -47,12 +48,9 @@ final class PaperOnboardingTests: XCTestCase {
             .transaction { $0.disablesAnimations = true })
         window.contentView = host
         window.orderFrontRegardless()
-        for _ in 0..<40 {
-            if controller.pendingPromptText == nil { break }
-            try await Task.sleep(for: .milliseconds(25))
-        }
-        XCTAssertNil(controller.pendingPromptText)
+        try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(model.newConversationDraft, "Help me revise this request before running it.")
+        XCTAssertEqual(model.composerMode, .ask)
         XCTAssertEqual(controller.conversationVoice.state, .idle)
         XCTAssertEqual(submissions, 0)
         host.layoutSubtreeIfNeeded()
@@ -65,14 +63,9 @@ final class PaperOnboardingTests: XCTestCase {
         try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
             .write(to: destination.appendingPathComponent("prefilled-conversation.png"))
         for prompt in ["Review the first task draft", "Review the revised task draft"] {
-            controller.pendingPromptDoMode = true
-            controller.pendingPromptText = prompt
-            for _ in 0..<40 {
-                if controller.pendingPromptText == nil { break }
-                try await Task.sleep(for: .milliseconds(25))
-            }
-            XCTAssertNil(controller.pendingPromptText, "Task edit was not consumed: \(prompt)")
-            XCTAssertFalse(controller.pendingPromptDoMode)
+            controller.presentPrompt(prefill: prompt, mode: .task)
+            XCTAssertEqual(model.newConversationDraft, prompt)
+            XCTAssertEqual(model.composerMode, .task)
             XCTAssertEqual(controller.conversationVoice.state, .idle)
             XCTAssertEqual(submissions, 0)
         }

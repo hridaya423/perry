@@ -467,18 +467,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Onboarding's post-demo offer: starts a Watch & Learn recording once
 
-    // MARK: Panel (the type/talk surface)
-
-    /// Text the panel seeds into its field — a rehearsal "Edit" answer lands
-    /// here with the goal ready to revise and resubmit. Consumed on read.
-    @Published var pendingPromptText: String?
-    /// Edit answers come from a plan card — the panel must reopen in Do, not
-    /// whatever mode the picker was last on.
-    var pendingPromptDoMode = false
-    /// The background-task menu entry arms the composer's background toggle
-    /// so the task is one send away — there is no separate background UI.
-    var pendingPromptRunInBackground = false
-
     func showWhatsNew() {
         homeController.openHome(selection: .whatsNew)
     }

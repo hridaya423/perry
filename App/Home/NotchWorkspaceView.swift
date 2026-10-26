@@ -327,6 +327,7 @@ struct NotchWorkspaceView: View {
                         WorkspaceVoiceStatus(voice: voice)
                     }
                     HStack(spacing: 6) {
+                        ComposerModeChip(mode: $model.composerMode)
                         targetButton
                         if let brain = model.deps.brain {
                             ModelSettingsButton(brain: brain) {
@@ -655,5 +656,29 @@ private struct RailRowStyle: ButtonStyle {
                 .onHover { hovering = $0 }
                 .animation(PerryTheme.Motion.snap, value: hovering)
         }
+    }
+}
+
+private struct ComposerModeChip: View {
+    @Binding var mode: HomeModel.ComposerMode
+
+    var body: some View {
+        Menu {
+            Picker("Mode", selection: $mode) {
+                ForEach(HomeModel.ComposerMode.allCases, id: \.self) { mode in
+                    Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Label(mode.title, systemImage: mode.systemImage)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(ContextChipStyle())
+        .fixedSize()
+        .accessibilityLabel("Mode: \(mode.title)")
+        .help("Ask, guide, or do")
     }
 }

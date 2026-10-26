@@ -306,8 +306,7 @@ extension AppController {
     /// "Run in background" lives on the composer's send action — the menu
     /// item opens that composer in Do mode with the toggle already on.
     func presentBackgroundComposer() {
-        pendingPromptRunInBackground = true
-        presentPrompt(prefill: "", asTask: true)
+        presentPrompt(prefill: "", mode: .background)
     }
 
     func retryLastTask() { foreground.retry() }

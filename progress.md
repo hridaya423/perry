@@ -54,9 +54,14 @@
   - Verified: 657/0 on the mini, with 0 constraint-loop lines. `testPeekRowsPutTheApprovalFirstThenTwoTasks`: one approval and three tasks give approval, task, task. Renders of the empty, working, needs-you and long-title states, inspected next to the HeyClicky peek, are in `docs/evidence/first-impressions/3.8/`. The first renders showed three defects, now fixed: rows touched the body walls (added an 18 pt inset), "Return to active task" overflowed the peek (hidden while peeking), and the 260 pt cap clipped the three-row state (raised to 320).
   - Deviations: the cap is 320, not 260. Unverified live: hover-to-peek on a notched display.
 
+- 3.9 Done: `App/SessionPanelView.swift` is deleted, along with `pendingPromptText`, `pendingPromptDoMode`, `pendingPromptRunInBackground`, `showsGuide` and `consumePrompt`. The workspace composer gains a mode chip (Ask, Guide, Do, Do in background) beside the window and model chips. `HomeModel.composerMode` routes a send: Guide calls `startGuiding`, Do calls `foreground.start`, background calls `backgroundTasks.queue`, and after any of these the chip returns to Ask. `presentPrompt(prefill:mode:)` writes the draft and mode straight into the model; plan-card Edit and the background menu item use it. The card fills inside the notch are gone from `NotchDialogView`, `CompactTargetChooser`, `TaskQuestionView`, the guide controls, the intent card, the routine review and the activity strip. Each now sits flat on the notch body. The panel's window identifier moved to `CompactConversationPanel.identifier`.
+  - Verified: 657/0 on the mini, with 0 constraint-loop lines. New `testDoModeChipSendsTheComposerTextToTheForegroundAgent` sends composer text in Do mode and waits for the fixture agent's answer; it also checks that no chat thread was created. `testPrefilledConversationShowsDraftWithoutSubmitting` now runs through `presentPrompt`. Renders inspected in `docs/evidence/first-impressions/3.9/`. The first renders showed the activity strip's Pause, Take over and Stop labels wrapping mid-word, now fixed with `fixedSize`.
+  - Deleted with the panel: the legacy SessionPanel render test, the "Guide request" box shown during an ask, and typed-text intent parsing that switched the mode automatically. The chip is now an explicit choice.
+  - Open: the routine review is taller than the 320 pt focused cap, so Discard and Save scroll below the fold. Revisit in 3.12.
+
 ## Next
 
-- 3.9 workspace at 560: delete SessionPanelView and the showsGuide/pendingPrompt plumbing; a Do-mode chip test.
+- 3.10 icons and type: ci.sh grep lint, move the typography lint out of SemanticTypographyTests.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

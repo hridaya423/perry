@@ -17,6 +17,28 @@ final class HomeModel: ObservableObject {
         case perryEditor(UUID?)
     }
 
+    enum ComposerMode: CaseIterable {
+        case ask, guide, task, background
+
+        var title: String {
+            switch self {
+            case .ask: "Ask"
+            case .guide: "Guide"
+            case .task: "Do"
+            case .background: "Do in background"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .ask: "bubble.left"
+            case .guide: "hand.point.up.left"
+            case .task: "bolt"
+            case .background: "tray.and.arrow.down"
+            }
+        }
+    }
+
     struct Deps {
         weak var controller: AppController?
         var brain: BrainController?
@@ -100,6 +122,7 @@ final class HomeModel: ObservableObject {
     @Published var threads: [PerryThread] = []
     @Published var perrys: [Perry] = []
     @Published var sidebarSelection: Selection?
+    @Published var composerMode: ComposerMode = .ask
     @Published var workingThreads: Set<UUID> = []
     @Published var stoppingThreads: Set<UUID> = []
     @Published var streamingAnswers: [UUID: String] = [:]

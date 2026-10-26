@@ -191,9 +191,7 @@ struct IntentCardView: View {
             .buttonStyle(InkButtonStyle(.secondary))
             .controlSize(.small)
         }
-        .padding(18)
-        .frame(minWidth: 340, maxWidth: .infinity)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+        .frame(maxWidth: .infinity)
         .foregroundStyle(PerryTheme.Colors.text)
         .onAppear {
             if card.tier >= .red {

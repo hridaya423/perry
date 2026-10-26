@@ -84,7 +84,7 @@ struct InteractiveConfirmer: Confirmer {
         await MainActor.run { controller.voice.speak(card.spokenLine) }
         let decision = await controller.requestPlanDecision(id: request.id, card: card)
         if decision == .edit {
-            await controller.presentPrompt(prefill: request.actionSummary, asTask: true)
+            await controller.presentPrompt(prefill: request.actionSummary, mode: .task)
         }
         return decision
     }

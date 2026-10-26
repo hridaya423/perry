@@ -217,11 +217,7 @@ struct AgentActivityStripView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
         .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: state.isExpanded)
@@ -468,6 +464,7 @@ struct AgentActivityStripView: View {
             }
         }
         .buttonStyle(ContextChipStyle(iconOnly: !state.isExpanded))
+        .fixedSize()
     }
 
     private func sendSteering() {

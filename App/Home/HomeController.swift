@@ -236,6 +236,19 @@ final class HomeController {
         homeModel.onStartConversation = { [weak self] text in
             guard let self, self.acceptsInput, !self.homeModel.isCreatingConversation,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            let mode = self.homeModel.composerMode
+            if mode != .ask, let controller = self.homeModel.deps.controller {
+                let goal = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                self.homeModel.composerMode = .ask
+                self.homeModel.updateNewDraft("")
+                switch mode {
+                case .guide: controller.startGuiding(goal: goal)
+                case .task: controller.foreground.start(goal: goal)
+                case .background: controller.backgroundTasks.queue(goal: goal)
+                case .ask: break
+                }
+                return
+            }
             self.homeModel.isCreatingConversation = true
             let target = self.homeModel.newConversationTarget
             let input = self.acceptInput(text, threadID: UUID())

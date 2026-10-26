@@ -124,7 +124,7 @@ final class SessionPanelPresenter {
         )
         p.contentView = makeContent()
         p.appearance = NSAppearance(named: .darkAqua)
-        p.identifier = SessionPanelView.windowIdentifier
+        p.identifier = CompactConversationPanel.identifier
         p.level = .statusBar
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
@@ -139,9 +139,12 @@ final class SessionPanelPresenter {
 }
 
 extension AppController {
-    func presentPrompt(prefill: String, asTask: Bool = false) {
-        pendingPromptDoMode = asTask
-        pendingPromptText = prefill
+    func presentPrompt(prefill: String, mode: HomeModel.ComposerMode = .ask) {
+        let model = homeController.homeModel
+        model.sidebarSelection = nil
+        model.updateNewDraft(prefill)
+        model.composerMode = mode
+        conversationVoice.cancel()
         showPanel()
     }
 

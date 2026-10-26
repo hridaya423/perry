@@ -4,6 +4,8 @@ import PerryBrain
 import PerryOverlay
 
 final class CompactConversationPanel: NSPanel {
+    static let identifier = NSUserInterfaceItemIdentifier("perry.session")
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
@@ -19,7 +21,6 @@ struct CompactConversationView: View {
     @ObservedObject private var expansion: NotchExpansion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var metrics: NotchLayout.Metrics
-    @State private var showsGuide = false
 
     init(controller: AppController) {
         self.controller = controller
@@ -79,12 +80,10 @@ struct CompactConversationView: View {
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
-        .onAppear { updateCameraInset(); consumePrompt() }
+        .onAppear { updateCameraInset() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in updateCameraInset() }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeScreenNotification)) { _ in updateCameraInset() }
-        .onChange(of: controller.pendingPromptText) { _, _ in consumePrompt() }
         .onChange(of: model.sidebarSelection) { _, _ in
-            showsGuide = false
             expansion.peeking = false
             controller.refreshNotchLayout()
         }
@@ -100,19 +99,6 @@ struct CompactConversationView: View {
             NotchWorkspaceView(model: model)
         } else if let onboarding = model.onboarding {
             OnboardingNotchView(director: onboarding, model: model)
-        } else if showsGuide {
-            VStack(spacing: 0) {
-                HStack {
-                    Button("Back", systemImage: "chevron.left") { showsGuide = false }
-                    Spacer()
-                    Button("Close", systemImage: "xmark") {
-                        showsGuide = false
-                        controller.collapseNotch()
-                    }
-                    .labelStyle(.iconOnly)
-                }.buttonStyle(.borderless).padding(20)
-                SessionPanelView(controller: controller)
-            }
         } else if peeking {
             NotchPeekView(model: model, presentation: presentation, onOpen: open, onExpand: controller.showPanel)
                 .fixedSize(horizontal: false, vertical: true)
@@ -129,7 +115,7 @@ struct CompactConversationView: View {
     }
 
     private var peeking: Bool {
-        expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil && !showsGuide
+        expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil
     }
 
     private var crownControls: some View {
@@ -153,19 +139,6 @@ struct CompactConversationView: View {
 
     private func updateCameraInset() {
         metrics = NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer())
-    }
-
-    private func consumePrompt() {
-        guard let text = controller.pendingPromptText else { return }
-        if controller.pendingPromptDoMode {
-            showsGuide = true
-        } else {
-            model.sidebarSelection = nil
-            model.updateNewDraft(text)
-            controller.conversationVoice.cancel()
-            controller.pendingPromptText = nil
-            showsGuide = false
-        }
     }
 }
 
@@ -219,9 +192,7 @@ struct CompactTargetChooser: View {
                     }
             }
         }
-        .padding(20)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .frame(width: 340)
+        .frame(maxWidth: 420, alignment: .leading)
         .onAppear { targets = EnvironmentProbe.availableTargets() }
     }
 

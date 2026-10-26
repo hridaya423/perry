@@ -361,37 +361,6 @@ final class ForegroundPlanningTests: XCTestCase {
         }
     }
 
-    func testRenderWaitingGuideRequestInSessionPanel() throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let session = SessionController()
-        let controller = makeController(directory: directory, session: session)
-        try session.wake()
-        var ask = AskSessionState(id: UUID(), startedAt: Date(), question: "Explain this")
-        ask.pendingGuideRequest = .init(text: "Show me how to save this document")
-        try session.startAsk(ask)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
-            let frame = NSRect(x: 0, y: 0, width: 500, height: 740)
-            let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
-            window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: appearance)
-            let host = NSHostingView(rootView: SessionPanelView(controller: controller))
-            window.contentView = host
-            host.frame = frame
-            host.layoutSubtreeIfNeeded()
-            window.displayIfNeeded()
-            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-            host.cacheDisplay(in: host.bounds, to: bitmap)
-            let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("build/dependable-evidence/waiting-guide-panel-\(name).png")
-            try FileManager.default.createDirectory(
-                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try XCTUnwrap(bitmap.representation(using: .png, properties: [:])).write(to: destination)
-            window.close()
-        }
-    }
-
     func testUnsavedAskGuideRequestRemainsAvailableAndCannotCapture() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
@@ -565,6 +534,28 @@ final class ForegroundPlanningTests: XCTestCase {
             controller.transcriptPreview == "The fixture answer."
         }
         XCTAssertTrue(finished, "Do goal submitted while .invoking never ran — state: \(controller.sessionState), status: \(controller.sessionStatus)")
+        await controller.foreground.joinStartTask()
+    }
+
+    func testDoModeChipSendsTheComposerTextToTheForegroundAgent() async throws {
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let session = SessionController()
+        let controller = makeWakingController(directory: directory, session: session)
+        installAgentRunner(on: controller, directory: directory)
+        let model = controller.homeController.homeModel
+        try session.wake()
+        model.composerMode = .task
+        model.updateNewDraft("describe the screen")
+        model.onStartConversation?("describe the screen")
+
+        XCTAssertEqual(model.composerMode, .ask)
+        XCTAssertEqual(model.newConversationDraft, "")
+        XCTAssertTrue(model.pendingQuestions.isEmpty)
+        let finished = await waitUntil(timeout: .seconds(10)) {
+            controller.transcriptPreview == "The fixture answer."
+        }
+        XCTAssertTrue(finished, "Do mode never reached the foreground agent — state: \(controller.sessionState), status: \(controller.sessionStatus)")
         await controller.foreground.joinStartTask()
     }
 

@@ -120,9 +120,7 @@ struct NotchDialogView: View {
         }
         .controlSize(.small)
         .background { returnToCancel }
-        .padding(20)
-        .frame(minWidth: 340, maxWidth: 500, alignment: .leading)
-        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
     }
