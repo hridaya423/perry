@@ -4,7 +4,7 @@ import SwiftUI
 @MainActor
 final class NotchPresentation: ObservableObject {
     enum Priority: Int {
-        case activity, guide, routine, approval
+        case activity, voice, guide, routine, approval
     }
 
     struct Entry: Identifiable {

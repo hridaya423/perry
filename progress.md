@@ -136,6 +136,22 @@
     - Every fixture with speech from the first frame still ends without a cut-off.
   - Not verified live: endpointing on a real microphone and room. The mini's ssh session cannot drive the mic or post the hotkey.
 
+- 4.4 Done: click-to-talk and the quick-tap latch now listen inside the notch. Before, the panel hid and only the cursor buddy showed.
+  - `NotchListeningView` is a `.voice` notch entry (priority between activity and guide). It shows the resting mascot inside a mint ring that grows and brightens with the RMS level (published at 20 Hz), and the live transcript as the headline.
+  - During the final silence a thin arc drains around the ring. Under Reduce Motion it becomes an opacity step and the ring stops scaling.
+  - "Pause when you're done." shows for the first three listens.
+  - Up-arrow or Return sends now; × or Esc cancels. A click on the ring or transcript sends. A ⌃⌥ press while listening sends instead of starting a hold.
+  - `sendNow()` submits when there is speech and cancels when there is none.
+  - The entry stays through thinking and speaking. Idle removes it and closes the notch if voice opened it. The `send` earcon plays at commit. VoiceOver announces "Listening" and "Sending. Thinking".
+  - Deleted: `WorkspaceVoiceStatus` (its "Stop" discarded speech) and the cursor-overlay show on listening. Onboarding's "I'm done" is now "Listening…", and pressing it sends now. Onboarding keeps its own talk UI, so no entry is presented while it runs.
+  - Verified: 668/0 on the mini, with 0 constraint-loop lines. New tests:
+    - The presenter keeps the notch open from listening to speaking and closes it at idle.
+    - Real Return and Esc key events, sent to a hosted view, send and cancel. Both failed with the shortcuts removed.
+    - `sendNow` with and without speech.
+    - The level and end-progress meters.
+  - Renders of start, speech, ending, thinking and failed are in `docs/evidence/first-impressions/4.4/`. The first renders showed two defects, now fixed: the hint never appeared (the view mounted before listening began), and the mood badge collided with the ring (the mascot now rests inside the ring).
+  - Not verified live: the ring against a real microphone, and focus returning to the user's app after the notch closes.
+
 ## Next
 
 - Finish 3.12 (critic round 2), commit, then Phase 4.

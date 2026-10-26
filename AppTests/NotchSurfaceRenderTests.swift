@@ -595,6 +595,77 @@ final class NotchSurfaceRenderTests: XCTestCase {
         }
     }
 
+    func testRenderListeningStates() async throws {
+        final class Input: VoiceConversationInput {
+            var onPartial: (String) -> Void = { _ in }
+            var onLevel: (TimeInterval, Double) -> Void = { _, _ in }
+            func start() throws {}
+            func finish() {}
+            func cancel() {}
+        }
+        final class Silent: TalkSpeechOutput {
+            let isSpeaking = false
+            func speak(_ sentence: String) {}
+            func shutUp() {}
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
+        let controller = AppController(debugStorageDirectory: directory)
+        defer {
+            for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
+            controller.overlayState.voiceState = .idle
+            controller.notchPresence.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        var inputs: [Input] = []
+        var clock: TimeInterval = 100
+        let voice = VoiceConversationController(services: .init(
+            requestPermission: { true },
+            makeInput: { _, onPartial, onLevel, _ in
+                let input = Input()
+                input.onPartial = onPartial
+                input.onLevel = onLevel
+                inputs.append(input)
+                return input
+            },
+            run: { _ in (UUID(), AsyncStream { _ in }, nil) },
+            output: Silent(),
+            now: { clock },
+            silenceTimeout: 60
+        ))
+        func hear(_ seconds: Double, rms: Double) async {
+            for _ in 0..<Int((seconds / 0.02).rounded()) {
+                clock += 0.02
+                inputs.last?.onLevel(clock, rms)
+            }
+            for _ in 0..<10 { await Task.yield() }
+        }
+        NotchPresentation.shared.present(id: AppController.voiceEntryID, priority: .voice, content: NotchListeningView(voice: voice))
+        controller.overlayState.voiceState = .listening
+
+        voice.start()
+        for _ in 0..<50 where voice.state != .listening { try await Task.sleep(for: .milliseconds(10)) }
+        await hear(0.4, rms: 0.001)
+        try await render(openNotch(controller), name: "listening-start", size: NSSize(width: 592, height: 360), wait: 0.5)
+        await hear(0.6, rms: 0.08)
+        inputs.last?.onPartial("Move the launch notes into the Archive folder")
+        for _ in 0..<10 { await Task.yield() }
+        try await render(openNotch(controller), name: "listening-speech", size: NSSize(width: 592, height: 360), wait: 0.3)
+        await hear(0.6, rms: 0.001)
+        try await render(openNotch(controller), name: "listening-ending", size: NSSize(width: 592, height: 360), wait: 0.3)
+        voice.sendNow()
+        controller.overlayState.voiceState = .processing
+        try await render(openNotch(controller), name: "listening-thinking", size: NSSize(width: 592, height: 360), wait: 0.3)
+
+        voice.cancel()
+        voice.start()
+        for _ in 0..<50 where voice.state != .listening { try await Task.sleep(for: .milliseconds(10)) }
+        await hear(8.1, rms: 0.001)
+        controller.overlayState.voiceState = .idle
+        try await render(openNotch(controller), name: "listening-failed", size: NSSize(width: 592, height: 360), wait: 0.3)
+    }
+
     private func openNotch(_ controller: AppController) -> CompactConversationView {
         controller.sessionPanel.expansion.open = true
         controller.sessionPanel.expansion.contentShown = true

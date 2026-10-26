@@ -298,6 +298,10 @@ final class AppSubsystems {
     lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak app = app] in
             guard let app, !app.maintenance.isUnderMaintenance else { return }
+            if app.conversationVoice.state == .listening {
+                app.conversationVoice.sendNow()
+                return
+            }
             app.conversationVoice.cancel()
             app.probe.pinInvocationTarget()
             if app.isTaskActive {

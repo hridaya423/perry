@@ -313,9 +313,6 @@ struct NotchWorkspaceView: View {
                     ) {
                         model.onStartConversation?(model.newConversationDraft)
                     }
-                    if let voice = model.deps.controller?.conversationVoice {
-                        WorkspaceVoiceStatus(voice: voice)
-                    }
                     HStack(spacing: 6) {
                         ComposerModeChip(mode: $model.composerMode)
                         targetButton
@@ -544,49 +541,6 @@ struct NotchWorkspaceView: View {
     private func openSettingsTab(_ tab: SettingsTab) {
         PerryPreferences.settingsTab = tab.rawValue
         model.sidebarSelection = .settings
-    }
-}
-
-private struct WorkspaceVoiceStatus: View {
-    @ObservedObject var voice: VoiceConversationController
-
-    var body: some View {
-        switch voice.state {
-        case .idle:
-            EmptyView()
-        case .requestingPermission:
-            statusRow("Requesting microphone access…")
-        case .listening:
-            statusRow(voice.transcript.isEmpty ? "Listening…" : voice.transcript)
-        case .thinking:
-            statusRow("Thinking…")
-        case .speaking:
-            statusRow(voice.answer.isEmpty ? "Speaking…" : voice.answer)
-        case .failed:
-            VStack(spacing: 8) {
-                Label(voice.error ?? "Voice failed.", systemImage: "exclamationmark.circle")
-                    .font(PerryTheme.Scale.body)
-                    .foregroundStyle(PerryTheme.Colors.warning)
-                    .textSelection(.enabled)
-                Button("Dismiss") { voice.resetConversation() }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-            }
-            .frame(maxWidth: 460)
-        }
-    }
-
-    private func statusRow(_ text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "waveform")
-                .foregroundStyle(PerryTheme.Colors.accent)
-            Text(text)
-                .font(PerryTheme.Scale.body)
-                .lineLimit(2)
-            Button("Stop") { voice.cancel() }
-                .controlSize(.small)
-        }
-        .frame(maxWidth: 460)
     }
 }
 

@@ -99,6 +99,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     lazy var guideBridge = GuideSessionBridge(host: self)
     lazy var commandRouter = CommandRouter(host: self)
     var talkSessionStarted = false
+    var voiceOpenedNotch = false
     var modifierHoldIsSteering = false
     var lastBackgroundCount = 0
     var lastAwaitingApprovalCount = 0

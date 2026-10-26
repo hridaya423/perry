@@ -177,7 +177,29 @@ extension AppController {
         return (window, presentation.frame)
     }
 
+    static let voiceEntryID = UUID()
+
     func presentConversationVoice(_ state: VoiceConversationController.State) {
+        let presentation = NotchPresentation.shared
+        switch state {
+        case .idle:
+            presentation.remove(Self.voiceEntryID)
+            if voiceOpenedNotch, presentation.current == nil { hidePanel() }
+            voiceOpenedNotch = false
+        case .requestingPermission:
+            break
+        case .listening, .thinking, .speaking, .failed:
+            guard homeController.homeModel.onboarding == nil, !presentation.contains(Self.voiceEntryID) else { break }
+            voiceOpenedNotch = !sessionPanel.isVisible
+            presentation.present(
+                id: Self.voiceEntryID,
+                priority: .voice,
+                content: NotchListeningView(voice: conversationVoice),
+                onDismiss: { [weak self] in self?.conversationVoice.cancel() }
+            )
+            if !sessionPanel.isVisible { showPanel(activate: false) }
+            sessionPanel.focusWithoutActivating()
+        }
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         switch state {
         case .requestingPermission:
@@ -186,11 +208,8 @@ extension AppController {
             overlayState.buddyState = .listening
             overlayState.voiceState = .listening
             overlayState.taskBubbleText = nil
-            overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
-            NotchPresentation.shared.dismissCurrent()
-            cancelNotchConfirmations()
-            hideSurfaces()
         case .thinking:
+            SoundPlayer.play(.send)
             overlayState.buddyState = .thinking
             overlayState.voiceState = .processing
             overlayState.taskBubbleText = "Working on your request"

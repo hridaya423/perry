@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import XCTest
 import PerryBrain
 @testable import Perry
@@ -252,6 +254,71 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(probe.runs, ["Open my notes."])
     }
 
+    func testSendNowSubmitsSpeechButDiscardsSilence() async {
+        let probe = Probe()
+        let controller = makeController(probe: probe, silenceTimeout: 30)
+        controller.start()
+        await waitUntil { controller.state == .listening }
+        controller.sendNow()
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(probe.inputs[0].cancelCalls, 1)
+
+        controller.start()
+        await waitUntil { controller.state == .listening }
+        probe.inputs[1].onPartial("Open my notes")
+        await waitUntil { controller.transcript == "Open my notes" }
+        controller.sendNow()
+        XCTAssertEqual(controller.state, .thinking)
+        XCTAssertEqual(probe.inputs[1].finishCalls, 1)
+        await waitUntil { probe.runs == ["Open my notes"] }
+    }
+
+    func testMetersFollowTheVoiceAndTheEndingSilence() async {
+        let probe = Probe()
+        let controller = makeController(probe: probe, silenceTimeout: 30)
+        controller.start()
+        await waitUntil { controller.state == .listening }
+        let input = probe.inputs[0]
+        await hear(input, probe: probe, seconds: 0.4, rms: 0.001)
+        await hear(input, probe: probe, seconds: 0.6, rms: 0.05)
+        XCTAssertGreaterThan(controller.level, 0.5)
+        XCTAssertEqual(controller.endProgress, 0)
+        input.onPartial("Open my notes")
+        await waitUntil { controller.transcript == "Open my notes" }
+        await hear(input, probe: probe, seconds: 0.5, rms: 0.001)
+        XCTAssertLessThan(controller.level, 0.2)
+        XCTAssertEqual(controller.endProgress, 0.47, accuracy: 0.05)
+    }
+
+    func testReturnSendsAndEscapeCancelsInTheListeningView() async throws {
+        for (key, code) in [("\r", UInt16(36)), ("\u{1b}", UInt16(53))] {
+            let probe = Probe()
+            let controller = makeController(probe: probe, silenceTimeout: 30)
+            controller.start()
+            await waitUntil { controller.state == .listening }
+            probe.inputs[0].onPartial("Open my notes")
+            await waitUntil { controller.transcript == "Open my notes" }
+            let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 120), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(rootView: NotchListeningView(voice: controller))
+            window.makeKeyAndOrderFront(nil)
+            defer { window.close() }
+            try await Task.sleep(for: .milliseconds(200))
+            let event = try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code
+            ))
+            window.sendEvent(event)
+            await waitUntil { controller.state != .listening }
+            if code == 36 {
+                XCTAssertEqual(probe.inputs[0].finishCalls, 1)
+            } else {
+                XCTAssertEqual(controller.state, .idle)
+                XCTAssertEqual(probe.inputs[0].cancelCalls, 1)
+            }
+        }
+    }
+
     func testNoSpeechEndsListeningWithActionableError() async {
         let probe = Probe()
         let controller = makeController(probe: probe, silenceTimeout: 30)
@@ -348,5 +415,37 @@ final class VoiceConversationControllerTests: XCTestCase {
 
         XCTAssertEqual(probe.spoken, ["Working."])
         XCTAssertEqual(completions, 0)
+    }
+}
+
+@MainActor
+final class NotchListeningPresentationTests: XCTestCase {
+    func testListeningKeepsTheNotchOpenUntilTheTurnEnds() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let controller = AppController(debugStorageDirectory: directory)
+        let presentation = NotchPresentation.shared
+        for entry in presentation.entries { presentation.remove(entry.id) }
+        defer {
+            for entry in presentation.entries { presentation.remove(entry.id) }
+            controller.collapseNotch()
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        controller.presentConversationVoice(.listening)
+        XCTAssertEqual(presentation.current?.id, AppController.voiceEntryID)
+        XCTAssertEqual(presentation.current?.priority, .voice)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertTrue(controller.sessionPanel.isVisible)
+
+        controller.presentConversationVoice(.thinking)
+        controller.presentConversationVoice(.speaking)
+        XCTAssertTrue(presentation.contains(AppController.voiceEntryID))
+        XCTAssertTrue(controller.sessionPanel.isVisible)
+
+        controller.presentConversationVoice(.idle)
+        XCTAssertFalse(presentation.contains(AppController.voiceEntryID))
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertFalse(controller.sessionPanel.isVisible)
     }
 }

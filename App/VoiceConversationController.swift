@@ -48,6 +48,8 @@ final class VoiceConversationController: ObservableObject {
     @Published private(set) var transcript = ""
     @Published private(set) var answer = ""
     @Published private(set) var error: String?
+    @Published private(set) var level = 0.0
+    @Published private(set) var endProgress = 0.0
 
     var onTurnCompleted: (() -> Void)?
 
@@ -61,6 +63,7 @@ final class VoiceConversationController: ObservableObject {
     private var activeThreadID: UUID?
     private var submitted = false
     private var detector: EndOfTurnDetector?
+    private var meteredAt = -TimeInterval.infinity
 
     init(services: Services) {
         self.services = services
@@ -102,13 +105,25 @@ final class VoiceConversationController: ObservableObject {
                 return
             }
             detector = EndOfTurnDetector(startedAt: services.now())
+            meteredAt = -.infinity
             state = .listening
             armSilenceTimeout(generation: generation)
         }
     }
 
+    func sendNow() {
+        guard state == .listening else { return }
+        if transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            cancel()
+        } else {
+            finishListening()
+        }
+    }
+
     func finishListening() {
         guard state == .listening else { return }
+        level = 0
+        endProgress = 0
         state = .thinking
         finalizeTask?.cancel()
         finalizeTask = nil
@@ -148,6 +163,8 @@ final class VoiceConversationController: ObservableObject {
         }
         activeThreadID = nil
         submitted = false
+        level = 0
+        endProgress = 0
         guard state != .idle else { return }
         services.output.shutUp()
         state = .idle
@@ -178,9 +195,18 @@ final class VoiceConversationController: ObservableObject {
             finishListening()
         case .abort?:
             fail("I didn’t hear anything. Check that your microphone is on, then try again.")
+        case .silence(_, let progress)?:
+            meter(rms, progress: progress, at: time)
         default:
-            break
+            meter(rms, progress: 0, at: time)
         }
+    }
+
+    private func meter(_ rms: Double, progress: Double, at time: TimeInterval) {
+        guard time - meteredAt >= 0.05 else { return }
+        meteredAt = time
+        level = min(max((20 * log10(max(rms, 1e-7)) + 60) / 50, 0), 1)
+        endProgress = progress
     }
 
     private func handleFailure(_ failure: Error, generation: Int) {

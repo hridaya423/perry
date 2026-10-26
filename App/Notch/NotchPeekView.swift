@@ -26,6 +26,7 @@ struct PeekRow: Equatable, Identifiable {
         let waiting = presentation.current.flatMap { entry -> PeekRow? in
             guard entry.priority != .activity, !presentation.showsInteraction else { return nil }
             let title = switch entry.priority {
+            case .voice: "Perry is listening"
             case .approval: "Perry needs your OK"
             case .guide: "A guide is waiting for you"
             case .routine: "A routine is waiting for you"

@@ -279,7 +279,7 @@ private struct FirstTalkBeat: View {
 
     private var talkTitle: String {
         switch voice.state {
-        case .listening: "I’m done"
+        case .listening: "Listening…"
         case .requestingPermission, .thinking, .speaking: "Stop"
         case .failed: "Try again"
         case .idle: answer == nil ? "Talk to Perry" : "Ask another"
@@ -288,7 +288,7 @@ private struct FirstTalkBeat: View {
 
     private var talkIcon: String {
         switch voice.state {
-        case .listening: "arrow.up"
+        case .listening: "waveform"
         case .requestingPermission, .thinking, .speaking: "stop.fill"
         case .idle, .failed: "mic.fill"
         }
@@ -297,7 +297,7 @@ private struct FirstTalkBeat: View {
     private func talk() {
         switch voice.state {
         case .idle, .failed: voice.start()
-        case .listening: voice.finishListening()
+        case .listening: voice.sendNow()
         default: voice.cancel()
         }
     }
