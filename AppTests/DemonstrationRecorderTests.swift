@@ -90,15 +90,15 @@ final class DemonstrationRecorderTests: XCTestCase {
     func testNamedKeysRecordPressesAndModifierChordsAreNotText() async {
         let recorder = makeRecorder(elements: [])
         recorder.start()
+        recorder.recordKey(characters: "a", keyCode: 0, modifiers: [])
+        recorder.recordKey(characters: "b", keyCode: 11, modifiers: [.function])
         recorder.recordKey(characters: "\r", keyCode: 36, modifiers: [])
         recorder.recordKey(characters: " ", keyCode: 49, modifiers: [])
-        recorder.recordKey(characters: "a", keyCode: 0, modifiers: [.function])
-        recorder.recordKey(characters: "a", keyCode: 0, modifiers: [])
         let demo = await recorder.stop()
         XCTAssertEqual(demo?.events, [
+            .typed(text: "a", into: nil),
             .keyPress("return"),
-            .keyPress("space"),
-            .typed(text: "a", into: nil)
+            .keyPress("space")
         ])
     }
 
@@ -114,6 +114,34 @@ final class DemonstrationRecorderTests: XCTestCase {
             .chord(key: "c", modifiers: ["command"]),
             .chord(key: "s", modifiers: ["command", "shift"]),
             .chord(key: "space", modifiers: ["command"])
+        ])
+    }
+
+    func testTypingAfterTabOrReturnIsNotRecordedUntilTheNextClick() async {
+        let field = AXElement(
+            stableID: "ax-field", role: .textField, label: "Notes",
+            frame: AXElementFrame(x: 0, y: 0, width: 100, height: 20),
+            isActionable: true, sensitivity: .ordinary
+        )
+        let recorder = makeRecorder(elements: [field])
+        recorder.start()
+        await recorder.recordClick(axPoint: CGPointShim(x: 10, y: 10))
+        recorder.recordKey(characters: "hello", keyCode: 4, modifiers: [])
+        recorder.recordKey(characters: "\t", keyCode: 48, modifiers: [])
+        recorder.recordKey(characters: "s3cret", keyCode: 4, modifiers: [])
+        recorder.recordKey(characters: "\r", keyCode: 36, modifiers: [])
+        recorder.recordKey(characters: "more", keyCode: 4, modifiers: [])
+        await recorder.recordClick(axPoint: CGPointShim(x: 10, y: 10))
+        recorder.recordKey(characters: "again", keyCode: 4, modifiers: [])
+        let demo = await recorder.stop()
+        let notes = RoutineTarget(role: "textField", label: "Notes")
+        XCTAssertEqual(demo?.events, [
+            .click(notes),
+            .typed(text: "hello", into: notes),
+            .keyPress("tab"),
+            .keyPress("return"),
+            .click(notes),
+            .typed(text: "again", into: notes)
         ])
     }
 }
