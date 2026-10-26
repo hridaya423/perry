@@ -625,4 +625,21 @@ Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). P
   0.47 s for 3.75 s audio (first call 3 s, so the helper warms on listen). Parakeet transcribed the output as
   "Hi Fridia, your notes are ready." / "I moved the meeting to Thursday at 3, and told Sam."
   Cloud engines are unverified live (no keys used, per the fixtures rule).
-- Next: Settings > Voice redesign, then phase C.
+- B done (`528e948`): Voice settings with engine choice, per-engine voices, key capture, pronunciations.
+- C done:
+  - `e427b8b`: Perry decides what to remember (MemoryExtraction, max 3 facts, secrets dropped, subject replacement,
+    expiry) and titles conversations on the device. Supermemory was rejected (closed server, telemetry on, needs
+    an LLM and embeddings); its ideas were kept.
+  - `b6b1fab`: the get-to-know-you interview has pronunciation, follow-ups that back off, answer style and an
+    import from ChatGPT or Claude. 12 InterviewModelTests pass; renders interview-*.png inspected.
+  - `93317d8`: About you has an editable profile, standing facts first, expiry dates and the import.
+    Render settings-you-full.png inspected.
+- D partial:
+  - `7dc0689`, `460eebf`: hearing uses SpeechAnalyzer/SpeechTranscriber on macOS 26 and later, with
+    SFSpeechRecognizer as the fallback and for the language reroute. Prepared targets are cached per locale.
+    Talk now gets the user's words and language. Evidence: AnalyzerRecognitionTests on the mini, `say` audio
+    through the 48 kHz tap path, gave "I moved the meeting to Thursday and told Sam." with word times in order.
+  - `dda7b2e`: Sounds switch in General, cues at volume 0.45, no stop-listening cue.
+  - Not done: cloud STT (deferred: SpeechAnalyzer covers accuracy; add if the owner asks), the earcon set
+    (owner picks from three), the loopback mic drill (needs approval for the device).
+- Next: phase E (redactor, capability eval, Brain page), then F.
