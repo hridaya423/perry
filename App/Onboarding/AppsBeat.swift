@@ -35,7 +35,7 @@ enum AppsBeatPlan {
            ["calendar", "meeting", "schedule"].contains(where: everything.contains) {
             tiles.append(calendar)
         }
-        return Array(tiles.filter { available($0.id) }.prefix(4))
+        return Array(tiles.filter { available($0.id) }.prefix(3))
     }
 }
 
@@ -49,8 +49,7 @@ struct AppsBeat: View {
     var body: some View {
         OnboardingBeatLayout(
             title: "Want me to reach into your apps?",
-            message: tiles.isEmpty ? "Connect apps any time in Settings › Apps." : "Read-only to start. I ask before I change anything.",
-            artHeight: tiles.isEmpty ? 40 : 24
+            message: tiles.isEmpty ? "Connect apps any time in Settings › Apps." : "Read-only to start. I ask before I change anything."
         ) {
             Color.clear
         } detail: {
@@ -100,7 +99,7 @@ struct AppsBeat: View {
         }
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder

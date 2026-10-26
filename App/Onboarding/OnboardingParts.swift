@@ -3,24 +3,24 @@ import SwiftUI
 import PerryOverlay
 
 struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
+    static var artZone: CGFloat { 56 }
+
     let title: String?
     var message: String?
-    var artHeight: CGFloat = 84
     @ViewBuilder var art: Art
     @ViewBuilder var detail: Detail
     @ViewBuilder var actions: Actions
 
     var body: some View {
         VStack(spacing: 0) {
-            art
-                .frame(maxWidth: .infinity)
-                .frame(height: artHeight)
+            Color.clear
+                .frame(height: Self.artZone)
+                .overlay { art.frame(maxWidth: .infinity) }
             if let title {
                 Text(title)
                     .font(PerryTheme.Scale.display)
                     .tracking(-0.4)
                     .foregroundStyle(PerryTheme.Colors.text)
-                    .padding(.top, artHeight > 0 ? 14 : 0)
             }
             if let message {
                 Text(message)
@@ -28,12 +28,12 @@ struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
                     .lineSpacing(3)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .frame(maxWidth: 400)
-                    .padding(.top, title == nil ? 16 : 8)
+                    .padding(.top, 6)
                     .fixedSize(horizontal: false, vertical: true)
             }
             detail
                 .frame(maxWidth: 420)
-                .padding(.top, 12)
+                .padding(.top, 10)
             Spacer(minLength: 8)
             actions
         }
@@ -72,8 +72,8 @@ struct OnboardingFooter<Leading: View, Primary: View, Trailing: View>: View {
                 .frame(width: 128, alignment: .leading)
         }
         .buttonStyle(OnboardingLinkStyle())
-        .frame(height: 46)
-        .padding(.bottom, 8)
+        .frame(height: 40)
+        .padding(.bottom, 4)
     }
 }
 

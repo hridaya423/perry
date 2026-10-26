@@ -60,10 +60,15 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let guideView = GuideControlsView(state: guide, onDone: {}, onBack: {}, onSkip: {}, onRepoint: {}, onSelectMarker: { _ in }, onChooseInput: { _ in }, onTakeOver: {}, onStop: {})
         presentation.present(id: id, priority: .guide, content: guideView, reveal: false)
         presentation.showsInteraction = true
-        try await render(openNotch(controller), name: "guide-step", size: NSSize(width: 592, height: 420))
+        try await render(openNotch(controller), name: "guide-step", size: NSSize(width: 592, height: 420), wait: 0.8)
         guide.pendingPrompt = "Which version should I use?"
         guide.pendingChoices = ["The latest draft", "The version shared yesterday"]
-        try await render(openNotch(controller), name: "guide-question", size: NSSize(width: 592, height: 420))
+        try await render(openNotch(controller), name: "guide-question", size: NSSize(width: 592, height: 420), wait: 0.8)
+        guide.pendingPrompt = "Which of these folders holds the launch notes you mentioned earlier?"
+        guide.pendingChoices = ["The Launch folder on the desktop, which was shared with the whole team last week", "The Archive folder inside Documents", "Neither of them"]
+        try await render(openNotch(controller), name: "guide-question-long", size: NSSize(width: 592, height: 420), wait: 0.8)
+        guide.pendingPrompt = nil
+        guide.pendingChoices = []
         let routine = RoutineReviewState()
         routine.presentReview(steps: [RoutineStep(summary: "Open a new note", action: .click), RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))])
         routine.name = "Prepare meeting notes"
@@ -222,6 +227,13 @@ final class NotchSurfaceRenderTests: XCTestCase {
         for (index, beat) in OnboardingDirector.Beat.allCases.enumerated() {
             XCTAssertEqual(director.beat, beat)
             try await shot("\(index + 1)-\(beat.rawValue)", wait: beat == .hello ? HelloInk.peekDelay + 0.8 : 1.1)
+            try await render(
+                OnboardingNotchView(director: director, model: model)
+                    .frame(width: 524, height: 325, alignment: .top)
+                    .background(PerryTheme.Colors.canvas)
+                    .environment(\.colorScheme, .dark),
+                name: "onboarding-small-\(index + 1)-\(beat.rawValue)", size: NSSize(width: 524, height: 325),
+                wait: beat == .hello ? HelloInk.peekDelay + 0.8 : 1.1, folder: "onboarding-evidence")
             if beat == .access {
                 snapshot = PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .denied)
                 await director.refreshPermissions()

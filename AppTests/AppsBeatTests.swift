@@ -43,27 +43,29 @@ final class AppsBeatTests: XCTestCase {
         while director.beat != .apps { director.skip() }
         defer { director.stop() }
         let tiles = AppsBeatPlan.tiles(apps: "Notion, Slack, Gmail, Linear", mentions: "weekly meetings", available: { $0 != "slack" })
-        let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: 380)
-        let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .darkAqua)
-        defer { window.close() }
-        let host = NSHostingView(rootView: AppsBeat(director: director, controller: controller, tiles: tiles)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 14)
-            .frame(width: frame.width, height: frame.height)
-            .background(PerryTheme.Colors.canvas)
-            .foregroundStyle(PerryTheme.Colors.text)
-            .environment(\.colorScheme, .dark))
-        window.contentView = host
-        host.frame = frame
-        window.orderFrontRegardless()
-        try await Task.sleep(for: .milliseconds(500))
-        host.layoutSubtreeIfNeeded()
-        window.displayIfNeeded()
-        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: bitmap)
-        try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
-            .write(to: destination.appendingPathComponent("apps-tiles.png"))
+        for (name, height) in [("apps-tiles", CGFloat(380)), ("apps-tiles-small", CGFloat(283))] {
+            let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: height)
+            let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            defer { window.close() }
+            let host = NSHostingView(rootView: AppsBeat(director: director, controller: controller, tiles: tiles)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 10)
+                .frame(width: frame.width, height: frame.height)
+                .background(PerryTheme.Colors.canvas)
+                .foregroundStyle(PerryTheme.Colors.text)
+                .environment(\.colorScheme, .dark))
+            window.contentView = host
+            host.frame = frame
+            window.orderFrontRegardless()
+            try await Task.sleep(for: .milliseconds(500))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: destination.appendingPathComponent("\(name).png"))
+        }
     }
 }

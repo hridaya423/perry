@@ -68,7 +68,7 @@ struct FirstGoalBeat: View {
 
     var body: some View {
         if closing {
-            OnboardingBeatLayout(title: "I’m up here whenever you need me.", artHeight: 96) {
+            OnboardingBeatLayout(title: "I’m up here whenever you need me.") {
                 Color.clear
             } detail: {
                 EmptyView()
@@ -82,8 +82,7 @@ struct FirstGoalBeat: View {
         } else {
             OnboardingBeatLayout(
                 title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "Let’s start with \(trimmed).",
-                message: trimmed.isEmpty || asking ? nil : route.promise(trimmed),
-                artHeight: 64
+                message: trimmed.isEmpty || asking ? nil : route.promise(trimmed)
             ) {
                 Color.clear
             } detail: {

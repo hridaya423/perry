@@ -17,6 +17,7 @@ final class CompactConversationPanel: NSPanel {
 
 extension EnvironmentValues {
     @Entry var notchMood: PerryMood = .resting
+    @Entry var notchCameraInset: CGFloat = 24
 }
 
 struct CompactConversationView: View {
@@ -49,6 +50,11 @@ struct CompactConversationView: View {
         VStack(spacing: 0) {
             Color.clear.frame(height: cameraInset)
                 .overlay { crown }
+                .overlay {
+                    if let onboarding = model.onboarding, model.sidebarSelection != .settings {
+                        OnboardingCrown(director: onboarding)
+                    }
+                }
             NotchInteractionHost(presentation: presentation) {
                 workspace
             }
@@ -83,6 +89,7 @@ struct CompactConversationView: View {
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .environment(\.notchMood, mood)
+        .environment(\.notchCameraInset, cameraInset)
         .environment(\.perryCharacterPaused, !expansion.contentShown)
         .onReceive(controller.overlayState.$voiceState.combineLatest(controller.overlayState.$buddyState)
             .map(PerryMood.init).removeDuplicates()) { mood = $0 }

@@ -215,8 +215,7 @@ struct InterviewBeat: View {
     private var consent: some View {
         OnboardingBeatLayout(
             title: "Tell me about you.",
-            message: (["Three quick questions. I keep short notes on this Mac so I can help your way, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " "),
-            artHeight: 64
+            message: (["Three quick questions. I keep short notes on this Mac so I can help your way, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " ")
         ) {
             Color.clear
         } detail: {
@@ -236,7 +235,7 @@ struct InterviewBeat: View {
     }
 
     private func question(_ index: Int) -> some View {
-        OnboardingBeatLayout(title: ProfileExtraction.questions[index], message: model.reaction, artHeight: 40) {
+        OnboardingBeatLayout(title: ProfileExtraction.questions[index], message: model.reaction) {
             Color.clear
         } detail: {
             VStack(spacing: 12) {
@@ -371,6 +370,6 @@ struct InterviewBeat: View {
         }
         .multilineTextAlignment(.leading)
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 6)
     }
 }

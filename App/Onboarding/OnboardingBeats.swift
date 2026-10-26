@@ -72,7 +72,7 @@ private struct HelloBeat: View {
     var body: some View {
         VStack(spacing: 0) {
             HelloGreetingView()
-                .frame(maxWidth: 340, minHeight: 104, maxHeight: 128)
+                .frame(maxWidth: 340, minHeight: 96, maxHeight: 116)
                 .padding(.top, 4)
             Text("Hi, I’m Perry. I live in your notch.\nWhat should I call you?")
                 .font(PerryTheme.Scale.input)
@@ -136,7 +136,7 @@ private struct AccessBeat: View {
     var body: some View {
         OnboardingBeatLayout(title: "I need to see what you see.") {
             PermissionSketch(lit: director.accessGranted)
-                .scaleEffect(0.6)
+                .scaleEffect(0.46)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
@@ -218,8 +218,8 @@ struct BrainBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: "How should I think?", artHeight: 52) {
-            PerryCharacterView(pose: perryPose, size: 40)
+        OnboardingBeatLayout(title: "How should I think?") {
+            PerryCharacterView(pose: perryPose, size: 36)
         } detail: {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -314,7 +314,8 @@ struct BrainBeat: View {
             VStack(alignment: .leading, spacing: 4) {
                 ChoiceSketch(kind: sketch, lit: isSelected)
                     .modifier(InkDrawOn())
-                    .padding(.bottom, 6)
+                    .scaleEffect(0.8, anchor: .topLeading)
+                    .frame(width: 56, height: 36, alignment: .topLeading)
                 Text(title)
                     .font(PerryTheme.Scale.rowTitle)
                     .foregroundStyle(PerryTheme.Colors.text)
@@ -331,7 +332,7 @@ struct BrainBeat: View {
                 Spacer(minLength: 0)
             }
             .multilineTextAlignment(.leading)
-            .padding(14)
+            .padding(12)
             .frame(width: 204, alignment: .topLeading)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(PerryTheme.Colors.surface.opacity(isSelected ? 1 : 0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -357,7 +358,7 @@ private struct ShortcutsBeat: View {
     private var talk: Gesture { Gesture(rawValue: talkRaw) ?? .defaultTalk }
 
     var body: some View {
-        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", message: "Click the key to change it.", artHeight: 40) {
+        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", message: "Click the key to change it.") {
             Color.clear
         } detail: {
             ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)

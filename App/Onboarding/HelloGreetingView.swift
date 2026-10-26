@@ -159,6 +159,7 @@ struct HelloScene: View {
 
 struct NotchPeek: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.notchCameraInset) private var cameraInset
     var size: CGFloat = 44
     var progress: Double?
     @State private var shown = false
@@ -166,9 +167,9 @@ struct NotchPeek: View {
     var body: some View {
         let reveal = progress ?? (shown || reduceMotion ? 1 : 0)
         PerryCharacterView(pose: pose, size: size)
-            .offset(y: -size * (1 - reveal))
+            .offset(y: -(cameraInset + size * 0.8) * (1 - reveal))
             .frame(width: size, height: size * 0.8, alignment: .bottom)
-            .clipped()
+            .mask(alignment: .bottom) { Rectangle().frame(width: size * 2, height: cameraInset + size * 0.8) }
             .onAppear {
                 guard progress == nil else { return }
                 withAnimation(.spring(duration: 0.55, bounce: 0.35).delay(HelloInk.peekDelay)) { shown = true }

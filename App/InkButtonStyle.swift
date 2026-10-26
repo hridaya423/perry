@@ -31,7 +31,7 @@ struct InkButtonStyle: ButtonStyle {
                 .font(.system(size: hero ? 15 : 13, weight: .medium))
                 .lineLimit(1)
                 .padding(.horizontal, hero ? 24 : compact ? 14 : 16)
-                .padding(.vertical, hero ? 14 : compact ? 6 : 8)
+                .padding(.vertical, hero ? 11 : compact ? 6 : 8)
                 .foregroundStyle(configuration.role == .destructive && tier == .secondary ? PerryTheme.Colors.danger : foreground)
                 .background(background, in: Capsule())
                 .overlay {

@@ -13,10 +13,7 @@ struct OnboardingNotchView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                if director.beat == .hello {
-                    NotchPeek()
-                        .frame(maxHeight: .infinity, alignment: .top)
-                } else {
+                if director.beat != .hello {
                     OnboardingProgress(current: beatIndex, count: OnboardingDirector.Beat.allCases.count)
                         .animation(PerryTheme.Motion.progress, value: beatIndex)
                 }
@@ -33,7 +30,7 @@ struct OnboardingNotchView: View {
                         .keyboardShortcut(.cancelAction)
                 }
             }
-            .frame(height: 36)
+            .frame(height: 32)
             .padding(.horizontal, 6)
 
             ZStack {
@@ -45,7 +42,7 @@ struct OnboardingNotchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 24)
-            .padding(.bottom, 14)
+            .padding(.bottom, 10)
         }
         .frame(
             maxWidth: PerryTheme.Sizing.onboardingContentWidth,
@@ -79,5 +76,17 @@ private struct BeatShift: ViewModifier {
             .offset(x: x)
             .blur(radius: blur)
             .opacity(opacity)
+    }
+}
+
+struct OnboardingCrown: View {
+    @ObservedObject var director: OnboardingDirector
+
+    var body: some View {
+        if director.beat == .hello {
+            NotchPeek()
+                .offset(y: 35)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+        }
     }
 }
