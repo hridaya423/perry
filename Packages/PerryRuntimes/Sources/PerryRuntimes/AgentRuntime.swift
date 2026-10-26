@@ -6,6 +6,7 @@ public enum ActionExecutionEvidence: Sendable, Equatable {
     /// Raw service response body from a remote-integration write; the
     /// verifier checks the postcondition's expected text is echoed back.
     case integrationResponse(Data)
+    case windowBaseline(String)
 }
 
 public struct ActionExecutionResult: Sendable, Equatable {

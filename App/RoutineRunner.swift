@@ -193,7 +193,7 @@ final class RoutineRunner {
             workspace: workspace,
             journal: runJournal,
             bindComputerCommand: { action in
-                try RoutineReplay.command(for: action, of: routine, in: try await observe())
+                try RoutineReplay.binding(for: action, of: routine, in: try await observe())
             }
         )
         let outcome = await supervisor.run(
@@ -296,7 +296,7 @@ final class RoutineRunner {
         worker: CuaWorkerHandle,
         workspace: URL,
         journal: WorkspaceRunJournal?,
-        bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> ExecutableAction.ComputerCommand?
+        bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> RoutineStepBinding?
     ) -> TypedActionRouter {
         let codexRuntimeHome = RuntimeCatalog.codexRuntimeHome
 #if DEBUG

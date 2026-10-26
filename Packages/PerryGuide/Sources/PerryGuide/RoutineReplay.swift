@@ -27,6 +27,16 @@ extension RoutineReplayError: LocalizedError {
     }
 }
 
+public struct RoutineStepBinding: Equatable, Sendable {
+    public let command: ExecutableAction.ComputerCommand
+    public let baselineSHA256: String?
+
+    public init(command: ExecutableAction.ComputerCommand, baselineSHA256: String?) {
+        self.command = command
+        self.baselineSHA256 = baselineSHA256
+    }
+}
+
 /// Turns a reviewed routine back into a typed execution plan. Every target
 /// is re-resolved against a fresh observation — recorded coordinates are
 /// never replayed — and every step declares the observable postcondition the
@@ -123,26 +133,43 @@ public enum RoutineReplay {
         )
     }
 
-    public static func command(
+    public static func binding(
         for action: ExecutableAction,
         of routine: LearnedRoutine,
         in observation: GuideObservation
-    ) throws -> ExecutableAction.ComputerCommand? {
+    ) throws -> RoutineStepBinding? {
         guard case .computer(_, let command) = action.operation,
               action.id.rawValue.hasPrefix(stepIDPrefix),
               let index = Int(action.id.rawValue.dropFirst(stepIDPrefix.count)),
-              routine.steps.indices.contains(index),
-              let target = routine.steps[index].target else { return nil }
-        let selector = ExecutableAction.Selector.accessibilityID(
-            try resolve(target, in: observation.snapshot.elements, step: index)
-        )
+              routine.steps.indices.contains(index) else { return nil }
+        let selector = try routine.steps[index].target.map {
+            ExecutableAction.Selector.accessibilityID(try resolve($0, in: observation.snapshot.elements, step: index))
+        }
         switch command {
-        case .click: return .click(selector)
-        case .doubleClick: return .doubleClick(selector)
-        case .typeText(let text, _): return .typeText(text, target: selector)
-        case .pressKey(let key, let modifiers, _): return .pressKey(key, modifiers: modifiers, target: selector)
-        case .hotkey(let key, let modifiers, _): return .hotkey(key: key, modifiers: modifiers, target: selector)
-        default: return nil
+        case .click:
+            return RoutineStepBinding(
+                command: .click(try require(selector, step: index)),
+                baselineSHA256: try screenshotDigest(of: observation, step: index)
+            )
+        case .doubleClick:
+            return RoutineStepBinding(
+                command: .doubleClick(try require(selector, step: index)),
+                baselineSHA256: try screenshotDigest(of: observation, step: index)
+            )
+        case .typeText(let text, _):
+            return RoutineStepBinding(command: .typeText(text, target: try require(selector, step: index)), baselineSHA256: nil)
+        case .pressKey(let key, let modifiers, _):
+            return RoutineStepBinding(
+                command: .pressKey(key, modifiers: modifiers, target: selector),
+                baselineSHA256: try screenshotDigest(of: observation, step: index)
+            )
+        case .hotkey(let key, let modifiers, _):
+            return RoutineStepBinding(
+                command: .hotkey(key: key, modifiers: modifiers, target: selector),
+                baselineSHA256: try screenshotDigest(of: observation, step: index)
+            )
+        default:
+            return nil
         }
     }
 
@@ -174,11 +201,14 @@ public enum RoutineReplay {
         for observation: GuideObservation,
         step: Int
     ) throws -> ExecutableAction.Postcondition {
+        .visualChange(baselineSHA256: try screenshotDigest(of: observation, step: step))
+    }
+
+    private static func screenshotDigest(of observation: GuideObservation, step: Int) throws -> String {
         guard let screenshot = observation.screenshotData, !screenshot.isEmpty else {
             throw RoutineReplayError.missingVisualBaseline(step: step)
         }
-        let digest = SHA256.hash(data: screenshot).map { String(format: "%02x", $0) }.joined()
-        return .visualChange(baselineSHA256: digest)
+        return SHA256.hash(data: screenshot).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func require(_ selector: ExecutableAction.Selector?, step: Int) throws -> ExecutableAction.Selector {

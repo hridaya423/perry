@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Darwin
 import XCTest
@@ -1531,9 +1532,10 @@ final class CuaDriverClientTests: XCTestCase {
         )
         let service = CuaWorkerService(configuration: configuration)
         addTeardownBlock { try await service.shutdown() }
+        let evidence = EvidenceRecordingTypedVerifier()
         let supervisor = DoSupervisor(
             confirmer: AutoApproveConfirmer(),
-            typedVerifier: AlwaysVerifiedTypedVerifier()
+            typedVerifier: evidence
         )
         let outcome = try await service.withWorker(scope: .foreground, resources: []) { worker in
             let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
@@ -1564,7 +1566,9 @@ final class CuaDriverClientTests: XCTestCase {
                 askUser: nil,
                 runCodingTask: nil
             )
-            router.bindComputerCommand = { _ in .click(.windowPixels(x: 12.5, y: 20.25)) }
+            router.bindComputerCommand = { _ in
+                RoutineStepBinding(command: .click(.windowPixels(x: 12.5, y: 20.25)), baselineSHA256: "baseline-before-step")
+            }
             return await supervisor.run(plan: plan, typedExecutor: router)
         }
         guard case .completed = outcome else {
@@ -1578,6 +1582,61 @@ final class CuaDriverClientTests: XCTestCase {
         let arguments = try XCTUnwrap(click["arguments"] as? [String: Any])
         XCTAssertEqual(arguments["x"] as? Double, 12.5)
         XCTAssertEqual(arguments["y"] as? Double, 20.25)
+        XCTAssertEqual(evidence.recorded, [.windowBaseline("baseline-before-step")])
+    }
+
+    func testVisualChangeIsMeasuredAgainstTheScreenBeforeThatStep() async throws {
+        let configuration = CuaDriverConfiguration(
+            executableURL: driverURL,
+            capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
+            hostBundleID: "dev.perry.PerryTests"
+        )
+        let service = CuaWorkerService(configuration: configuration)
+        addTeardownBlock { try await service.shutdown() }
+        let (unchanged, changed) = try await service.withWorker(scope: .foreground, resources: []) { worker in
+            let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
+            let window = ExecutableAction.WindowIdentity(
+                bundleID: capture.target.bundleID,
+                processID: capture.target.processID,
+                windowID: UInt32(capture.target.windowID),
+                connectionGeneration: capture.target.connectionGeneration
+            )
+            let screenNow = SHA256.hash(data: capture.screenshotData).map { String(format: "%02x", $0) }.joined()
+            let staleBaseline = String(repeating: "0", count: 64)
+            let action = try ExecutableAction(
+                id: "routine-step-1",
+                summary: "click the control",
+                approvalRequirement: .action,
+                operation: .computer(window: window, command: .click(.windowPixels(x: 1, y: 2))),
+                postcondition: .visualChange(baselineSHA256: staleBaseline)
+            )
+            let plan = try ExecutionPlan(
+                taskID: TaskID("per-step-baseline"),
+                goal: "judge each click against its own before-screen",
+                actions: [action],
+                requestedScopes: [.computerControl]
+            )
+            let grant = try await ExecutionApprovalRegistry().issue(plan: plan, scope: .action(action.id))
+            let approved = try ApprovedExecutableAction(plan: plan, actionID: action.id, grant: grant)
+            let verifier = CompositeActionVerifier(workspace: self.testDirectory, worker: worker)
+            let unchanged = await verifier.verify(
+                approvedAction: approved,
+                result: ActionExecutionResult(action: action, evidence: .windowBaseline(screenNow)),
+                context: .empty
+            )
+            let changed = await verifier.verify(
+                approvedAction: approved,
+                result: ActionExecutionResult(action: action, evidence: .windowBaseline(staleBaseline)),
+                context: .empty
+            )
+            return (unchanged, changed)
+        }
+        guard case .unverified = unchanged else {
+            return XCTFail("a step that left the screen as it found it was verified: \(unchanged)")
+        }
+        guard case .verified = changed else {
+            return XCTFail("a step that changed the screen was not verified: \(changed)")
+        }
     }
 
     func testTransformActionWithoutBoundWorkspaceFailsClosed() async throws {
@@ -1959,6 +2018,28 @@ final class CuaDriverClientTests: XCTestCase {
 
 private struct AutoApproveConfirmer: Confirmer {
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { true }
+}
+
+private final class EvidenceRecordingTypedVerifier: TypedActionVerifier, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [ActionExecutionEvidence?] = []
+
+    var recorded: [ActionExecutionEvidence?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func verify(
+        approvedAction: ApprovedExecutableAction,
+        result: ActionExecutionResult,
+        context: ScreenContext
+    ) async -> VerificationStatus {
+        lock.lock()
+        storage.append(result.evidence)
+        lock.unlock()
+        return .verified(evidence: "recorded")
+    }
 }
 
 private struct AlwaysVerifiedTypedVerifier: TypedActionVerifier {

@@ -34,7 +34,7 @@ struct CompositeActionVerifier: TypedActionVerifier {
         case .shell:
             return verifyShellPostcondition(action)
         case .computer(let window, _):
-            return await verifyComputerPostcondition(action, window: window)
+            return await verifyComputerPostcondition(action, window: window, result: result)
         case .integration:
             return verifyIntegrationPostcondition(action, result: result)
         case .askUser:
@@ -61,7 +61,8 @@ struct CompositeActionVerifier: TypedActionVerifier {
 
     private func verifyComputerPostcondition(
         _ action: ExecutableAction,
-        window: ExecutableAction.WindowIdentity
+        window: ExecutableAction.WindowIdentity,
+        result: ActionExecutionResult
     ) async -> VerificationStatus {
         guard let worker else {
             return .unverified(reason: "no live window reader is attached to this session")
@@ -86,7 +87,13 @@ struct CompositeActionVerifier: TypedActionVerifier {
                 return .unverified(reason: "the typed text was not observed in the window")
             }
             return .verified(evidence: "the typed text was observed in the window's accessibility tree")
-        case .visualChange(let baselineSHA256):
+        case .visualChange(let plannedBaseline):
+            let baselineSHA256: String
+            if case .windowBaseline(let beforeStep) = result.evidence {
+                baselineSHA256 = beforeStep
+            } else {
+                baselineSHA256 = plannedBaseline
+            }
             guard !capture.screenshotData.isEmpty else {
                 return .unverified(reason: "the window could not be re-screenshotted")
             }

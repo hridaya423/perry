@@ -1,5 +1,6 @@
 import Foundation
 import PerryCore
+import PerryGuide
 import PerryRuntimes
 
 /// App-owned typed execution boundary. Routes each approved executable action
@@ -17,7 +18,7 @@ struct TypedActionRouter: ExecutableActionExecutor {
     /// journal so the run lands durable receipts. Bound means journaling is
     /// mandatory — there is no silent unjournaled fallback.
     var journaledTransforms: (@Sendable (ExecutableAction) async throws -> WorkspaceFileExecutionReceipt)? = nil
-    var bindComputerCommand: (@Sendable (ExecutableAction) async throws -> ExecutableAction.ComputerCommand?)? = nil
+    var bindComputerCommand: (@Sendable (ExecutableAction) async throws -> RoutineStepBinding?)? = nil
 
     func execute(_ approvedAction: ApprovedExecutableAction) async throws -> ActionExecutionResult {
         let action = approvedAction.action
@@ -37,13 +38,13 @@ struct TypedActionRouter: ExecutableActionExecutor {
             guard let worker else {
                 throw ExecutionError(message: "no computer-use worker is attached to this session")
             }
-            let boundCommand = try await bindComputerCommand?(action) ?? command
-            let computerAction = try ComputerAction(actionID: action.id.rawValue, command: boundCommand, expectedWindow: window)
+            let binding = try await bindComputerCommand?(action)
+            let computerAction = try ComputerAction(actionID: action.id.rawValue, command: binding?.command ?? command, expectedWindow: window)
             let result = try await worker.execute(computerAction)
             guard result.success else {
                 throw ExecutionError(message: result.message)
             }
-            return ActionExecutionResult(action: action)
+            return ActionExecutionResult(action: action, evidence: binding?.baselineSHA256.map(ActionExecutionEvidence.windowBaseline))
         case .integration:
             guard let remoteIntegrations else {
                 throw ExecutionError(message: "no remote integration capability is configured")

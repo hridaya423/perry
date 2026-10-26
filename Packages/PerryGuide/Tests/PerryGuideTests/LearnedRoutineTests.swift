@@ -287,10 +287,10 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertEqual(plan.actions.count, 2)
 
         XCTAssertEqual(
-            try RoutineReplay.command(for: plan.actions[0], of: routine, in: before),
+            try RoutineReplay.binding(for: plan.actions[0], of: routine, in: before)?.command,
             .click(.accessibilityID("ax-menu"))
         )
-        XCTAssertThrowsError(try RoutineReplay.command(for: plan.actions[1], of: routine, in: before)) {
+        XCTAssertThrowsError(try RoutineReplay.binding(for: plan.actions[1], of: routine, in: before)) {
             XCTAssertEqual($0 as? RoutineReplayError, .targetNotFound(step: 1))
         }
         let after = makeObservation(elements: [
@@ -298,9 +298,37 @@ final class LearnedRoutineTests: XCTestCase {
             makeElement(stableID: "ax-rename", role: .menuItem, label: "Rename")
         ])
         XCTAssertEqual(
-            try RoutineReplay.command(for: plan.actions[1], of: routine, in: after),
+            try RoutineReplay.binding(for: plan.actions[1], of: routine, in: after)?.command,
             .click(.accessibilityID("ax-rename"))
         )
+    }
+
+    func testReplayBindsEachStepToTheScreenshotTakenJustBeforeIt() throws {
+        let menuTarget = RoutineTarget(role: "button", label: "Menu")
+        let routine = try LearnedRoutine(name: "Two clicks", appBundleIDs: ["com.example.app"], steps: [
+            RoutineStep(summary: "Click Menu", target: menuTarget, action: .click),
+            RoutineStep(summary: "Click Save", target: saveTarget, action: .click),
+            RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.literal("x"))),
+            RoutineStep(summary: "Press return", action: .pressKey("return"))
+        ])
+        let elements = [
+            makeElement(stableID: "ax-menu", role: .button, label: "Menu"),
+            makeElement(stableID: "ax-save", role: .button, label: "Save"),
+            makeElement(stableID: "ax-search", role: .textField, label: "Search")
+        ]
+        let plan = try RoutineReplay.plan(routine: routine, observation: makeObservation(elements: elements), taskID: TaskID("t"))
+        let later = GuideObservation(
+            snapshot: AXSnapshot(appBundleID: "com.example.app", windowTitle: "Main", elements: elements),
+            processID: 42, windowID: 7, connectionGeneration: 3,
+            screenshotData: Data("pixels-after-step-one".utf8)
+        )
+        let binding = try XCTUnwrap(RoutineReplay.binding(for: plan.actions[1], of: routine, in: later))
+        let expected = SHA256.hash(data: Data("pixels-after-step-one".utf8)).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(binding.baselineSHA256, expected)
+        XCTAssertNil(try RoutineReplay.binding(for: plan.actions[2], of: routine, in: later)?.baselineSHA256)
+        let keyBinding = try XCTUnwrap(RoutineReplay.binding(for: plan.actions[3], of: routine, in: later))
+        XCTAssertEqual(keyBinding.command, .pressKey("return", modifiers: [], target: nil))
+        XCTAssertEqual(keyBinding.baselineSHA256, expected)
     }
 
     func testReplayPausesOnManualSteps() throws {
