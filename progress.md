@@ -198,9 +198,27 @@
     - the 1.5 s mic ring buffer for metered providers;
     - live checks. The owner chose fixtures only on 2026-10-26, so nothing in 4.8 has run against a real endpoint.
 
+- cua-driver 0.22.1 → 0.38.0 (subagent, cherry-picked as `90dc473`, `7c9bfb9`). On the mini, p50 went from 700 to 345 ms for a cold read, 482 to 83 ms for a warm read, 1440 to 498 ms for a click, and 1492 to 638 ms for typing. The old driver's clicks were bimodal, so the tail gain is the solid part. Reads now default to markdown; Perry asks for `elements` or `both`, with a test. Two owner decisions are open: `CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS=0` (clicks drop to 187 ms, but there is no focus protection) and the `standard` permission mode (no manifest, no cap). Evidence: `docs/evidence/cua-upgrade/`.
+- 5.1 Done (`8b3ee2c`). `PrivacyPane` builds every deep link (`com.apple.settings.PrivacySecurity.extension?<anchor>`, with the legacy URL as fallback). On macOS 27 Accessibility is named "Device Control and Data Access". `FailureRecovery.privacy` carries a pane.
+- 5.2 Done (`5072827`). `SettingsWindowTracker` finds Settings by bundle PID in the window list (no permission, no titles), follows it at 60 Hz, and treats it as gone after 0.5 s of misses. `dockFrame` is table-tested: below, inside, right, left, clamped, second display. Live: on the mini, `open` accepted the new deep link and `locate` matched the real Settings window (id 54, 736×625). Which list the link landed on is not verified (it needs AX).
+- 5.3 Done (`7ec6f44`). A floating non-activating helper panel that never becomes key. `AppBundleDragView` writes the bundle as a file URL with copy outside the app. Renders are in `5.3/`.
+- 5.4 Done (`fe03723`). Perry answers `--check-permission <pane>` with JSON and exits before NSApplication starts (10–20 ms on the mini, through a new `PerryLauncher` @main). `GrantMonitor` polls at 0.75 s, and at 0.25 s for 5 s after a drop, a TCC update or reactivation. A capture pane seen only by a fresh process reads as needsRelaunch.
+- 5.5 Done (`59a1948`). `PermissionGuideCoordinator` runs the guide:
+  - open the pane, with no pre-register prompt;
+  - wait for a stable window, fly in and follow it;
+  - Got it on the grant; Restart when only a fresh process sees it; Open Settings when Settings closes;
+  - Drag again 15 s after an accepted drop with no grant; Move to Applications for a translocated or `/Volumes` copy.
+  - Onboarding and the Settings permission rows use it.
+  - Deviation: "the user left the pane" cannot be detected without Accessibility, so the card always offers "List not showing?" to reopen the list.
+- 5.6 Not done. It is a live drill that ends in the macOS admin password sheet; it needs the owner at the mini.
+- 5.7 Done (`8db9895`). `Gesture` and `ModifierSet` (fn and right ⌥ included) are saved as `perry.gesture.talk`. The hold monitor matches the exact set and cancels when extra modifiers join, so ⌃⌥⌘ never sends a talk turn (mutation-checked). Deviation: dictation and wake keep their preset enums and expose `.gesture` for conflict checks; moving them onto `Gesture` waits until those recorders exist (8.2).
+- 5.8 Done (`4a699b6`). `ShortcutCapture` covers hold or chord capture, Esc, Delete, ⌘Space and ⌘⌃F refused by owner, and conflicts checked against Perry's gestures, then macOS, then known launchers. Settings has a Talk recorder with presets. Renders are in `5.8/`.
+- 5.9 Done (`b14a541`). Try it trusts only the event tap. It swallows the checked hold, and on the in-app fallback it says so and opens the Input Monitoring guide. Renders are in `5.9/`.
+- Verified: 718/0 on the mini.
+
 ## Next
 
-- Phases 5 to 9 next. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
+- Phases 6 to 9 next (6.1 and 8.3 are with Sonnet subagents). 5.6 needs the owner at the mini for the password sheet. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
 - Deferred to the end: 4.8 Gemini Live and GPT-Live. Gemini always replies when a turn ends and has no transcribe-only commit, so it needs the conversational-front role (`ask_perry` tool) or an always-delegate tool. GPT-Live's API page returned 403 to fetch. Neither can be checked without a live trace, and the owner chose fixtures only on 2026-10-26. Build them when a key and permission for a live bench are available.
 - Open items: migrate realtime transcription off `gpt-4o-transcribe` before 2027-02-26. Live checks still owed on a notched display: hover and peek recordings, click pass-through, the listening ring with a real microphone, and the wake word in a room.
 
