@@ -14,6 +14,7 @@ enum PerryTheme {
         static let primaryAction = color(light: 0x202420, dark: 0xF5F2EA)
         static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
         static let crown = Color.black
+        static let eye = color(light: 0xF4F1E8, dark: 0xF4F1E8)
         static let accent = color(light: 0x3C7765, dark: 0x7BE3BD)
         static let onAccent = color(light: 0xFFFEFA, dark: 0x0C0D0E)
         static let success = color(light: 0x248A3D, dark: 0x5FD38D)

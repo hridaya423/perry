@@ -47,9 +47,12 @@
   - Deviations: (1) c3 #19 uses the audit's "pointer entry" option, not "first key event": a global monitor cannot swallow that first key, so it would also land in the user's document. (2) The swell (+6 pt wide, +4 pt down at 0 ms) moves to 3.7, which rebuilds the eyes panel it animates. (3) The voice test holds a turn in `.requestingPermission`, the first in-flight state a test can reach without a microphone.
   - Verified: 652/0 on the mini. `HomeHoverIntentTests` covers the new timings; `NotchPeekTests` covers close-with-task, stay-for-approval and no-cancel. Not verified live: that key focus returns to the user's app when the peek closes (needs a GUI session).
 
+- 3.7 Done: `App/Notch/NotchEyes.swift` replaces the CALayer bars, the 7 s repeating blink timer and the 64 × 7 tab. One 38 pt right wing with two 7 × 12 `#F4F1E8` capsules and a 0.30 mint glow. `EyeScheduler` draws one-shot blinks (3.2–7.5 s, 15% double) and glances (8–20 s; 2.5–4 s while working) from an injected random source. `NotchEyesModel` runs one-shot timers with 1 s tolerance and pauses on screen sleep, lock, Low Power Mode and Reduce Motion. Moods come from `PerryMood(voice:buddy:)`: listening (8 × 14 mint, glow 0.55, waveform left wing), working (ellipsis, faster glances), needs you (amber, held, "!"), asleep after 45 s (dim lids). Hover swells the silhouette (+6 wide, +4 down, swell springs from r6) and the eyes grow 1.12 and look toward the notch (the swell moved here from 3.6). Non-notch displays show a 150 pt pill only when there is state.
+  - Verified: 655/0 on the mini. `NotchEyesTests` checks scheduler ranges, the double-blink rate and that nothing schedules while paused or in held moods, plus the mood mapping. Renders of each state inspected in `docs/evidence/first-impressions/3.7/`. Idle probe on the mini, 60 s: avg CPU 0.007%, max 0.4%, RSS 102 MB (PASS). The mini has no notch, so the resting eyes were hidden during that probe; their timers still ran.
+
 ## Next
 
-- 3.7 eyes: `NotchEyes` in one 38 pt right wing, event-driven blinks and glances, moods, and the hover swell.
+- 3.8 the 440 pt peek: needs-you row, up to two task rows, Perrys or suggestions, a one-line composer and footer chips; header controls in the crown.
 
 ## Evidence 2026-10-26 (mini, Xcode 27 copy)
 

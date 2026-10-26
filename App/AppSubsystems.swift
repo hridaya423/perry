@@ -520,6 +520,10 @@ final class AppSubsystems {
             return true
         }
         presence.onFocusPeek = { [weak app = app] in app?.sessionPanel.focusWithoutActivating() }
+        presence.moodObservation = overlayState.$voiceState.combineLatest(overlayState.$buddyState)
+            .map { NotchEyeMood(PerryMood(voice: $0, buddy: $1)) }
+            .removeDuplicates()
+            .sink { [weak presence] in presence?.eyes.setMood($0) }
         presence.onDismissConversation = { [weak app = app] in
             guard let app, app.sessionPanel.isVisible else { return false }
             app.collapseNotch()

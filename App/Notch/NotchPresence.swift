@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import PerryOverlay
 import SwiftUI
 
@@ -23,7 +24,8 @@ final class NotchPresence {
     private var screenObserver: (any NSObjectProtocol)?
     private var defaultsObserver: (any NSObjectProtocol)?
     private var dotPanels: [NSPanel] = []
-    private var blinkTimer: Timer?
+    let eyes = NotchEyesModel()
+    var moodObservation: AnyCancellable?
 
     var onPreviewConversation: (() -> Void)?
     var previewFrame: (() -> CGRect?)?
@@ -97,8 +99,7 @@ final class NotchPresence {
         cachedZones = nil
         deadlineTimer?.invalidate()
         deadlineTimer = nil
-        blinkTimer?.invalidate()
-        blinkTimer = nil
+        eyes.stop()
         dotPanels.forEach { $0.orderOut(nil) }
         insideZone = false
         intent = HomeHoverIntent()
@@ -180,10 +181,12 @@ final class NotchPresence {
         if overPeek { onFocusPeek?() }
         if inside && !insideZone {
             insideZone = true
+            eyes.hover(true)
             PerfMark.mark("home.hover_start")
             apply(intent.entered(at: now))
         } else if !inside && insideZone {
             insideZone = false
+            eyes.hover(false)
             apply(intent.exited(at: now))
         }
     }
@@ -263,22 +266,21 @@ final class NotchPresence {
 
     private func showRestingDotIfNeeded() {
         guard isEnabled, dotPanels.isEmpty else { return }
-        dotPanels = NSScreen.screens.map { Self.makeNotchEyes(on: $0) ?? Self.makeRestingTab(on: $0) }
+        dotPanels = NSScreen.screens.map(makeEyesPanel(on:))
         dotPanels.forEach { $0.orderFrontRegardless() }
-        if blinkTimer == nil {
-            blinkTimer = Timer.scheduledTimer(withTimeInterval: 7, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.blinkNotchEyes() }
-            }
-        }
+        eyes.start()
     }
 
-    private static func makeNotchEyes(on screen: NSScreen) -> NSPanel? {
-        guard screen.safeAreaInsets.top > 0,
-              let left = screen.auxiliaryTopLeftArea,
-              let right = screen.auxiliaryTopRightArea else { return nil }
-        let ear = notchEar
-        let height = screen.safeAreaInsets.top
-        let frame = CGRect(x: left.maxX - ear, y: screen.frame.maxY - height, width: right.minX - left.maxX + ear * 2, height: height)
+    private func makeEyesPanel(on screen: NSScreen) -> NSPanel {
+        var notch: CGSize?
+        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            notch = CGSize(width: right.minX - left.maxX, height: screen.safeAreaInsets.top)
+        }
+        let height = notch?.height ?? max(24, screen.frame.maxY - screen.visibleFrame.maxY)
+        let pad = NotchEyesView.padding
+        let width = (notch?.width ?? 150) + 4 + NotchEyesView.wing * 2 + NotchShape.closed.topRadius * 2 + pad * 2
+        let centerX = Self.zoneRect(for: screen).midX
+        let frame = CGRect(x: centerX - width / 2, y: screen.frame.maxY - height - pad, width: width, height: height + pad)
         let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.isOpaque = false
@@ -287,62 +289,11 @@ final class NotchPresence {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         PerryWindowChrome.applyChrome(to: panel)
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(PerryTheme.Colors.crown).cgColor
-        view.layer?.cornerRadius = 9
-        view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        view.setAccessibilityElement(false)
-        var tint = NSColor.white.cgColor
-        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
-            tint = NSColor(PerryTheme.Colors.accent).cgColor
-        }
-        let eyeSize = CGSize(width: 3.5, height: 9)
-        let eyesWidth = eyeSize.width * 2 + 4
-        let originX = frame.width - ear + (ear - eyesWidth) / 2 - 2
-        for index in 0..<2 {
-            let eye = CALayer()
-            eye.backgroundColor = tint
-            eye.cornerRadius = eyeSize.width / 2
-            eye.bounds = CGRect(origin: .zero, size: eyeSize)
-            eye.position = CGPoint(x: originX + eyeSize.width / 2 + CGFloat(index) * (eyeSize.width + 4), y: height / 2)
-            view.layer?.addSublayer(eye)
-        }
-        panel.contentView = view
         panel.appearance = NSAppearance(named: .darkAqua)
+        let host = NSHostingView(rootView: NotchEyesView(model: eyes, notch: notch, height: height))
+        host.sizingOptions = []
+        panel.contentView = host
         return panel
-    }
-
-    private func blinkNotchEyes() {
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        for eye in dotPanels.filter(\.isVisible).flatMap({ $0.contentView?.layer?.sublayers ?? [] }) {
-            let blink = CAKeyframeAnimation(keyPath: "transform.scale.y")
-            blink.values = [1, 0.12, 1]
-            blink.duration = 0.18
-            eye.add(blink, forKey: "blink")
-        }
-    }
-
-    private static func makeRestingTab(on screen: NSScreen) -> NSPanel {
-        let size = CGSize(width: 64, height: 7)
-        let tab = NSPanel(
-            contentRect: CGRect(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered, defer: false
-        )
-        tab.level = .statusBar
-        tab.isOpaque = false
-        tab.backgroundColor = .clear
-        tab.hasShadow = false
-        tab.ignoresMouseEvents = true
-        PerryWindowChrome.applyChrome(to: tab)
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(PerryTheme.Colors.crown).cgColor
-        view.layer?.cornerRadius = size.height / 2
-        view.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        tab.contentView = view
-        return tab
     }
 
     private func showPeek() {
