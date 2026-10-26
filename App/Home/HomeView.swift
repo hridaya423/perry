@@ -224,11 +224,9 @@ struct RoutinesView: View {
                                     }
                                 }
                             }
-                            if routine.provenance != .tested {
-                                Text("Perry checks the current app before each step.")
-                                    .font(PerryTheme.Scale.secondary)
-                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                            }
+                            Text(routine.workedSummary ?? "Perry checks the current app before each step.")
+                                .font(PerryTheme.Scale.secondary)
+                                .foregroundStyle(PerryTheme.Colors.textSecondary)
                             HStack(spacing: 14) {
                                 Button { model.onRoutineRun?(routine) } label: {
                                     Label("Run now", systemImage: "play.fill")

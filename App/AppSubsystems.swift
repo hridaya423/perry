@@ -440,7 +440,8 @@ final class AppSubsystems {
             dismissIntentCard: { [weak app = app] in app?.intentCards.dismiss() },
             stopSpatialMonitoring: { [weak app = app] in app?.spatial.stopMonitoring() },
             stopGuideObservation: { [weak app = app] in app?.guideCoordinator.stopClickObservation() },
-            makeConfirmer: { [weak app = app] in app?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) }
+            makeConfirmer: { [weak app = app] in app?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) },
+            routineVerified: { [weak app = app] id in app?.routineLibrary.recordVerifiedRun(id) }
         )
 #if DEBUG
         let controller = ForegroundTaskController(

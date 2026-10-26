@@ -70,6 +70,10 @@ final class RoutineLibraryController {
         runRoutine(routine, values)
     }
 
+    func recordVerifiedRun(_ id: UUID) {
+        try? store.recordVerifiedRun(id: id)
+    }
+
     func remove(_ routine: LearnedRoutine) {
         try? store.remove(id: routine.id)
     }

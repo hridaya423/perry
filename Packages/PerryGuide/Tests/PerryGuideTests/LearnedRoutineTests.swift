@@ -249,6 +249,43 @@ final class LearnedRoutineTests: XCTestCase {
         ))
     }
 
+    func testVerifiedRunsMarkTheRoutineTestedAndAreCounted() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RoutineStore(storageDirectory: directory)
+        var routine = try makeRoutine(name: "Counted")
+        routine.provenance = .reviewed
+        try store.save(routine)
+        XCTAssertNil(routine.workedSummary)
+        try store.recordVerifiedRun(id: routine.id)
+        try store.recordVerifiedRun(id: routine.id)
+        let reloaded = try XCTUnwrap(store.routine(id: routine.id))
+        XCTAssertEqual(reloaded.verifiedRuns, 2)
+        XCTAssertEqual(reloaded.provenance, .tested)
+        XCTAssertEqual(reloaded.workedSummary, "Worked 2 times")
+        var once = reloaded
+        once.verifiedRuns = 1
+        XCTAssertEqual(once.workedSummary, "Worked 1 time")
+    }
+
+    func testImportNeverCarriesAnotherMachinesRunCount() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = RoutineStore(storageDirectory: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var routine = try makeRoutine(name: "Elsewhere")
+        routine.provenance = .tested
+        routine.verifiedRuns = 40
+        let source = directory.appendingPathComponent("source.md")
+        try RoutineDocument.encode(routine).write(to: source)
+        XCTAssertEqual(try RoutineDocument.decode(Data(contentsOf: source)).verifiedRuns, 40)
+        let imported = try store.importRoutine(from: source)
+        XCTAssertEqual(imported.verifiedRuns, 0)
+        XCTAssertEqual(imported.provenance, .reviewed)
+    }
+
     func testLegacyJSONStoreFilesStillDecode() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-routines-\(UUID().uuidString)", isDirectory: true)

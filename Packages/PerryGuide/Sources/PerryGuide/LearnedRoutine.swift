@@ -18,6 +18,7 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
     public var steps: [RoutineStep]
     public var revision: Int
     public var provenance: RoutineProvenance
+    public var verifiedRuns: Int
     public let createdAt: Date
 
     /// The single-application case — replay refuses anything outside this set.
@@ -31,6 +32,7 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         steps: [RoutineStep],
         revision: Int = 1,
         provenance: RoutineProvenance = .recorded,
+        verifiedRuns: Int = 0,
         createdAt: Date = Date()
     ) throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -57,6 +59,7 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         self.steps = steps
         self.revision = revision
         self.provenance = provenance
+        self.verifiedRuns = verifiedRuns
         self.createdAt = createdAt
         guard requiredParameters.count <= Self.maximumParameters else {
             throw RoutineError.tooManyParameters
@@ -72,8 +75,12 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         }
     }
 
+    public var workedSummary: String? {
+        verifiedRuns > 0 ? "Worked \(verifiedRuns) \(verifiedRuns == 1 ? "time" : "times")" : nil
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, name, appBundleIDs, bundleID, steps, revision, provenance, parameters, createdAt
+        case schemaVersion, id, name, appBundleIDs, bundleID, steps, revision, provenance, verifiedRuns, parameters, createdAt
     }
 
     /// Decodes through the validating init — a stored or imported routine can
@@ -92,6 +99,7 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
             steps: container.decode([RoutineStep].self, forKey: .steps),
             revision: container.decodeIfPresent(Int.self, forKey: .revision) ?? 1,
             provenance: container.decodeIfPresent(RoutineProvenance.self, forKey: .provenance) ?? .reviewed,
+            verifiedRuns: container.decodeIfPresent(Int.self, forKey: .verifiedRuns) ?? 0,
             createdAt: container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         )
     }
@@ -107,6 +115,7 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         try container.encode(steps, forKey: .steps)
         try container.encode(revision, forKey: .revision)
         try container.encode(provenance, forKey: .provenance)
+        try container.encode(verifiedRuns, forKey: .verifiedRuns)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(requiredParameters.map { RoutineParameter(name: $0.name, prompt: $0.prompt) }, forKey: .parameters)
     }
@@ -298,7 +307,7 @@ public enum RoutineDocument {
     /// JSON parsers; the decoded-and-revalidated model is the only artifact.
     private static let allowedKeys: Set<String> = [
         "schemaVersion", "id", "revision", "name", "appBundleIDs", "bundleID",
-        "parameters", "steps", "provenance", "createdAt"
+        "parameters", "steps", "provenance", "verifiedRuns", "createdAt"
     ]
     private static let allowedStepKeys: Set<String> = [
         "summary", "target", "action", "requiresHuman", "outcome"
@@ -398,8 +407,16 @@ public struct RoutineStore: @unchecked Sendable {
             routine = try RoutineDocument.decode(data)
         }
         if routine.provenance == .tested { routine.provenance = .reviewed }
+        routine.verifiedRuns = 0
         try save(routine)
         return routine
+    }
+
+    public func recordVerifiedRun(id: UUID) throws {
+        guard var routine = routine(id: id) else { return }
+        routine.verifiedRuns += 1
+        routine.provenance = .tested
+        try save(routine)
     }
 
     public func exportData(_ routine: LearnedRoutine) throws -> Data {

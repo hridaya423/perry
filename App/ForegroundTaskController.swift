@@ -26,6 +26,7 @@ final class ForegroundTaskController: ObservableObject {
         var stopSpatialMonitoring: () -> Void = {}
         var stopGuideObservation: () -> Void = {}
         var makeConfirmer: () -> any Confirmer = { InteractiveConfirmer(controller: nil) }
+        var routineVerified: (UUID) -> Void = { _ in }
     }
 
     private let sessionController: SessionController
@@ -346,7 +347,9 @@ final class ForegroundTaskController: ObservableObject {
             return try await workers.withWorker(scope: .foreground, resources: []) { worker in
                 switch try await self.routines.run(routine, parameters: parameters, attemptID: attemptID, worker: worker) {
                 case .notStarted: return nil
-                case .finished(let outcome): return await self.finalizeTask(with: outcome)
+                case .finished(let outcome):
+                    if case .completed = outcome { self.hooks.routineVerified(routine.id) }
+                    return await self.finalizeTask(with: outcome)
                 }
             }
         } catch {
