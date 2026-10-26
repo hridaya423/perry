@@ -112,12 +112,10 @@ final class NotchSurfaceRenderTests: XCTestCase {
             else { UserDefaults.standard.removeObject(forKey: PerryPreferences.$settingsTab.key) }
         }
         model.sidebarSelection = .settings
-        for tab in SettingsTab.allCases {
-            UserDefaults.standard.set(tab.rawValue, forKey: PerryPreferences.$settingsTab.key)
-            try await render(openNotch(controller), name: "settings-\(tab.rawValue)", size: NSSize(width: 892, height: 552))
+        for page in SettingsPage.allCases {
+            UserDefaults.standard.set(page.rawValue, forKey: PerryPreferences.$settingsTab.key)
+            try await render(openNotch(controller), name: "settings-\(page.rawValue)", size: NSSize(width: 892, height: 552))
         }
-        UserDefaults.standard.set(SettingsTab.integrations.rawValue, forKey: PerryPreferences.$settingsTab.key)
-        try await render(openNotch(controller), name: "settings-integrations-tall", size: NSSize(width: 892, height: 1400))
         model.routines = [try LearnedRoutine(name: "Prepare project notes", appBundleIDs: ["com.apple.Notes"], steps: [
             RoutineStep(summary: "Open a new note", action: .click),
             RoutineStep(summary: "Write the meeting heading", action: .typeText(.parameter(name: "heading", prompt: "Meeting heading")))

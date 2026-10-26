@@ -28,11 +28,11 @@ final class RealtimeVoiceSectionRenderTests: XCTestCase {
         for (name, provider) in [("off", RealtimeVoiceSection.off), ("openai", "openAI"), ("grok-key-saved", "grok"), ("custom", "custom")] {
             PerryPreferences.realtimeVoiceProvider = provider
             for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-                let frame = NSRect(x: 0, y: 0, width: 560, height: 360)
+                let frame = NSRect(x: 0, y: 0, width: 560, height: 640)
                 let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false
                 window.appearance = NSAppearance(named: appearance)
-                let host = NSHostingView(rootView: Form { RealtimeVoiceSection(keychain: keychain, onError: { _ in }) }.formStyle(.grouped))
+                let host = NSHostingView(rootView: RealtimeVoiceSection(keychain: keychain, onError: { _ in }).padding(20).background(PerryTheme.Colors.canvas))
                 window.contentView = host
                 host.frame = frame
                 window.orderFrontRegardless()

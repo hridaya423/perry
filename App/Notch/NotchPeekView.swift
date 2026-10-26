@@ -94,7 +94,7 @@ struct NotchPeekView: View {
             }
             HStack(spacing: 12) {
                 Button("Apps", systemImage: "square.grid.2x2") {
-                    PerryPreferences.settingsTab = SettingsTab.integrations.rawValue
+                    PerryPreferences.settingsTab = SettingsPage.apps.rawValue
                     model.sidebarSelection = .settings
                 }
                 Button("History", systemImage: "clock.arrow.circlepath") { model.sidebarSelection = .history }

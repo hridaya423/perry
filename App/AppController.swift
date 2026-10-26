@@ -492,7 +492,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func openOnboardingSettings() {
-        openSettings(tab: .runtimes)
+        openSettings(.brain)
     }
 
     func updateWakeShortcut(_ shortcut: WakeShortcut) throws {

@@ -51,7 +51,7 @@ struct PerryApp: App {
             CommandGroup(replacing: .appSettings) {
                 Button("Talk to Perry…") { appDelegate.showPanel() }
                 Divider()
-                Button("Settings…") { appDelegate.openSettings(tab: .general) }
+                Button("Settings…") { appDelegate.openSettings(.general) }
                     .keyboardShortcut(",", modifiers: .command)
                 Button("Set up Perry…") { appDelegate.runOnboarding(force: true) }
             }

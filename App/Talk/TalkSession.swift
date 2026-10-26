@@ -355,7 +355,7 @@ final class TalkSession {
                 (error as? ModelProviderError).map { AgentLoop.describe($0) }
                     ?? (error as? LocalizedError)?.errorDescription
                     ?? "Perry couldn’t answer that.",
-                recovery: error is ResponseError || error is ModelProviderError ? .settings(.runtimes) : nil
+                recovery: error is ResponseError || error is ModelProviderError ? .settings(.brain) : nil
             )
             phase = .idle
         }
@@ -364,7 +364,7 @@ final class TalkSession {
     private static func recovery(forInput error: Error) -> FailureRecovery? {
         switch error as? DictationController.DictationError {
         case .permissionDenied?: .privacy(.microphone)
-        case .deviceUnavailable?: .settings(.voice)
+        case .deviceUnavailable?: .settings(.dictation)
         default: nil
         }
     }

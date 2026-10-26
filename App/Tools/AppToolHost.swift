@@ -16,7 +16,7 @@ enum AppToolHost {
         supportDirectory: URL?,
         integrationBackend: AppIntegrationBackend,
         perryStore: PerryStore?,
-        openSettings: @escaping @MainActor (SettingsTab) -> Void
+        openSettings: @escaping @MainActor (SettingsPage) -> Void
     ) -> PerryToolHost {
         let observations = AgentObservationStore.shared
         let ghost = AgentGhostCursor(overlayState: overlayState)
@@ -51,7 +51,7 @@ enum AppToolHost {
         supportDirectory: URL?,
         integrationBackend: AppIntegrationBackend,
         perryStore: PerryStore?,
-        openSettings: @escaping @MainActor (SettingsTab) -> Void
+        openSettings: @escaping @MainActor (SettingsPage) -> Void
     ) -> [any ToolExecutor] {
         guard let support = supportDirectory else { return [] }
         var executors: [any ToolExecutor] = []
@@ -69,22 +69,11 @@ enum AppToolHost {
             executors += PerryToolExecutors.make(
                 store: perryStore,
                 openSettings: { page in
-                    Task { @MainActor in openSettings(settingsTab(forPerryPage: page)) }
+                    Task { @MainActor in openSettings(SettingsPage(perryPage: page)) }
                 }
             )
         }
         return executors
-    }
-
-    /// perry.settings.open pages → nearest SettingsTab.
-    private static func settingsTab(forPerryPage page: String?) -> SettingsTab {
-        switch page {
-        case "voice": .voice
-        case "apps": .integrations
-        case "memory": .memory
-        case "brain", "perrys": .runtimes
-        default: .general
-        }
     }
 }
 

@@ -5,10 +5,17 @@ struct BrainModelSettingsView: View {
     @ObservedObject var brain: BrainController
 
     var body: some View {
-        Picker("Conversations", selection: $brain.modelChoice) {
-            ForEach(BrainController.ModelChoice.allCases, id: \.self) { choice in
-                Text(choice.title).tag(choice)
+        HStack {
+            Text("Conversations")
+                .font(PerryTheme.Scale.body)
+            Spacer(minLength: 8)
+            Picker("Conversations", selection: $brain.modelChoice) {
+                ForEach(BrainController.ModelChoice.allCases, id: \.self) { choice in
+                    Text(choice.title).tag(choice)
+                }
             }
+            .labelsHidden()
+            .fixedSize()
         }
         switch brain.modelChoice {
         case .chatGPT:

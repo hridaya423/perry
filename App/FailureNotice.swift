@@ -1,13 +1,13 @@
 import AppKit
 
 enum FailureRecovery: Equatable {
-    case settings(SettingsTab)
+    case settings(SettingsPage)
     case privacy(PrivacyPane)
     case thread(UUID)
 
     var title: String {
         switch self {
-        case .settings(let tab): "Open \(tab.tabTitle) settings"
+        case .settings(let page): "Open \(page.title) settings"
         case .privacy: "Open Privacy settings"
         case .thread: "Read the full answer"
         }
@@ -42,8 +42,8 @@ extension AppController {
 
     private func recover(with recovery: FailureRecovery) {
         switch recovery {
-        case .settings(let tab):
-            openSettings(tab: tab)
+        case .settings(let page):
+            openSettings(page)
         case .privacy(let pane):
             pane.open()
         case .thread(let id):

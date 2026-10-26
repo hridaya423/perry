@@ -39,7 +39,7 @@ final class AppSubsystems {
         supportDirectory: self.storageDirectory,
         integrationBackend: self.integrationBackend,
         perryStore: self.perryStore,
-        openSettings: { [weak app = app] in app?.openSettings(tab: $0) }
+        openSettings: { [weak app = app] in app?.openSettings($0) }
     )
 
 

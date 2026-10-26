@@ -15,11 +15,18 @@ struct NotchWorkspaceView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.notchMood) private var mood
     @Namespace private var railNamespace
+    @AppStorage(PerryPreferences.$settingsTab.key) private var settingsPage = SettingsPage.general.rawValue
 
     var body: some View {
         HStack(spacing: 0) {
-            rail
-                .frame(width: 148)
+            Group {
+                if model.sidebarSelection == .settings {
+                    SettingsSidebar { model.sidebarSelection = nil }
+                } else {
+                    rail
+                }
+            }
+            .frame(width: 148)
             Rectangle()
                 .fill(PerryTheme.Colors.subtleSeparator)
                 .frame(width: 1)
@@ -258,7 +265,7 @@ struct NotchWorkspaceView: View {
 
             HStack {
                 Button {
-                    openSettingsTab(.integrations)
+                    openSettings(.apps)
                 } label: {
                     Label("Apps", systemImage: "square.grid.2x2")
                         .font(PerryTheme.Scale.body)
@@ -318,7 +325,7 @@ struct NotchWorkspaceView: View {
                         targetButton
                         if let brain = model.deps.brain {
                             ModelSettingsButton(brain: brain) {
-                                openSettingsTab(.runtimes)
+                                openSettings(.brain)
                             }
                         }
                     }
@@ -476,7 +483,7 @@ struct NotchWorkspaceView: View {
         case .routines: "Routines"
         case .files: "Files"
         case .suggestions: "Suggestions"
-        case .settings: "Settings"
+        case .settings: SettingsPage(stored: settingsPage).title
         case .whatsNew: "What’s New"
         case .perryEditor(let id):
             id.flatMap { id in model.perrys.first { $0.id == id }?.name } ?? "New Perry"
@@ -538,8 +545,8 @@ struct NotchWorkspaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func openSettingsTab(_ tab: SettingsTab) {
-        PerryPreferences.settingsTab = tab.rawValue
+    private func openSettings(_ page: SettingsPage) {
+        PerryPreferences.settingsTab = page.rawValue
         model.sidebarSelection = .settings
     }
 }
