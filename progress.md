@@ -215,10 +215,13 @@
 - 5.8 Done (`4a699b6`). `ShortcutCapture` covers hold or chord capture, Esc, Delete, ⌘Space and ⌘⌃F refused by owner, and conflicts checked against Perry's gestures, then macOS, then known launchers. Settings has a Talk recorder with presets. Renders are in `5.8/`.
 - 5.9 Done (`b14a541`). Try it trusts only the event tap. It swallows the checked hold, and on the in-app fallback it says so and opens the Input Monitoring guide. Renders are in `5.9/`.
 - Verified: 718/0 on the mini.
+- 6.5 Partly done, fakes only. `LocalEngine` (`21e5bdb`) launches `llama-server` on 127.0.0.1 with the r8 §6.2 flags per lane, a random 64-hex key in a 0600 file, a 90 s health budget, same-lane reuse, idle exit and stop on memory pressure. `ModelDownloader` (`a0584c5`) reads size and SHA-256 from the Hugging Face tree API, checks free space plus 2 GB first, resumes from `.part` with a Range request, restarts if the server ignores it, and deletes a file whose hash does not match. `LocalBenchmark` (`b2cd0bb`) is the decision core: postpone on battery, Low Power or above "fair" heat; skip rungs over 75% of the working set; step down at most three times; MTP only at 15% faster; `bench.json` round trip and re-run on a new OS build, engine or model. Not done: the measurement runner against a real server, prewarm on hotkey-down, the bundled prompts, and the live run on the mini (it needs the binary and a model download).
+- 8.3 Done (Sonnet subagent, cherry-picked as `17c7ef6`). The menu has the seven plan verbs; debug items sit under Developer. Removed with no new home yet: the workspace folder picker and the Notch status toggle. Task 8.1 puts both in Settings. Erase and diagnostics already live in Settings.
+- Verified: 742/0 (7 skipped) on the mini after 8.3 and 6.5.
 
 ## Next
 
-- Phases 6 to 9 next (6.1 and 8.3 are with Sonnet subagents). 5.6 needs the owner at the mini for the password sheet. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
+- Phases 6 to 9 next (6.1, 6.3 and 6.7 are with Sonnet subagents). 5.6 needs the owner at the mini for the password sheet. 1.8 and 1.9 must land before 7.11. Phase 6 uses fakes only.
 - Deferred to the end: 4.8 Gemini Live and GPT-Live. Gemini always replies when a turn ends and has no transcribe-only commit, so it needs the conversational-front role (`ask_perry` tool) or an always-delegate tool. GPT-Live's API page returned 403 to fetch. Neither can be checked without a live trace, and the owner chose fixtures only on 2026-10-26. Build them when a key and permission for a live bench are available.
 - Open items: migrate realtime transcription off `gpt-4o-transcribe` before 2027-02-26. Live checks still owed on a notched display: hover and peek recordings, click pass-through, the listening ring with a real microphone, and the wake word in a room.
 
