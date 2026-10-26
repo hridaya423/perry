@@ -9,6 +9,7 @@ struct PrivacySettingsPage: View {
     @State private var permissions: PerryPermissionSnapshot?
     @State private var showReportProblem = false
     @AppStorage(PerryPreferences.$workspaceRoot.key) private var workspaceRoot: String?
+    @AppStorage(PerryPreferences.$hidePersonalDetails.key) private var hidePersonalDetails = false
 
     var body: some View {
         SettingsScroll {
@@ -20,6 +21,13 @@ struct PrivacySettingsPage: View {
                 permissionRow(.microphone, why: "Lets Perry hear you for talk and dictation.", granted: permissions?.microphone.isUsable)
                 SettingsDivider()
                 permissionRow(.inputMonitoring, why: "Lets Perry notice the dictation key when another app is in front.", granted: permissions?.inputMonitoring)
+            }
+            SettingsCard(title: "Cloud brains", footer: "Screenshots are sent as they are. Brains on this Mac always see the real details.") {
+                Toggle(isOn: $hidePersonalDetails) {
+                    Text("Hide personal details")
+                    Text("Before a message leaves this Mac, Perry swaps names, emails, phone numbers, card numbers, addresses and keys for placeholders. Perry puts the real details back in the reply.").settingNote()
+                }
+                .settingsRowPadding()
             }
             SettingsCard(title: "Work folder", footer: "File tasks stay inside this folder.") {
                 SettingsRow(title: WorkspaceScope.root.lastPathComponent, detail: (WorkspaceScope.root.path as NSString).abbreviatingWithTildeInPath) {

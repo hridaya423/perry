@@ -21,6 +21,12 @@ final class AppSubsystems {
     init(app: AppController) {
         self.app = app
         brain.toolScopes = toolScopes
+        brain.redactionVaults = storageDirectory.map { directory in
+            RedactionVaults {
+                let profile = MemoryFiles(directory: directory.appendingPathComponent("memory", isDirectory: true)).profileField("Name")
+                return [profile].compactMap { $0 } + PronunciationStore(directory: directory).entries().map(\.written)
+            }
+        }
     }
 
     let toolScopes = MCPScopeRelay()

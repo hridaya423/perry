@@ -126,6 +126,8 @@ final class BrainController: ObservableObject {
 
     var acpAgentAvailable: Bool { acpAgent?.executable() != nil }
 
+    var redactionVaults: RedactionVaults?
+
     var hasSavedChoice: Bool { defaults.string(forKey: PerryPreferences.$modelChoice.key) != nil }
 
     var claudeCodeAvailable: Bool { claudeCode != nil }
@@ -384,7 +386,8 @@ final class BrainController: ObservableObject {
         }
         let decision = try await router(scope: choice).route(requirement)
         activeExplanation = decision.explanation
-        return decision
+        guard defaults.bool(forKey: PerryPreferences.$hidePersonalDetails.key), let redactionVaults else { return decision }
+        return decision.hidingPersonalDetails(with: redactionVaults)
     }
 
     /// Single fast text completion through whatever brain the user chose —
