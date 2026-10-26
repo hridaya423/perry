@@ -23,7 +23,9 @@ struct HomeOnboardingView: View {
         case .access:
             AccessBeat(director: director)
         case .shortcuts:
-            PendingBeat(director: director, title: "Shortcuts")
+            if let controller = model.deps.controller {
+                ShortcutsBeat(director: director, controller: controller, check: controller.shortcutCheck)
+            }
         case .interview:
             PendingBeat(director: director, title: "About you")
         case .apps:
@@ -311,6 +313,51 @@ struct BrainBeat: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct ShortcutsBeat: View {
+    @ObservedObject var director: OnboardingDirector
+    let controller: AppController
+    @ObservedObject var check: ShortcutCheck
+    @AppStorage(PerryPreferences.$talkGesture.key) private var talkRaw = Gesture.defaultTalk.rawValue
+    @AppStorage(PerryPreferences.$openAtLogin.key) private var openAtLogin = true
+
+    private var talk: Gesture { Gesture(rawValue: talkRaw) ?? .defaultTalk }
+
+    var body: some View {
+        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", artHeight: 0) {
+            Color.clear
+        } detail: {
+            ShortcutRecorders(controller: controller, roles: [.talk, .dictate], presetLimit: 3)
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+                }
+                .multilineTextAlignment(.leading)
+                .buttonStyle(InkButtonStyle(.secondary))
+                .controlSize(.small)
+                .font(PerryTheme.Scale.body)
+        } actions: {
+            OnboardingFooter {
+                Toggle("Open at login", isOn: $openAtLogin)
+                    .toggleStyle(.checkbox)
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .help("Open Perry when you log in to this Mac")
+            } primary: {
+                Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(check.result == .needsInputMonitoring)
+            } trailing: {
+                if check.result != .heard {
+                    Button("Keep defaults") { director.skip() }
+                }
+            }
+        }
     }
 }
 

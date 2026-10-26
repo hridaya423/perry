@@ -20,7 +20,7 @@ struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
                     .font(PerryTheme.Scale.display)
                     .tracking(-0.4)
                     .foregroundStyle(PerryTheme.Colors.text)
-                    .padding(.top, 14)
+                    .padding(.top, artHeight > 0 ? 14 : 0)
             }
             if let message {
                 Text(message)
@@ -33,8 +33,8 @@ struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
             }
             detail
                 .frame(maxWidth: 420)
-                .padding(.top, 16)
-            Spacer(minLength: 12)
+                .padding(.top, 12)
+            Spacer(minLength: 8)
             actions
         }
         .multilineTextAlignment(.center)

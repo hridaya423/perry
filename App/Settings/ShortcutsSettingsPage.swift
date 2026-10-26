@@ -4,38 +4,11 @@ import SwiftUI
 struct ShortcutsSettingsPage: View {
     let controller: AppController
     @AppStorage(PerryPreferences.$wakeWordEnabled.key) private var wakeWordEnabled = false
-    @State private var hotkeys: [SymbolicHotkey] = []
-    @State private var captures = Dictionary(uniqueKeysWithValues: ShortcutRole.allCases.map {
-        ($0, $0.capture(gestures: ShortcutRole.current, hotkeys: []))
-    })
-    @State private var error: String?
 
     var body: some View {
         SettingsScroll {
             SettingsCard {
-                ForEach(ShortcutRole.allCases) { role in
-                    if role != .talk {
-                        SettingsDivider()
-                    }
-                    ShortcutRecorder(
-                        title: role.title,
-                        capture: binding(for: role),
-                        presets: role.presets,
-                        presetLabel: role.label(for:),
-                        onSave: { save(role, $0) }
-                    )
-                    .settingsRowPadding()
-                    if role == .talk {
-                        SettingsDivider()
-                        ShortcutCheckRow(check: controller.shortcutCheck, gesture: captures[.talk]?.saved ?? .defaultTalk) {
-                            controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
-                            if controller.shortcutCheck.result == .needsInputMonitoring {
-                                Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
-                            }
-                        }
-                        .settingsRowPadding()
-                    }
-                }
+                ShortcutRecorders(controller: controller, roles: ShortcutRole.allCases)
             }
             SettingsCard(title: "Wake word") {
                 Toggle(isOn: $wakeWordEnabled) {
@@ -45,6 +18,45 @@ struct ShortcutsSettingsPage: View {
                 .settingsRowPadding()
                 .onChange(of: wakeWordEnabled) { _, value in
                     controller.voice.updateWakeWordEnabled(value)
+                }
+            }
+        }
+    }
+}
+
+struct ShortcutRecorders: View {
+    let controller: AppController
+    let roles: [ShortcutRole]
+    var presetLimit = Int.max
+    @State private var hotkeys: [SymbolicHotkey] = []
+    @State private var captures = Dictionary(uniqueKeysWithValues: ShortcutRole.allCases.map {
+        ($0, $0.capture(gestures: ShortcutRole.current, hotkeys: []))
+    })
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(roles) { role in
+                if role != roles.first {
+                    SettingsDivider()
+                }
+                ShortcutRecorder(
+                    title: role.title,
+                    capture: binding(for: role),
+                    presets: Array(role.presets.prefix(presetLimit)),
+                    presetLabel: role.label(for:),
+                    onSave: { save(role, $0) }
+                )
+                .settingsRowPadding()
+                if role == .talk {
+                    SettingsDivider()
+                    ShortcutCheckRow(check: controller.shortcutCheck, gesture: captures[.talk]?.saved ?? .defaultTalk) {
+                        controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
+                        if controller.shortcutCheck.result == .needsInputMonitoring {
+                            Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
+                        }
+                    }
+                    .settingsRowPadding()
                 }
             }
         }

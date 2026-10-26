@@ -76,7 +76,7 @@ final class OnboardingCoordinator {
         let firstCompletion = !PerryPreferences.onboardingCompleted
         PerryPreferences.onboardingCompleted = true
 #if !DEBUG
-        if firstCompletion { try? LoginItem.setEnabled(true) }
+        if firstCompletion, PerryPreferences.openAtLogin { try? LoginItem.setEnabled(true) }
 #else
         _ = firstCompletion
 #endif
