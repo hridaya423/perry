@@ -32,7 +32,10 @@ final class RoutineReviewState: ObservableObject {
     func presentReview(steps: [RoutineStep]) {
         phase = .review
         self.steps = steps
-        parameterizedSteps = []
+        parameterizedSteps = Set(steps.indices.filter {
+            if case .typeText(.literal) = steps[$0].action { return true }
+            return false
+        }.prefix(LearnedRoutine.maximumParameters))
     }
 
     func toggleParameter(_ index: Int) {
@@ -106,7 +109,7 @@ struct RoutineReviewView: View {
             }
             .frame(maxHeight: 220)
             .fixedSize(horizontal: false, vertical: true)
-            Text("Check each step before you save. Perry can ask for typed text each time it runs.")
+            Text("Check each step before you save. Perry asks for typed text each time it runs unless you turn that off for a step.")
                 .font(.caption)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {

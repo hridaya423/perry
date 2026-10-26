@@ -75,10 +75,13 @@ per-item evidence, see `docs/release-readiness/features.json`.
 ## Routines
 
 - Watch & Learn records a bounded demo you start and stop: Perry drafts a
-  step list you review before it's saved — nothing saves silently, and the
-  recorder captures steps and structure, not your keystrokes' values.
-- Parameters marked "ask each run" prompt you each time; routines replay by
-  re-reading the live screen, never by replaying coordinates.
+  step list you review before it's saved — nothing saves silently. Typed
+  text defaults to "ask me each time", so a saved routine holds no typed
+  text unless you turn that off for a step. Text typed into password fields,
+  or after Tab or Return until your next click, is never recorded.
+- Steps marked "ask each run" prompt you each time; routines replay by
+  re-reading the live screen before every step, never by replaying
+  coordinates.
 - Limit: a renamed app or moved button may pause a run for input — that's
   the honest failure, not a bug. Routines are erased with everything else
   or on their own.
