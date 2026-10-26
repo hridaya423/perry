@@ -45,6 +45,13 @@ final class AppSubsystems {
 
     lazy var customConnectors = CustomConnectors(directory: self.storageDirectory, host: self.toolHost)
 
+    lazy var localBrain: LocalBrain = {
+        let storage = self.storageDirectory ?? FileManager.default.temporaryDirectory.appendingPathComponent("Perry", isDirectory: true)
+        let local = LocalBrain(engine: LocalBrain.bundledEngine(storage: storage), modelsDirectory: storage.appendingPathComponent("Models", isDirectory: true), benchURL: storage.appendingPathComponent("bench.json"))
+        local.startWatchingMemoryPressure()
+        return local
+    }()
+
     /// The shared Perry registry — agent tools, the scheduler, and Home's
     /// sidebar all read the same directory.
     lazy var perryStore: PerryStore? = self.storageDirectory.map {

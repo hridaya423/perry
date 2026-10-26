@@ -126,6 +126,8 @@ final class BrainController: ObservableObject {
 
     var acpAgentAvailable: Bool { acpAgent?.executable() != nil }
 
+    var hasSavedChoice: Bool { defaults.string(forKey: PerryPreferences.$modelChoice.key) != nil }
+
     var claudeCodeAvailable: Bool { claudeCode != nil }
 
     func refreshSetupStates(using catalog: RuntimeCatalog) async {

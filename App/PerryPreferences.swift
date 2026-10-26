@@ -71,6 +71,8 @@ enum PerryPreferences {
     @Preference("perry.byok.vision.endpoint") static var byokVisionEndpoint: String? = nil
     @Preference("perry.byok.vision.model") static var byokVisionModel: String? = nil
     @Preference("perry.cua.driver.path") static var cuaDriverPath = ""
+    @Preference("perry.local.memoryBudget") static var localMemoryBudget = "nothing"
+    @Preference("perry.local.cloudFallback") static var localCloudFallback = "ask"
 
     // MARK: Voice & dictation
 

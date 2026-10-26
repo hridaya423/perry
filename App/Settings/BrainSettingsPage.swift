@@ -22,12 +22,7 @@ struct BrainSettingsPage: View {
 
     var body: some View {
         SettingsScroll {
-            SettingsCard(title: "Conversation model") {
-                VStack(alignment: .leading, spacing: 10) {
-                    BrainModelSettingsView(brain: controller.brain)
-                }
-                .settingsRowPadding()
-            }
+            BrainChoiceSection(brain: controller.brain, local: controller.localBrain, catalog: controller.runtimes)
             SettingsCard(title: "Agents", footer: setup.records.contains(where: { $0.status == setup.summary }) ? nil : setup.summary) {
                 ForEach(setup.records) { runtime in
                     HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.inline) {

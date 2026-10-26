@@ -36,4 +36,41 @@ final class SettingsPagesRenderTests: XCTestCase {
             window.close()
         }
     }
+
+    func testRenderTheLocalBrainOnSmallAndLargeMacs() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = AppController(debugStorageDirectory: directory)
+        defer { controller.notchPresence.stop() }
+        let local = LocalBrain(engine: nil, modelsDirectory: directory, benchURL: directory.appendingPathComponent("bench.json"))
+        let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/settings-pages")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        for (name, profile) in [("local-8gb", BrainChoiceTests.profile(gb: 8, chip: "Apple M2", appleIntelligence: false)), ("local-48gb", BrainChoiceTests.profile(gb: 48, chip: "Apple M4 Pro"))] {
+            let view = SettingsScroll { LocalBrainView(brain: controller.brain, local: local, profile: profile) }
+                .background(PerryTheme.Colors.canvas)
+                .toggleStyle(InkSwitchStyle())
+                .buttonStyle(InkButtonStyle(.secondary))
+                .controlSize(.small)
+                .font(PerryTheme.Scale.body)
+                .foregroundStyle(PerryTheme.Colors.text)
+            let frame = NSRect(x: 0, y: 0, width: 600, height: 1100)
+            let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            let host = NSHostingView(rootView: view.frame(width: frame.width, height: frame.height))
+            window.contentView = host
+            host.frame = frame
+            window.orderFrontRegardless()
+            try await Task.sleep(for: .milliseconds(500))
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+                .write(to: destination.appendingPathComponent("\(name).png"))
+            window.close()
+        }
+    }
 }

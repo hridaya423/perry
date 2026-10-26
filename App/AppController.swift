@@ -40,6 +40,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var talkSession: TalkSession { subsystems.talkSession }
     var modifierHoldMonitor: ModifierHoldMonitor { subsystems.modifierHoldMonitor }
     var shortcutCheck: ShortcutCheck { subsystems.shortcutCheck }
+    var localBrain: LocalBrain { subsystems.localBrain }
     var voice: VoiceController { subsystems.voice }
     var oauthCoordinator: OAuthCoordinator { subsystems.oauthCoordinator }
     var remoteIntegrationPermissions: RemoteIntegrationPermissionStore { subsystems.remoteIntegrationPermissions }
