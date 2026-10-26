@@ -601,3 +601,14 @@ threads-tonight/`. Defaults restored from the backup plist.
 Left for the user: re-grant Accessibility and Screen Recording to the Debug Perry once (new signature);
 whether to shorten the status menu (about 20 items); whether opening an app should still ask (orange tier);
 `cursor-agent` is broken outside Perry; `workspace/drill-proof-2.txt` (1 October) is an old drill file.
+
+## 9.3 Notch UX pass (2026-10-26)
+Plan: docs/plans/2026-10-26-notch-ux-pass.md. Owner chose two levels.
+Done and committed (0b951eb..9897422): preview with faces, listening tile, mic without voice processing,
+hotkey tap retry, shorter replies, inline chats in the card, footer Apps/Settings/Expand, 780x520 full panel,
+first-click hosting, Back/Collapse below the crown, task view tile, tinted sidebar tiles, suggestion source marks,
+mode menu with window sharing, drag helper docked inside System Settings.
+Evidence: docs/evidence/first-impressions/9.3-notch/. Full suite 881/0 (6 skipped) on the mini.
+Installed on the MacBook 21:0x; old app at build/backup/Perry-2026-10-26b.app.
+Unverified live: mic fix (mini has no mic), first click under the hardware notch, helper docking on a real Settings window.
+Remaining: level-1 helper faces row in the card, Stop as the primary task control.
