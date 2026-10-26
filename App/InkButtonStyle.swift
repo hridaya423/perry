@@ -99,10 +99,8 @@ struct InkChoiceStyle: ButtonStyle {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if isDefault {
-                    Image(systemName: "return")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .accessibilityHidden(true)
+                    ReturnHint()
+                        .foregroundStyle(PerryTheme.Colors.text)
                 }
             }
             .padding(.horizontal, 14)

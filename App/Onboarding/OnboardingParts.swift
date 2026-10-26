@@ -50,10 +50,7 @@ struct OnboardingPrimaryLabel: View {
         HStack(spacing: 10) {
             if let systemImage { Image(systemName: systemImage).font(.system(size: 14, weight: .semibold)) }
             Text(title)
-            Image(systemName: "return")
-                .font(.system(size: 11, weight: .semibold))
-                .opacity(0.45)
-                .accessibilityHidden(true)
+            ReturnHint()
         }
         .lineLimit(1)
         .fixedSize()
@@ -164,10 +161,13 @@ struct RowButtonStyle: ButtonStyle {
 
 struct GrantedMark: View {
     var body: some View {
-        Label("Allowed", systemImage: "checkmark")
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(PerryTheme.Colors.accent)
-            .labelStyle(.titleAndIcon)
+        Label {
+            Text("Allowed")
+        } icon: {
+            StatusMark(.ok)
+        }
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(PerryTheme.Colors.success)
     }
 }
 

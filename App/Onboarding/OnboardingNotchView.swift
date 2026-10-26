@@ -23,20 +23,14 @@ struct OnboardingNotchView: View {
                 HStack {
                     if director.canGoBack {
                         Button { director.goBack() } label: {
-                            Label("Back", systemImage: "chevron.left")
+                            Label("Back", systemImage: "chevron.left").imageScale(.small)
                         }
                         .buttonStyle(OnboardingLinkStyle())
                         .transition(.opacity)
                     }
                     Spacer()
-                    Button { director.close() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 26, height: 26)
-                    }
-                    .buttonStyle(OnboardingLinkStyle())
-                    .accessibilityLabel("Close")
-                    .keyboardShortcut(.cancelAction)
+                    WindowControlButton(systemImage: "xmark", label: "Close") { director.close() }
+                        .keyboardShortcut(.cancelAction)
                 }
             }
             .frame(height: 36)

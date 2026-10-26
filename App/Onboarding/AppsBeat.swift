@@ -86,7 +86,7 @@ struct AppsBeat: View {
 
     private func row(_ tile: AppsBeatPlan.Tile) -> some View {
         HStack(spacing: 12) {
-            AppTileIcon(tile: tile)
+            BrandMark(id: tile.id, name: tile.title, bundleID: tile.bundleID)
             VStack(alignment: .leading, spacing: 2) {
                 Text(tile.title)
                     .font(PerryTheme.Scale.rowTitle)
@@ -137,24 +137,6 @@ struct AppsBeat: View {
         } else {
             states[tile.id] = nil
             connected.insert(tile.id)
-        }
-    }
-}
-
-private struct AppTileIcon: View {
-    let tile: AppsBeatPlan.Tile
-
-    var body: some View {
-        if let url = tile.bundleID.flatMap({ NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                .resizable()
-                .frame(width: 28, height: 28)
-        } else {
-            Text(tile.title.prefix(1))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(PerryTheme.Colors.text)
-                .frame(width: 28, height: 28)
-                .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
     }
 }

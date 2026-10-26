@@ -107,7 +107,6 @@ struct PermissionHelperView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 lead
-                    .frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(PerryTheme.Scale.title)
@@ -171,23 +170,14 @@ struct PermissionHelperView: View {
     private var lead: some View {
         switch phase {
         case .instruction:
-            Image(systemName: "arrow.up")
-                .font(PerryTheme.Icon.toolbar)
-                .foregroundStyle(PerryTheme.Colors.accent)
-                .offset(y: nudged ? -3 : 0)
+            LeadDisc(systemImage: "arrow.up", tint: PerryTheme.Colors.accent, nudge: nudged ? -3 : 0)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: nudged)
         case .retry, .settingsClosed, .wrongLocation:
-            Image(systemName: "exclamationmark.circle")
-                .font(PerryTheme.Icon.toolbar)
-                .foregroundStyle(PerryTheme.Colors.caution)
+            LeadDisc(systemImage: "exclamationmark", tint: PerryTheme.Colors.caution)
         case .restart:
-            Image(systemName: "arrow.clockwise")
-                .font(PerryTheme.Icon.toolbar)
-                .foregroundStyle(PerryTheme.Colors.caution)
+            LeadDisc(systemImage: "arrow.clockwise", tint: PerryTheme.Colors.caution)
         case .granted:
-            Image(systemName: "checkmark.circle")
-                .font(PerryTheme.Icon.toolbar)
-                .foregroundStyle(PerryTheme.Colors.success)
+            LeadDisc(systemImage: "checkmark", tint: PerryTheme.Colors.success)
         }
     }
 

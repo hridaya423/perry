@@ -140,7 +140,7 @@ private struct AccessBeat: View {
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
-                row(.accessibility, title: "Accessibility", detail: "Reads buttons, menus and fields", icon: "hand.point.up.left",
+                row(.accessibility, title: "Accessibility", detail: "Reads buttons, menus and fields", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
                 row(.microphone, title: "Microphone", detail: "Hears you only while you hold the shortcut", icon: "mic",
                     granted: director.permissions?.microphone.isUsable == true)
@@ -166,9 +166,7 @@ private struct AccessBeat: View {
 
     private func row(_ pane: PrivacyPane, title: String, detail: String, icon: String, granted: Bool) -> some View {
         OnboardingRow(title: title, detail: detail) {
-            Image(systemName: icon)
-                .font(PerryTheme.Icon.row)
-                .foregroundStyle(PerryTheme.Colors.text)
+            LeadDisc(systemImage: icon, tint: PerryTheme.Colors.icon)
         } trailing: {
             if granted {
                 GrantedMark()
