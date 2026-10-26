@@ -78,6 +78,7 @@ enum PerryPreferences {
     @Preference("perry.speech.voiceIdentifier") static var speechVoiceIdentifier: String? = nil
     @Preference("perry.dictation.language") static var dictationLanguage = "automatic"
     @Preference("perry.dictation.inputDeviceID") static var dictationInputDeviceID: Int? = nil
+    @Preference("perry.gesture.talk") static var talkGesture = Gesture.defaultTalk
     @Preference("perry.realtimeVoice.provider") static var realtimeVoiceProvider: String? = nil
     @Preference("perry.realtimeVoice.endpoint") static var realtimeVoiceEndpoint: String? = nil
     @Preference("perry.realtimeVoice.model") static var realtimeVoiceModel: String? = nil

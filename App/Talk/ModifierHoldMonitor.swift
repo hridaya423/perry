@@ -9,9 +9,9 @@ import AppKit
 /// A listen-only event tap — same shape as PushToTalkController, which stays
 /// for the ⌥⌘Space dictation path.
 enum TalkGesture {
-    static let keys = "⌃⌥"
-    static let talk = "Hold ⌃⌥ to talk"
-    static let steer = "Hold ⌃⌥ to steer"
+    static var keys: String { PerryPreferences.talkGesture.keys }
+    static var talk: String { "\(PerryPreferences.talkGesture.spoken) to talk" }
+    static var steer: String { "\(PerryPreferences.talkGesture.spoken) to steer" }
     static let type = "Double-tap ⌃ to type"
 }
 
@@ -24,6 +24,7 @@ final class ModifierHoldMonitor {
         | (CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue)
 
     private let commitDelay: TimeInterval
+    private let talkHold: () -> ModifierSet
     private let onHoldStart: () -> Void
     private let onHoldCommit: () -> Void
     private let onHoldEnd: () -> Void
@@ -48,6 +49,7 @@ final class ModifierHoldMonitor {
 
     init(
         commitDelay: TimeInterval = 0.12,
+        talkHold: @escaping () -> ModifierSet = { PerryPreferences.talkGesture.holdModifiers ?? [.control, .option] },
         onHoldStart: @escaping () -> Void,
         onHoldCommit: @escaping () -> Void,
         onHoldEnd: @escaping () -> Void,
@@ -56,6 +58,7 @@ final class ModifierHoldMonitor {
         onComposer: @escaping () -> Void
     ) {
         self.commitDelay = commitDelay
+        self.talkHold = talkHold
         self.onHoldStart = onHoldStart
         self.onHoldCommit = onHoldCommit
         self.onHoldEnd = onHoldEnd
@@ -84,19 +87,16 @@ final class ModifierHoldMonitor {
                     case .keyDown:
                         monitor.handleKeyDown(keyCode: event.getIntegerValueField(.keyboardEventKeycode))
                     case .flagsChanged:
-                        let flags = event.flags
                         monitor.handle(
                             timestamp: timestamp,
-                            control: flags.contains(.maskControl),
-                            option: flags.contains(.maskAlternate),
+                            modifiers: ModifierSet(event.flags),
                             isFlagsChanged: true,
                             tapDisabled: false
                         )
                     case .tapDisabledByTimeout, .tapDisabledByUserInput:
                         monitor.handle(
                             timestamp: timestamp,
-                            control: false,
-                            option: false,
+                            modifiers: [],
                             isFlagsChanged: false,
                             tapDisabled: true
                         )
@@ -138,8 +138,7 @@ final class ModifierHoldMonitor {
         let flagsChanged: (NSEvent) -> Void = { [weak self] event in
             self?.handle(
                 timestamp: event.timestamp,
-                control: event.modifierFlags.contains(.control),
-                option: event.modifierFlags.contains(.option),
+                modifiers: ModifierSet(event.modifierFlags),
                 isFlagsChanged: true,
                 tapDisabled: false
             )
@@ -165,6 +164,14 @@ final class ModifierHoldMonitor {
     }
 
     func handle(timestamp: TimeInterval, control: Bool, option: Bool, isFlagsChanged: Bool, tapDisabled: Bool) {
+        var modifiers: ModifierSet = []
+        if control { modifiers.insert(.control) }
+        if option { modifiers.insert(.option) }
+        handle(timestamp: timestamp, modifiers: modifiers, isFlagsChanged: isFlagsChanged, tapDisabled: tapDisabled)
+    }
+
+    func handle(timestamp: TimeInterval, modifiers: ModifierSet, isFlagsChanged: Bool, tapDisabled: Bool) {
+        let control = modifiers.contains(.control)
         if tapDisabled {
             resetCaptureState()
             if let eventTap {
@@ -174,7 +181,7 @@ final class ModifierHoldMonitor {
         }
         guard isFlagsChanged else { return }
 
-        if control && option {
+        if modifiers == talkHold() {
             lastCleanControlRelease = nil
             if !holding {
                 holding = true
@@ -194,6 +201,8 @@ final class ModifierHoldMonitor {
                     }
                 }
             }
+        } else if holding, modifiers.isStrictSuperset(of: talkHold()) {
+            handleKeyDown()
         } else if holding {
             holding = false
             commitTask?.cancel()
@@ -217,13 +226,13 @@ final class ModifierHoldMonitor {
         if control && !controlDown {
             controlPressClean = true
             controlPressAt = timestamp
-            if !option, let last = lastCleanControlRelease, timestamp - last <= doubleTapWindow {
+            if modifiers == [.control], let last = lastCleanControlRelease, timestamp - last <= doubleTapWindow {
                 lastCleanControlRelease = nil
                 PerfMark.mark("composer.open")
                 onComposer()
             }
         }
-        if !control && controlDown, !option, controlPressClean,
+        if !control && controlDown, modifiers.isEmpty, controlPressClean,
            timestamp - controlPressAt <= tapMaxDuration {
             lastCleanControlRelease = timestamp
         }
