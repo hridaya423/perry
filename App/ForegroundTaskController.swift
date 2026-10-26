@@ -380,8 +380,8 @@ final class ForegroundTaskController: ObservableObject {
         let captured = await probe.captureScreenContext(worker: worker, targetHint: targetHint)
         guard taskStartIsCurrent(attemptID) else { return nil }
         guard EnvironmentProbe.captureIsUsable(captured.context) else {
-            hooks.setStatus("Cua could not capture the target window, so Perry stopped before planning.")
-            voice.speak("Cua could not capture the target window, so Perry stopped before planning.")
+            hooks.setStatus("I couldn’t capture that window, so I stopped before planning.")
+            voice.speak("I couldn’t capture that window, so I stopped before planning.")
             return nil
         }
         let targetWindow = captured.target.map {
@@ -394,8 +394,8 @@ final class ForegroundTaskController: ObservableObject {
         // through the tool host itself (intent cards per call) instead of
         // committing to a typed plan up front.
         guard let coordinator = agentCoordinator else {
-            hooks.setStatus("Perry's agent runner is unavailable.")
-            voice.speak("Perry's agent runner is unavailable.")
+            hooks.setStatus("I can’t run tasks right now. Restart Perry.")
+            voice.speak("I can’t run tasks right now. Restart Perry.")
             return nil
         }
         return try await executeAgentRun(
@@ -602,8 +602,8 @@ final class ForegroundTaskController: ObservableObject {
         }
         handoffToHuman = true
         activityStripState.handedToHuman = true
-        hooks.setStatus("You’re in control. Do the step yourself, then choose Continue with Perry.")
-        voice.speak("You're in control. Choose Continue with Perry when you're done.")
+        hooks.setStatus("You’re in control. Do the step yourself, then choose Resume.")
+        voice.speak("You’re in control. Choose Resume when you’re done.")
         if let threadID = activeAgentThreadID {
             agentCoordinator?.pause(threadID: threadID)
         } else {
@@ -865,7 +865,7 @@ final class ForegroundTaskController: ObservableObject {
                 tier: .green,
                 reversible: true,
                 timestamp: fixtureStart.addingTimeInterval(-18),
-                verification: "Verified: fixture snapshot ready"
+                verification: "Checked: fixture snapshot ready"
             ),
             AgentActivityStep(
                 id: "fixture-plan",

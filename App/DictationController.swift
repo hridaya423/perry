@@ -593,13 +593,13 @@ final class DictationController {
         var errorDescription: String? {
             switch self {
             case .permissionDenied:
-                "Perry needs microphone and speech recognition access to hear you."
+                "I need microphone and speech recognition access to hear you."
             case .unavailable:
-                "Speech recognition is unavailable. Type your request instead."
+                "Speech recognition isn’t available. Type your message instead."
             case .deviceUnavailable:
-                "The selected microphone is unavailable. Choose another microphone in Settings."
+                "That microphone isn’t available. Choose another one in Settings."
             case .onDeviceUnavailable:
-                "On-device speech recognition is unavailable for this language. Choose another dictation language or type your request."
+                "Speech recognition on this Mac doesn’t support this language. Choose another language or type your message."
             }
         }
     }

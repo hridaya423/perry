@@ -15,29 +15,29 @@ public enum PerryCaptureError: Error, Equatable, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .screenRecordingPermission(.notDetermined):
-            return "Screen Recording permission has not been granted yet."
+            return "I need Screen Recording access. Turn it on for Perry in System Settings."
         case .screenRecordingPermission(.denied):
-            return "Screen Recording permission is denied. Enable it in System Settings > Privacy & Security > Screen Recording."
+            return "I need Screen Recording access. Turn it on for Perry in System Settings."
         case .screenRecordingPermission(.granted):
-            return "Screen Recording permission is required for this capture."
+            return "I need Screen Recording access. Turn it on for Perry in System Settings."
         case .noDisplayAvailable:
-            return "No display is available for capture."
+            return "I couldn’t find a screen to capture."
         case .blockedWindow:
-            return "Capture refused because a sensitive window is visible."
+            return "I didn’t capture the screen because a password or payment window is open. Close it and try again."
         case .selectedRegionNotOnSingleDisplay:
-            return "The selected region is not fully contained by one display."
+            return "That area covers more than one screen. Pick an area on one screen."
         case .noImageCaptured:
-            return "Capture returned no image."
+            return "I couldn’t capture the screen. Try again."
         case .imageEncodingFailed:
-            return "The image could not be encoded."
+            return "I couldn’t process the screenshot. Try again."
         case .imageCropFailed:
-            return "The selected region could not be cropped."
+            return "I couldn’t crop that area. Try again."
         case .invalidImageData:
-            return "The image data could not be decoded."
-        case .visionRecognitionFailed(let detail):
-            return "Vision text recognition failed: \(detail)"
-        case .captureFailed(let detail):
-            return "Image capture failed: \(detail)"
+            return "I couldn’t process the screenshot. Try again."
+        case .visionRecognitionFailed:
+            return "I couldn’t read the text on screen. Try again."
+        case .captureFailed:
+            return "I couldn’t capture the screen. Try again."
         }
     }
 }

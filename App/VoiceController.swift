@@ -251,7 +251,7 @@ final class VoiceController: NSObject, ObservableObject {
             dictation.configure(try currentDictationPreferences())
         } catch {
             dictation.configure(.default)
-            hooks.setStatus("Voice dictionary unavailable: \(error.localizedDescription)")
+            hooks.setStatus("I couldn’t read your word replacements.")
         }
         let attemptID = UUID()
         dictationAttemptID = attemptID
@@ -263,8 +263,8 @@ final class VoiceController: NSObject, ObservableObject {
                 voiceInvocation.cancel()
                 overlayState.voiceState = .idle
                 overlayState.buddyState = .idle
-                hooks.setStatus("Microphone permission is optional; type your request instead.")
-                speak("Allow microphone access and I'll listen.")
+                hooks.setStatus("The microphone is off. Type your message instead.")
+                speak("Turn on microphone access and I’ll listen.")
                 return
             }
             do {
@@ -280,7 +280,7 @@ final class VoiceController: NSObject, ObservableObject {
                 overlayState.voiceState = .idle
                 overlayState.buddyState = .idle
                 handleDictationFailure(error)
-                speak("Couldn't start listening: \(error.localizedDescription)")
+                speak("I couldn’t start listening. Check your microphone.")
             }
         }
     }

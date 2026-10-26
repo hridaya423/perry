@@ -38,7 +38,7 @@ extension TalkSession {
                 ask.isWorking = true
                 try sessionController.startAsk(ask, attemptID: attemptID)
             } catch {
-                output?.guideSetStatus("Perry couldn't start a question.")
+                output?.guideSetStatus("I couldn’t start that question.")
                 return
             }
             let askID: UUID
@@ -140,7 +140,7 @@ extension TalkSession {
             sessionController.updateAsk { $0.isWorking = false }
             output?.guideSetBuddyState(.blocked)
             output?.guideSetStatus(
-                (error as? LocalizedError)?.errorDescription ?? "Perry couldn't answer that."
+                (error as? LocalizedError)?.errorDescription ?? "I couldn’t answer that."
             )
         }
     }

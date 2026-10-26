@@ -82,8 +82,8 @@ final class RoutineRunner {
         let captured = await probe.captureScreenContext(worker: worker)
         guard links.isCurrent(attemptID) else { return .notStarted }
         guard EnvironmentProbe.captureIsUsable(captured.context) else {
-            hooks.setStatus("Cua could not capture the target window, so Perry stopped before replaying.")
-            links.speak("Cua could not capture the target window, so Perry stopped before replaying.")
+            hooks.setStatus("I couldn’t capture that window, so I stopped before replaying.")
+            links.speak("I couldn’t capture that window, so I stopped before replaying.")
             return .notStarted
         }
         let targetStore = CuaGuideTargetStore()

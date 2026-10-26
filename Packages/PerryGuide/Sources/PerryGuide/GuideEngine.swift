@@ -175,7 +175,7 @@ public actor GuideEngine {
             return .notPresenting
         } catch {
             phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
-            return .blocked(reason: "Cua could not read the window for the next step: \(error.localizedDescription)")
+            return .blocked(reason: "I couldn’t read the window for the next step.")
         }
         return await presentNext(observation: observation)
     }
@@ -197,7 +197,7 @@ public actor GuideEngine {
             return .notPresenting
         } catch {
             phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
-            return .blocked(reason: "Cua could not read the window to go back: \(error.localizedDescription)")
+            return .blocked(reason: "I couldn’t read the window to go back.")
         }
         do {
             try GuideTargetValidator.requireUnprotected(observation)
@@ -243,7 +243,7 @@ public actor GuideEngine {
             return .notPresenting
         } catch {
             phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
-            return .blocked(reason: "Cua could not read the window to continue: \(error.localizedDescription)")
+            return .blocked(reason: "I couldn’t read the window to continue.")
         }
         return await presentNext(observation: observation)
     }
@@ -325,7 +325,7 @@ public actor GuideEngine {
                 return .notPresenting
             } catch {
                 phase = .waitingForUser(stepIndex: stepIndex)
-                return .blocked(reason: "Cua could not verify that step: \(error.localizedDescription)")
+                return .blocked(reason: "I couldn’t confirm that step.")
             }
             // stop()/skip() can interleave across the suspensions — a stale
             // verification must never advance past a step that's gone.

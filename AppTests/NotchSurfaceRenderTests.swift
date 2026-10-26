@@ -145,7 +145,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         ])
         let activity = AgentActivityStripState()
         activity.phase = .reporting
-        activity.title = "Task complete"
+        activity.title = "Done"
         activity.detail = try XCTUnwrap(RoutineRunCopy.success(priorVerifiedRuns: 0))
         let strip = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})
         presentation.remove(id)
@@ -153,7 +153,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         presentation.present(id: id, priority: .activity, content: strip, reveal: false)
         try await render(openNotch(controller), name: "rehearsal-success", size: size, wait: 0.8, folder: "first-impressions-7.11")
         activity.title = "Task stopped"
-        activity.detail = RoutineRunCopy.stopped(routine: routine, step: 2, error: .targetNotFound(step: 2), reason: "") + " 2 of 3 actions finished and were verified; everything after that point was left untouched."
+        activity.detail = RoutineRunCopy.stopped(routine: routine, step: 2, error: .targetNotFound(step: 2), reason: "") + " I finished 2 of 3 steps and checked each one. I didn’t touch the rest."
         try await render(openNotch(controller), name: "rehearsal-failure", size: size, wait: 0.8, folder: "first-impressions-7.11")
     }
 
@@ -434,7 +434,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await render(openNotch(controller), name: "perry-editor-existing", size: NSSize(width: 892, height: 720), wait: 0.5)
 
         model.sidebarSelection = nil
-        controller.presentFailure("Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.", recovery: .privacy(.screenRecording))
+        controller.presentFailure("I can’t see your screen. Until you turn on Screen Recording, I answer from window text.", recovery: .privacy(.screenRecording))
         presentation.showsInteraction = true
         try await render(openNotch(controller), name: "failure-notice", size: NSSize(width: 592, height: 420))
         controller.clearFailure()

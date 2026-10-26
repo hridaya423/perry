@@ -205,14 +205,14 @@ final class RoutineLibraryController {
             routine.steps[index].action = .typeText(
                 .parameter(name: "text-\(index)", prompt: "Text for \(field)")
             )
-            routine.steps[index].summary = "Type text I'll give you into \(field)"
+            routine.steps[index].summary = "Type text I’ll give you into \(field)"
         }
         routine.provenance = .reviewed
         var saved = false
         do {
             try store.save(routine)
             saved = true
-            setStatus("Saved routine \"\(routine.name)\". Run it from the menu.")
+            setStatus("Saved routine “\(routine.name)”. Run it from the menu.")
         } catch {
             setStatus("The routine could not be saved: \(error.localizedDescription)")
         }

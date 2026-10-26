@@ -182,7 +182,7 @@ actor CuaWorkerService {
                 return await client.health()
             }
         } catch {
-            return CuaDriverHealth(ready: false, summary: "Cua worker health check failed: \(error.localizedDescription)")
+            return CuaDriverHealth(ready: false, summary: "Screen control isn’t responding. Try again.")
         }
     }
 

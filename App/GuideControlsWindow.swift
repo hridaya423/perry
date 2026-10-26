@@ -73,7 +73,7 @@ struct GuideControlsView: View {
                 Text(targetLabel)
                     .font(PerryTheme.Scale.title)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel("Current target")
+                    .accessibilityLabel("Current control")
                     .accessibilityValue(targetLabel)
             }
             HStack(spacing: 8) {
@@ -84,7 +84,7 @@ struct GuideControlsView: View {
                         .accessibilityHint("Tell Perry you finished this step")
                 }
                 Button(action: onTakeOver) {
-                    Label("Let Perry do it", systemImage: "cursorarrow.motionlines")
+                    Label("Do it for me", systemImage: "cursorarrow.motionlines")
                 }
                 .buttonStyle(InkButtonStyle(.secondary))
                 .accessibilityHint("Hand the rest of this task to Perry")
@@ -112,7 +112,7 @@ struct GuideControlsView: View {
     }
 
     private var stopButton: some View {
-        WindowControlButton(systemImage: "xmark", label: "Stop guide (Esc)", action: onStop)
+        WindowControlButton(systemImage: "xmark", label: "Stop guide", action: onStop)
             .keyboardShortcut(.cancelAction)
     }
 

@@ -8,7 +8,13 @@ enum FailureRecovery: Equatable {
     var title: String {
         switch self {
         case .settings(let page): "Open \(page.title) settings"
-        case .privacy: "Open Privacy settings"
+        case .privacy(let pane):
+            switch pane {
+            case .accessibility: "Open Accessibility"
+            case .screenRecording: "Open Screen Recording"
+            case .inputMonitoring: "Open Input Monitoring"
+            case .microphone: "Open Microphone"
+            }
         case .thread: "Read the full answer"
         }
     }
@@ -27,8 +33,11 @@ extension AppController {
                 self?.recover(with: recovery)
             }]
         } ?? []
+        let split = message.range(of: ". ")
         NotchDialog(
-            title: message, cancelTitle: "Dismiss", actions: actions,
+            title: split.map { String(message[..<$0.lowerBound]) + "." } ?? message,
+            message: split.map { String(message[$0.upperBound...]) },
+            cancelTitle: "Dismiss", actions: actions,
             id: Self.failureNoticeID, priority: .activity,
             onClearSource: { [weak self] in
                 if !recovered && !panelWasVisible { self?.hidePanel() }

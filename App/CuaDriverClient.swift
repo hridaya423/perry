@@ -474,7 +474,7 @@ actor CuaDriverClient {
         guard let configuration = resolvedConfiguration() else {
             return CuaDriverHealth(
                 ready: false,
-                summary: "Cua Driver is unavailable. Set a verified executable path in Settings or use the signed bundled driver."
+                summary: "Screen control isn’t available. Reinstall Perry or set its path in Settings > Brain."
             )
         }
         do {
@@ -489,23 +489,23 @@ actor CuaDriverClient {
             guard attribution == "host", embedded else {
                 return CuaDriverHealth(
                     ready: false,
-                    summary: "Cua Driver did not confirm Perry as its embedded permission host."
+                    summary: "Screen control couldn’t confirm that Perry holds its permissions."
                 )
             }
             guard accessibility && screenRecording else {
                 return CuaDriverHealth(
                     ready: false,
-                    summary: "Perry needs Accessibility and Screen Recording access. Enable Perry in System Settings → Privacy & Security."
+                    summary: "I need Accessibility and Screen Recording access. Turn both on for Perry in System Settings."
                 )
             }
             return CuaDriverHealth(
                 ready: true,
-                summary: "Cua Driver is ready at \(configuration.executableURL.path)."
+                summary: "Screen control is ready."
             )
         } catch {
             return CuaDriverHealth(
                 ready: false,
-                summary: "Cua Driver health check failed: \(error.localizedDescription)"
+                summary: "Screen control isn’t responding. Try again."
             )
         }
     }
@@ -607,7 +607,7 @@ actor CuaDriverClient {
                 state: state,
                 sessionID: sessionID
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua clicked the requested target." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Clicked it." : result.text)
         case .typeText(let text, let target):
             var arguments = try await actionArguments(for: target, state: state, sessionID: sessionID)
             arguments["text"] = text
@@ -619,7 +619,7 @@ actor CuaDriverClient {
                 refreshedArguments["text"] = text
                 result = try await callTool(name: "type_text", arguments: refreshedArguments)
             }
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua entered the requested text." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Typed the text." : result.text)
         case .rightClick(let target):
             let result = try await performAction(
                 name: "right_click",
@@ -627,7 +627,7 @@ actor CuaDriverClient {
                 state: state,
                 sessionID: sessionID
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua opened the target context menu." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Opened the context menu." : result.text)
         case .doubleClick(let target):
             let result = try await performAction(
                 name: "double_click",
@@ -635,7 +635,7 @@ actor CuaDriverClient {
                 state: state,
                 sessionID: sessionID
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua double-clicked the requested target." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Double-clicked it." : result.text)
         case .scroll(let direction, let amount, let by, let target):
             var additionalArguments: [String: Any] = ["direction": direction.rawValue, "amount": amount]
             if let by { additionalArguments["by"] = by }
@@ -647,7 +647,7 @@ actor CuaDriverClient {
                 requiresTarget: false,
                 additionalArguments: additionalArguments
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua scrolled \(direction.rawValue)." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Scrolled \(direction.rawValue)." : result.text)
         case .pressKey(let key, let modifiers, let target):
             var additionalArguments: [String: Any] = ["key": key]
             if let modifiers { additionalArguments["modifiers"] = modifiers }
@@ -659,7 +659,7 @@ actor CuaDriverClient {
                 requiresTarget: false,
                 additionalArguments: additionalArguments
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua pressed \(key)." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Pressed \(key)." : result.text)
         case .hotkey(let keys, let target):
             let result = try await performAction(
                 name: "hotkey",
@@ -669,7 +669,7 @@ actor CuaDriverClient {
                 requiresTarget: false,
                 additionalArguments: ["keys": keys]
             )
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua pressed \(keys.joined(separator: "+"))." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Pressed \(keys.joined(separator: "+"))." : result.text)
         case .drag(let from, let to, let duration, let steps):
             var arguments: [String: Any] = [
                 "from_x": from.x,
@@ -688,7 +688,7 @@ actor CuaDriverClient {
                 arguments["steps"] = steps
             }
             let result = try await callTool(name: "drag", arguments: arguments)
-            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Cua dragged the requested target." : result.text)
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Dragged it." : result.text)
         }
     }
 
@@ -718,7 +718,7 @@ actor CuaDriverClient {
             generation: generation
         )
         guard Self.actionWasVerified(result.structuredValue) else {
-            throw CuaDriverError.toolRejected("Cua could not independently confirm text insertion in the target field.")
+            throw CuaDriverError.toolRejected("I couldn’t confirm the text went into the field.")
         }
         let current = try await refreshResolvedTarget(resolvedTarget, sessionID: sessionID)
         guard current == resolvedTarget else {
@@ -1587,16 +1587,16 @@ private func double(_ value: Any?) -> Double? {
 extension AppController {
     func reloadCuaDriverConfiguration() {
         guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
-            sessionStatus = "Finish active computer-use tasks before changing the Cua driver."
+            sessionStatus = "Finish your running tasks before changing screen control."
             return
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 try await workers.reloadConfiguration()
-                sessionStatus = "Cua computer-use configuration applied."
+                sessionStatus = "Screen control updated."
             } catch {
-                sessionStatus = "Cua computer-use configuration could not be applied: \(error.localizedDescription)"
+                sessionStatus = "I couldn’t update screen control. Try again."
             }
         }
     }

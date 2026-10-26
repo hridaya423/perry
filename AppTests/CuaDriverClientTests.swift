@@ -815,7 +815,7 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(health.ready)
         XCTAssertEqual(
             health.summary,
-            "Cua Driver is unavailable. Set a verified executable path in Settings or use the signed bundled driver."
+            "Screen control isn’t available. Reinstall Perry or set its path in Settings > Brain."
         )
         XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("starts").path))
     }

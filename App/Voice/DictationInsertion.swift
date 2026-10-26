@@ -31,8 +31,8 @@ extension VoiceController {
                 supportDirectory: supportDirectory()
             )
         } catch {
-            hooks.setStatus("Voice dictionary unavailable: \(error.localizedDescription)")
-            deliverVoiceReply("I couldn't read your voice dictionary, so I stopped before dispatching that request.")
+            hooks.setStatus("I couldn’t read your word replacements.")
+            deliverVoiceReply("I couldn’t read your word replacements, so I didn’t send that.")
             return
         }
         let request: String
@@ -76,7 +76,7 @@ extension VoiceController {
         dictationInsertionID = insertionID
         dictationLearnCheckTask?.cancel()
         previousTask?.cancel()
-        hooks.setStatus("Typing through Cua…")
+        hooks.setStatus("Typing…")
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             if let previousTask {
@@ -133,8 +133,8 @@ extension VoiceController {
                 self.dictationInsertionID = nil
                 self.dictationWorkerTask = nil
                 guard !Task.isCancelled else { return }
-                self.hooks.setStatus("Perry did not type because Cua could not verify the target field: \(error.localizedDescription)")
-                self.deliverVoiceReply("I couldn't verify the text insertion, so I stopped.")
+                self.hooks.setStatus("I didn’t type because I couldn’t confirm the field. Try again.")
+                self.deliverVoiceReply("I couldn’t confirm the text went in, so I stopped.")
             }
         }
         dictationWorkerTask = task

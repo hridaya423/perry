@@ -169,7 +169,7 @@ final class TalkSession: ObservableObject {
                 return
             }
         } catch {
-            output?.guideReportFailure("Perry couldn’t start listening. Hold ⌃⌥ to try again.", recovery: nil)
+            output?.guideReportFailure("I couldn’t start listening. Hold ⌃⌥ to try again.", recovery: nil)
             return
         }
 
@@ -281,7 +281,7 @@ final class TalkSession: ObservableObject {
         input = nil
         guard phase == .listening else { return }
         output?.guideReportFailure(
-            (error as? LocalizedError)?.errorDescription ?? "Perry couldn’t hear that.",
+            (error as? LocalizedError)?.errorDescription ?? "I couldn’t hear that. Try again.",
             recovery: Self.recovery(forInput: error)
         )
         sessionController.updateTalk { $0.isListening = false }
@@ -340,7 +340,7 @@ final class TalkSession: ObservableObject {
             if observation.screenshotData == nil, !Self.screenAccessNoticeShown, !CGPreflightScreenCaptureAccess() {
                 Self.screenAccessNoticeShown = true
                 output?.guideReportFailure(
-                    "Perry can’t see your screen, so it answers from window text only. Turn on Screen Recording for Perry.",
+                    "I can’t see your screen. Until you turn on Screen Recording, I answer from window text.",
                     recovery: .privacy(.screenRecording)
                 )
             }
@@ -406,7 +406,7 @@ final class TalkSession: ObservableObject {
             output?.guideReportFailure(
                 (error as? ModelProviderError).map { AgentLoop.describe($0) }
                     ?? (error as? LocalizedError)?.errorDescription
-                    ?? "Perry couldn’t answer that.",
+                    ?? "I couldn’t answer that. Try again.",
                 recovery: error is ResponseError || error is ModelProviderError ? .settings(.brain) : nil
             )
             phase = .idle
@@ -453,7 +453,7 @@ final class TalkSession: ObservableObject {
             case .finished(.interrupted), .finished(.paused):
                 throw CancellationError()
             case .finished(let outcome):
-                throw ResponseError(message: outcome.failureReason ?? "Perry couldn’t finish this answer.")
+                throw ResponseError(message: outcome.failureReason ?? "I couldn’t finish that answer. Try again.")
             case .toolCallStarted(let call):
                 if ToolGate.observeTools.contains(call.name) {
                     index = ElementIndex(elements: [])
@@ -634,13 +634,13 @@ final class TalkSession: ObservableObject {
             let granted = await services.requestPermission()
             guard self.clickGeneration == generation, self.clickState == .requestingPermission else { return }
             guard granted else {
-                failClick("Enable microphone and speech recognition for Perry in System Settings › Privacy & Security, then try again.")
+                failClick("I need microphone and speech recognition access. Turn both on for Perry in System Settings.")
                 return
             }
             do {
                 try input.start()
             } catch {
-                failClick((error as? LocalizedError)?.errorDescription ?? "Perry couldn’t start listening.")
+                failClick((error as? LocalizedError)?.errorDescription ?? "I couldn’t start listening. Check your microphone.")
                 return
             }
             guard self.clickGeneration == generation, self.clickState == .requestingPermission else {
@@ -737,7 +737,7 @@ final class TalkSession: ObservableObject {
         case .commit?:
             finishListening()
         case .abort?:
-            failClick("I didn’t hear anything. Check that your microphone is on, then try again.")
+            failClick("I didn’t hear anything. Check your microphone.")
         case .silence(_, let progress)?:
             meter(rms, progress: progress, at: time)
         default:
@@ -754,7 +754,7 @@ final class TalkSession: ObservableObject {
 
     private func handleClickFailure(_ failure: Error, generation: Int) {
         guard clickGeneration == generation else { return }
-        let message = (failure as? LocalizedError)?.errorDescription ?? "Perry couldn’t hear that."
+        let message = (failure as? LocalizedError)?.errorDescription ?? "I couldn’t hear that. Try again."
         switch clickState {
         case .listening:
             failClick(message)
@@ -816,7 +816,7 @@ final class TalkSession: ObservableObject {
                 case .interrupted, .paused:
                     interrupted = true
                 default:
-                    failureMessage = outcome.failureReason ?? "Perry couldn’t finish this answer."
+                    failureMessage = outcome.failureReason ?? "I couldn’t finish that answer. Try again."
                 }
             case .toolCallStarted, .toolCallFinished, .note, .draw:
                 break
@@ -848,7 +848,7 @@ final class TalkSession: ObservableObject {
             clickState = .idle
         } else {
             clickSpeech.shutUp()
-            error = failureMessage ?? "Perry couldn’t answer that."
+            error = failureMessage ?? "I couldn’t answer that. Try again."
             clickState = .failed
         }
     }
@@ -870,7 +870,7 @@ final class TalkSession: ObservableObject {
         clickSilenceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             guard let self, !Task.isCancelled, self.clickGeneration == generation, self.clickState == .listening else { return }
-            self.failClick("I didn’t hear anything. Check that your microphone is on, then try again.")
+            self.failClick("I didn’t hear anything. Check your microphone.")
         }
     }
 

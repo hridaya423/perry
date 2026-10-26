@@ -138,13 +138,13 @@ final class HotkeyController {
         var errorDescription: String? {
             switch self {
             case .eventHandler(let status):
-                return "macOS could not install Perry's shortcut handler (\(status))."
+                return "I couldn’t set that shortcut. Choose another shortcut.\nError code: \(status)"
             case .registration(let status):
-                return "That shortcut could not be registered (\(status)). Choose another shortcut."
+                return "I couldn’t set that shortcut. Choose another shortcut.\nError code: \(status)"
             case .restoration:
-                return "Perry could not restore the previous shortcut. Choose a wake shortcut to try again."
+                return "I couldn’t restore the old shortcut. Choose a new one to try again."
             case .needsModifier:
-                return "The wake shortcut needs ⌃, ⌥, ⇧ or ⌘ together with a key. Choose another shortcut."
+                return "A shortcut needs ⌃, ⌥, ⇧ or ⌘ together with a key. Choose another shortcut."
             }
         }
     }

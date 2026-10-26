@@ -83,7 +83,7 @@ final class UpdateNoticeController {
     private func present() {
         guard !hasPresented else { return }
         hasPresented = true
-        onSpeak("Perry updated. See what’s new?")
+        onSpeak("Perry updated. Open What’s new from the menu.")
         onPresent()
     }
 }

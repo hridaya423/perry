@@ -550,7 +550,7 @@ final class GuideSessionCoordinator {
                   invocation.id == attemptID else { return }
             guard scope.savedOutcome == .interrupted else {
                 _ = try? self.sessionController.cancelInvocation(attemptID)
-                self.output?.guideSetStatus(scope.savedOutcome?.failureReason ?? "The guide could not be saved. Review it before continuing.")
+                self.output?.guideSetStatus(scope.savedOutcome?.failureReason ?? "I couldn’t save the guide. Review it before continuing.")
                 return
             }
             self.output?.guideRequestTakeOver(handoff)
@@ -640,12 +640,12 @@ final class GuideSessionCoordinator {
                 guard let presentation = try await engine.refreshPresentation(force: true) else { return }
                 guard !Task.isCancelled, let self, self.guideIsCurrent(guideID) else { return }
                 self.output?.guidePresent(presentation)
-                self.output?.guideSetStatus("Found the target again.")
+                self.output?.guideSetStatus("Found it again.")
             } catch is CancellationError {
                 return
             } catch {
                 guard let self, self.guideIsCurrent(guideID) else { return }
-                self.finishGuide(guideID: guideID, outcome: .failed, summary: "Cua could not refresh the target window: \(error.localizedDescription)")
+                self.finishGuide(guideID: guideID, outcome: .failed, summary: "I couldn’t read that window again. Try again.")
             }
         }
         scope.addAction(task, id: callbackID)
@@ -665,7 +665,7 @@ final class GuideSessionCoordinator {
             try operation()
             return true
         } catch {
-            output?.guideSetStatus("Perry stopped because its session state changed unexpectedly.")
+            output?.guideSetStatus("I stopped because something changed unexpectedly. Try again.")
             return false
         }
     }
@@ -673,7 +673,7 @@ final class GuideSessionCoordinator {
     private func startGuideSession(goal: String, full: Bool, threadID: UUID, targetHint: CuaTargetHint?, attemptID: UUID, waitingInput: PerryThread.WaitingInput?) -> GuideWorkerSession? {
         guard guideAdmissionOpen, case .invoking(let invocation) = sessionController.state,
               invocation.id == attemptID else { return nil }
-        output?.guideSetStatus(full ? "Painting the complete path." : "Finding two useful places to show you.")
+        output?.guideSetStatus(full ? "Showing the full path." : "Finding two places to show you.")
         output?.guideStopSpatialInput()
         let targetHint = targetHint ?? context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
         let appBundleID = context?.guideAppBundleID(for: targetHint)
@@ -763,9 +763,9 @@ final class GuideSessionCoordinator {
                     guard !Task.isCancelled, !(error is CancellationError) else { return }
                     switch error {
                     case GuidePlannerError.protectedWindow:
-                        self.finishGuide(guideID: guide.id, outcome: .failed, summary: "That window is protected, so Perry won't guide inside it.")
+                        self.finishGuide(guideID: guide.id, outcome: .failed, summary: "That window is protected, so I can’t guide inside it.")
                     case GuidePlannerError.explanationEnded:
-                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
+                        self.finishGuide(guideID: guide.id, outcome: .stopped, summary: "I finished explaining. I didn’t check that the task is done.")
                     case GuidePlannerError.needsInput(let prompt, let choices):
                         self.presentGuideInput(guideID: guide.id, prompt: prompt, choices: choices)
                         for await _ in scope.finishStream { break }
@@ -787,10 +787,10 @@ final class GuideSessionCoordinator {
             #endif
             self.resetGuideAfterWorkerFailure(
                 guideID: guide.id,
-                summary: "The guide stopped before its Cua worker could finish."
+                summary: "The guide stopped before it finished."
             )
         } catch {
-            let message = "Cua could not start the guide: \(error.localizedDescription)"
+            let message = "I couldn’t start the guide. Try again."
             scope.conversationOutcome = (message, .failed(message))
             self.resetGuideAfterWorkerFailure(guideID: guide.id, summary: message)
         }
@@ -802,12 +802,12 @@ final class GuideSessionCoordinator {
 
     private func failGuideFromWorker(guideID: UUID, error: Error) {
         guard guideIsCurrent(guideID) else { return }
-        finishGuide(guideID: guideID, outcome: .failed, summary: "Perry could not continue the guide: \(error.localizedDescription)")
+        finishGuide(guideID: guideID, outcome: .failed, summary: "I couldn’t continue the guide. Try again.")
     }
 
     private func failFullGuide(guideID: UUID, error: Error) {
         guard guideIsCurrent(guideID) else { return }
-        finishGuide(guideID: guideID, outcome: .failed, summary: "Perry could not prepare the guide: \(error.localizedDescription)")
+        finishGuide(guideID: guideID, outcome: .failed, summary: "I couldn’t prepare the guide. Try again.")
     }
 
     private func resetGuideAfterWorkerFailure(guideID: UUID, summary: String) {
@@ -931,14 +931,14 @@ final class GuideSessionCoordinator {
                 scheduleGuideFinish(after: 1.5)
             }
         } else {
-            finishGuide(guideID: guide.id, outcome: .failed, summary: "I couldn't see anything to point at there.")
+            finishGuide(guideID: guide.id, outcome: .failed, summary: "I couldn’t see anything to point at.")
         }
     }
 
     private func runFullGuide(guide: GuideSessionState, capture: CuaCapturedWindow) async throws {
         guard let snapshot = capture.accessibilitySnapshotModel else {
             guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }) else { return }
-            finishBlockedFullGuide(guideID: guide.id, summary: "Cua could not read the target window, so I couldn't paint the path.")
+            finishBlockedFullGuide(guideID: guide.id, summary: "I couldn’t read that window. Try again.")
             return
         }
         let target = capture.target
@@ -958,7 +958,7 @@ final class GuideSessionCoordinator {
             try GuideTargetValidator.requireUnprotected(observation)
         } catch {
             guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }) else { return }
-            finishBlockedFullGuide(guideID: guide.id, summary: "That window is protected, so Perry won't guide inside it.")
+            finishBlockedFullGuide(guideID: guide.id, summary: "That window is protected, so I can’t guide inside it.")
             return
         }
         let memoryContext = await memoryStore.promptContext(appBundleID: snapshot.appBundleID)
@@ -985,7 +985,7 @@ final class GuideSessionCoordinator {
         guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }),
               let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot, goal: guide.goal) else {
             guard await MainActor.run(body: { self.guideIsCurrent(guide.id) }) else { return }
-            finishBlockedFullGuide(guideID: guide.id, summary: "Nothing visible to map there yet.")
+            finishBlockedFullGuide(guideID: guide.id, summary: "I can’t see anything to point at yet.")
             return
         }
         guard transitionSession({ try sessionController.replaceGuidePlan(steps: steps.map { ($0.id, $0.instruction, !$0.target.isVerbal) }) }) else { return }
@@ -999,7 +999,7 @@ final class GuideSessionCoordinator {
         )
         clickObserver.start()
         paint(everything: viewPlan)
-        speak("Here's the visible path, \(viewPlan.markers.count) steps.", guideID: guide.id)
+        speak("Here’s the path: \(viewPlan.markers.count) steps.", guideID: guide.id)
     }
 
     private func finishBlockedFullGuide(guideID: UUID, summary: String) {
@@ -1065,7 +1065,7 @@ final class GuideSessionCoordinator {
                 self.speak(firstStep.instruction, guideID: guideID, stepID: firstStep.id)
             } catch {
                 guard let self, self.guideIsCurrent(guideID) else { return }
-                self.finishGuide(guideID: guideID, outcome: .failed, summary: "That step's target is no longer where the map put it.")
+                self.finishGuide(guideID: guideID, outcome: .failed, summary: "That step moved. Tap Find it again.")
             }
         }
         scope.addAction(task, id: callbackID)
@@ -1087,18 +1087,18 @@ final class GuideSessionCoordinator {
         case .finished:
             finishGuide(guideID: guideID, outcome: .completed)
         case .explanationEnded:
-            finishGuide(guideID: guideID, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
+            finishGuide(guideID: guideID, outcome: .stopped, summary: "I finished explaining. I didn’t check that the task is done.")
         case .needsInput(let prompt, let choices):
             presentGuideInput(guideID: guideID, prompt: prompt, choices: choices)
         case .stillWaiting:
-            output?.guideSetStatus("Not verified yet. Complete the step, then choose Done.")
+            output?.guideSetStatus("I can’t see that step done yet. Finish it, then choose Done.")
         case .blocked(let reason):
             finishGuide(guideID: guideID, outcome: .failed, summary: reason)
         case .ignoredClick(_, let hitLabel):
             PerfMark.mark("guide.click.ignored")
             if let hitLabel, !hitLabel.isEmpty {
-                output?.guideSetStatus("That’s \(hitLabel). We want the highlighted control.")
-                speak("That’s \(hitLabel). We want the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
+                output?.guideSetStatus("That’s \(hitLabel). Click the highlighted control instead.")
+                speak("That’s \(hitLabel). Try the highlighted one.", guideID: guideID, stepID: activeGuideStepID)
             } else {
                 output?.guideSetStatus("Not quite. Click the highlighted control.")
             }
@@ -1119,11 +1119,11 @@ final class GuideSessionCoordinator {
                 guard let presentation = try await engine.refreshPresentation() else { return }
                 guard self.activeGuideID == guideID else { return }
                 self.output?.guidePresent(presentation)
-                self.output?.guideSetStatus("I refreshed the target after a quiet minute.")
-                self.speak("Let’s try that target again.", guideID: guideID, stepID: self.activeGuideStepID)
+                self.output?.guideSetStatus("I looked again after a quiet minute.")
+                self.speak("I’ll try that step again.", guideID: guideID, stepID: self.activeGuideStepID)
             } catch {
                 guard self.activeGuideID == guideID else { return }
-                self.finishGuide(guideID: guideID, outcome: .failed, summary: "Cua could not refresh the target window: \(error.localizedDescription)")
+                self.finishGuide(guideID: guideID, outcome: .failed, summary: "I couldn’t read that window again. Try again.")
             }
         }
         scope.repointTask = task
@@ -1150,7 +1150,7 @@ final class GuideSessionCoordinator {
         everythingGuideSession = nil
         hideGuideControls()
         let isComplete = outcome == .completed
-        let finalSummary = summary ?? "The requested outcome was verified."
+        let finalSummary = summary ?? "I checked that it worked."
         let scope = currentGuideScope
         if let scope, scope.id == guide.id, scope.workerBodyActive {
             scope.requestFinalization(GuideFinalizationRequest(id: guide.id, goal: guide.goal, startedAt: guide.startedAt, steps: guide.steps, outcome: outcome, summary: finalSummary, appBundleID: guide.appBundleID))
@@ -1186,7 +1186,7 @@ final class GuideSessionCoordinator {
             self.everythingGuideSession = nil
             self.clickObserver.stop()
             self.output?.guideClearFullPath()
-            self.finishGuide(guideID: guideID, outcome: .failed, summary: "The full guide timed out before a step was selected.")
+            self.finishGuide(guideID: guideID, outcome: .failed, summary: "The full guide took too long. Try again.")
         }
         scope.everythingTimeoutTask = task
         scope.addCallback(task, id: callbackID)
@@ -1200,7 +1200,7 @@ final class GuideSessionCoordinator {
             defer { scope?.removeCallback(callbackID) }
             do { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) } catch { return }
             guard let self, self.activeGuideID == guideID else { return }
-            self.finishGuide(guideID: guideID, outcome: .stopped, summary: "Perry finished explaining. It didn’t check that the task is done.")
+            self.finishGuide(guideID: guideID, outcome: .stopped, summary: "I finished explaining. I didn’t check that the task is done.")
         }
         scope.finishTask = task
         scope.addCallback(task, id: callbackID)
