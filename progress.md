@@ -6,7 +6,7 @@
 
 ## Task log
 
-- 0.1 Test Mac: **live drills blocked**: `mac-tailscale` has Xcode 16.3 (needs 26+). Disk is fine now (63 GB free), macOS 27.0.1. Local builds and unit tests continue.
+- 0.1 Test Mac: since 2026-10-26 all testing runs on `mac-tailscale` over ssh; the user asked that nothing drive their MacBook. The mini's own Xcode is 16.3, so this MacBook's Xcode 27 (3.9 GB) was copied to `~/Applications/Xcode-27.app` on the mini; use `DEVELOPER_DIR=~/Applications/Xcode-27.app/Contents/Developer`. Sync with `rsync -a --delete --exclude .git --exclude /build --exclude .build --exclude .devin --exclude .audit --exclude docs/evidence ./ mac-tailscale:Honey/perry/`. Package tests also run with the mini's Command Line Tools (Swift 6.4).
 - CI baseline at 9249f82+: green. 640 app tests (8 skipped), all package suites pass.
 - 0.2 Done (`c7a5228`): 49 baseline renders in `docs/evidence/first-impressions/before/`, each opened and annotated in its README.
 - 0.3 Done (`40ec19e`): stale Metal Toolchain note removed from `AGENTS.md`.
@@ -19,9 +19,24 @@
 - 1.7 Done (`6c135be`): `HomeOnboardingView.swift` moved to `App/Onboarding/OnboardingBeats.swift`.
 - 1.8 and 1.9 deferred: the typed-plan path in `ForegroundTaskController` (`executePreparedPlan`, rehearsal marks, `handleTypedDoEvent`) serves routines only but shares session, supervisor and control state. 1.9 fix 1 reworks the same code, so both run together before Task 7.11.
 
+- 2.1 Done (`9625c0c`): `PromptAssembler` with a live capability block, 8 goldens and invariant tests.
+- 2.2 Done (`4fc747f`): every model call uses the assembled prompt; `AgentPrompt` and the AgentLoop cannot-suffixes are deleted; `TalkPrompt` keeps only per-turn context. Deviation: the assembled prompt is about 2.2 KB against 1.4 KB before, so `testLongConversationAnswersBeforeCondensingAndRetainsSources` now uses an 8192 window (it still condenses 60 KB of history). A 4K-context local server loses about 800 bytes of history budget; Apple's provider reports no window and the R8 models have 32K or more.
+- 2.3 Done (`12a8702`): `PromptAssembler.isCapabilityQuestion` plus `answerForCapabilityQuestion` answer "what can you do" in `AgentCoordinator` (Home and notch Ask) with no model call. "help me" no longer starts Guide. A signed-out ChatGPT choice now routes as no brain, with the same text as Home's missing-provider case. Deviation: a predicate instead of a new `GuideIntentParser` case, which avoids four exhaustive switches; BrainController's per-choice errors (ACP, Claude Code, API key) stay because each names its own fix.
+
+- 2.4 Done (`862cfa0`): Ask routes to a vision model first and falls back to a text-only model when the window has accessibility text; the screenshot goes only to models with vision. The capability block and the "what can you do" answer say "read the window" for Apple's model, and only Accessibility gates it. Deviation: no per-conversation `LanguageModelSession` yet; the provider replays the transcript, which is correct, and the plan gives no latency evidence for the change.
+- 2.5 Done (`dc42285`): the model's `memory/PROFILE.md` and `memory/CONTEXT.md` now reach prompts through the memory context (whenever memory is on), ahead of the 12 recent records, and the memory eraser removes both. Before, erase covered only the root `PROFILE.md` mirror of `MemoryStore`, and the claim that these files were injected into prompts was false. Deviation: no pinned slot in `MemoryStore`; the profile file already is the pinned slot.
+
+- 3.0 Done: mockups in `docs/design/2026-10-25-notch-mockups/` (`index.html`, `mockups.png`): resting A today / B capsule eyes / C pointer mascot, B's six eye states at 3x, the 440 pt peek, listening. The user picked B (capsule eyes) on 2026-10-26.
+
 ## Next
 
-- Phase 2: 2.1 `PromptAssembler` with golden tests.
+- Phase 3 with variant B: 3.1 `NotchPresence` split, then 3.2 onward.
+
+## Evidence 2026-10-26 (mini, Xcode 27 copy)
+
+- App suite 642 tests, 0 failures, 7 skipped. PerryBrain 338/0, PerryCore 84/0, PerryOverlay 28/0, PerryRuntimes 106/0, PerryCapture 6/0. PerryGuide 265 of 266: `testKeychainRoundTrip` fails with -25308 (errSecInteractionNotAllowed) because the login keychain is locked in an ssh session; unrelated to these changes.
+- `4fc747f` and `12a8702` each compile (`build-for-testing`) on their own.
+- The mini builds with `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=`; its keychain has no team identity.
 
 # Progress: designed Perry (installer, onboarding, product)
 
