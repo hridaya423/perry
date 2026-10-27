@@ -8,6 +8,7 @@ struct LocalBrainView: View {
     var bench: LocalBenchmark.Record?
     @AppStorage(PerryPreferences.$localMemoryBudget.key) private var budgetRaw = LocalBrain.Budget.nothing.rawValue
     @AppStorage(PerryPreferences.$localCloudFallback.key) private var fallbackRaw = LocalBrain.CloudFallback.ask.rawValue
+    @State private var offers: [ModelOffer] = []
 
     static func machineLine(_ profile: MachineProfile) -> String {
         let memory = Int((Double(profile.memoryBytes) / Double(1 << 30)).rounded())
@@ -25,13 +26,14 @@ struct LocalBrainView: View {
         profile.memoryBytes <= 8 << 30
     }
 
-    private var recommendation: Recommendation {
-        ModelFit.recommend(profile: profile, budget: (LocalBrain.Budget(rawValue: budgetRaw) ?? .nothing).memoryBudget)
+    private var rung: ModelRung {
+        local.chosen(from: offers)?.rung ?? offers.first?.rung ?? .qwen35_4B_UDQ4KXL
     }
 
     var body: some View {
-        let rung = recommendation.interactive
         SettingsCard(title: Self.machineLine(profile), footer: footer(rung)) {
+            LocalModelList(offers: offers, selected: rung.id) { local.choose($0) }
+            SettingsDivider()
             setupRow(rung)
             if profile.appleIntelligenceAvailable {
                 SettingsDivider()
@@ -63,10 +65,11 @@ struct LocalBrainView: View {
             }
         }
         .task { await brain.refresh() }
+        .onAppear { offers = local.offers(profile: profile) }
     }
 
     private func footer(_ rung: ModelRung) -> String {
-        let model = "Model: \(rung.name) \(rung.quant)."
+        let model = "Model: \(LocalModelList.modelName(rung)), \(rung.quant)."
         return Self.isSmall(profile) ? "Answers on a Mac with 8 GB are limited, so a cloud brain is better here. \(model)" : model
     }
 
@@ -108,7 +111,7 @@ struct LocalBrainView: View {
         switch budget {
         case .nothing: "Perry unloads it after 30 idle minutes. The next answer takes a few seconds longer."
         case .upTo2GB: "Only the small brain stays ready."
-        case .keepMainReady: String(format: "The main brain stays loaded, about %.0f GB.", recommendation.interactive.warmGB)
+        case .keepMainReady: String(format: "The main brain stays loaded, about %.0f GB.", rung.warmGB)
         }
     }
 

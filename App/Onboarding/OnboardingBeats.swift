@@ -109,19 +109,18 @@ private struct HelloBeat: View {
                 .frame(width: 220, height: 40)
                 .padding(.top, 16)
                 .modifier(LateEntrance(delay: 0.1))
-                Spacer(minLength: 12)
                 Button { director.acceptName(name) } label: { OnboardingPrimaryLabel(title: "Continue") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
                     .modifier(LateEntrance(delay: 0.14))
-                    .padding(.bottom, 8)
+                    .padding(.top, 20)
+                    .padding(.bottom, 4)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .top)
         .task {
             if !reduceMotion { try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound)) }
-            director.greetingSettled()
             settled = true
             await Task.yield()
             focused = true
@@ -367,24 +366,31 @@ private struct ShortcutsBeat: View {
 
     var body: some View {
         OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", message: "Click the key to change it.") {
-            Color.clear
+            EmptyView()
         } detail: {
-            ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
-                        .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+            VStack(spacing: 0) {
+                ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
+                SettingsDivider()
+                HStack {
+                    Text("Open Perry when you log in")
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    Spacer(minLength: 8)
+                    Toggle("Open at login", isOn: $openAtLogin)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(PerryTheme.Colors.accent)
+                        .controlSize(.small)
                 }
-                .multilineTextAlignment(.leading)
-                .buttonStyle(InkButtonStyle(.secondary))
-                .controlSize(.small)
-                .font(PerryTheme.Scale.body)
+                .settingsRowPadding()
+            }
+            .setupCard()
+            .multilineTextAlignment(.leading)
+            .buttonStyle(InkButtonStyle(.secondary))
+            .controlSize(.small)
+            .font(PerryTheme.Scale.body)
         } actions: {
             OnboardingFooter {
-                Toggle("Open at login", isOn: $openAtLogin)
-                    .toggleStyle(.checkbox)
-                    .font(PerryTheme.Scale.secondary)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                EmptyView()
             } primary: {
                 Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
                     .buttonStyle(InkButtonStyle())

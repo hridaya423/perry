@@ -10,16 +10,12 @@ enum NotchMotion {
     static let reducedResize = Animation.easeInOut(duration: 0.18)
 }
 
-enum NotchGreeting: Equatable {
-    case writing, settled
-}
-
 @MainActor
 final class NotchExpansion: ObservableObject {
     @Published var open = false
     @Published var contentShown = false
     @Published var peeking = false
-    @Published var greeting: NotchGreeting?
+    @Published var onboardingHeight: CGFloat?
     @Published var peekHeight: CGFloat?
     @Published var peekThread: UUID?
 }

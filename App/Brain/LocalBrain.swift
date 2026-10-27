@@ -83,6 +83,24 @@ final class LocalBrain: ObservableObject {
 
     var hasEngine: Bool { engine != nil }
 
+    var freeDiskBytes: Int64 {
+        (try? modelsDirectory.deletingLastPathComponent().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? 0
+    }
+
+    func offers(profile: MachineProfile) -> [ModelOffer] {
+        ModelFit.offers(profile: profile, freeDiskBytes: freeDiskBytes)
+    }
+
+    func chosen(from offers: [ModelOffer]) -> ModelOffer? {
+        offers.first { $0.rung.id == PerryPreferences.localModel && $0.blocker == nil } ?? ModelFit.recommended(offers)
+    }
+
+    func choose(_ offer: ModelOffer) {
+        PerryPreferences.localModel = offer.rung.id
+        objectWillChange.send()
+    }
+
     func startWatchingMemoryPressure() {
         guard pressureMonitor == nil else { return }
         pressureMonitor = MemoryPressureMonitor { [weak self] level in

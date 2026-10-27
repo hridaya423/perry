@@ -17,17 +17,13 @@ final class NotchLayoutTests: XCTestCase {
         expansion.peeking = true
         XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: true), .peek(content: nil))
         XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: false), .workspace)
-        expansion.greeting = .writing
-        XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: false), .greeting(.writing))
+        expansion.onboardingHeight = 200
+        XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: false), .onboarding(content: 200))
     }
 
-    func testGreetingIsSmallerThanTheWorkspace() {
-        let writing = NotchLayout.size(.greeting(.writing), cameraInset: 32, screen: screens[0])
-        let settled = NotchLayout.size(.greeting(.settled), cameraInset: 32, screen: screens[0])
-        let workspace = NotchLayout.size(.workspace, cameraInset: 32, screen: screens[0])
-        XCTAssertLessThan(writing.height, settled.height)
-        XCTAssertLessThan(settled.height, workspace.height)
-        XCTAssertLessThan(settled.width, workspace.width)
+    func testOnboardingHugsItsContent() {
+        XCTAssertEqual(NotchLayout.size(.onboarding(content: 200), cameraInset: 32, screen: screens[0]), CGSize(width: 560, height: 248))
+        XCTAssertEqual(NotchLayout.size(.onboarding(content: 2000), cameraInset: 32, screen: screens[0]).height, 540)
     }
 
     func testEveryModeStaysInsideItsBounds() {

@@ -69,7 +69,7 @@ struct FirstGoalBeat: View {
     var body: some View {
         if closing {
             OnboardingBeatLayout(title: "I’m up here whenever you need me.") {
-                Color.clear
+                EmptyView()
             } detail: {
                 EmptyView()
             } actions: {
@@ -84,7 +84,7 @@ struct FirstGoalBeat: View {
                 title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "I’ll start with \(trimmed).",
                 message: trimmed.isEmpty || asking ? nil : route.promise(trimmed)
             ) {
-                Color.clear
+                EmptyView()
             } detail: {
                 if trimmed.isEmpty || asking {
                     TextField("Figma auto layout, Spanish, SQL", text: $goal)

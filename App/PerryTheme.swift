@@ -98,7 +98,6 @@ enum PerryTheme {
         static let panelWidth = CGFloat(480)
         static let panelHeight = CGFloat(380)
         static let onboardingContentWidth = CGFloat(560)
-        static let onboardingContentHeight = CGFloat(430)
         static let iconButton = CGFloat(32)
         static let statusDot = CGFloat(7)
         static let progressWidth = CGFloat(70)

@@ -134,17 +134,16 @@ final class OnboardingDirectorTests: XCTestCase {
         resumed.stop()
     }
 
-    func testOnlyHelloGrowsTheNotchWhenTheGreetingSettles() {
-        var settled = 0
-        var effects = OnboardingDirector.Effects()
-        effects.settleGreeting = { settled += 1 }
-        let director = OnboardingDirector(effects: effects)
-        director.start()
-        director.greetingSettled()
-        XCTAssertEqual(settled, 1)
+    func testBackClosesTheBrainChooserBeforeLeavingTheBeat() {
+        let director = OnboardingDirector()
+        director.start(resume: false)
         director.skip()
-        director.greetingSettled()
-        XCTAssertEqual(settled, 1)
+        director.choosingBrain = true
+        director.goBack()
+        XCTAssertEqual(director.beat, .brain)
+        XCTAssertFalse(director.choosingBrain)
+        director.goBack()
+        XCTAssertEqual(director.beat, .hello)
         director.stop()
     }
 

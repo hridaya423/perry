@@ -83,7 +83,7 @@ final class PaperOnboardingTests: XCTestCase {
         director.start(resume: false)
         for beat in OnboardingDirector.Beat.allCases {
             let content = AnyView(OnboardingNotchView(director: director, model: model))
-            let size = NSSize(width: PerryTheme.Sizing.onboardingContentWidth, height: PerryTheme.Sizing.onboardingContentHeight)
+            let size = NSSize(width: PerryTheme.Sizing.onboardingContentWidth, height: 520)
             try render(content, name: beat.rawValue, size: size)
             director.skip()
         }
@@ -98,7 +98,7 @@ final class PaperOnboardingTests: XCTestCase {
         XCTAssertEqual(permissions.beat, .access)
         XCTAssertEqual(permissions.permissions?.accessibility, true)
         try render(AnyView(OnboardingNotchView(director: permissions, model: model)), name: "access-half",
-                   size: NSSize(width: PerryTheme.Sizing.onboardingContentWidth, height: PerryTheme.Sizing.onboardingContentHeight))
+                   size: NSSize(width: PerryTheme.Sizing.onboardingContentWidth, height: 520))
         permissions.stop()
     }
 

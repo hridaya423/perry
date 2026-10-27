@@ -39,15 +39,10 @@ struct OnboardingNotchView: View {
                 .id(director.beat)
                 .transition(beatTransition)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
             .padding(.horizontal, 24)
-            .padding(.bottom, 10)
         }
-        .frame(
-            maxWidth: PerryTheme.Sizing.onboardingContentWidth,
-            maxHeight: PerryTheme.Sizing.onboardingContentHeight,
-            alignment: .top
-        )
+        .frame(maxWidth: PerryTheme.Sizing.onboardingContentWidth, alignment: .top)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
         .animation(reduceMotion ? PerryTheme.Motion.panelStateChange : PerryTheme.Motion.enter, value: director.beat)
@@ -85,7 +80,7 @@ struct OnboardingCrown: View {
         ZStack {
             if director.beat == .hello, settled {
                 NotchPeek(size: 30, delay: HelloInk.peekDelay - HelloInk.lift.upperBound)
-                    .offset(y: 24)
+                    .offset(y: 34)
                     .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }

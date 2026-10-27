@@ -51,7 +51,7 @@ struct AppsBeat: View {
             title: "Connect your apps",
             message: tiles.isEmpty ? "Connect apps any time in Settings > Apps." : "Read-only to start. I ask before I change anything."
         ) {
-            Color.clear
+            EmptyView()
         } detail: {
             if !tiles.isEmpty {
                 VStack(spacing: 0) {

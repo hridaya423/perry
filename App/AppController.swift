@@ -107,11 +107,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var lastAwaitingApprovalCount = 0
     lazy var onboarding = OnboardingCoordinator(
         home: { [unowned self] in homeController },
-        showNotch: { [unowned self] in showPanel() },
-        greet: { [unowned self] (greeting: NotchGreeting?) in
-            sessionPanel.expansion.greeting = greeting
-            refreshNotchLayout()
-        }
+        showNotch: { [unowned self] in showPanel() }
     )
     var persistenceTasks: [UUID: Task<Void, Never>] = [:]
 #if DEBUG

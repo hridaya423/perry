@@ -7,14 +7,12 @@ import PerryCapture
 final class OnboardingCoordinator {
     private let home: () -> HomeController
     private let showNotch: () -> Void
-    private let greet: (NotchGreeting?) -> Void
     private var beatObservation: AnyCancellable?
     private(set) var director: OnboardingDirector?
 
-    init(home: @escaping () -> HomeController, showNotch: @escaping () -> Void, greet: @escaping (NotchGreeting?) -> Void = { _ in }) {
+    init(home: @escaping () -> HomeController, showNotch: @escaping () -> Void) {
         self.home = home
         self.showNotch = showNotch
-        self.greet = greet
     }
 
     static func opensAtLaunch(completed: Bool, dismissed: Bool) -> Bool {
@@ -60,7 +58,6 @@ final class OnboardingCoordinator {
         }
         effects.dismiss = { [weak self] in self?.tearDown() }
         effects.finish = { [weak self] keepNotchOpen in self?.finish(keepNotchOpen: keepNotchOpen) }
-        effects.settleGreeting = { [weak self] in self?.greet(.settled) }
         let director = OnboardingDirector(effects: effects, defaults: .standard)
         self.director = director
         let home = home()
@@ -70,7 +67,6 @@ final class OnboardingCoordinator {
             .receive(on: DispatchQueue.main)
             .sink { [weak self, weak director] beat in
                 guard let self, let director, self.director === director, let beat else { return }
-                self.greet(beat == .hello ? (NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? .settled : .writing) : nil)
                 self.showNotch()
             }
         director.start(resume: resume)
@@ -90,7 +86,6 @@ final class OnboardingCoordinator {
     private func tearDown(collapse: Bool = true) {
         beatObservation = nil
         director = nil
-        greet(nil)
         let home = home()
         home.homeModel.onboarding = nil
         if collapse { home.homeModel.deps.controller?.collapseNotch() }

@@ -119,6 +119,7 @@ enum PerryPreferences {
     @Preference("perry.cua.driver.path") static var cuaDriverPath = ""
     @Preference("perry.local.memoryBudget") static var localMemoryBudget = "nothing"
     @Preference("perry.local.cloudFallback") static var localCloudFallback = "ask"
+    @Preference("perry.local.model") static var localModel: String? = nil
 
     // MARK: Voice & dictation
 

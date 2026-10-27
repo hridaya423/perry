@@ -13,11 +13,12 @@ public struct SetupFacts: Equatable, Sendable {
     public var voiceKeys: Set<VoiceService>
     public var cloudBrainReady: Bool
     public var localBrainCapable: Bool
+    public var localModelFits: Bool
     public var priority: SetupPriority
 
     public init(memoryGB: Int, macOSMajor: Int, speechAnalyzerSupportsLocale: Bool = true, premiumSystemVoice: String? = nil,
                 kokoroInstalled: Bool = false, voiceKeys: Set<VoiceService> = [], cloudBrainReady: Bool = false,
-                localBrainCapable: Bool = false, priority: SetupPriority = .recommended) {
+                localBrainCapable: Bool = false, localModelFits: Bool = false, priority: SetupPriority = .recommended) {
         self.memoryGB = memoryGB
         self.macOSMajor = macOSMajor
         self.speechAnalyzerSupportsLocale = speechAnalyzerSupportsLocale
@@ -26,6 +27,7 @@ public struct SetupFacts: Equatable, Sendable {
         self.voiceKeys = voiceKeys
         self.cloudBrainReady = cloudBrainReady
         self.localBrainCapable = localBrainCapable
+        self.localModelFits = localModelFits
         self.priority = priority
     }
 }
@@ -64,13 +66,14 @@ public enum SetupAdvisor {
             voice: voice(for: facts),
             hearing: facts.macOSMajor >= 26 && facts.speechAnalyzerSupportsLocale ? .speechAnalyzer : .onDevice,
             hidesPersonalDetails: brain == .cloud && facts.priority != .quality,
-            brainNote: privateCloud && !facts.localBrainCapable
-                ? "This Mac can chat privately but can’t use your apps well, so the brain stays in the cloud with personal details hidden."
+            brainNote: privateCloud
+                ? "This Mac doesn’t have room for a private brain, so the brain stays in the cloud with personal details hidden."
                 : nil
         )
     }
 
     private static func brain(for facts: SetupFacts) -> SetupRecommendation.Brain {
+        if facts.priority == .privacy && facts.localModelFits { return .local }
         guard facts.localBrainCapable else { return .cloud }
         return facts.priority == .privacy || !facts.cloudBrainReady ? .local : .cloud
     }

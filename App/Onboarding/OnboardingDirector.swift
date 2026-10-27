@@ -18,7 +18,6 @@ final class OnboardingDirector: ObservableObject {
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
-        var settleGreeting: () -> Void = {}
     }
 
     static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
@@ -26,6 +25,7 @@ final class OnboardingDirector: ObservableObject {
     @Published private(set) var beat: Beat?
     @Published private(set) var direction = Direction.forward
     @Published private(set) var permissions: PerryPermissionSnapshot?
+    @Published var choosingBrain = false
 
     private let effects: Effects
     private let defaults: UserDefaults?
@@ -55,11 +55,6 @@ final class OnboardingDirector: ObservableObject {
         enter(saved ?? .hello, direction: .forward)
     }
 
-    func greetingSettled() {
-        guard beat == .hello else { return }
-        effects.settleGreeting()
-    }
-
     func skip() {
         guard let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
         guard index + 1 < Beat.allCases.count else { return finish(keepNotchOpen: false) }
@@ -78,6 +73,7 @@ final class OnboardingDirector: ObservableObject {
     }
 
     func goBack() {
+        if choosingBrain { return choosingBrain = false }
         guard canGoBack, let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
         enter(Beat.allCases[index - 1], direction: .backward)
     }
@@ -130,6 +126,7 @@ final class OnboardingDirector: ObservableObject {
 
     private func enter(_ next: Beat, direction: Direction) {
         self.direction = direction
+        choosingBrain = false
         beat = next
         permissions = nil
         defaults?.set(next.rawValue, forKey: PerryPreferences.$onboardingBeat.key)

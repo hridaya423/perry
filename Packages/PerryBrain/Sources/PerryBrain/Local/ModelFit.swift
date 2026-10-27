@@ -81,6 +81,7 @@ public struct ModelRung: Equatable, Sendable {
     public static let qwen36_35B_UDQ6K = ModelRung(name: "Qwen3.6-35B-A3B", quant: "UD-Q6_K", downloadGB: 30.2, activeGB: 32.3)
     public static let qwen36_35B_Q80 = ModelRung(name: "Qwen3.6-35B-A3B", quant: "Q8_0", downloadGB: 37.8, activeGB: 39.9)
     public static let qwen38_27B_UDIQ4XS = ModelRung(name: "Qwen3.8-27B", quant: "UD-IQ4_XS", downloadGB: 15.2, activeGB: 18.1)
+    public static let qwen38_27B_UDQ4KXL = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q4_K_XL", downloadGB: 18.5, activeGB: 21.4)
     public static let qwen38_27B_UDQ5KXL = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q5_K_XL", downloadGB: 21.8, activeGB: 24.7)
     public static let qwen38_27B_UDQ6K = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q6_K", downloadGB: 22.9, activeGB: 25.8)
     public static let qwen38_27B_Q80 = ModelRung(name: "Qwen3.8-27B", quant: "Q8_0", downloadGB: 30.0, activeGB: 32.9)
@@ -111,6 +112,18 @@ public struct Recommendation: Equatable, Sendable {
     public var idleMemoryGB: Double
 }
 
+public struct ModelOffer: Equatable, Sendable {
+    public enum Size: CaseIterable, Sendable { case small, medium, large }
+    public enum Blocker: Equatable, Sendable {
+        case memory
+        case disk(neededGB: Double)
+    }
+
+    public var size: Size
+    public var rung: ModelRung
+    public var blocker: Blocker?
+}
+
 public enum ModelFit {
     public static let fitShare = 0.75
 
@@ -124,6 +137,28 @@ public enum ModelFit {
     ]
 
     private static let tiers = [8, 16, 24, 32, 48, 64, 96]
+
+    public static let diskHeadroomGB = 2.0
+
+    public static func offers(profile: MachineProfile, freeDiskBytes: Int64) -> [ModelOffer] {
+        let large = [ModelRung.qwen38_27B_UDQ4KXL, .qwen38_27B_UDIQ4XS].first { fits($0, on: profile) } ?? .qwen38_27B_UDIQ4XS
+        let sizes: [(ModelOffer.Size, ModelRung)] = [(.small, .qwen35_4B_UDQ4KXL), (.medium, .qwen35_9B_UDQ4KXL), (.large, large)]
+        return sizes.map { size, rung in
+            let needed = rung.downloadGB + diskHeadroomGB
+            let blocker: ModelOffer.Blocker? = if !fits(rung, on: profile) {
+                .memory
+            } else if needed * 1e9 > Double(freeDiskBytes) {
+                .disk(neededGB: needed)
+            } else {
+                nil
+            }
+            return ModelOffer(size: size, rung: rung, blocker: blocker)
+        }
+    }
+
+    public static func recommended(_ offers: [ModelOffer]) -> ModelOffer? {
+        offers.last { $0.blocker == nil }
+    }
 
     public static func recommend(profile: MachineProfile, budget: MemoryBudget) -> Recommendation {
         let tier = memoryTier(profile.memoryBytes)

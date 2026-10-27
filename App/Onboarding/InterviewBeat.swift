@@ -348,11 +348,20 @@ struct InterviewBeat: View {
             title: "Tell me about you.",
             message: (["A few quick questions. I keep notes on this Mac, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " ")
         ) {
-            Color.clear
+            EmptyView()
         } detail: {
             if model.canImport {
                 Button { model.startImport() } label: {
-                    Label("Bring notes from ChatGPT or Claude", systemImage: "square.and.arrow.down")
+                    HStack(spacing: 8) {
+                        if Self.installedAssistants.isEmpty {
+                            Image(systemName: "tray.and.arrow.down")
+                        } else {
+                            HStack(spacing: -5) {
+                                ForEach(Self.installedAssistants, id: \.self) { BrandMark(id: $0, size: 18) }
+                            }
+                        }
+                        Text("Import memory from ChatGPT or Claude")
+                    }
                 }
                 .buttonStyle(ChipStyle())
             }
@@ -371,26 +380,18 @@ struct InterviewBeat: View {
     }
 
     private var importNotes: some View {
-        OnboardingBeatLayout(title: "Bring your notes over", message: "Ask ChatGPT or Claude this, then paste the answer here.") {
-            Color.clear
+        OnboardingBeatLayout(title: "Import your memory", message: "I’ll copy a request. Paste it into ChatGPT or Claude, then paste the reply here.") {
+            EmptyView()
         } detail: {
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    Text(MemoryExtraction.importRequest)
-                        .font(PerryTheme.Scale.secondary)
-                        .foregroundStyle(PerryTheme.Colors.text)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button(copied ? "Copied" : "Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(MemoryExtraction.importRequest, forType: .string)
-                        copied = true
+                    assistantButton("chatgpt", name: "ChatGPT", web: "https://chatgpt.com")
+                    assistantButton("claude", name: "Claude", web: "https://claude.ai/new")
+                    Spacer(minLength: 0)
+                    if copied {
+                        GrantedMark(title: "Request copied")
                     }
-                    .buttonStyle(InkButtonStyle(.secondary))
-                    .controlSize(.small)
                 }
-                .padding(10)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                 TextEditor(text: $model.pasted)
                     .font(PerryTheme.Scale.secondary)
                     .scrollContentBackground(.hidden)
@@ -420,9 +421,34 @@ struct InterviewBeat: View {
         }
     }
 
+    private static let installedAssistants = ["chatgpt", "claude"].filter { id in
+        BrandCatalog.entries[id]?.bundleIDs.contains { AppIcons.installed(bundleID: $0) != nil } == true
+    }
+
+    private func assistantButton(_ id: String, name: String, web: String) -> some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(MemoryExtraction.importRequest, forType: .string)
+            copied = true
+            let app = BrandCatalog.entries[id]?.bundleIDs.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
+            if let app {
+                NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+            } else if let url = URL(string: web) {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if Self.installedAssistants.contains(id) { BrandMark(id: id, size: 16) }
+                Text("Open \(name)")
+            }
+        }
+        .buttonStyle(InkButtonStyle(.secondary))
+        .controlSize(.small)
+    }
+
     private var pronounce: some View {
         OnboardingBeatLayout(title: "How do you say \(model.facts.name)?", message: "Listen to my try. If it is wrong, spell it the way it sounds.") {
-            Color.clear
+            EmptyView()
         } detail: {
             HStack(spacing: 8) {
                 Button { model.sayName() } label: {
@@ -463,7 +489,7 @@ struct InterviewBeat: View {
 
     private func question(_ index: Int) -> some View {
         OnboardingBeatLayout(title: model.questions[index], message: model.reaction) {
-            Color.clear
+            EmptyView()
         } detail: {
             VStack(spacing: 12) {
                 answerField(index)
@@ -489,7 +515,7 @@ struct InterviewBeat: View {
 
     private var style: some View {
         OnboardingBeatLayout(title: "How should I answer?", message: "You can change this any time.") {
-            Color.clear
+            EmptyView()
         } detail: {
             Color.clear.frame(height: 0)
         } actions: {
@@ -570,7 +596,7 @@ struct InterviewBeat: View {
 
     private var review: some View {
         OnboardingBeatLayout(title: "What I know about you", message: model.extracting ? "Sorting your answers…" : "I haven’t saved this yet.") {
-            Color.clear
+            EmptyView()
         } detail: {
             ScrollView {
                 VStack(spacing: 0) {

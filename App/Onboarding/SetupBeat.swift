@@ -7,7 +7,7 @@ import SwiftUI
 enum SetupFactsProbe {
     private static var machine: SetupFacts?
 
-    static func current(brain: BrainController, cloudBrainReady: Bool, priority: SetupPriority) -> SetupFacts {
+    static func current(brain: BrainController, cloudBrainReady: Bool, localModelFits: Bool, priority: SetupPriority) -> SetupFacts {
         var facts = machine ?? SetupFacts(
             memoryGB: Int(ProcessInfo.processInfo.physicalMemory >> 30),
             macOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
@@ -19,6 +19,7 @@ enum SetupFactsProbe {
         )
         machine = facts
         facts.cloudBrainReady = cloudBrainReady
+        facts.localModelFits = localModelFits
         facts.priority = priority
         return facts
     }
@@ -52,7 +53,10 @@ struct SetupBeat: View {
     @State private var installing: String?
     @State private var voiceError: String?
     @State private var refresh = 0
-    @State private var choosingBrain = false
+    @State private var chooserTab = SetupRecommendation.Brain.cloud
+    @State private var profile = MachineProfile.current()
+    @State private var offers: [ModelOffer] = []
+    @State private var freeGB = 0.0
     @StateObject private var keyCapture = VoiceKeyCapture()
 
     private var cloudRow: CloudBrainList.Row {
@@ -65,7 +69,8 @@ struct SetupBeat: View {
 
     private var advice: SetupRecommendation {
         _ = refresh
-        return SetupAdvisor.recommend(SetupFactsProbe.current(brain: brain, cloudBrainReady: cloudReady, priority: priority))
+        return SetupAdvisor.recommend(SetupFactsProbe.current(brain: brain, cloudBrainReady: cloudReady,
+                                                              localModelFits: ModelFit.recommended(offers) != nil, priority: priority))
     }
 
     private var savedBrain: SetupRecommendation.Brain? {
@@ -77,6 +82,7 @@ struct SetupBeat: View {
     private var brainsKnown: Bool { brain.setupStates[.chatGPT] != .unchecked }
     private var needsChatGPT: Bool { brainsKnown && brainPick == .cloud && !cloudReady && cloudRow == .chatGPT }
     private var hides: Bool { hideOverride ?? advice.hidesPersonalDetails }
+    private var localOffer: ModelOffer? { local.chosen(from: offers) }
 
     private var voicePick: SpeechEngineChoice? {
         if let voiceOverride { return voiceOverride }
@@ -89,35 +95,19 @@ struct SetupBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: choosingBrain ? "Choose a brain" : "Your setup") {
+        OnboardingBeatLayout(title: director.choosingBrain ? "Choose a brain" : "Your setup") {
             PerryCharacterView(pose: pose, size: 36)
         } detail: {
-            if choosingBrain, let catalog {
-                ScrollView {
-                    VStack(spacing: 12) {
-                        BrainChoiceSection(brain: brain, local: local, catalog: catalog)
-                    }
-                    .frame(width: 420)
-                    .multilineTextAlignment(.leading)
-                }
-                .scrollIndicators(.never)
-                .frame(maxHeight: 300)
-            } else {
-                ViewThatFits(in: .vertical) {
-                    setup(compact: false)
-                    setup(compact: true)
-                }
-                .multilineTextAlignment(.leading)
+            Group {
+                if director.choosingBrain { chooser } else { setup }
             }
+            .multilineTextAlignment(.leading)
         } actions: {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                if choosingBrain {
-                    Button {
-                        brainOverride = nil
-                        choosingBrain = false
-                    } label: { OnboardingPrimaryLabel(title: "Done") }
+                if director.choosingBrain {
+                    Button { director.choosingBrain = false } label: { OnboardingPrimaryLabel(title: "Done") }
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
@@ -131,7 +121,7 @@ struct SetupBeat: View {
             } trailing: {
                 if brain.isSigningIn {
                     Button("Cancel") { brain.cancelSignIn() }
-                } else if !choosingBrain {
+                } else if !director.choosingBrain {
                     Button("Skip") { director.skip() }
                 }
             }
@@ -146,6 +136,8 @@ struct SetupBeat: View {
             if case .system = advice.voice, voiceOverride == nil { voice.preview(SetupFactsProbe.sample(name: name), engine: .system) }
         }
         .onAppear {
+            freeGB = Double(local.freeDiskBytes) / 1e9
+            offers = local.offers(profile: profile)
             SetupFactsProbe.forget()
             keyCapture.onSaved = { service in
                 voiceOverride = .cloud(service)
@@ -157,48 +149,73 @@ struct SetupBeat: View {
         .onDisappear { keyCapture.stop() }
     }
 
-    private func setup(compact: Bool) -> some View {
-        VStack(spacing: compact ? 6 : 10) {
-            if !compact {
-                Picker("Priority", selection: $priority) {
-                    Text("Recommended").tag(SetupPriority.recommended)
-                    Text("Best quality").tag(SetupPriority.quality)
-                    Text("Most private").tag(SetupPriority.privacy)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 340)
-                .onChange(of: priority) { _, _ in
-                    brainOverride = nil
-                    voiceOverride = nil
-                    hideOverride = nil
-                }
+    private var setup: some View {
+        VStack(spacing: 10) {
+            Picker("Priority", selection: $priority) {
+                Text("Recommended").tag(SetupPriority.recommended)
+                Text("Best quality").tag(SetupPriority.quality)
+                Text("Most private").tag(SetupPriority.privacy)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 340)
+            .onChange(of: priority) { _, _ in
+                brainOverride = nil
+                voiceOverride = nil
+                hideOverride = nil
             }
             VStack(spacing: 0) {
-                brainRow.environment(\.setupCompact, compact)
+                brainRow
                 SettingsDivider()
-                voiceRow.environment(\.setupCompact, compact)
-                if !compact {
-                    SettingsDivider()
-                    hearingRow
-                }
+                voiceRow
+                SettingsDivider()
+                hearingRow
                 if brainPick == .cloud {
                     SettingsDivider()
-                    privacyRow.environment(\.setupCompact, compact)
+                    privacyRow
                 }
             }
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
-            }
+            .setupCard()
             if let message = brain.signInError ?? voiceError ?? (brainPick == .cloud ? advice.brainNote : nil) {
                 Text(message)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(brain.signInError ?? voiceError == nil ? PerryTheme.Colors.textSecondary : PerryTheme.Colors.caution)
-                    .lineLimit(compact ? 1 : 3)
-                    .fixedSize(horizontal: false, vertical: !compact)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+
+    private var chooser: some View {
+        VStack(spacing: 10) {
+            Picker("Where the brain runs", selection: $chooserTab) {
+                Text("Cloud").tag(SetupRecommendation.Brain.cloud)
+                Text("On this Mac").tag(SetupRecommendation.Brain.local)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 240)
+            VStack(spacing: 0) {
+                if chooserTab == .cloud {
+                    CloudBrainList(brain: brain, selection: brainPick == .cloud ? cloudRow : nil) { row in
+                        if case .agent(let agent) = row { brain.setAcpAgent(agent) } else { brain.modelChoice = row.choice }
+                        brainOverride = .cloud
+                    }
+                } else {
+                    LocalModelList(offers: offers, selected: brainPick == .local ? localOffer?.rung.id : nil) { offer in
+                        local.choose(offer)
+                        brain.modelChoice = .local
+                        brainOverride = .local
+                    }
+                }
+            }
+            .setupCard()
+            if chooserTab == .local {
+                Text(LocalModelList.machineLine(profile, freeGB: freeGB))
+                    .font(PerryTheme.Scale.meta)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            }
+        }
+        .frame(width: 420)
     }
 
     private var brainRow: some View {
@@ -208,19 +225,29 @@ struct SetupBeat: View {
                     brain.signInWithChatGPT { connected in if connected { brain.modelChoice = .chatGPT } }
                 }
             }
-            if catalog != nil {
-                Button("Change") {
-                    keepPick()
-                    choosingBrain = true
-                }
+            Button("Change") {
+                keepPick()
+                chooserTab = brainPick
+                director.choosingBrain = true
             }
         }
     }
 
     private var brainDetail: String {
-        if brainPick == .local { return "On this Mac. Nothing leaves it." }
+        if brainPick == .local { return localDetail }
         guard brainsKnown else { return "Looking for your brains…" }
         return cloudReady ? "\(cloudRow.title). Ready." : "\(cloudRow.title). Not connected yet."
+    }
+
+    private var localDetail: String {
+        switch local.phase {
+        case .ready: return "On this Mac. Ready."
+        case .downloading(let received, let total): return "Downloading, \(total > 0 ? received * 100 / total : 0)%."
+        case .failed(let message): return message
+        case .notSetUp:
+            guard let localOffer else { return "On this Mac. Nothing leaves it." }
+            return "\(localOffer.size.title), on this Mac. \(LocalModelList.gigabytes(localOffer.rung.downloadGB)) download."
+        }
     }
 
     private var primaryTitle: String {
@@ -343,6 +370,10 @@ struct SetupBeat: View {
 
     private func accept() {
         if brainPick == .local || cloudReady { keepPick() }
+        if brainPick == .local, local.phase == .notSetUp, local.hasEngine, let localOffer {
+            local.choose(localOffer)
+            Task { await local.setUp(localOffer.rung) }
+        }
         if let voicePick { PerryPreferences.speechEngine = voicePick.rawValue }
         hidePersonalDetails = brainPick == .cloud && hides
         if needsChatGPT {
@@ -356,8 +387,13 @@ struct SetupBeat: View {
     }
 }
 
-extension EnvironmentValues {
-    @Entry var setupCompact = false
+extension View {
+    func setupCard() -> some View {
+        background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+            }
+    }
 }
 
 private struct SetupRow<Trailing: View>: View {
@@ -366,34 +402,23 @@ private struct SetupRow<Trailing: View>: View {
     let title: String
     let detail: String
     @ViewBuilder var trailing: Trailing
-    @Environment(\.setupCompact) private var compact
 
     var body: some View {
-        HStack(alignment: .center, spacing: compact ? 10 : 12) {
-            SymbolTile(systemImage: systemImage, tint: tint, size: compact ? 24 : 28)
-            if compact {
+        HStack(alignment: .center, spacing: 12) {
+            SymbolTile(systemImage: systemImage, tint: tint, size: 28)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(PerryTheme.Scale.rowTitle).foregroundStyle(PerryTheme.Colors.text)
-                    .lineLimit(1)
-                    .fixedSize()
                 Text(detail)
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .lineLimit(1)
-            } else {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(PerryTheme.Scale.rowTitle).foregroundStyle(PerryTheme.Colors.text)
-                    Text(detail)
-                        .font(PerryTheme.Scale.secondary)
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
             }
             Spacer(minLength: 8)
             HStack(spacing: 6) { trailing }
                 .buttonStyle(InkButtonStyle(.secondary))
                 .controlSize(.small)
         }
-        .padding(.horizontal, compact ? 12 : 14)
-        .padding(.vertical, compact ? 5 : 8)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }

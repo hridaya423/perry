@@ -108,6 +108,7 @@ struct CompactConversationView: View {
         }
         .onChange(of: expansion.peeking) { _, _ in controller.refreshNotchLayout() }
         .onChange(of: expansion.peekHeight) { _, _ in controller.refreshNotchLayout() }
+        .onChange(of: expansion.onboardingHeight) { _, _ in controller.refreshNotchLayout() }
         .onChange(of: presentation.current?.id) { _, _ in controller.refreshNotchLayout() }
         .task(id: presentation.current?.contentHeight) { controller.refreshNotchLayout() }
     }
@@ -127,6 +128,14 @@ struct CompactConversationView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if model.sidebarSelection != .settings, let onboarding = model.onboarding {
             OnboardingNotchView(director: onboarding, model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = expansion.onboardingHeight == nil
+                    withTransaction(transaction) { expansion.onboardingHeight = height }
+                }
+                .onDisappear { expansion.onboardingHeight = nil }
+                .frame(maxHeight: .infinity, alignment: .top)
         } else {
             NotchWorkspaceView(model: model)
         }

@@ -36,6 +36,13 @@ final class SetupAdvisorTests: XCTestCase {
         }
     }
 
+    func testPrivateUserGetsALocalBrainWhenOneFitsThisMac() {
+        let pick = SetupAdvisor.recommend(SetupFacts(memoryGB: 48, macOSMajor: 27, cloudBrainReady: true, localModelFits: true, priority: .privacy))
+        XCTAssertEqual(pick.brain, .local)
+        XCTAssertNil(pick.brainNote)
+        XCTAssertEqual(SetupAdvisor.recommend(SetupFacts(memoryGB: 48, macOSMajor: 27, cloudBrainReady: true, localModelFits: true)).brain, .cloud)
+    }
+
     func testPrivateUserWithSmallMacGetsAPlainNote() {
         let pick = SetupAdvisor.recommend(SetupFacts(memoryGB: 16, macOSMajor: 27, priority: .privacy))
         XCTAssertEqual(pick.brain, .cloud)

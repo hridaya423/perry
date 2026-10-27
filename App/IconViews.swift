@@ -193,6 +193,8 @@ enum BrandCatalog {
         "google-gmail": Entry(bundleIDs: [], asset: "brand-google-gmail", tile: .native),
         "microsoft": Entry(bundleIDs: ["com.microsoft.Outlook"], asset: "brand-microsoft", tile: .native),
         "apple-calendar": Entry(bundleIDs: ["com.apple.iCal"], asset: nil, tile: .native),
+        "chatgpt": Entry(bundleIDs: ["com.openai.chat", "com.openai.codex"], asset: nil, tile: .native),
+        "claude": Entry(bundleIDs: ["com.anthropic.claudefordesktop"], asset: nil, tile: .native),
     ]
 }
 

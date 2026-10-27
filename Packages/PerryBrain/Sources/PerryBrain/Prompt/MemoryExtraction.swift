@@ -105,7 +105,7 @@ public enum InterviewPolicy {
 }
 
 extension MemoryExtraction {
-    public static let importRequest = "Tell me everything you remember about me, as a short list of plain facts."
+    public static let importRequest = "I’m moving to a new assistant. List everything you remember about me: my name, work, projects, the people I mention, the tools I use, my preferences and how I like answers written. Use one short plain fact per line, with no commentary."
 
     public static func importPrompt(_ notes: String) -> String {
         """

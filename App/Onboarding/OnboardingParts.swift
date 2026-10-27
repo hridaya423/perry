@@ -13,9 +13,13 @@ struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear
-                .frame(height: Self.artZone)
-                .overlay { art.frame(maxWidth: .infinity) }
+            if Art.self != EmptyView.self {
+                Color.clear
+                    .frame(height: Self.artZone)
+                    .overlay { art.frame(maxWidth: .infinity) }
+            } else {
+                Color.clear.frame(height: 12)
+            }
             if let title {
                 Text(title)
                     .font(PerryTheme.Scale.display)
@@ -34,11 +38,11 @@ struct OnboardingBeatLayout<Art: View, Detail: View, Actions: View>: View {
             detail
                 .frame(maxWidth: 420)
                 .padding(.top, 10)
-            Spacer(minLength: 8)
             actions
+                .padding(.top, 20)
         }
         .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
     }
 }
 

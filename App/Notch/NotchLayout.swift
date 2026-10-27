@@ -4,7 +4,7 @@ enum NotchLayout {
     enum Mode: Equatable {
         case peek(content: CGFloat?)
         case focused(content: CGFloat?)
-        case greeting(NotchGreeting)
+        case onboarding(content: CGFloat?)
         case workspace
     }
 
@@ -33,6 +33,7 @@ enum NotchLayout {
     static let peekInset: CGFloat = 24
     static let peekWidth: CGFloat = 480
     static let interactionBar: CGFloat = 30
+    static let onboardingWidth: CGFloat = 560
 
     @MainActor
     static func mode(_ presentation: NotchPresentation, expansion: NotchExpansion, showsPeek: Bool) -> Mode {
@@ -40,7 +41,7 @@ enum NotchLayout {
            !(showsPeek && entry.priority == .activity) {
             return .focused(content: entry.contentHeight)
         }
-        if let greeting = expansion.greeting { return .greeting(greeting) }
+        if let height = expansion.onboardingHeight { return .onboarding(content: height) }
         return showsPeek ? .peek(content: expansion.peekHeight) : .workspace
     }
 
@@ -58,9 +59,9 @@ enum NotchLayout {
         case .focused(let content):
             width = 440
             height = content.map { min(max(cameraInset + interactionBar + $0 + bottomInset, 120), 340) } ?? 340
-        case .greeting(let greeting):
-            width = 560
-            height = cameraInset + (greeting == .writing ? 184 : 344)
+        case .onboarding(let content):
+            width = onboardingWidth
+            height = content.map { max(cameraInset + $0 + bottomInset, 120) } ?? 520
         case .workspace:
             width = 780
             height = 520
