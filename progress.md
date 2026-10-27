@@ -670,3 +670,22 @@ Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). P
   interview fields, keyboard-driven animation in onboarding (kept: first-run only), notch open spring (kept the
   no-overshoot choice from 62ea35d; owner to decide).
 - Next: remaining audit items, contact sheet, install for the owner.
+
+## 9.5 First-run fixes from the owner's try (2026-10-27)
+
+- `058ee5b`: onboarding and notch fixes for the owner's first-run report.
+  - Continue froze for about 1.2 s because SetupBeat re-ran the voice and keychain probes on every render. The
+    owner's second click then hit "Looks good", which started ChatGPT sign-in. Facts are now cached. Sign-in starts
+    only from a "Connect ChatGPT" button. Mini frames: the next screen starts by 0.15 s and is fully shown by 0.35 s.
+  - Brains are looked up during hello, so the row shows "Claude Code. Ready." at once without a flip.
+  - "Change" opens the brain chooser inside onboarding, not in Settings. The current brain is selected, and the
+    text is left-aligned (mini frames).
+  - Hello starts in a compact notch and grows when the text settles. The crown peek waits for the settle (mini frames).
+  - Hover after Settings shows the task peek. Finish setup opens the full notch at once. Hover-out closes only a
+    peek, not a notch the user opened. These are unit-tested (NotchLayoutTests, NotchPeekTests) but not driven
+    live, because cua-driver cursor warps do not reach Perry's mouseMoved monitor.
+  - Full app suite before the test fix: 901 tests, 3 failures, all in two NotchPeekTests whose helper opened a
+    full panel, not a peek. After the fix: NotchPeekTests, NotchLayoutTests and OnboardingDirectorTests 23/0.
+- Installed for the owner on 2026-10-27 after a full reset. The data backup is in build/backup/reset-2026-10-27b.
+- Open: cloud STT for "Best quality" (owner suggestion; needs a provider choice), the loopback drill (owner clicks
+  Allow on the mini), and a screen recording of the notch bounce.
