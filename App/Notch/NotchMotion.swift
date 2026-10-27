@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum NotchMotion {
-    static let open = Animation.spring(response: 0.30, dampingFraction: 1.0)
+    static let open = Animation.spring(response: 0.36, dampingFraction: 0.78)
     static let close = Animation.spring(response: 0.30, dampingFraction: 0.95)
     static let resize = Animation.spring(response: 0.32, dampingFraction: 0.90)
     static let contentIn = Animation.easeOut(duration: 0.16).delay(0.04)
