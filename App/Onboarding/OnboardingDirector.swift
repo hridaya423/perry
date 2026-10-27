@@ -79,8 +79,12 @@ final class OnboardingDirector: ObservableObject {
         enter(previous, direction: .backward)
     }
 
+    var beats: [Beat] {
+        Beat.allCases.filter { $0 != .apps || effects.hasApps() }
+    }
+
     private func neighbor(of beat: Beat, step: Int) -> Beat? {
-        let beats = Beat.allCases.filter { $0 != .apps || effects.hasApps() }
+        let beats = beats
         guard let index = beats.firstIndex(of: beat) else { return nil }
         return beats.indices.contains(index + step) ? beats[index + step] : nil
     }

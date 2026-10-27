@@ -6,15 +6,17 @@ struct OnboardingNotchView: View {
     @ObservedObject var director: OnboardingDirector
     @ObservedObject var model: HomeModel
 
+    private var beats: [OnboardingDirector.Beat] { director.beats }
+
     private var beatIndex: Int {
-        director.beat.flatMap { OnboardingDirector.Beat.allCases.firstIndex(of: $0) } ?? 0
+        director.beat.flatMap { beats.firstIndex(of: $0) } ?? 0
     }
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 if director.beat != .hello {
-                    OnboardingProgress(current: beatIndex, count: OnboardingDirector.Beat.allCases.count)
+                    OnboardingProgress(current: beatIndex, count: beats.count)
                         .animation(PerryTheme.Motion.progress, value: beatIndex)
                 }
                 HStack {
