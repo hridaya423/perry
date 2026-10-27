@@ -212,4 +212,11 @@ final class InterviewModelTests: XCTestCase {
         interview.chooseStyle("Short and direct")
         try await shot("7-review")
     }
+
+    func testSavedFactsStartWithACapital() {
+        XCTAssertEqual(InterviewModel.capitalized("spanish"), "Spanish")
+        XCTAssertEqual(InterviewModel.capitalized("iMovie and figma"), "iMovie and figma")
+        XCTAssertEqual(InterviewModel.capitalized("GitHub"), "GitHub")
+        XCTAssertEqual(InterviewModel.capitalized(nil), "")
+    }
 }

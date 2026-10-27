@@ -176,6 +176,13 @@ final class InterviewModel: ObservableObject {
         step = .done
     }
 
+    static func capitalized(_ text: String?) -> String {
+        guard let text, let first = text.first else { return text ?? "" }
+        let word = text.prefix { !$0.isWhitespace }
+        guard word.allSatisfy({ !$0.isUppercase }) else { return text }
+        return first.uppercased() + text.dropFirst()
+    }
+
     private func finishQuestions() {
         guard answers.contains(where: { $0 != nil }) || !notes.isEmpty || !facts.spoken.isEmpty else {
             step = .done
@@ -183,9 +190,9 @@ final class InterviewModel: ObservableObject {
         }
         for (kind, answer) in zip(kinds, answers) {
             switch kind {
-            case .work: facts.work = answer ?? ""
-            case .apps: facts.apps = answer ?? ""
-            case .goal: facts.goal = answer ?? ""
+            case .work: facts.work = Self.capitalized(answer)
+            case .apps: facts.apps = Self.capitalized(answer)
+            case .goal: facts.goal = Self.capitalized(answer)
             case .followUp: break
             }
         }
@@ -204,9 +211,9 @@ final class InterviewModel: ObservableObject {
             defer { extracting = false }
             if let text = try? await complete(ProfileExtraction.prompt(answers: core)),
                let extracted = try? ProfileExtraction.decode(text), step == .review, facts == typed {
-                facts.work = extracted.work ?? typed.work
-                facts.apps = extracted.apps.isEmpty ? typed.apps : extracted.apps.joined(separator: ", ")
-                facts.goal = extracted.learningGoal ?? typed.goal
+                facts.work = extracted.work.map(Self.capitalized) ?? typed.work
+                facts.apps = extracted.apps.isEmpty ? typed.apps : extracted.apps.map(Self.capitalized).joined(separator: ", ")
+                facts.goal = extracted.learningGoal.map(Self.capitalized) ?? typed.goal
             }
             guard !followUps.isEmpty, let reply = try? await complete(MemoryExtraction.importPrompt(followUps.joined(separator: "\n\n"))) else { return }
             let known = Set(notes.map { $0.fact.text.lowercased() })
