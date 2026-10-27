@@ -29,6 +29,15 @@ final class SoundCueTests: XCTestCase {
         XCTAssertNil(SoundPlayer.cue(from: failure, to: failure))
     }
 
+    func testEveryCueShipsAsAShortPlayableSound() throws {
+        for cue in ["wake", "send", "receive", "done", "fail"] {
+            let url = try XCTUnwrap(Bundle.main.url(forResource: cue, withExtension: "caf", subdirectory: "Sounds"), cue)
+            let sound = try XCTUnwrap(NSSound(contentsOf: url, byReference: true), cue)
+            XCTAssertGreaterThan(sound.duration, 0.2, cue)
+            XCTAssertLessThan(sound.duration, 1.0, cue)
+        }
+    }
+
     func testOnlyEnteringApprovalAsksForAttention() {
         let approval = executing(.awaitingApproval(ExecutionApproval(id: UUID(), actionSummary: "Send the email")))
         XCTAssertEqual(SoundPlayer.cue(from: executing(.running), to: approval), .receive)
