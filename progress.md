@@ -640,8 +640,18 @@ Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). P
     Talk now gets the user's words and language. Evidence: AnalyzerRecognitionTests on the mini, `say` audio
     through the 48 kHz tap path, gave "I moved the meeting to Thursday and told Sam." with word times in order.
   - `dda7b2e`: Sounds switch in General, cues at volume 0.45, no stop-listening cue.
-  - Not done: cloud STT (deferred: SpeechAnalyzer covers accuracy; add if the owner asks), the earcon set
-    (owner picks from three), the loopback mic drill (needs approval for the device).
+  - `862d875`: vibraphone earcons, picked by the owner in round 3 of 3 (VCSL soft mallets, CC0). Each note is
+    tuned within 3 cents in C major, with an octave of body, a computed room 20 dB under, and gated tails.
+    Recipe and credit in docs/sounds.md; `scripts/sounds/build-vibes.py` rebuilds the set bit for bit.
+    Earshot typicality against nine macOS sounds is -2.0 to -3.0 (round 2 was -3.0 to -4.2). The tails are below
+    -99 dBFS. SoundCueTests now load every cue (4/4 pass on the mini).
+  - `d8ba40a`: the notch opens with a small bounce (0.36/0.78). It has not been screen-recorded yet.
+  - Loopback mic drill (uncommitted test in AnalyzerRecognitionTests): BlackHole is loaded after the reboot, and
+    `say -a "BlackHole 2ch"` works. The drill hangs in AudioUnitSetProperty when the input device is set.
+    Cause: ad-hoc test builds have a cdhash designated requirement, so each build raises a new microphone
+    prompt that nobody answers on the mini. The fix is to unlock the keychain and build with the Developer ID
+    identity, then the owner clicks Allow once on the mini.
+  - Not done: cloud STT (deferred: SpeechAnalyzer covers accuracy; add if the owner asks).
 - E partial:
   - `4628367`: Hide personal details (Privacy). Regex for secrets, email, cards (Luhn), IBAN (mod 97), phones,
     addresses; NLTagger names minus leading command verbs; known names; names seen once stay hidden for the
