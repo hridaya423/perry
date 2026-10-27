@@ -10,6 +10,26 @@ final class NotchLayoutTests: XCTestCase {
         XCTAssertEqual(size, CGSize(width: 440, height: 178))
     }
 
+    @MainActor
+    func testHoverOnlyShrinksTheNotchWhenThePeekIsShowing() {
+        let presentation = NotchPresentation()
+        let expansion = NotchExpansion()
+        expansion.peeking = true
+        XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: true), .peek(content: nil))
+        XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: false), .workspace)
+        expansion.greeting = .writing
+        XCTAssertEqual(NotchLayout.mode(presentation, expansion: expansion, showsPeek: false), .greeting(.writing))
+    }
+
+    func testGreetingIsSmallerThanTheWorkspace() {
+        let writing = NotchLayout.size(.greeting(.writing), cameraInset: 32, screen: screens[0])
+        let settled = NotchLayout.size(.greeting(.settled), cameraInset: 32, screen: screens[0])
+        let workspace = NotchLayout.size(.workspace, cameraInset: 32, screen: screens[0])
+        XCTAssertLessThan(writing.height, settled.height)
+        XCTAssertLessThan(settled.height, workspace.height)
+        XCTAssertLessThan(settled.width, workspace.width)
+    }
+
     func testEveryModeStaysInsideItsBounds() {
         for screen in screens {
             let cap = NotchLayout.cap(screen: screen)

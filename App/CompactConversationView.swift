@@ -43,7 +43,7 @@ struct CompactConversationView: View {
     private var cameraInset: CGFloat { metrics.cameraInset }
 
     private var size: CGSize {
-        NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion), cameraInset: cameraInset, screen: metrics.screen)
+        NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion, showsPeek: peeking), cameraInset: cameraInset, screen: metrics.screen)
     }
 
     private var grown: Bool { expansion.open || reduceMotion }
@@ -114,11 +114,7 @@ struct CompactConversationView: View {
 
     @ViewBuilder
     private var workspace: some View {
-        if model.sidebarSelection == .settings {
-            NotchWorkspaceView(model: model)
-        } else if let onboarding = model.onboarding {
-            OnboardingNotchView(director: onboarding, model: model)
-        } else if peeking {
+        if peeking {
             NotchPeekView(model: model, presentation: presentation, expansion: expansion, onOpen: open, onExpand: expand,
                           onSettings: { openSettings(.general) }, onApps: { openSettings(.apps) })
                 .fixedSize(horizontal: false, vertical: true)
@@ -129,6 +125,8 @@ struct CompactConversationView: View {
                 }
                 .padding(.top, NotchLayout.topInset)
                 .frame(maxHeight: .infinity, alignment: .top)
+        } else if model.sidebarSelection != .settings, let onboarding = model.onboarding {
+            OnboardingNotchView(director: onboarding, model: model)
         } else {
             NotchWorkspaceView(model: model)
         }
@@ -136,11 +134,11 @@ struct CompactConversationView: View {
 
     private var fillsToBottom: Bool {
         guard presentation.current == nil else { return false }
-        return model.sidebarSelection == .settings || (model.onboarding == nil && !peeking)
+        return !peeking && (model.sidebarSelection == .settings || model.onboarding == nil)
     }
 
     private var peeking: Bool {
-        expansion.peeking && model.sidebarSelection != .settings && model.onboarding == nil
+        expansion.peeking && model.onboarding == nil
     }
 
     private var interactionBar: some View {
@@ -156,7 +154,9 @@ struct CompactConversationView: View {
     private func open(_ row: PeekRow) {
         switch row.kind {
         case .needsYou: presentation.showsInteraction = true
-        case .setup: return controller.runOnboarding(force: false)
+        case .setup:
+            expansion.peeking = false
+            controller.runOnboarding(force: false)
         case .task:
             if let id = UUID(uuidString: row.id), model.threads.contains(where: { $0.id == id }) {
                 expansion.peekThread = id

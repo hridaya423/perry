@@ -16,11 +16,15 @@ struct HomeOnboardingView: View {
                 director: director,
                 name: OnboardingDirector.suggestedName(saved: model.deps.controller?.memoryFiles?.profileField("Name"), fullName: NSFullUserName())
             )
+            .task {
+                guard let brain, let catalog = model.deps.controller?.runtimes else { return }
+                await brain.refreshSetupStates(using: catalog)
+            }
         case .brain:
             if let brain, let controller = model.deps.controller {
-                SetupBeat(director: director, brain: brain, voice: controller.voice,
+                SetupBeat(director: director, brain: brain, voice: controller.voice, local: controller.localBrain,
                           name: controller.memoryFiles?.profileField("Name") ?? SetupFactsProbe.firstName,
-                          catalog: controller.runtimes, openSettings: openSettings)
+                          catalog: controller.runtimes)
             }
         case .access:
             AccessBeat(director: director)
@@ -70,8 +74,10 @@ struct HomeOnboardingView: View {
 }
 
 private struct HelloBeat: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var director: OnboardingDirector
     @State var name: String
+    @State private var settled = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -79,40 +85,45 @@ private struct HelloBeat: View {
             HelloGreetingView()
                 .frame(maxWidth: 340, minHeight: 96, maxHeight: 116)
                 .padding(.top, 4)
-            Text("I’m Perry. I live in your notch.\nWhat should I call you?")
-                .font(PerryTheme.Scale.input)
-                .lineSpacing(3)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .modifier(LateEntrance(delay: HelloInk.lift.upperBound))
-            ZStack {
-                RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
-                    .fill(PerryTheme.Colors.surface)
-                    .strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
-                TextField("Your name", text: $name)
-                    .textFieldStyle(.plain)
+            if settled || reduceMotion {
+                Text("I’m Perry. I live in your notch.\nWhat should I call you?")
                     .font(PerryTheme.Scale.input)
+                    .lineSpacing(3)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .focused($focused)
-                    .focusEffectDisabled()
-                    .onSubmit { director.acceptName(name) }
-                    .padding(.horizontal, 18)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .modifier(LateEntrance(delay: 0.06))
+                ZStack {
+                    RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
+                        .fill(PerryTheme.Colors.surface)
+                        .strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator)
+                    TextField("Your name", text: $name)
+                        .textFieldStyle(.plain)
+                        .font(PerryTheme.Scale.input)
+                        .multilineTextAlignment(.center)
+                        .focused($focused)
+                        .focusEffectDisabled()
+                        .onSubmit { director.acceptName(name) }
+                        .padding(.horizontal, 18)
+                }
+                .frame(width: 220, height: 40)
+                .padding(.top, 16)
+                .modifier(LateEntrance(delay: 0.1))
+                Spacer(minLength: 12)
+                Button { director.acceptName(name) } label: { OnboardingPrimaryLabel(title: "Continue") }
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    .modifier(LateEntrance(delay: 0.14))
+                    .padding(.bottom, 8)
             }
-            .frame(width: 220, height: 40)
-            .padding(.top, 16)
-            .modifier(LateEntrance(delay: HelloInk.lift.upperBound + 0.04))
-            Spacer(minLength: 12)
-            Button { director.acceptName(name) } label: { OnboardingPrimaryLabel(title: "Continue") }
-                .buttonStyle(InkButtonStyle())
-                .controlSize(.large)
-                .keyboardShortcut(.defaultAction)
-                .modifier(LateEntrance(delay: HelloInk.lift.upperBound + 0.08))
-                .padding(.bottom, 8)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task {
-            try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound))
+            if !reduceMotion { try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound)) }
+            director.greetingSettled()
+            settled = true
+            await Task.yield()
             focused = true
             await Task.yield()
             NSApp.sendAction(#selector(NSResponder.moveToEndOfDocument(_:)), to: nil, from: nil)

@@ -5,18 +5,26 @@ import SwiftUI
 
 @MainActor
 enum SetupFactsProbe {
+    private static var machine: SetupFacts?
+
     static func current(brain: BrainController, cloudBrainReady: Bool, priority: SetupPriority) -> SetupFacts {
-        SetupFacts(
+        var facts = machine ?? SetupFacts(
             memoryGB: Int(ProcessInfo.processInfo.physicalMemory >> 30),
             macOSMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
             speechAnalyzerSupportsLocale: Locale.current.language.languageCode?.identifier == "en",
             premiumSystemVoice: VoiceController.naturalVoices().first { $0.quality == .premium }?.name,
             kokoroInstalled: KokoroVoice.isInstalled,
             voiceKeys: Set(VoiceService.allCases.filter(\.hasKey)),
-            cloudBrainReady: cloudBrainReady,
-            localBrainCapable: brain.localTaskCapable,
-            priority: priority
+            localBrainCapable: brain.localTaskCapable
         )
+        machine = facts
+        facts.cloudBrainReady = cloudBrainReady
+        facts.priority = priority
+        return facts
+    }
+
+    static func forget() {
+        machine = nil
     }
 
     static var firstName: String {
@@ -32,9 +40,9 @@ struct SetupBeat: View {
     @ObservedObject var director: OnboardingDirector
     @ObservedObject var brain: BrainController
     let voice: VoiceController
+    @ObservedObject var local: LocalBrain
     let name: String
     let catalog: RuntimeCatalog?
-    let openSettings: () -> Void
 
     @AppStorage(PerryPreferences.$setupPriority.key) private var priority = SetupPriority.recommended
     @AppStorage(PerryPreferences.$hidePersonalDetails.key) private var hidePersonalDetails = false
@@ -44,6 +52,7 @@ struct SetupBeat: View {
     @State private var installing: String?
     @State private var voiceError: String?
     @State private var refresh = 0
+    @State private var choosingBrain = false
     @StateObject private var keyCapture = VoiceKeyCapture()
 
     private var cloudRow: CloudBrainList.Row {
@@ -59,7 +68,14 @@ struct SetupBeat: View {
         return SetupAdvisor.recommend(SetupFactsProbe.current(brain: brain, cloudBrainReady: cloudReady, priority: priority))
     }
 
-    private var brainPick: SetupRecommendation.Brain { brainOverride ?? advice.brain }
+    private var savedBrain: SetupRecommendation.Brain? {
+        guard brain.hasSavedChoice else { return nil }
+        return brain.modelChoice == .local ? .local : .cloud
+    }
+
+    private var brainPick: SetupRecommendation.Brain { brainOverride ?? savedBrain ?? advice.brain }
+    private var brainsKnown: Bool { brain.setupStates[.chatGPT] != .unchecked }
+    private var needsChatGPT: Bool { brainsKnown && brainPick == .cloud && !cloudReady && cloudRow == .chatGPT }
     private var hides: Bool { hideOverride ?? advice.hidesPersonalDetails }
 
     private var voicePick: SpeechEngineChoice? {
@@ -73,27 +89,49 @@ struct SetupBeat: View {
     }
 
     var body: some View {
-        OnboardingBeatLayout(title: "Your setup") {
+        OnboardingBeatLayout(title: choosingBrain ? "Choose a brain" : "Your setup") {
             PerryCharacterView(pose: pose, size: 36)
         } detail: {
-            ViewThatFits(in: .vertical) {
-                setup(compact: false)
-                setup(compact: true)
+            if choosingBrain, let catalog {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        BrainChoiceSection(brain: brain, local: local, catalog: catalog)
+                    }
+                    .frame(width: 420)
+                    .multilineTextAlignment(.leading)
+                }
+                .scrollIndicators(.never)
+                .frame(maxHeight: 300)
+            } else {
+                ViewThatFits(in: .vertical) {
+                    setup(compact: false)
+                    setup(compact: true)
+                }
+                .multilineTextAlignment(.leading)
             }
-            .multilineTextAlignment(.leading)
         } actions: {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                Button(action: accept) { OnboardingPrimaryLabel(title: brain.isSigningIn ? "Waiting for sign-in…" : "Looks good") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(brain.isSigningIn || installing != nil)
+                if choosingBrain {
+                    Button {
+                        brainOverride = nil
+                        choosingBrain = false
+                    } label: { OnboardingPrimaryLabel(title: "Done") }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button(action: accept) { OnboardingPrimaryLabel(title: primaryTitle) }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(brain.isSigningIn || installing != nil)
+                }
             } trailing: {
                 if brain.isSigningIn {
                     Button("Cancel") { brain.cancelSignIn() }
-                } else {
+                } else if !choosingBrain {
                     Button("Skip") { director.skip() }
                 }
             }
@@ -103,12 +141,15 @@ struct SetupBeat: View {
             await brain.refresh()
         }
         .onReceive(NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)) { _ in
+            SetupFactsProbe.forget()
             refresh += 1
             if case .system = advice.voice, voiceOverride == nil { voice.preview(SetupFactsProbe.sample(name: name), engine: .system) }
         }
         .onAppear {
+            SetupFactsProbe.forget()
             keyCapture.onSaved = { service in
                 voiceOverride = .cloud(service)
+                SetupFactsProbe.forget()
                 refresh += 1
                 voice.preview(SetupFactsProbe.sample(name: name), engine: .cloud(service))
             }
@@ -161,25 +202,30 @@ struct SetupBeat: View {
     }
 
     private var brainRow: some View {
-        SetupRow(systemImage: "sparkles", tint: TileTint.lilac, title: "Brain",
-                 detail: brainPick == .local ? "On this Mac. Nothing leaves it." : "\(cloudRow.title) in the cloud.") {
-            if brainPick == .cloud, !cloudReady, cloudRow == .chatGPT {
+        SetupRow(systemImage: "sparkles", tint: TileTint.lilac, title: "Brain", detail: brainDetail) {
+            if needsChatGPT {
                 Button("Connect") {
                     brain.signInWithChatGPT { connected in if connected { brain.modelChoice = .chatGPT } }
                 }
             }
-            Menu {
-                Button("Cloud") { brainOverride = .cloud }
-                Button("On this Mac") { brainOverride = .local }
-                    .disabled(!brain.onDeviceRouteAvailable)
-                Divider()
-                Button("More brains…", action: openSettings)
-            } label: { Image(systemName: "chevron.up.chevron.down") }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Change the brain")
+            if catalog != nil {
+                Button("Change") {
+                    keepPick()
+                    choosingBrain = true
+                }
+            }
         }
+    }
+
+    private var brainDetail: String {
+        if brainPick == .local { return "On this Mac. Nothing leaves it." }
+        guard brainsKnown else { return "Looking for your brains…" }
+        return cloudReady ? "\(cloudRow.title). Ready." : "\(cloudRow.title). Not connected yet."
+    }
+
+    private var primaryTitle: String {
+        if brain.isSigningIn { return "Waiting for sign-in…" }
+        return needsChatGPT ? "Connect ChatGPT" : "Looks good"
     }
 
     private var voiceRow: some View {
@@ -270,6 +316,7 @@ struct SetupBeat: View {
                 try await KokoroVoice.install { _ in }
                 installing = nil
                 voiceOverride = .kokoro
+                SetupFactsProbe.forget()
                 refresh += 1
                 voice.preview(SetupFactsProbe.sample(name: name), engine: .kokoro)
             } catch {
@@ -284,15 +331,21 @@ struct SetupBeat: View {
         NSWorkspace.shared.open(url)
     }
 
-    private func accept() {
+    private func keepPick() {
         if brainPick == .local {
             brain.modelChoice = .local
-        } else if cloudReady {
-            if case .agent(let agent) = cloudRow { brain.setAcpAgent(agent) } else { brain.modelChoice = cloudRow.choice }
+        } else if case .agent(let agent) = cloudRow {
+            brain.setAcpAgent(agent)
+        } else {
+            brain.modelChoice = cloudRow.choice
         }
+    }
+
+    private func accept() {
+        if brainPick == .local || cloudReady { keepPick() }
         if let voicePick { PerryPreferences.speechEngine = voicePick.rawValue }
         hidePersonalDetails = brainPick == .cloud && hides
-        if brainPick == .cloud, !cloudReady, cloudRow == .chatGPT {
+        if needsChatGPT {
             brain.signInWithChatGPT { connected in
                 if connected { brain.modelChoice = .chatGPT }
                 director.skip()

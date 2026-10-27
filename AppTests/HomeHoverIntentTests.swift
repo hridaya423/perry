@@ -108,7 +108,7 @@ final class NotchPeekTests: XCTestCase {
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         presentation.showsInteraction = true
-        controller.showPanel(activate: false)
+        controller.showPeek()
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertTrue(controller.sessionPanel.isVisible)
         return (controller, {
@@ -125,6 +125,14 @@ final class NotchPeekTests: XCTestCase {
         NotchPresentation.shared.present(id: UUID(), priority: .activity, content: Text("Working"), reveal: false)
         XCTAssertEqual(controller.notchPresence.onEndPreview?(), true)
         XCTAssertFalse(controller.sessionPanel.isVisible)
+    }
+
+    func testHoverOutLeavesAnOpenedNotchOpen() async throws {
+        let (controller, cleanup) = try await peekingController()
+        defer { cleanup() }
+        controller.showPanel(activate: false)
+        XCTAssertEqual(controller.notchPresence.onEndPreview?(), false)
+        XCTAssertTrue(controller.sessionPanel.isVisible)
     }
 
     func testPeekStaysOpenWhileAnApprovalWaits() async throws {

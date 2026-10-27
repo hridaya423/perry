@@ -18,6 +18,7 @@ final class OnboardingDirector: ObservableObject {
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
+        var settleGreeting: () -> Void = {}
     }
 
     static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
@@ -52,6 +53,11 @@ final class OnboardingDirector: ObservableObject {
         firstAnswerMarked = false
         effects.mark("onboarding.start")
         enter(saved ?? .hello, direction: .forward)
+    }
+
+    func greetingSettled() {
+        guard beat == .hello else { return }
+        effects.settleGreeting()
     }
 
     func skip() {

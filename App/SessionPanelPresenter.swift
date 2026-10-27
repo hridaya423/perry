@@ -172,7 +172,9 @@ extension AppController {
         guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return (.zero, .zero) }
         let presentation = NotchPresentation.shared
         let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchPresence.zoneRect(for: screen).midX)
-        let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: sessionPanel.expansion), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
+        let expansion = sessionPanel.expansion
+        let showsPeek = expansion.peeking && homeController.homeModel.onboarding == nil
+        let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion, showsPeek: showsPeek), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
         presentation.frame = NotchLayout.visibleFrame(size, in: window)
         return (window, presentation.frame)
     }

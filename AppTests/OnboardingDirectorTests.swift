@@ -134,6 +134,20 @@ final class OnboardingDirectorTests: XCTestCase {
         resumed.stop()
     }
 
+    func testOnlyHelloGrowsTheNotchWhenTheGreetingSettles() {
+        var settled = 0
+        var effects = OnboardingDirector.Effects()
+        effects.settleGreeting = { settled += 1 }
+        let director = OnboardingDirector(effects: effects)
+        director.start()
+        director.greetingSettled()
+        XCTAssertEqual(settled, 1)
+        director.skip()
+        director.greetingSettled()
+        XCTAssertEqual(settled, 1)
+        director.stop()
+    }
+
     func testHelloSavesTheNameAndMovesOn() {
         var saved: [String] = []
         var effects = OnboardingDirector.Effects()

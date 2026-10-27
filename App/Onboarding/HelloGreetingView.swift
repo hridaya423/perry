@@ -65,8 +65,8 @@ enum HelloInk {
         let last = samples[samples.count - 1]
         if time < writing.lowerBound {
             let t = easeOut(phase(time, in: arrival))
-            let start = CGPoint(x: canvas.width / 2, y: -mascotSize)
-            let control = CGPoint(x: first.x + 30, y: first.y - 150)
+            let start = CGPoint(x: first.x + 70, y: first.y - 90)
+            let control = CGPoint(x: first.x + 30, y: first.y - 80)
             return (quadratic(start, control, first, t), CGVector(dx: -0.4, dy: 0.9))
         }
         if time < writing.upperBound {
@@ -139,7 +139,7 @@ struct HelloScene: View {
                 PerryCharacterView(pose: pose(heading: pen.heading), size: HelloInk.mascotSize)
                     .position(x: pen.point.x - PerryBodyShape.tip.x * HelloInk.mascotSize,
                               y: pen.point.y - PerryBodyShape.tip.y * HelloInk.mascotSize)
-                    .opacity(HelloInk.easeOut(HelloInk.phase(time, in: 0..<0.18)))
+                    .opacity(HelloInk.easeOut(HelloInk.phase(time, in: HelloInk.arrival)) * (1 - HelloInk.phase(time, in: HelloInk.leap)))
             }
         }
     }
@@ -161,6 +161,7 @@ struct NotchPeek: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.notchCameraInset) private var cameraInset
     var size: CGFloat = 44
+    var delay = HelloInk.peekDelay
     var progress: Double?
     @State private var shown = false
 
@@ -172,7 +173,7 @@ struct NotchPeek: View {
             .mask(alignment: .bottom) { Rectangle().frame(width: size * 2, height: cameraInset + size * 0.8) }
             .onAppear {
                 guard progress == nil else { return }
-                withAnimation(.spring(duration: 0.55, bounce: 0.35).delay(HelloInk.peekDelay)) { shown = true }
+                withAnimation(.spring(duration: 0.55, bounce: 0.35).delay(delay)) { shown = true }
             }
             .accessibilityHidden(true)
     }

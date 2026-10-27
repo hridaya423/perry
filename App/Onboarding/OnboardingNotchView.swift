@@ -27,7 +27,6 @@ struct OnboardingNotchView: View {
                     }
                     Spacer()
                     WindowControlButton(systemImage: "xmark", label: "Close") { director.close() }
-                        .keyboardShortcut(.cancelAction)
                 }
             }
             .frame(height: 32)
@@ -40,7 +39,7 @@ struct OnboardingNotchView: View {
                 .id(director.beat)
                 .transition(beatTransition)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 24)
             .padding(.bottom, 10)
         }
@@ -80,12 +79,19 @@ private struct BeatShift: ViewModifier {
 
 struct OnboardingCrown: View {
     @ObservedObject var director: OnboardingDirector
+    @State private var settled = false
 
     var body: some View {
-        if director.beat == .hello {
-            NotchPeek()
-                .offset(y: 35)
-                .frame(maxHeight: .infinity, alignment: .bottom)
+        ZStack {
+            if director.beat == .hello, settled {
+                NotchPeek(size: 30, delay: HelloInk.peekDelay - HelloInk.lift.upperBound)
+                    .offset(y: 24)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound))
+            settled = true
         }
     }
 }
