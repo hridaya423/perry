@@ -26,6 +26,11 @@ final class ShortcutCheck: ObservableObject {
         }
     }
 
+    func cancel() {
+        timeout?.cancel()
+        result = .idle
+    }
+
     func intercept() -> Bool {
         guard result == .listening else { return false }
         timeout?.cancel()
@@ -67,5 +72,6 @@ struct ShortcutCheckRow: View {
             }
         }
         .font(PerryTheme.Scale.secondary)
+        .frame(minHeight: 28)
     }
 }

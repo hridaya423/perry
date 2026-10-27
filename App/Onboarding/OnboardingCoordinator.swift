@@ -42,7 +42,7 @@ final class OnboardingCoordinator {
         director?.stop()
         var effects = overrides
         effects.mark = { PerfMark.mark($0) }
-        effects.grant = { pane in
+        effects.grant = { [weak self] pane in
             if pane == .microphone {
                 if PerryPermissionProbe.checkMicrophone() == .denied {
                     pane.open()
@@ -50,7 +50,9 @@ final class OnboardingCoordinator {
                     _ = await PerryPermissionProbe.requestMicrophone()
                 }
             } else {
+                self?.home().homeModel.deps.controller?.collapseNotch()
                 await PermissionGuideCoordinator.guide(pane)
+                self?.showNotch()
             }
         }
         effects.saveName = { [weak self] name in
@@ -58,6 +60,9 @@ final class OnboardingCoordinator {
         }
         effects.dismiss = { [weak self] in self?.tearDown() }
         effects.finish = { [weak self] keepNotchOpen in self?.finish(keepNotchOpen: keepNotchOpen) }
+        effects.hasApps = { [weak self] in
+            self?.home().homeModel.deps.controller.map { !AppsBeatPlan.tiles(for: $0).isEmpty } ?? false
+        }
         let director = OnboardingDirector(effects: effects, defaults: .standard)
         self.director = director
         let home = home()

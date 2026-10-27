@@ -400,7 +400,7 @@ struct InterviewBeat: View {
                     .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                     .overlay(alignment: .topLeading) {
                         if model.pasted.isEmpty {
-                            Text("Paste the answer").font(PerryTheme.Scale.secondary).foregroundStyle(PerryTheme.Colors.textTertiary)
+                            Text("Paste the reply").font(PerryTheme.Scale.secondary).foregroundStyle(PerryTheme.Colors.textTertiary)
                                 .padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
                         }
                     }
@@ -461,6 +461,7 @@ struct InterviewBeat: View {
                 .accessibilityLabel("Hear Perry say your name")
                 TextField("For example, Hrid-yah", text: $model.draft)
                     .textFieldStyle(.plain)
+                    .multilineTextAlignment(.leading)
                     .font(PerryTheme.Scale.input)
                     .focused($focused)
                     .focusEffectDisabled()
@@ -536,10 +537,11 @@ struct InterviewBeat: View {
         HStack(spacing: 8) {
             TextField(listener.listening ? "Listening…" : "Type or tap the mic", text: $model.draft)
                 .textFieldStyle(.plain)
+                .multilineTextAlignment(.leading)
                 .font(PerryTheme.Scale.input)
                 .focused($focused)
                 .focusEffectDisabled()
-                .onSubmit { model.answer(model.draft) }
+                .onSubmit { if !model.draft.trimmingCharacters(in: .whitespaces).isEmpty { model.answer(model.draft) } }
             Button {
                 if listener.listening {
                     listener.finish()
@@ -578,17 +580,22 @@ struct InterviewBeat: View {
         case .goal, .followUp: [String]()
         }
         if !options.isEmpty {
-            HStack(spacing: 6) {
-                ForEach(options, id: \.self) { option in
-                    Button(option) {
-                        if model.kind(at: index) == .apps {
-                            let current = model.draft.trimmingCharacters(in: .whitespaces)
-                            model.draft = current.isEmpty ? option : current + ", " + option
-                        } else {
-                            model.answer(option)
+            ViewThatFits(in: .horizontal) {
+                ForEach((1...options.count).reversed(), id: \.self) { count in
+                    HStack(spacing: 6) {
+                        ForEach(options.prefix(count), id: \.self) { option in
+                            Button(option) {
+                                if model.kind(at: index) == .apps {
+                                    let current = model.draft.trimmingCharacters(in: .whitespaces)
+                                    model.draft = current.isEmpty ? option : current + ", " + option
+                                } else {
+                                    model.answer(option)
+                                }
+                            }
+                            .buttonStyle(ChipStyle())
+                            .fixedSize()
                         }
                     }
-                    .buttonStyle(ChipStyle())
                 }
             }
         }

@@ -173,7 +173,7 @@ final class DictationController {
             return
         }
         analyzerTarget = AnalyzerTarget.cached(for: locale)
-        guard analyzerTarget == nil else { return }
+        guard analyzerTarget == nil, SFSpeechRecognizer.authorizationStatus() == .authorized else { return }
         Task { @MainActor [weak self] in
             guard let target = await AnalyzerRecognitionSession.prepare(locale: locale) else { return }
             AnalyzerTarget.remember(target, for: locale)

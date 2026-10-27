@@ -52,13 +52,7 @@ struct HomeOnboardingView: View {
             }
         case .apps:
             if let controller = model.deps.controller {
-                AppsBeat(director: director, controller: controller, tiles: AppsBeatPlan.tiles(
-                    apps: controller.memoryFiles?.profileField("Apps") ?? "",
-                    mentions: [controller.memoryFiles?.profileField("Work"), controller.memoryFiles?.profileField("Learning goal")].compactMap { $0 }.joined(separator: " "),
-                    available: { id in
-                        id == "apple-calendar" || RemoteIntegrationDefinition.catalog.first { $0.id == id }.map(controller.integrationConnections.hasBundledClient) == true
-                    }
-                ))
+                AppsBeat(director: director, controller: controller, tiles: AppsBeatPlan.tiles(for: controller))
             }
         case .firstGoal:
             FirstGoalBeat(
@@ -119,6 +113,12 @@ private struct HelloBeat: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .top)
+        .overlay(alignment: .top) {
+            if settled || reduceMotion {
+                NotchPeek(size: 30, delay: reduceMotion ? 0 : HelloInk.peekDelay - HelloInk.lift.upperBound)
+                    .offset(y: -26)
+            }
+        }
         .task {
             if !reduceMotion { try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound)) }
             settled = true

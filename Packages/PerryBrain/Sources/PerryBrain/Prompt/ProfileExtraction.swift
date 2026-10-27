@@ -27,6 +27,7 @@ public enum ProfileExtraction {
         }
         return """
         Turn these interview answers into short profile facts. Use the person's own words, at most six words per fact. \
+        Start each fact with a capital letter and write app names the way their makers do, such as GitHub or Figma. \
         Leave a fact null or empty when its answer was skipped or says nothing. Do not guess.
         Reply with JSON only, exactly this shape: \(schema)
 
@@ -48,7 +49,7 @@ public enum ProfileExtraction {
     public static func reactionPrompt(question: String, answer: String) -> String {
         """
         You asked: "\(question)" They answered: "\(answer)"
-        Repeat one thing they said in at most 8 words. Do not add facts. No question, no emoji, no exclamation mark.
+        Acknowledge one thing they said in a plain sentence of at most 8 words. Start with a capital letter, end with a period and write app names the way their makers do. Do not add facts. No question, no emoji, no exclamation mark.
         Reply with the reaction only.
         """
     }

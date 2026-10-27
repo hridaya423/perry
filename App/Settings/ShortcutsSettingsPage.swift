@@ -70,7 +70,10 @@ struct ShortcutRecorders: View {
     private func binding(for role: ShortcutRole) -> Binding<ShortcutCapture> {
         Binding(
             get: { captures[role] ?? role.capture(gestures: ShortcutRole.current, hotkeys: hotkeys) },
-            set: { captures[role] = $0 }
+            set: {
+                if $0.state == .recording { controller.shortcutCheck.cancel() }
+                captures[role] = $0
+            }
         )
     }
 

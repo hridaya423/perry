@@ -53,11 +53,6 @@ struct CompactConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             Color.clear.frame(height: cameraInset)
-                .overlay {
-                    if let onboarding = model.onboarding, model.sidebarSelection != .settings, !(presentation.current != nil && presentation.showsInteraction) {
-                        OnboardingCrown(director: onboarding)
-                    }
-                }
             if !peeking, presentation.current != nil, presentation.showsInteraction {
                 interactionBar
             }

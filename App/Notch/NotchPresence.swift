@@ -75,6 +75,7 @@ final class NotchPresence {
             MainActor.assumeIsolated { self?.keyDown(event) }
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if ShortcutRecorder.recording { return event }
             if event.keyCode == 53, event.window?.performKeyEquivalent(with: event) == true {
                 return nil
             }

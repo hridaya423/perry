@@ -23,6 +23,12 @@ enum NotchLayout {
             } else {
                 closed = screen.map { NotchPresence.zoneRect(for: $0).size } ?? CGSize(width: 120, height: 24)
             }
+#if DEBUG
+            if let inset = ProcessInfo.processInfo.environment["PERRY_LAB_NOTCH_INSET"].flatMap(Double.init) {
+                cameraInset = inset
+                closed = CGSize(width: 200, height: inset)
+            }
+#endif
         }
     }
 

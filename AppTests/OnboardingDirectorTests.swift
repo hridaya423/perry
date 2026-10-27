@@ -66,6 +66,21 @@ final class OnboardingDirectorTests: XCTestCase {
         XCTAssertEqual(seen, OnboardingDirector.Beat.allCases)
     }
 
+    func testAppsBeatIsLeftOutWhenNoAppCanConnect() throws {
+        let defaults = try suite()
+        defaults.set("apps", forKey: "perry.onboarding.beat")
+        var effects = OnboardingDirector.Effects()
+        effects.hasApps = { false }
+        let director = OnboardingDirector(effects: effects, defaults: defaults)
+        director.start()
+        XCTAssertEqual(director.beat, .firstGoal)
+        director.goBack()
+        XCTAssertEqual(director.beat, .interview)
+        director.skip()
+        XCTAssertEqual(director.beat, .firstGoal)
+        director.stop()
+    }
+
     func testOldSavedBeatNamesRestartAtHello() throws {
         for old in ["greet", "firstTalk", "screenAccess", "brainChoice", "practice", "finale", "nonsense"] {
             let defaults = try suite()

@@ -21,6 +21,18 @@ enum AppsBeatPlan {
 
     private static let calendar = Tile(id: "apple-calendar", title: "Calendar", detail: "Read the events on this Mac.", bundleID: "com.apple.iCal")
 
+    @MainActor
+    static func tiles(for controller: AppController) -> [Tile] {
+        let profile = controller.memoryFiles
+        return tiles(
+            apps: profile?.profileField("Apps") ?? "",
+            mentions: [profile?.profileField("Work"), profile?.profileField("Learning goal")].compactMap { $0 }.joined(separator: " "),
+            available: { id in
+                id == "apple-calendar" || RemoteIntegrationDefinition.catalog.first { $0.id == id }.map(controller.integrationConnections.hasBundledClient) == true
+            }
+        )
+    }
+
     static func tiles(apps: String, mentions: String, available: (String) -> Bool) -> [Tile] {
         let named = apps.lowercased()
         var tiles = known

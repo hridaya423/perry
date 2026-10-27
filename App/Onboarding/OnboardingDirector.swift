@@ -18,6 +18,7 @@ final class OnboardingDirector: ObservableObject {
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
+        var hasApps: () -> Bool = { true }
     }
 
     static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
@@ -52,13 +53,13 @@ final class OnboardingDirector: ObservableObject {
         defaults?.removeObject(forKey: PerryPreferences.$onboardingDismissed.key)
         firstAnswerMarked = false
         effects.mark("onboarding.start")
-        enter(saved ?? .hello, direction: .forward)
+        enter(saved == .apps && !effects.hasApps() ? .firstGoal : saved ?? .hello, direction: .forward)
     }
 
     func skip() {
-        guard let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
-        guard index + 1 < Beat.allCases.count else { return finish(keepNotchOpen: false) }
-        enter(Beat.allCases[index + 1], direction: .forward)
+        guard let beat else { return }
+        guard let next = neighbor(of: beat, step: 1) else { return finish(keepNotchOpen: false) }
+        enter(next, direction: .forward)
     }
 
     func acceptName(_ name: String) {
@@ -74,8 +75,14 @@ final class OnboardingDirector: ObservableObject {
 
     func goBack() {
         if choosingBrain { return choosingBrain = false }
-        guard canGoBack, let beat, let index = Beat.allCases.firstIndex(of: beat) else { return }
-        enter(Beat.allCases[index - 1], direction: .backward)
+        guard canGoBack, let beat, let previous = neighbor(of: beat, step: -1) else { return }
+        enter(previous, direction: .backward)
+    }
+
+    private func neighbor(of beat: Beat, step: Int) -> Beat? {
+        let beats = Beat.allCases.filter { $0 != .apps || effects.hasApps() }
+        guard let index = beats.firstIndex(of: beat) else { return nil }
+        return beats.indices.contains(index + step) ? beats[index + step] : nil
     }
 
     func close() {

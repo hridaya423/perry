@@ -58,11 +58,14 @@ struct FirstGoalBeat: View {
     @ObservedObject var model: HomeModel
     @State var goal: String
     let installedApps: [String]
+    @State private var draft = ""
     @State private var closing = false
     @State private var asking = false
     @FocusState private var focused: Bool
 
     private var trimmed: String { goal.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var editing: Bool { trimmed.isEmpty || asking }
+    private var typed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var route: FirstGoal { FirstGoal.route(trimmed, installedApps: installedApps) }
     private var needsScreenAccess: Bool { route.needsScreen && !PerryPermissionProbe.checkScreenRecording().isUsable }
 
@@ -81,36 +84,42 @@ struct FirstGoalBeat: View {
             }
         } else {
             OnboardingBeatLayout(
-                title: trimmed.isEmpty || asking ? "What do you want to learn first?" : "I’ll start with \(trimmed).",
-                message: trimmed.isEmpty || asking ? nil : route.promise(trimmed)
+                title: editing ? "What do you want to learn first?" : "I’ll start with \(trimmed).",
+                message: editing ? nil : route.promise(trimmed)
             ) {
                 EmptyView()
             } detail: {
-                if trimmed.isEmpty || asking {
-                    TextField("Figma auto layout, Spanish, SQL", text: $goal)
+                if editing {
+                    TextField("Figma auto layout, Spanish, SQL", text: $draft)
                         .textFieldStyle(.plain)
                         .font(PerryTheme.Scale.input)
-                        .multilineTextAlignment(.center)
+                        .multilineTextAlignment(.leading)
                         .focused($focused)
                         .focusEffectDisabled()
-                        .onSubmit { asking = false }
+                        .onSubmit(commit)
                         .padding(.horizontal, 16)
                         .frame(width: 360, height: 44)
                         .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
                         .overlay { RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator) }
-                        .task { focused = true }
+                        .task {
+                            await Task.yield()
+                            focused = true
+                        }
                 }
             } actions: {
                 OnboardingFooter {
-                    if !trimmed.isEmpty && !asking {
-                        Button("Something else") { asking = true }
+                    if !editing {
+                        Button("Something else") {
+                            draft = ""
+                            asking = true
+                        }
                     }
                 } primary: {
-                    Button(action: start) { OnboardingPrimaryLabel(title: "Start") }
+                    Button(action: editing ? commit : start) { OnboardingPrimaryLabel(title: editing ? "Continue" : "Start") }
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(trimmed.isEmpty)
+                        .disabled(editing && typed.isEmpty)
                 } trailing: {
                     Button("Not now") { closing = true }
                 }
@@ -118,12 +127,13 @@ struct FirstGoalBeat: View {
         }
     }
 
+    private func commit() {
+        guard !typed.isEmpty else { return }
+        goal = typed
+        asking = false
+    }
+
     private func start() {
-        guard !trimmed.isEmpty else { return }
-        if asking {
-            asking = false
-            return
-        }
         let route = route
         let goal = trimmed
         Task {

@@ -71,22 +71,3 @@ private struct BeatShift: ViewModifier {
             .opacity(opacity)
     }
 }
-
-struct OnboardingCrown: View {
-    @ObservedObject var director: OnboardingDirector
-    @State private var settled = false
-
-    var body: some View {
-        ZStack {
-            if director.beat == .hello, settled {
-                NotchPeek(size: 30, delay: HelloInk.peekDelay - HelloInk.lift.upperBound)
-                    .offset(y: 34)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-            }
-        }
-        .task {
-            try? await Task.sleep(for: .seconds(HelloInk.lift.upperBound))
-            settled = true
-        }
-    }
-}

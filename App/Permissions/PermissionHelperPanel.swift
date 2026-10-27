@@ -183,7 +183,7 @@ struct PermissionHelperView: View {
 
     private var title: String {
         switch phase {
-        case .instruction: "I’m Perry. Drag me into the list above."
+        case .instruction: "Turn on Perry in the list above."
         case .retry: "Perry isn’t in the list yet."
         case .settingsClosed: "Reopen System Settings."
         case .wrongLocation: "Move Perry to Applications first."
@@ -195,7 +195,7 @@ struct PermissionHelperView: View {
     private var detail: Text? {
         let name = Text(pane.displayName().replacingOccurrences(of: " ", with: "\u{00A0}")).foregroundStyle(PerryTheme.Colors.text)
         return switch phase {
-        case .instruction: Text("Then turn me on.")
+        case .instruction: Text("Not there? Drag me in.")
         case .retry: Text("Drag Perry in again.")
         case .settingsClosed: Text("Then turn on Perry in \(name).")
         case .wrongLocation: Text("Then open it from there and try again.")

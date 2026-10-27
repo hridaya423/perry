@@ -156,6 +156,7 @@ struct ShortcutRecorder: View {
     var presets: [Gesture] = []
     var presetLabel: (Gesture) -> String = \.spoken
     var onSave: (Gesture) -> Void = { _ in }
+    @MainActor static var recording = false
     @State private var monitor: Any?
 
     var body: some View {
@@ -238,6 +239,7 @@ struct ShortcutRecorder: View {
             capture.cancel()
         } else {
             capture.begin()
+            Self.recording = true
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
                 let modifiers = ModifierSet(event.modifierFlags)
                 if event.type == .keyDown {
@@ -257,6 +259,7 @@ struct ShortcutRecorder: View {
     private func stopListening() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        Self.recording = false
     }
 }
 
