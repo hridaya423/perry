@@ -53,14 +53,13 @@ private struct ResolvedTarget {
         guard let role, pointerOnlyRoles.contains(role) else { return target }
         return ComputerTarget(stableID: nil, label: nil, coordinates: target.coordinates)
     }
+}
 
-    func typedText(_ text: String) -> String {
-        guard bundleID?.lowercased() == "com.apple.finder", role == "AXTextField",
-              let name = target.label else { return text }
-        let ext = (name as NSString).pathExtension
-        guard !ext.isEmpty, text.count > ext.count + 1, text.lowercased().hasSuffix(".\(ext.lowercased())") else { return text }
-        return String(text.dropLast(ext.count + 1))
-    }
+private func finderRenameText(_ text: String, name: String?, bundleID: String?) -> String {
+    guard bundleID?.lowercased() == "com.apple.finder", let name else { return text }
+    let ext = (name as NSString).pathExtension
+    guard !ext.isEmpty, text.count > ext.count + 1, text.lowercased().hasSuffix(".\(ext.lowercased())") else { return text }
+    return String(text.dropLast(ext.count + 1))
 }
 
 private let pointerOnlyRoles: Set<String> = [
@@ -235,6 +234,7 @@ private struct UIActionExecutor: ToolExecutor {
         let action = ComputerAction(stepID: call.id, operation: operation)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
+            if result.success { observations.noteClicked(resolved.target.label, runID: context.runID) }
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
@@ -278,7 +278,9 @@ private struct UITypeExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
-        let action = ComputerAction(stepID: call.id, operation: .typeText(text: resolved.typedText(text), target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
+        let name = focused ? observations.lastClicked(runID: context.runID) : (resolved.role == "AXTextField" ? resolved.target.label : nil)
+        let bundleID = resolved.bundleID ?? observations.snapshot(runID: context.runID)?.window?.bundleID
+        let action = ComputerAction(stepID: call.id, operation: .typeText(text: finderRenameText(text, name: name, bundleID: bundleID), target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {

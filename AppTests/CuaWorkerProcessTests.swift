@@ -123,13 +123,16 @@ final class CuaWorkerProcessTests: XCTestCase {
             XCTAssertFalse(clicked.isError, "\(clicked)")
             let typed = await host.handle(ToolCall(id: "type", name: "ui.type", arguments: .object(["elementID": .string("v2e2"), "text": .string("cedar-a.txt")])), context: context)
             XCTAssertFalse(typed.isError, "\(typed)")
+            let focused = await host.handle(ToolCall(id: "type2", name: "ui.type", arguments: .object(["text": .string("cedar-b.txt")])), context: context)
+            XCTAssertFalse(focused.isError, "\(focused)")
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
         XCTAssertFalse(click.contains("element_token"), String(click))
-        let typed = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"type_text\"") })
+        let typed = try XCTUnwrap(requests.split(separator: "\n").first { $0.contains("\"name\":\"type_text\"") })
         XCTAssertTrue(typed.contains("\"text\":\"cedar-a\""), String(typed))
+        XCTAssertTrue(requests.contains("\"text\":\"cedar-b\""), requests)
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {

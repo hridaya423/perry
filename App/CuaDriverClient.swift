@@ -1560,6 +1560,7 @@ actor CuaDriverClient {
             let rawRole = element["role"] as? String ?? ""
             let role = axGuideRole(rawRole)
             let label = nonEmpty(element["label"] as? String)
+                ?? (target.bundleID == "com.apple.finder" && rawRole == "AXTextField" ? nonEmpty(element["value"] as? String) : nil)
             let sensitivity: AXSensitivity = rawRole == "AXSecureTextField" ? .secure : .unknown
             let value: String? = nil
             return AXElement(

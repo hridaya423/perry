@@ -313,6 +313,25 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertNil(note.label)
     }
 
+    func testFinderNameFieldsAreLabelledByTheirValue() async throws {
+        FileManager.default.createFile(atPath: testDirectory.appendingPathComponent("secure-fields").path, contents: Data())
+        FileManager.default.createFile(atPath: testDirectory.appendingPathComponent("finder").path, contents: Data())
+        let client = makeClient()
+        addTeardownBlock {
+            await client.shutdown()
+        }
+
+        let capture = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: "finder-names")
+        let snapshot = try XCTUnwrap(capture.accessibilitySnapshotModel)
+
+        let note = try XCTUnwrap(snapshot.element(withStableID: "note"))
+        XCTAssertEqual(note.label, "draft text")
+        XCTAssertNil(note.value)
+        let password = try XCTUnwrap(snapshot.element(withStableID: "pw"))
+        XCTAssertEqual(password.label, "Password")
+        XCTAssertNil(password.value)
+    }
+
     func testResolvedTargetRejectsMismatchedSession() async throws {
         let client = makeClient()
         addTeardownBlock {

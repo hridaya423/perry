@@ -19,6 +19,7 @@ final class AgentObservationStore: @unchecked Sendable {
 
     private var contexts: [UUID: Context] = [:]
     private var generations: [UUID: Int] = [:]
+    private var clickedNames: [UUID: String] = [:]
     private let lock = NSLock()
 
     func setTarget(_ target: CuaTargetHint, runID: UUID) {
@@ -80,6 +81,19 @@ final class AgentObservationStore: @unchecked Sendable {
         defer { lock.unlock() }
         contexts[runID] = nil
         generations[runID] = nil
+        clickedNames[runID] = nil
+    }
+
+    func noteClicked(_ name: String?, runID: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        clickedNames[runID] = name
+    }
+
+    func lastClicked(runID: UUID) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return clickedNames[runID]
     }
 
     func restartIDs(runID: UUID) -> String {
