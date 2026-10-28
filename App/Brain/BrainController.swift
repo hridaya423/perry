@@ -59,6 +59,7 @@ final class BrainController: ObservableObject {
     private let codexFactory: () -> CodexAppServerProvider?
     private lazy var codex: CodexAppServerProvider? = codexFactory()
     var toolScopes: (any MCPScopeHost)?
+    var bundledLocal: () -> LocalEngineProvider? = { nil }
     private lazy var claudeCode: ClaudeCodeProvider? = Self.makeClaudeCodeProvider(scopes: toolScopes)
     private var acceptsSetup = true
     private var setupGeneration = UUID()
@@ -88,6 +89,7 @@ final class BrainController: ObservableObject {
         let profileCapabilities: ModelCapabilities?
         let acpAgent: AcpAgent?
         let localModels: [LocalModel]
+        let bundledLocalID: ProviderID?
         let localCapabilities: [ProviderID: ModelCapabilities]
         let appleAvailable: Bool
         let preference: [ProviderID]
@@ -289,6 +291,7 @@ final class BrainController: ObservableObject {
     /// on macOS 26+, or a discovered local model whose capability check
     /// passed. The router picks among them for `.local` scope.
     var onDeviceRouteAvailable: Bool {
+        if bundledLocal() != nil { return true }
         if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable { return true }
         return localChecks.values.contains {
             if case .checked(_, let result) = $0 { return result.text == .passed }
@@ -297,7 +300,7 @@ final class BrainController: ObservableObject {
     }
 
     var localTaskCapable: Bool {
-        localChecks.values.contains {
+        bundledLocal() != nil || localChecks.values.contains {
             if case .checked(_, let result) = $0 { return result.text == .passed && result.capabilities.contains(.tools) }
             return false
         }
@@ -329,6 +332,7 @@ final class BrainController: ObservableObject {
         guard acceptsSetup else { throw CancellationError() }
         let usesDirect = scope == nil || scope == .direct
         let profile = usesDirect ? activeProfile : nil
+        let bundled = bundledLocal()
         let profileKey = try profile.flatMap { try readCredential($0.keyAccount) }
         let appleAvailable: Bool
         if #available(macOS 26, *) {
@@ -344,6 +348,7 @@ final class BrainController: ObservableObject {
         let configuration = RoutingConfiguration(
             profile: profile, profileKey: profileKey, profileCapabilities: profileCapabilities,
             acpAgent: scope == nil || scope == .acp ? acpAgent : nil, localModels: localModels,
+            bundledLocalID: bundled?.id,
             localCapabilities: localChecks.compactMapValues { state in
                 if case .checked(_, let result) = state, result.text == .passed { return result.capabilities }
                 return nil
@@ -351,7 +356,7 @@ final class BrainController: ObservableObject {
             appleAvailable: appleAvailable, preference: preference
         )
         if let cachedRouting, cachedRouting.configuration == configuration { return cachedRouting.router }
-        let router = ProviderRouter(providers: providers(configuration), preference: preference)
+        let router = ProviderRouter(providers: [bundled].compactMap { $0 } + providers(configuration), preference: preference)
         cachedRouting = (configuration, router)
         return router
     }

@@ -15,15 +15,16 @@ struct UITools {
     /// on, so the overlay can show where the agent is working without ever
     /// moving the real pointer.
     var onActuation: (@Sendable (CGPoint, String?) -> Void)?
+    var locate: LocateTarget?
 
     var executors: [any ToolExecutor] {
         [
-            UIActionExecutor(kind: .click, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UIActionExecutor(kind: .doubleClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
+            UIActionExecutor(kind: .click, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UIActionExecutor(kind: .doubleClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIHotkeyExecutor(workers: workers, lease: lease),
             UIDragExecutor(workers: workers, lease: lease, onActuation: onActuation),
         ]
@@ -39,9 +40,12 @@ private enum UIClickKind: String {
 /// Shared argument→target resolution. An elementID wins, then an explicit
 /// label, then raw (x, y). Returns the ComputerTarget plus the owning
 /// bundleID so the worker can claim the app resource.
+typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize) async throws -> ClickGrounder.Located
+
 private struct ResolvedTarget {
     let target: ComputerTarget
     let bundleID: String?
+    var note: String? = nil
 }
 
 private struct ToolResolutionError: Error {
@@ -51,8 +55,9 @@ private struct ToolResolutionError: Error {
 private func resolveTarget(
     args: JSONValue,
     observations: AgentObservationStore,
-    runID: UUID
-) -> Result<ResolvedTarget, ToolResolutionError> {
+    runID: UUID,
+    locate: LocateTarget?
+) async -> Result<ResolvedTarget, ToolResolutionError> {
     if let elementID = args["elementID"]?.stringValue {
         guard let element = observations.resolveElement(elementID, runID: runID) else {
             return .failure(ToolResolutionError(message: "element \(elementID) is stale or unknown — run screen.observe again"))
@@ -77,6 +82,9 @@ private func resolveTarget(
             bundleID: args["bundleID"]?.stringValue
         ))
     }
+    if let description = args["describe"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !description.isEmpty {
+        return await locateDescribed(description, observations: observations, runID: runID, locate: locate)
+    }
     if let label = args["label"]?.stringValue {
         return .success(ResolvedTarget(
             target: ComputerTarget(stableID: nil, label: label, coordinates: nil),
@@ -86,11 +94,47 @@ private func resolveTarget(
     return .failure(ToolResolutionError(message: "needs elementID, x/y, or label"))
 }
 
+private func locateDescribed(
+    _ description: String,
+    observations: AgentObservationStore,
+    runID: UUID,
+    locate: LocateTarget?
+) async -> Result<ResolvedTarget, ToolResolutionError> {
+    guard let locate else {
+        return .failure(ToolResolutionError(message: "describe needs this Mac's click model, which isn't downloaded. Use elementID or x/y instead."))
+    }
+    guard let snapshot = observations.snapshot(runID: runID), let screenshot = snapshot.screenshotData, let bounds = snapshot.windowBoundsAX else {
+        return .failure(ToolResolutionError(message: "run screen.observe first so there is a screenshot to search"))
+    }
+    let located: ClickGrounder.Located
+    do {
+        located = try await locate(description, screenshot, bounds.size)
+    } catch {
+        return .failure(ToolResolutionError(message: "describe: \(error.localizedDescription)"))
+    }
+    let found = CGPoint(x: bounds.minX + located.point.x, y: bounds.minY + located.point.y)
+    let element = ClickGrounder.snapTarget(found, elements: snapshot.index.entries.map(\.element), window: bounds)
+    let point = element.map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) } ?? found
+    var note = "Found \"\(description)\" at (\(Int(point.x)), \(Int(point.y)))"
+    if let element { note += " on \(element.role) \"\(element.label)\"" }
+    note += located.confident ? "." : ". The click model was unsure, so check the window below before going on."
+    return .success(ResolvedTarget(
+        target: ComputerTarget(
+            stableID: element?.id,
+            label: element?.label.nilIfEmpty ?? description,
+            coordinates: ComputerCoordinates(x: point.x, y: point.y)
+        ),
+        bundleID: snapshot.window?.bundleID,
+        note: note
+    ))
+}
+
 private let targetSchemaProperties: JSONValue = .object([
     "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
     "x": .object(["type": .string("number"), "description": .string("AX-space screen coordinate; used when elementID is absent")]),
     "y": .object(["type": .string("number")]),
     "label": .object(["type": .string("string"), "description": .string("Accessible label text to match")]),
+    "describe": .object(["type": .string("string"), "description": .string("When the target has no element id: describe it for this Mac's click model. Quote its visible text or name its icon, say where it is relative to nearby controls, and say what it does, e.g. \"gear icon at the top right of the sidebar, opens the action menu\".")]),
     "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
 ])
 
@@ -100,14 +144,15 @@ private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource>
 
 private func verifiedResult(
     _ call: ToolCall, _ result: StepResult, worker: CuaWorkerHandle,
-    observations: AgentObservationStore, runID: UUID
+    observations: AgentObservationStore, runID: UUID, located: String? = nil
 ) async -> ToolResult {
+    let message = [located, result.message].compactMap { $0 }.joined(separator: "\n")
     guard result.success,
           let hint = try? observations.prepareCapture(runID: runID),
           let after = try? await observeWindow(worker: worker, hint: hint, observations: observations, runID: runID) else {
-        return .text(call.id, result.message, isError: !result.success)
+        return .text(call.id, message, isError: !result.success)
     }
-    let note = "\(result.message)\nThe window after this action is below. Element ids are refreshed, so use these ids from now on."
+    let note = "\(message)\nThe window after this action is below. Element ids are refreshed, so use these ids from now on."
     return ToolResult(callID: call.id, content: [.text(note)] + after)
 }
 
@@ -117,11 +162,12 @@ private struct UIActionExecutor: ToolExecutor {
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
+    let locate: LocateTarget?
 
     var spec: ToolSpec {
         ToolSpec(
             name: kind.rawValue,
-            description: "\(kind == .click ? "Click" : kind == .doubleClick ? "Double-click" : "Right-click") an element or point without moving the user's cursor.",
+            description: "\(kind == .click ? "Click" : kind == .doubleClick ? "Double-click" : "Right-click") an element, a point, or a described target without moving the user's cursor. Prefer elementID from screen.observe; use describe for targets missing from the element list.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": targetSchemaProperties,
@@ -133,7 +179,7 @@ private struct UIActionExecutor: ToolExecutor {
     }
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
+        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "\(kind.rawValue): \(resolved.errorMessage)", isError: true)
         }
@@ -148,7 +194,7 @@ private struct UIActionExecutor: ToolExecutor {
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
         }
     }
 }
@@ -158,6 +204,7 @@ private struct UITypeExecutor: ToolExecutor {
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
+    let locate: LocateTarget?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -180,7 +227,7 @@ private struct UITypeExecutor: ToolExecutor {
         guard let text = call.arguments["text"]?.stringValue else {
             return .text(call.id, "ui.type: missing text", isError: true)
         }
-        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
+        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
@@ -190,7 +237,7 @@ private struct UITypeExecutor: ToolExecutor {
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
         }
     }
 }
@@ -200,6 +247,7 @@ private struct UIScrollExecutor: ToolExecutor {
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
+    let locate: LocateTarget?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -226,7 +274,7 @@ private struct UIScrollExecutor: ToolExecutor {
             return .text(call.id, "ui.scroll: direction must be up/down/left/right", isError: true)
         }
         let amount = args["amount"]?.doubleValue.map { Int($0) } ?? 3
-        let resolved = resolveTarget(args: args, observations: observations, runID: context.runID)
+        let resolved = await resolveTarget(args: args, observations: observations, runID: context.runID, locate: locate)
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
@@ -237,7 +285,7 @@ private struct UIScrollExecutor: ToolExecutor {
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
             }
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
         }
     }
 }
@@ -247,6 +295,7 @@ private struct UIKeyExecutor: ToolExecutor {
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
+    let locate: LocateTarget?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -271,7 +320,7 @@ private struct UIKeyExecutor: ToolExecutor {
             return .text(call.id, "ui.key: missing key", isError: true)
         }
         let modifiers = call.arguments["modifiers"]?.arrayValue?.compactMap(\.stringValue)
-        let resolved = resolveTarget(args: call.arguments, observations: observations, runID: context.runID)
+        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
@@ -282,7 +331,7 @@ private struct UIKeyExecutor: ToolExecutor {
             if result.success, let point = target?.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
             }
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
         }
     }
 }

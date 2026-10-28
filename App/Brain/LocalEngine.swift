@@ -34,6 +34,8 @@ final class LocalEngine {
     typealias Launch = (_ binary: URL, _ arguments: [String]) throws -> any LocalEngineProcess
     typealias Health = @Sendable (_ baseURL: URL) async -> Bool
 
+    static let contextTokens = 32768
+
     private let binary: URL
     private let directory: URL
     private let launch: Launch
@@ -42,6 +44,7 @@ final class LocalEngine {
     private let freePort: () -> Int?
     private var process: (any LocalEngineProcess)?
     private var idleExit: Task<Void, Never>?
+    private var starting: Task<Endpoint, Error>?
     private(set) var endpoint: Endpoint?
     private(set) var lane: Lane?
 
@@ -66,8 +69,8 @@ final class LocalEngine {
         if let projector = model.projector { arguments += ["--mmproj", projector.path] }
         arguments += [
             "--host", "127.0.0.1", "--port", String(port), "--api-key-file", keyFile.path,
-            "-ngl", "all", "-fa", "on", "-c", "32768", "-np", "1",
-            "--image-max-tokens", "640",
+            "-ngl", "all", "-fa", "on", "-c", String(contextTokens), "-np", "1",
+            "--image-max-tokens", "2048",
             "--cache-ram", "2048", "--ctx-checkpoints", "8", "--checkpoint-min-step", "1024",
         ]
         if let sleepIdleSeconds { arguments += ["--sleep-idle-seconds", String(sleepIdleSeconds)] }
@@ -95,6 +98,14 @@ final class LocalEngine {
             noteUse(exitAfterIdle: exitAfterIdle)
             return endpoint
         }
+        if let starting { return try await starting.value }
+        let task = Task { try await boot(lane: lane, model: model, sleepIdleSeconds: sleepIdleSeconds, exitAfterIdle: exitAfterIdle) }
+        starting = task
+        defer { starting = nil }
+        return try await task.value
+    }
+
+    private func boot(lane: Lane, model: Model, sleepIdleSeconds: Int?, exitAfterIdle: Duration?) async throws -> Endpoint {
         stop()
         guard let port = freePort() else { throw EngineError.noFreePort }
         let key = Self.randomKey()

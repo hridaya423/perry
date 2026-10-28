@@ -21,6 +21,7 @@ final class AppSubsystems {
     init(app: AppController) {
         self.app = app
         brain.toolScopes = toolScopes
+        brain.bundledLocal = { [unowned self] in self.localBrain.provider }
         brain.redactionVaults = storageDirectory.map { directory in
             RedactionVaults {
                 let profile = MemoryFiles(directory: directory.appendingPathComponent("memory", isDirectory: true)).profileField("Name")
@@ -45,6 +46,7 @@ final class AppSubsystems {
         supportDirectory: self.storageDirectory,
         integrationBackend: self.integrationBackend,
         perryStore: self.perryStore,
+        locate: self.localBrain.clicker,
         openSettings: { [weak app = app] in app?.openSettings($0) }
     )
 

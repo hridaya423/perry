@@ -79,9 +79,31 @@ final class BrainChoiceTests: XCTestCase {
     }
 
     func testEachRungNamesItsHuggingFaceFiles() {
-        let files = LocalBrain.files(for: .qwen36_35B_UDQ4KXL)
-        XCTAssertEqual(files.repo, "unsloth/Qwen3.6-35B-A3B-GGUF")
-        XCTAssertEqual(files.paths, ["Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf", "mmproj-F16.gguf"])
+        XCTAssertEqual(ModelRung.qwen36_35B_UDQ4KXL.repo, "unsloth/Qwen3.6-35B-A3B-GGUF")
+        XCTAssertEqual(ModelRung.qwen36_35B_UDQ4KXL.files, ["Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf", "mmproj-F16.gguf"])
+        XCTAssertEqual(ModelRung.holo31_4B_Q4KM.repo, "mradermacher/Holo-3.1-4B-GGUF")
+        XCTAssertEqual(ModelRung.holo31_4B_Q4KM.files, ["Holo-3.1-4B.Q4_K_M.gguf", "Holo-3.1-4B.mmproj-f16.gguf"])
+    }
+
+    func testADownloadedLineupModelIsReadyAtLaunchAndServesTheLocalRoute() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let engine = LocalEngine(binary: URL(fileURLWithPath: "/bin/llama-server"), directory: directory, launch: { _, _ in FakeProcess() }, health: { _ in true }, freePort: { 4000 })
+        let empty = LocalBrain(engine: engine, modelsDirectory: directory, benchURL: directory.appendingPathComponent("bench.json"))
+        XCTAssertEqual(empty.phase, .notSetUp)
+        XCTAssertNil(empty.provider)
+
+        let rung = ModelRung.guiOwl15_2B_Q4KM
+        let folder = directory.appendingPathComponent(rung.id, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for file in rung.files { try Data([1]).write(to: folder.appendingPathComponent(file)) }
+
+        let local = LocalBrain(engine: engine, modelsDirectory: directory, benchURL: directory.appendingPathComponent("bench.json"))
+        XCTAssertEqual(local.phase, .ready)
+        XCTAssertEqual(local.installed, rung)
+        XCTAssertEqual(local.model(for: rung)?.weights.lastPathComponent, "GUI-Owl-1.5-2B-Instruct.Q4_K_M.gguf")
+        XCTAssertEqual(local.provider?.id.rawValue, "local.perry.GUI-Owl-1.5-2B-Q4_K_M")
+        XCTAssertTrue(local.provider?.capabilities.isSuperset(of: [.tools, .vision, .local]) == true)
     }
 
     func testWithoutTheEngineNothingDownloads() async {

@@ -16,6 +16,7 @@ enum AppToolHost {
         supportDirectory: URL?,
         integrationBackend: AppIntegrationBackend,
         perryStore: PerryStore?,
+        locate: LocateTarget? = nil,
         openSettings: @escaping @MainActor (SettingsPage) -> Void
     ) -> PerryToolHost {
         let observations = AgentObservationStore.shared
@@ -29,7 +30,8 @@ enum AppToolHost {
                 observations: observations,
                 onActuation: { point, label in
                     Task { @MainActor in ghost.track(axPoint: point, label: label) }
-                }
+                },
+                locate: locate
             ).executors
             + BrowserTools(workers: workers, lease: lease, observations: observations).executors
             + DocumentTools(workers: workers, lease: lease, observations: observations).executors

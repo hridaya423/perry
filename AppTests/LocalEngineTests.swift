@@ -110,6 +110,16 @@ final class LocalEngineTests: XCTestCase {
         XCTAssertNil(engine.endpoint)
     }
 
+    func testCallersThatArriveWhileTheServerStartsShareOneLaunch() async throws {
+        let engine = engine()
+        async let first = engine.start(lane: .interactive, model: model, sleepIdleSeconds: nil, exitAfterIdle: nil)
+        async let second = engine.start(lane: .interactive, model: model, sleepIdleSeconds: nil, exitAfterIdle: nil)
+        let endpoints = try await [first, second]
+        XCTAssertEqual(launches.count, 1)
+        XCTAssertEqual(endpoints[0], endpoints[1])
+        engine.stop()
+    }
+
     func testAFreeLoopbackPortIsFound() {
         let port = LocalEngine.findFreePort()
         XCTAssertNotNil(port)
