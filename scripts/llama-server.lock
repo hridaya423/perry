@@ -1,0 +1,3 @@
+LLAMA_VERSION=b11927
+LLAMA_ASSET_URL=https://github.com/ggml-org/llama.cpp/releases/download/b11927/llama-b11927-bin-macos-arm64.tar.gz
+LLAMA_ARCHIVE_SHA256=6015918064ddf52a4c60bd8c0c01fe030e07ff317d744f1e93cd3e54b10ba08e

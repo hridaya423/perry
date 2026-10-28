@@ -21,6 +21,7 @@ for code in \
   "${APP_PATH}/Contents/MacOS/Perry" \
   "${APP_PATH}/Contents/Resources/CodexRuntime/bin/codex" \
   "${APP_PATH}/Contents/Resources/CuaDriver/bin/cua-driver" \
+  "${APP_PATH}/Contents/Resources/LocalEngine/llama-server" \
   "${APP_PATH}/Contents/Frameworks/Sparkle.framework" \
   "${APP_PATH}/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle" \
   "${APP_PATH}/Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate" \

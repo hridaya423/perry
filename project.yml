@@ -50,6 +50,9 @@ targets:
       - path: App/Resources/CuaDriver
         type: folder
         buildPhase: resources
+      - path: App/Resources/LocalEngine
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: Sparkle
       - package: PerryCore
@@ -73,6 +76,9 @@ targets:
         basedOnDependencyAnalysis: false
       - path: scripts/fetch-cua-driver.sh
         name: FetchCuaDriver
+        basedOnDependencyAnalysis: false
+      - path: scripts/fetch-llama-server.sh
+        name: FetchLlamaServer
         basedOnDependencyAnalysis: false
     info:
       path: App/Info.plist
