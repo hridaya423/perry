@@ -38,7 +38,7 @@ final class AnthropicMessagesProviderTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-api-key"), "sk-ant-test")
         XCTAssertEqual(request.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
         let body = try XCTUnwrap(JSONValue(parsing: request.httpBody ?? Data()))
-        XCTAssertEqual(body["model"], .string("claude-sonnet-4-5"))
+        XCTAssertEqual(body["model"], .string("claude-sonnet-5-5"))
         XCTAssertEqual(body["system"], .string("be terse"))
         XCTAssertEqual(body["stream"], .bool(true))
         let messages = try XCTUnwrap(body["messages"]?.arrayValue)
