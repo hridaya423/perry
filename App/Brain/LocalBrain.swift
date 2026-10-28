@@ -144,8 +144,8 @@ final class LocalBrain: ObservableObject {
             let endpoint = try await self.endpoint()
             return ClickGrounder.Endpoint(baseURL: endpoint.baseURL, apiKey: endpoint.apiKey)
         })
-        return { description, screenshot, windowSize in
-            try await grounder.locate(description, screenshot: screenshot, windowSize: windowSize)
+        return { description, screenshot, windowSize, accepts in
+            try await grounder.locate(description, screenshot: screenshot, windowSize: windowSize, accepts: accepts)
         }
     }
 

@@ -14,7 +14,6 @@ public struct ScreenContext: Sendable {
     public let screenshotJPEGData: Data?
     public let screenshotMIMEType: String
     public let screenshotCoordinateSpace: ScreenshotCoordinateSpace
-    public let visionTextContext: String?
     public let spatialRegionDescription: String?
     public let appSkillContext: String?
     public let memoryContext: String?
@@ -29,7 +28,6 @@ public struct ScreenContext: Sendable {
         screenshotJPEGData: Data? = nil,
         screenshotMIMEType: String = "image/jpeg",
         screenshotCoordinateSpace: ScreenshotCoordinateSpace = .screenPoints,
-        visionTextContext: String? = nil,
         spatialRegionDescription: String? = nil,
         appSkillContext: String? = nil,
         memoryContext: String? = nil,
@@ -43,7 +41,6 @@ public struct ScreenContext: Sendable {
         self.screenshotJPEGData = screenshotJPEGData
         self.screenshotMIMEType = screenshotMIMEType
         self.screenshotCoordinateSpace = screenshotCoordinateSpace
-        self.visionTextContext = visionTextContext
         self.spatialRegionDescription = spatialRegionDescription
         self.appSkillContext = appSkillContext
         self.memoryContext = memoryContext

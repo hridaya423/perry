@@ -202,9 +202,16 @@ private struct ClipboardReadExecutor: ToolExecutor {
 }
 
 func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: AgentObservationStore, runID: UUID) async throws -> [ModelContentPart] {
+    PerfMark.mark("observe.begin")
+    defer { PerfMark.mark("observe.end") }
     let captured = try await worker.capture(target: hint)
+    let window = CGRect(x: captured.target.x, y: captured.target.y, width: captured.target.width, height: captured.target.height)
     let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
         .filter { $0.sensitivity != .secure }
+        .filter { element in
+            let frame = CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height)
+            return frame.intersects(window) && (!(element.label ?? "").isEmpty || !unlabeledContainers.contains(element.rawRole ?? ""))
+        }
         .map { element in
             ObservedElement(
                 id: element.stableID,
@@ -251,6 +258,10 @@ func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: A
         .image(data: captured.screenshotData, mimeType: captured.screenshotMIMEType)
     ]
 }
+
+private let unlabeledContainers: Set<String> = [
+    "AXRow", "AXCell", "AXList", "AXGroup", "AXScrollArea", "AXSplitGroup", "AXLayoutArea", "AXLayoutItem", "AXColumn",
+]
 
 private func renderObservation(_ value: JSONValue) -> String {
     let encoder = JSONEncoder()

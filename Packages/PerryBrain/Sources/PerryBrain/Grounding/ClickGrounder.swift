@@ -57,12 +57,19 @@ public struct ClickGrounder: Sendable {
     }
 
     /// Returns the target in window points (origin at the window's top left).
-    public func locate(_ description: String, screenshot: Data, windowSize: CGSize) async throws -> Located {
+    /// When `accepts` approves the first point, the check passes are skipped.
+    public func locate(
+        _ description: String, screenshot: Data, windowSize: CGSize,
+        accepts: (@Sendable (CGPoint) -> Bool)? = nil
+    ) async throws -> Located {
         guard let image = Self.decode(screenshot) else { throw GroundingError.unreadableScreenshot }
         let server = try await endpoint()
         let whole = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         guard let overview = Self.jpeg(image, region: whole, maxPixels: Self.firstPassPixels) else { throw GroundingError.unreadableScreenshot }
         let first = try await ask(description, jpeg: overview, temperature: 0, server: server)
+        if accepts?(Self.windowPoint(first, in: windowSize)) == true {
+            return Located(point: Self.windowPoint(first, in: windowSize), confident: true)
+        }
         var points = [first]
         for _ in 0..<Self.samples {
             points.append(try await ask(description, jpeg: overview, temperature: 0.7, server: server))

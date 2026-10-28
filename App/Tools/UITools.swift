@@ -41,7 +41,7 @@ private enum UIClickKind: String {
 /// Shared argument→target resolution. An elementID wins, then an explicit
 /// label, then raw (x, y). Returns the ComputerTarget plus the owning
 /// bundleID so the worker can claim the app resource.
-typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize) async throws -> ClickGrounder.Located
+typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize, _ accepts: @escaping @Sendable (CGPoint) -> Bool) async throws -> ClickGrounder.Located
 
 private struct ResolvedTarget {
     let target: ComputerTarget
@@ -107,14 +107,21 @@ private func locateDescribed(
     guard let snapshot = observations.snapshot(runID: runID), let screenshot = snapshot.screenshotData, let bounds = snapshot.windowBoundsAX else {
         return .failure(ToolResolutionError(message: "run screen.observe first so there is a screenshot to search"))
     }
+    let elements = snapshot.index.entries.map(\.element)
+    let wanted = description.lowercased()
+    let accepts: @Sendable (CGPoint) -> Bool = { point in
+        let found = CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y)
+        guard let label = ClickGrounder.snapTarget(found, elements: elements, window: bounds)?.label.lowercased() else { return false }
+        return label.count >= 3 && wanted.contains(label)
+    }
     let located: ClickGrounder.Located
     do {
-        located = try await locate(description, screenshot, bounds.size)
+        located = try await locate(description, screenshot, bounds.size, accepts)
     } catch {
         return .failure(ToolResolutionError(message: "describe: \(error.localizedDescription)"))
     }
     let found = CGPoint(x: bounds.minX + located.point.x, y: bounds.minY + located.point.y)
-    let element = ClickGrounder.snapTarget(found, elements: snapshot.index.entries.map(\.element), window: bounds)
+    let element = ClickGrounder.snapTarget(found, elements: elements, window: bounds)
     let point = element.map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) } ?? found
     var note = "Found \"\(description)\" at (\(Int(point.x)), \(Int(point.y)))"
     if let element { note += " on \(element.role) \"\(element.label)\"" }

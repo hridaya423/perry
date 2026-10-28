@@ -281,6 +281,8 @@ final class ForegroundTaskController: ObservableObject {
     /// Permission and driver-health gates every foreground flow shares —
     /// goal planning, routine replay, anything that will touch the screen.
     private func preflight(attemptID: UUID) async -> Bool {
+        PerfMark.mark("task.preflight.begin")
+        defer { PerfMark.mark("task.preflight.end") }
         guard taskStartIsCurrent(attemptID) else { return false }
         let permissions = await probe.permissionSnapshot()
         guard taskStartIsCurrent(attemptID) else { return false }
@@ -377,7 +379,7 @@ final class ForegroundTaskController: ObservableObject {
         guard taskStartIsCurrent(attemptID) else { return nil }
         let workspace = try WorkspaceScope.makeTaskDirectory()
         try await worker.claimResources([.workspace(workspace.standardizedFileURL.path)])
-        let captured = await probe.captureScreenContext(worker: worker, targetHint: targetHint)
+        let captured = await probe.resolveTaskWindow(worker: worker, targetHint: targetHint)
         guard taskStartIsCurrent(attemptID) else { return nil }
         guard EnvironmentProbe.captureIsUsable(captured.context) else {
             hooks.setStatus("I couldn’t capture that window, so I stopped before planning.")

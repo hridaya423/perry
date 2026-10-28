@@ -562,9 +562,9 @@ actor CuaDriverClient {
                 "pid": Int(resolvedTarget.processID),
                 "window_id": resolvedTarget.windowID,
                 "include_screenshot": includeScreenshot,
-                "max_elements": 300,
-                "max_depth": 12,
-                "tree_format": "both",
+                "max_elements": 1000,
+                "timeout_ms": 3000,
+                "tree_format": "elements",
                 "session": sessionID,
             ],
             generation: generation,
@@ -631,7 +631,7 @@ actor CuaDriverClient {
             do {
                 result = try await callTool(name: "type_text", arguments: arguments)
             } catch let error as CuaDriverError where error.isStaleTarget {
-                var refreshedArguments = try await actionArguments(for: target, state: state, sessionID: sessionID)
+                var refreshedArguments = try await actionArguments(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: false)
                 refreshedArguments["text"] = text
                 result = try await callTool(name: "type_text", arguments: refreshedArguments)
             }
@@ -1058,9 +1058,10 @@ actor CuaDriverClient {
         for target: ComputerTarget?,
         state: CuaSessionState,
         sessionID: String,
-        requiresTarget: Bool = true
+        requiresTarget: Bool = true,
+        trustsSnapshotToken: Bool = true
     ) async throws -> [String: Any] {
-        if let token = try await resolveElementToken(for: target, state: state, sessionID: sessionID) {
+        if let token = try await resolveElementToken(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken) {
             return [
                 "element_token": token,
                 "pid": Int(state.target.processID),
@@ -1182,7 +1183,8 @@ actor CuaDriverClient {
                 for: target,
                 state: state,
                 sessionID: sessionID,
-                requiresTarget: requiresTarget
+                requiresTarget: requiresTarget,
+                trustsSnapshotToken: false
             )
             additionalArguments.forEach { refreshedArguments[$0.key] = $0.value }
             return try await callTool(name: name, arguments: refreshedArguments)
@@ -1200,9 +1202,13 @@ actor CuaDriverClient {
     private func resolveElementToken(
         for target: ComputerTarget?,
         state: CuaSessionState,
-        sessionID: String
+        sessionID: String,
+        trustsSnapshotToken: Bool
     ) async throws -> String? {
         let stableID = target?.stableID
+        if trustsSnapshotToken, let stableID, let snapshotID = state.snapshotID, stableID.hasPrefix("\(snapshotID):") {
+            return stableID
+        }
         let targetLabel = target?.label
         if let targetLabel, !targetLabel.isEmpty {
             return try await queryElementToken(label: targetLabel, state: state, sessionID: sessionID)
@@ -1232,8 +1238,8 @@ actor CuaDriverClient {
                 "window_id": state.target.windowID,
                 "include_screenshot": false,
                 "query": targetLabel,
-                "max_elements": 300,
-                "max_depth": 12,
+                "max_elements": 1000,
+                "timeout_ms": 3000,
                 "tree_format": "elements",
                 "session": sessionID,
             ],
@@ -1267,6 +1273,7 @@ actor CuaDriverClient {
         timeout: TimeInterval? = nil
     ) async throws -> CuaToolResult {
         var arguments = arguments
+        if name == "type_text" { arguments["delay_ms"] = 10 }
         if allowsForegroundInput, arguments["delivery_mode"] as? String == "background",
            let session = arguments["session"] as? String,
            let bundleID = sessionTargets[session]?.bundleID.lowercased(),
@@ -1294,6 +1301,8 @@ actor CuaDriverClient {
         if arguments["session"] != nil, generation == nil {
             throw CuaDriverError.processExited
         }
+        PerfMark.markDynamic("cua.\(name).begin")
+        defer { PerfMark.markDynamic("cua.\(name).end") }
         let resultData = try await sendRequest(
             method: "tools/call",
             parameters: ["name": name, "arguments": arguments],

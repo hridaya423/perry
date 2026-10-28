@@ -67,6 +67,16 @@ final class ClickGrounderTests: XCTestCase {
         XCTAssertEqual(size.width / size.height, 1.6, accuracy: 0.01)
     }
 
+    func testAcceptedFirstPointSkipsTheCheckPasses() async throws {
+        let replies = Replies([#"{"action": "click", "x": 250, "y": 500}"#])
+        let located = try await grounder(replies).locate(
+            "the Save button", screenshot: png(width: 2880, height: 1800), windowSize: CGSize(width: 1440, height: 900),
+            accepts: { $0 == CGPoint(x: 360, y: 450) }
+        )
+        XCTAssertEqual(located, .init(point: CGPoint(x: 360, y: 450), confident: true))
+        XCTAssertEqual(replies.requests.count, 1)
+    }
+
     func testScatteredSamplesZoomIntoTheRegionAndMapBack() async throws {
         let replies = Replies([
             #"{"action":"click","x":100,"y":100}"#,

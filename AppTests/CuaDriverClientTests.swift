@@ -108,6 +108,8 @@ final class CuaDriverClientTests: XCTestCase {
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"image","mimeType":"image/png","data":"' "$id"
                         cat "$root/large-image"
                         printf '"}]}}\n'
+                    elif [ -f "$root/snapshot-tokens" ]; then
+                        printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s0001","elements":[{"element_token":"s0001:4","role":"AXTextArea","label":"","frame":{"x":20,"y":20,"width":300,"height":200}}]},"content":[{"type":"image","mimeType":"image/png","data":"AQI="}]}}\n' "$id"
                     elif [ -f "$root/secure-fields" ]; then
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"snapshot-secure","elements":[{"element_token":"pw","role":"AXSecureTextField","label":"Password","value":"bullets","frame":{"x":20,"y":60,"width":160,"height":24}},{"element_token":"note","role":"AXTextField","value":"draft text","frame":{"x":20,"y":90,"width":160,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"
                     else
@@ -266,7 +268,7 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
     }
 
-    func testCaptureAsksForBothTreeFormatsBecauseTheDriverDefaultsToMarkdown() async throws {
+    func testCaptureAsksForElementsBecauseTheDriverDefaultsToMarkdown() async throws {
         let client = makeClient()
         addTeardownBlock {
             await client.shutdown()
@@ -279,7 +281,7 @@ final class CuaDriverClientTests: XCTestCase {
 
         let stateRequests = requestLines().filter { $0.contains("\"name\":\"get_window_state\"") }
         XCTAssertFalse(stateRequests.isEmpty)
-        XCTAssertTrue(stateRequests.allSatisfy { $0.contains("\"tree_format\":\"both\"") })
+        XCTAssertTrue(stateRequests.allSatisfy { $0.contains("\"tree_format\":\"elements\"") })
     }
 
     func testCaptureSeparatesSecureAndUnknownFieldValues() async throws {
@@ -984,6 +986,19 @@ final class CuaDriverClientTests: XCTestCase {
         let clicks = requestLines().filter { $0.contains("\"name\":\"click\"") }
         XCTAssertEqual(clicks.filter { $0.contains("\"delivery_mode\":\"background\"") }.count, 1)
         XCTAssertEqual(clicks.filter { $0.contains("\"delivery_mode\":\"foreground\"") }.count, 1)
+    }
+
+    func testCurrentSnapshotElementActsByTokenWithoutRequerying() async throws {
+        try Data().write(to: testDirectory.appendingPathComponent("snapshot-tokens"))
+        let client = makeClient()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "snapshot-token"
+        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        let area = ComputerTarget(stableID: "s0001:4", label: nil, coordinates: ComputerCoordinates(x: 50, y: 50))
+        _ = try await client.execute(ComputerAction(stepID: "key", operation: .pressKey(key: "end", modifiers: [], target: area)), sessionID: sessionID)
+        let lines = requestLines()
+        XCTAssertEqual(lines.filter { $0.contains("\"name\":\"get_window_state\"") }.count, 1)
+        XCTAssertTrue(lines.contains { $0.contains("\"name\":\"press_key\"") && $0.contains("\"element_token\":\"s0001:4\"") })
     }
 
     func testUnknownElementCannotBecomeAnUntargetedKeyboardAction() async throws {

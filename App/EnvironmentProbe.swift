@@ -108,12 +108,6 @@ final class EnvironmentProbe {
             let groundedAppBundleID = capture.target.bundleID
             let groundedTitle = capture.target.title.isEmpty ? initialTitle : capture.target.title
             let memoryContext = await memoryStore.promptContext(appBundleID: groundedAppBundleID)
-            let visionTextContext = try? await Task.detached(priority: .userInitiated) {
-                try PerryVisionTextRecognizer.recognizeText(in: capture.screenshotData)
-            }.value.map { observation in
-                let box = observation.normalizedBoundingBox
-                return "\(observation.text) [normalized x \(String(format: "%.3f", box.midX)), y \(String(format: "%.3f", box.midY)), confidence \(Int((observation.confidence * 100).rounded()))%]"
-            }.joined(separator: "\n")
             return (
                 context: ScreenContext(
                 frontAppBundleID: groundedAppBundleID,
@@ -123,7 +117,6 @@ final class EnvironmentProbe {
                 screenshotJPEGData: capture.screenshotData,
                 screenshotMIMEType: capture.screenshotMIMEType,
                 screenshotCoordinateSpace: .windowPixels,
-                visionTextContext: visionTextContext,
                 spatialRegionDescription: spatialSelection()?.description,
                 appSkillContext: AppSkillLibrary(storageDirectory: storageDirectory()).promptContext(for: groundedAppBundleID),
                 memoryContext: memoryContext,
@@ -148,6 +141,29 @@ final class EnvironmentProbe {
                 nil
             )
         }
+    }
+
+    func resolveTaskWindow(
+        worker: CuaWorkerHandle,
+        targetHint: CuaTargetHint? = nil
+    ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
+        let resolvedHint = targetHint ?? currentTargetHint()
+#if DEBUG
+        if let debugScreenContextLoader {
+            return await debugScreenContextLoader(worker, resolvedHint)
+        }
+#endif
+        guard let target = try? await worker.probeTarget(resolvedHint) else {
+            return (ScreenContext(frontAppBundleID: resolvedHint.bundleID, frontWindowTitle: resolvedHint.windowTitle), nil)
+        }
+        return (
+            ScreenContext(
+                frontAppBundleID: target.bundleID,
+                frontWindowTitle: target.title,
+                screenshotReferenceID: "cua:\(target.connectionGeneration):\(UUID().uuidString):window"
+            ),
+            target
+        )
     }
 
     private func remoteIntegrationPromptContext() async -> String {
