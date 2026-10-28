@@ -37,7 +37,7 @@ def osa(script):
 
 def quit_apps(*names):
     for name in names:
-        osa(f'if application "{name}" is running then tell application "{name}" to quit saving no')
+        subprocess.run(["pkill", "-x", name])
     time.sleep(1.5)
 
 

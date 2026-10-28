@@ -802,3 +802,34 @@ Open:
 - No end-to-end run in the real app yet (captain plus clicker on a live screen). That needs the GUI login.
 - A full-detail option for dense pro apps.
 - The GUI-Owl machine gap above.
+
+## 9.10 Captain and local planner benchmark, end-to-end runs (2026-10-28, in progress)
+
+Owner asks: run the captain end to end in the real app, benchmark Claude (Haiku 5.5 through the signed-in Claude Code CLI) as captain against the local model as planner, test mistral.rs UQFF, measure smoothness.
+
+mistral.rs UQFF (Holo-3.1-4B afq4, written once in 102 s, loads in 10 s, about 3.2 GB to download):
+- Plain: hard 29/41 at 3.1 s, SS-Pro 16/60 at 5.3 s (llama.cpp: 28 at 4.5 s, 16 at 4.6 s).
+- Doubt check: hard 32/41 at 10.8 s mean, SS-Pro 25/60 at 13.7 s (llama.cpp: 32 at 6.8 s, 22 at 8.1 s).
+- mistral.rs caches only the 32 system tokens; each repeat on the same screenshot costs about 3 s against 0.6 s on llama.cpp. Decision: keep llama.cpp.
+
+Lab setup on the mini (GUI session needed):
+- Ad-hoc debug builds lost Accessibility: 15 stale Perry entries from older builds. `tccutil reset Accessibility dev.perry.Perry`, relaunch, owner granted once. macOS 27 names the pane "Device Control and Data Access". Authorization prompts refuse automated input; the owner types the password.
+- Rsync from the MacBook overwrote the regenerated project; sync now excludes `Perry.xcodeproj` and regenerates on the mini.
+- The default Xcode on the mini is old; export `DEVELOPER_DIR=~/Applications/Xcode-27.app/Contents/Developer`.
+
+Lab seams (DEBUG only): `--perry-task-drill` + `scripts/lab/guide-drill task <text>` dispatches a typed command; `PERRY_AGENT_TRACE` writes every agent event as JSONL; `PERRY_CLAUDE_CODE_MODEL` pins the Claude Code model; `PERRY_LAB_AUTO_APPROVE=1` approves non-red cards and logs each one. `scripts/lab/planner-bench.py` runs 8 scored tasks (rename, folder, pdf, table, form, textedit, darkmode, calculator).
+
+Product fixes found by the runs:
+- Anthropic defaults were `claude-haiku-4-5` / `claude-sonnet-4-5`; now `claude-haiku-5-5` / `claude-sonnet-5-5`.
+- Ask mode never acts, and its prompt said only "offer to do it as a task". Haiku answered "I can't change system settings for you right now". The prompt now names the reply “do this for me”.
+- Saying "do this for me" or "take over" during an Ask session was routed back to Ask, so the documented phrase did nothing. It now starts a task on the same thread; a bare phrase reuses the question.
+
+Open UX findings:
+- Opening an app (`app.launch`, orange) shows a "Bigger change" approval card.
+- Typed requests like "Turn on Dark Mode" go to Ask, which cannot act; only "do this for me", "take over", "perry, do" start a task.
+- The mini's display is 1920x1080 at scale 1, so Retina coordinate mapping is not exercised here.
+
+Rename consistency (2026-10-28, Finder column view, Finder restarted per run, 5 runs each):
+- Haiku 5.5: 5/5, 16-34 s, median 20 s. Sonnet 5.5: 5/5, 16-26 s, median 18 s. Before the fixes: 26-78 s, with spirals to 165 s.
+- Fixes: text-field clicks are pointer clicks (d33c271); Finder column-view rows carry their names and rename typing keeps one extension (a9e26dc); window-relative click points land in the window (381a1c4).
+- Lab traps found: a pending Screen Recording prompt for Perry stole focus from Finder (owner granted it); the bench quit apps with AppleScript, which has no Apple Events permission over ssh, so Finder never restarted and its AX tree slowed to 275 nodes in 8 s. The bench now uses pkill.
