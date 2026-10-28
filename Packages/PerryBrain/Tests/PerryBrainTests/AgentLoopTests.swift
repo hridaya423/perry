@@ -101,7 +101,7 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(provider.requests.first?.maxOutputTokens, 1024)
         XCTAssertEqual(executor.callCount, 1)
 
-        let oversized = RecordingExecutor(spec: ToolSpec(name: "files.read", description: String(repeating: "x", count: 4000), inputSchema: toolSchema([:])))
+        let oversized = RecordingExecutor(spec: ToolSpec(name: "files.read", description: String(repeating: "x", count: 8000), inputSchema: toolSchema([:])))
         let unused = ScriptedProvider(responses: [[.done(.endTurn)]], capacity: 4096)
         let second = AgentLoop(provider: unused, host: PerryToolHost(executors: [oversized]))
         let rejected = await collect(second.run(system: "Read", messages: [], context: context))

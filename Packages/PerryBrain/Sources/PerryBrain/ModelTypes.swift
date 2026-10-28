@@ -225,6 +225,6 @@ extension ModelRequest {
                 }
             }
         }
-        return size
+        return (size + 1) / 2
     }
 }

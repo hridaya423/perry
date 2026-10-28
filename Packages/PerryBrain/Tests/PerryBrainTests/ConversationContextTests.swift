@@ -5,7 +5,7 @@ final class ConversationContextTests: XCTestCase {
     func testImageCannotBypassTextContextBudget() throws {
         let request = ModelRequest(messages: [.user([
             .image(data: Data([1, 2]), mimeType: "image/png"),
-            .text(String(repeating: "x", count: 4096))
+            .text(String(repeating: "x", count: 8192))
         ])], maxOutputTokens: 1024)
         XCTAssertThrowsError(try request.reservingOutput(in: 4096))
         XCTAssertThrowsError(try request.remainingInputBudget(in: 4096))
