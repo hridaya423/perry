@@ -25,6 +25,8 @@ final class CuaWorkerProcessTests: XCTestCase {
             case "$line" in
                 *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$$" ;;
                 *get_window_state*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id" ;;
+                *type_text*unconfirmed*) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"Sent (unverified) 11 char(s)"}]}}\n' "$id" ;;
+                *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"verified":true}}}\n' "$id" ;;
                 *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
             esac
         done
@@ -74,6 +76,31 @@ final class CuaWorkerProcessTests: XCTestCase {
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
         XCTAssertTrue(click.contains("\"x\":60") && click.contains("\"y\":32"), String(click))
+    }
+
+    func testTypeWithoutTargetGoesToTheFocusedField() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true)
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let unconfirmed = await host.handle(ToolCall(id: "unconfirmed", name: "ui.type", arguments: .object(["bundleID": .string("fixture.shared"), "text": .string("unconfirmed")])), context: context)
+            XCTAssertFalse(unconfirmed.isError, "\(unconfirmed)")
+            let result = await host.handle(ToolCall(id: "type", name: "ui.type", arguments: .object(["bundleID": .string("fixture.shared"), "text": .string("cedar-a.txt")])), context: context)
+            XCTAssertFalse(result.isError, "\(result)")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        let typed = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"type_text\"") })
+        XCTAssertTrue(typed.contains("cedar-a.txt"), String(typed))
+        XCTAssertFalse(typed.contains("element_token") || typed.contains("\"x\":"), String(typed))
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {

@@ -1,4 +1,6 @@
+import ApplicationServices
 import Foundation
+import PDFKit
 import PerryBrain
 import PerryGuide
 
@@ -55,7 +57,7 @@ private struct DocumentReadExecutor: ToolExecutor {
                 .compactMap { $0.value?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
                 .max(by: { $0.count < $1.count })
-            guard var text = best else {
+            guard var text = best ?? Self.openFileText(of: captured.target) else {
                 return .text(
                     call.id,
                     "document.read: no text-bearing element in \(captured.target.title) (\(captured.target.bundleID))",
@@ -71,5 +73,32 @@ private struct DocumentReadExecutor: ToolExecutor {
             if truncated { header += " — truncated at \(maxChars) chars" }
             return .text(call.id, "\(header)\n\(text)")
         }
+    }
+
+    private static func openFileText(of target: CuaWindowTarget) -> String? {
+        let app = AXUIElementCreateApplication(target.processID)
+        var windows: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &windows) == .success,
+              let windows = windows as? [AXUIElement],
+              let window = windows.first(where: { frame(of: $0).map { abs($0.minX - target.x) < 2 && abs($0.minY - target.y) < 2 } ?? false })
+        else { return nil }
+        var document: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXDocumentAttribute as CFString, &document) == .success,
+              let path = document as? String, let url = URL(string: path), url.isFileURL,
+              url.pathExtension.lowercased() == "pdf", let pdf = PDFDocument(url: url)
+        else { return nil }
+        let pages = (0..<pdf.pageCount).compactMap { index in
+            pdf.page(at: index)?.string.map { "[Page \(index + 1)]\n\($0)" }
+        }
+        return pages.isEmpty ? nil : pages.joined(separator: "\n\n")
+    }
+
+    private static func frame(of window: AXUIElement) -> CGRect? {
+        var position: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &position) == .success,
+              let position, CFGetTypeID(position) == AXValueGetTypeID() else { return nil }
+        var origin = CGPoint.zero
+        guard AXValueGetValue(position as! AXValue, .cgPoint, &origin) else { return nil }
+        return CGRect(origin: origin, size: .zero)
     }
 }

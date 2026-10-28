@@ -102,7 +102,7 @@ final class CuaDriverClientTests: XCTestCase {
                 elif [ "$name" = "start_session" ] || [ "$name" = "end_session" ]; then
                     printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}\n' "$id"
                 elif [ "$name" = "list_windows" ]; then
-                    printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true},{"bundle_id":"com.example.Editor","pid":4242,"window_id":1002,"title":"Editor - Other","bounds":{"x":40,"y":40,"width":1200,"height":900},"z_index":10,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id"
+                    printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true},{"bundle_id":"com.example.Editor","pid":4242,"window_id":1002,"title":"Editor - Other","bounds":{"x":40,"y":40,"width":1200,"height":900},"z_index":10,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id" | { if [ -f "$root/finder" ]; then sed "s/com.example.Editor/com.apple.finder/g"; else cat; fi; }
                 elif [ "$name" = "get_window_state" ]; then
                     if [ -f "$root/large-image" ]; then
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"image","mimeType":"image/png","data":"' "$id"
@@ -965,6 +965,25 @@ final class CuaDriverClientTests: XCTestCase {
             await client.shutdown()
         }
         XCTAssertEqual(requestLines().filter { $0.contains("\"delivery_mode\":\"foreground\"") }.count, 1)
+    }
+
+    func testOnlyAForegroundClientSendsFinderInputInTheForeground() async throws {
+        try Data().write(to: testDirectory.appendingPathComponent("finder"))
+        let point = ComputerTarget(stableID: nil, label: nil, coordinates: ComputerCoordinates(x: 5, y: 5))
+        for allowed in [false, true] {
+            let client = CuaDriverClient(configuration: CuaDriverConfiguration(
+                executableURL: driverURL,
+                capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
+                hostBundleID: "dev.perry.PerryTests"
+            ), allowsForegroundInput: allowed)
+            let sessionID = "finder-\(allowed)"
+            _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+            _ = try await client.execute(ComputerAction(stepID: "click", operation: .click(point)), sessionID: sessionID)
+            await client.shutdown()
+        }
+        let clicks = requestLines().filter { $0.contains("\"name\":\"click\"") }
+        XCTAssertEqual(clicks.filter { $0.contains("\"delivery_mode\":\"background\"") }.count, 1)
+        XCTAssertEqual(clicks.filter { $0.contains("\"delivery_mode\":\"foreground\"") }.count, 1)
     }
 
     func testUnknownElementCannotBecomeAnUntargetedKeyboardAction() async throws {

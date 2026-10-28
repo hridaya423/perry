@@ -1,5 +1,6 @@
 import AppKit
 import PerryBrain
+import PerryGuide
 import PerryOverlay
 
 /// Model→world dispatch. Executors bind the app's real services (Cua workers,
@@ -23,7 +24,7 @@ enum AppToolHost {
         let ghost = AgentGhostCursor(overlayState: overlayState)
         return PerryToolHost(executors:
             DrawTools(overlayState: overlayState, observations: observations).executors
-            + ScreenTools(workers: workers, lease: lease, observations: observations).executors
+            + ScreenTools(workers: workers, lease: lease, observations: observations, skills: AppSkillLibrary(storageDirectory: supportDirectory)).executors
             + UITools(
                 workers: workers,
                 lease: lease,

@@ -142,7 +142,9 @@ def run_task(name, task, args, out):
     shutil.rmtree(RUN, ignore_errors=True)
     RUN.mkdir(parents=True)
     task["setup"]()
-    trace = RUN / "trace.jsonl"
+    trace = RUN.parent / "trace.jsonl"
+    for old in RUN.parent.glob("trace.jsonl*"):
+        old.unlink()
     env = dict(os.environ, PERRY_DATA_DIRECTORY=str(DATA), PERRY_AGENT_TRACE=str(trace), PERRY_CLAUDE_CODE_MODEL=args.claude_model, PERRY_LAB_AUTO_APPROVE="1")
     subprocess.run([str(DRIVE), "launch", "--perry-task-drill"], env=env, capture_output=True, text=True)
     time.sleep(args.settle)
@@ -176,7 +178,7 @@ def run_task(name, task, args, out):
     if trace.exists():
         stem = f"{out.stem}-{name}-{int(started)}"
         shutil.copy(trace, out.with_name(f"{stem}.trace.jsonl"))
-        for image in RUN.glob("trace.jsonl.*"):
+        for image in RUN.parent.glob("trace.jsonl.*"):
             shutil.copy(image, out.with_name(f"{stem}.{image.name}"))
     with out.open("a") as handle:
         handle.write(json.dumps(record) + "\n")

@@ -222,7 +222,7 @@ private struct UITypeExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: "ui.type",
-            description: "Type text into an element or point, without moving the user's cursor.",
+            description: "Type text into an element or point, without moving the user's cursor. With no target, type into the field that already has focus.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object(targetSchemaProperties.objectValue!.merging(
@@ -240,7 +240,10 @@ private struct UITypeExecutor: ToolExecutor {
         guard let text = call.arguments["text"]?.stringValue else {
             return .text(call.id, "ui.type: missing text", isError: true)
         }
-        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
+        let focused = !["elementID", "x", "y", "label", "describe"].contains { call.arguments[$0] != nil }
+        let resolved: Result<ResolvedTarget, ToolResolutionError> = focused
+            ? .success(ResolvedTarget(target: ComputerTarget(stableID: nil, label: nil, coordinates: nil), bundleID: call.arguments["bundleID"]?.stringValue))
+            : await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }

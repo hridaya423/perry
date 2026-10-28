@@ -468,6 +468,7 @@ actor CuaDriverClient {
     private var ownedProcesses: [UInt64: CuaOwnedProcess] = [:]
     private var retired = false
     private var allowsForegroundInput = false
+    private static let foregroundOnlyBundleIDs: Set<String> = ["com.apple.finder"]
     private var retirementTask: Task<Void, Error>?
 
     init(allowsRestart: Bool = true, allowsForegroundInput: Bool = false) {
@@ -621,7 +622,10 @@ actor CuaDriverClient {
             )
             return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Clicked it." : result.text)
         case .typeText(let text, let target):
-            var arguments = try await pointerArguments(for: target, state: state, sessionID: sessionID)
+            let focused = target.stableID == nil && target.label == nil && target.coordinates == nil
+            var arguments = focused
+                ? try await actionArguments(for: nil, state: state, sessionID: sessionID, requiresTarget: false)
+                : try await pointerArguments(for: target, state: state, sessionID: sessionID)
             arguments["text"] = text
             let result: CuaToolResult
             do {
@@ -1262,6 +1266,13 @@ actor CuaDriverClient {
         generation explicitGeneration: UInt64? = nil,
         timeout: TimeInterval? = nil
     ) async throws -> CuaToolResult {
+        var arguments = arguments
+        if allowsForegroundInput, arguments["delivery_mode"] as? String == "background",
+           let session = arguments["session"] as? String,
+           let bundleID = sessionTargets[session]?.bundleID.lowercased(),
+           Self.foregroundOnlyBundleIDs.contains(bundleID) {
+            arguments["delivery_mode"] = "foreground"
+        }
         do {
             return try await invokeTool(name: name, arguments: arguments, generation: explicitGeneration, timeout: timeout)
         } catch CuaDriverError.toolRejected(let detail)

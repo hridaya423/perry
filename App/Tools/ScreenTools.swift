@@ -11,10 +11,11 @@ struct ScreenTools {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
+    var skills: AppSkillLibrary?
 
     var executors: [any ToolExecutor] {
         [
-            ScreenObserveExecutor(workers: workers, lease: lease, observations: observations),
+            ScreenObserveExecutor(workers: workers, lease: lease, observations: observations, skills: skills),
             ScreenDesktopExecutor(workers: workers, lease: lease, observations: observations),
             ScreenZoomExecutor(workers: workers, lease: lease, observations: observations),
             ClipboardReadExecutor(),
@@ -26,6 +27,7 @@ private struct ScreenObserveExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
+    let skills: AppSkillLibrary?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -50,7 +52,11 @@ private struct ScreenObserveExecutor: ToolExecutor {
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
-            let content = try await observeWindow(worker: worker, hint: hint, observations: observations, runID: context.runID)
+            var content = try await observeWindow(worker: worker, hint: hint, observations: observations, runID: context.runID)
+            if context.surface == .agent,
+               let skill = skills?.promptContext(for: observations.snapshot(runID: context.runID)?.window?.bundleID) {
+                content.append(.text(skill))
+            }
             return ToolResult(callID: call.id, content: content)
         }
     }
