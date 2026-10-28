@@ -17,6 +17,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         printf '%s\n' "$$" > "$root/pid-$$"
         bundle="fixture.$$"
         if [ -f "$root/shared-target" ]; then bundle="fixture.shared"; fi
+        if [ -f "$root/finder" ]; then bundle="com.apple.finder"; fi
         trap '' TERM
         while IFS= read -r line; do
             printf '%s\n' "$line" >> "$root/requests-$$"
@@ -24,7 +25,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             [ -n "$id" ] || continue
             case "$line" in
                 *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$$" ;;
-                *get_window_state*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id" ;;
+                *get_window_state*) if [ -f "$root/finder" ]; then printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}},{"element_token":"name","role":"AXTextField","label":"draft-a.txt","frame":{"x":20,"y":60,"width":80,"height":18}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id"; else printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id" ; fi ;;
                 *type_text*unconfirmed*) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"Sent (unverified) 11 char(s)"}]}}\n' "$id" ;;
                 *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"verified":true}}}\n' "$id" ;;
                 *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
@@ -101,6 +102,34 @@ final class CuaWorkerProcessTests: XCTestCase {
         let typed = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"type_text\"") })
         XCTAssertTrue(typed.contains("cedar-a.txt"), String(typed))
         XCTAssertFalse(typed.contains("element_token") || typed.contains("\"x\":"), String(typed))
+    }
+
+    func testFinderRenameTypingKeepsOneExtensionAndTextClicksArePointerClicks() async throws {
+        let (service, directory) = try makeFixture()
+        try Data().write(to: directory.appendingPathComponent("finder"))
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            let observed = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("com.apple.finder")])), context: context)
+            XCTAssertFalse(observed.isError, "\(observed)")
+            let clicked = await host.handle(ToolCall(id: "click", name: "ui.click", arguments: .object(["elementID": .string("e2")])), context: context)
+            XCTAssertFalse(clicked.isError, "\(clicked)")
+            let typed = await host.handle(ToolCall(id: "type", name: "ui.type", arguments: .object(["elementID": .string("v2e2"), "text": .string("cedar-a.txt")])), context: context)
+            XCTAssertFalse(typed.isError, "\(typed)")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
+        XCTAssertFalse(click.contains("element_token"), String(click))
+        let typed = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"type_text\"") })
+        XCTAssertTrue(typed.contains("\"text\":\"cedar-a\""), String(typed))
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {

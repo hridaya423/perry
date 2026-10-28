@@ -47,7 +47,25 @@ private struct ResolvedTarget {
     let target: ComputerTarget
     let bundleID: String?
     var note: String? = nil
+    var role: String? = nil
+
+    var pointerTarget: ComputerTarget {
+        guard let role, pointerOnlyRoles.contains(role) else { return target }
+        return ComputerTarget(stableID: nil, label: nil, coordinates: target.coordinates)
+    }
+
+    func typedText(_ text: String) -> String {
+        guard bundleID?.lowercased() == "com.apple.finder", role == "AXTextField",
+              let name = target.label else { return text }
+        let ext = (name as NSString).pathExtension
+        guard !ext.isEmpty, text.count > ext.count + 1, text.lowercased().hasSuffix(".\(ext.lowercased())") else { return text }
+        return String(text.dropLast(ext.count + 1))
+    }
 }
+
+private let pointerOnlyRoles: Set<String> = [
+    "AXTextField", "AXTextArea", "AXStaticText", "AXImage", "AXCell", "AXRow", "AXGroup",
+]
 
 private struct ToolResolutionError: Error {
     let message: String
@@ -70,7 +88,8 @@ private func resolveTarget(
                 label: element.label.nilIfEmpty,
                 coordinates: ComputerCoordinates(x: element.frame.midX, y: element.frame.midY)
             ),
-            bundleID: window?.bundleID
+            bundleID: window?.bundleID,
+            role: element.role
         ))
     }
     if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
@@ -109,10 +128,15 @@ private func locateDescribed(
     }
     let elements = snapshot.index.entries.map(\.element)
     let wanted = description.lowercased()
+    let named = elements.filter { $0.label.count >= 3 && wanted.contains($0.label.lowercased()) }
     let accepts: @Sendable (CGPoint) -> Bool = { point in
         let found = CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y)
-        guard let label = ClickGrounder.snapTarget(found, elements: elements, window: bounds)?.label.lowercased() else { return false }
-        return label.count >= 3 && wanted.contains(label)
+        if let label = ClickGrounder.snapTarget(found, elements: elements, window: bounds)?.label.lowercased(),
+           label.count >= 3, wanted.contains(label) {
+            return true
+        }
+        guard named.count == 1, let row = named.first else { return false }
+        return abs(found.y - row.frame.midY) <= max(row.frame.height / 2, 8)
     }
     let located: ClickGrounder.Located
     do {
@@ -202,7 +226,7 @@ private struct UIActionExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "\(kind.rawValue): \(resolved.errorMessage)", isError: true)
         }
-        let onWindow = windowPixels(resolved.target, observations: observations, runID: context.runID)
+        let onWindow = windowPixels(resolved.pointerTarget, observations: observations, runID: context.runID)
         let operation: ComputerAction.Operation = switch kind {
         case .click: .click(onWindow)
         case .doubleClick: .doubleClick(onWindow)
@@ -254,7 +278,7 @@ private struct UITypeExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
-        let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
+        let action = ComputerAction(stepID: call.id, operation: .typeText(text: resolved.typedText(text), target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {

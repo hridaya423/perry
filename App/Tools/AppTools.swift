@@ -35,11 +35,20 @@ struct AppTools {
                 return .text(call.id, "app.launch: no app matches", isError: true)
             }
             do {
-                _ = try await NSWorkspace.shared.openApplication(at: resolved, configuration: .init())
-                return .text(call.id, #"{"launched":"\#(resolved.deletingPathExtension().lastPathComponent)"}"#)
+                let app = try await NSWorkspace.shared.openApplication(at: resolved, configuration: .init())
+                let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+                while !Self.hasWindow(app.processIdentifier), ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+                return .text(call.id, #"{"launched":"\#(resolved.deletingPathExtension().lastPathComponent)","bundleID":"\#(app.bundleIdentifier ?? "")"}"#)
             } catch {
                 return .text(call.id, "app.launch failed: \(error.localizedDescription)", isError: true)
             }
+        }
+
+        private static func hasWindow(_ pid: pid_t) -> Bool {
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+            return windows.contains { $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowLayer as String] as? Int == 0 }
         }
 
         private static func findApp(named name: String) -> URL? {
