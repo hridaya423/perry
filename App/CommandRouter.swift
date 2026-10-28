@@ -8,6 +8,7 @@ import PerryGuide
 @MainActor
 final class CommandRouter {
     private weak var host: AppController?
+    private var taskOffer: NotchConfirmation?
 
     init(host: AppController) {
         self.host = host
@@ -23,6 +24,7 @@ final class CommandRouter {
         case guide(String)
         case showEverything(String)
         case doTask(String)
+        case offerTask(String)
     }
 
     func route(commandText: String?, voiceTaskScope: UUID? = nil) {
@@ -37,6 +39,7 @@ final class CommandRouter {
         case .guide(let goal): host.startGuiding(goal: goal)
         case .showEverything(let goal): Task { await host.showEverything(goal: goal, targetHint: nil) }
         case .doTask(let goal): host.foreground.start(goal: goal)
+        case .offerTask(let goal): offerTask(goal: goal)
         }
     }
 
@@ -56,12 +59,15 @@ final class CommandRouter {
             }
             return .steer(text)
         }
-        if case .asking = state {
+        if case .asking(let ask) = state {
             switch intent {
             case .dismiss: return .dismiss
             case .guide: return .askInGuide(text, full: false)
             case .showEverything: return .askInGuide(text, full: true)
-            case .doTask, .notAGuideRequest: return .ask(text)
+            case .doTask(let goal):
+                let bare = goal == text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return .offerTask(bare ? ask.question : goal)
+            case .notAGuideRequest: return .ask(text)
             }
         }
         if case .executing = state {
@@ -92,6 +98,27 @@ final class CommandRouter {
             await task.value
         } onCancel: {
             task.cancel()
+        }
+    }
+
+    private func offerTask(goal: String) {
+        taskOffer?.cancel()
+        let offer = NotchConfirmation(
+            title: "Do this as a task?",
+            detail: "Perry will use your apps to: \(goal). You can stop it at any time.",
+            destructiveTitle: "Start task",
+            cancelTitle: "Keep asking"
+        )
+        taskOffer = offer
+        Task { [weak self] in
+            let confirmed = await offer.confirm()
+            guard let self, self.taskOffer === offer else { return }
+            self.taskOffer = nil
+            guard confirmed, let host = self.host,
+                  case .asking(let ask) = host.sessionController.state,
+                  !host.isUnderMaintenance else { return }
+            host.dismiss()
+            host.foreground.start(goal: goal, threadID: ask.threadID)
         }
     }
 

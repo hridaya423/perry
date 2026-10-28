@@ -124,7 +124,7 @@ public enum PromptAssembler {
             return """
                 The user points at the screen and talks. Answer in at most three spoken sentences. \
                 You look and point in this mode, and you never act. If the user wants the work done, \
-                offer to do it as a task.
+                tell them to say “do this for me” and Perry will ask before it starts a task.
 
                 Draw attention with: point, ring, arrow, underline, caption, path, clear, as tools \
                 or inline ⟦verb e1 "label"⟧ tags that reference element ids supplied in the current turn.

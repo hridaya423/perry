@@ -595,7 +595,7 @@ final class ForegroundPlanningTests: XCTestCase {
         controller.dismiss()
     }
 
-    func testDispatchDuringAskingKeepsDictatedIntentAsFollowUp() async throws {
+    func testDispatchDuringAskingOffersTaskWithoutStartingIt() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let session = SessionController()
@@ -609,16 +609,14 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         XCTAssertTrue(asked, "Ask session never started — state: \(controller.sessionState)")
 
-        // A dictated Do-intent while Ask is live is a follow-up question,
-        // never a task started around the mode the user is in.
+        // A dictated Do-intent while Ask is live only offers a task; nothing
+        // starts until the user confirms it.
         controller.debugDispatch(#"perry, do create file "evil.txt""#)
-        let followedUp = await waitUntil {
-            if case .asking(let ask) = controller.sessionState {
-                return ask.question == #"perry, do create file "evil.txt""#
-            }
-            return false
+        try await Task.sleep(for: .milliseconds(300))
+        guard case .asking(let ask) = controller.sessionState else {
+            return XCTFail("dictated intent left Ask — state: \(controller.sessionState)")
         }
-        XCTAssertTrue(followedUp, "dictated intent did not stay in Ask — state: \(controller.sessionState)")
+        XCTAssertEqual(ask.question, "what does this button do")
         XCTAssertFalse(controller.foreground.startIsInFlight)
         controller.dismiss()
     }

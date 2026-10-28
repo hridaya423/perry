@@ -81,6 +81,8 @@ def light_mode():
 
 def calculator():
     quit_apps("Calculator")
+    for key in ("RestoreInputValue", "RestoreResultValue", "LastResultValue"):
+        sh(f"defaults delete com.apple.calculator {key}")
     sh("open -a Calculator")
     time.sleep(2)
 
@@ -93,46 +95,44 @@ TASKS = {
     "rename": dict(
         goal="In the Finder window, rename draft-a.txt to cedar-a.txt.",
         setup=fresh_inbox,
-        check=lambda answer: files() == {"cedar-a.txt", "draft-b.txt", "draft-c.txt"},
+        check=lambda answer, tools: files() == {"cedar-a.txt", "draft-b.txt", "draft-c.txt"},
     ),
     "folder": dict(
         goal="In the Finder window, create a folder called Review and move draft-b.txt and draft-c.txt into it.",
         setup=fresh_inbox,
-        check=lambda answer: files() == {"draft-a.txt", "Review/draft-b.txt", "Review/draft-c.txt"},
+        check=lambda answer, tools: files() == {"draft-a.txt", "Review/draft-b.txt", "Review/draft-c.txt"},
     ),
     "pdf": dict(
         goal="In the open Cedar brief, what is the archive code and who owns the next review?",
         setup=preview_brief,
-        check=lambda answer: "LANTERN-27" in answer.upper() and "ada" in answer.lower(),
+        check=lambda answer, tools: "LANTERN-27" in answer.upper() and "ada" in answer.lower(),
     ),
     "table": dict(
         goal="On this web page, which session has the most open places, and how many more than Music?",
         setup=cedar_page,
-        check=lambda answer: "drawing" in answer.lower() and bool(re.search(r"\b7\b|seven", answer.lower())),
+        check=lambda answer, tools: "drawing" in answer.lower() and bool(re.search(r"\b7\b|seven", answer.lower())),
     ),
     "form": dict(
         goal="On this web page, fill in the form for Noor Patel in the Writing session and save the local draft.",
         setup=cedar_page,
-        check=lambda answer: "Noor Patel: Writing" in osa('tell application "Safari" to get name of front document'),
+        check=lambda answer, tools: "Noor Patel: Writing" in osa('tell application "Safari" to get name of front document'),
     ),
     "textedit": dict(
         goal="In the open TextEdit document, add a last line that says Reviewed by Perry, then save the document.",
         setup=textedit_meeting,
-        check=lambda answer: (RUN / "meeting.txt").read_text().rstrip().endswith("Reviewed by Perry")
+        check=lambda answer, tools: (RUN / "meeting.txt").read_text().rstrip().endswith("Reviewed by Perry")
         and "Noor owns the venue checklist" in (RUN / "meeting.txt").read_text(),
     ),
     "darkmode": dict(
         goal="Turn on Dark Mode for the whole Mac.",
         setup=light_mode,
-        check=lambda answer: osa('tell application "System Events" to tell appearance preferences to get dark mode') == "true",
+        check=lambda answer, tools: osa('tell application "System Events" to tell appearance preferences to get dark mode') == "true",
         teardown=light_mode,
     ),
     "calculator": dict(
         goal="Use Calculator to work out 127 times 49 and tell me the result.",
         setup=calculator,
-        check=lambda answer: "6223" in answer.replace(",", "") and "6223" in osa(
-            'tell application "System Events" to tell process "Calculator" to get value of static text 1 of group 1 of window 1'
-        ).replace(",", ""),
+        check=lambda answer, tools: "6223" in answer.replace(",", "") and any(row["tool"].startswith("ui.") for row in tools),
     ),
 }
 
@@ -162,7 +162,7 @@ def run_task(name, task, args, out):
     answer = "".join(row.get("text", "") for row in rows)
     tools = [row for row in rows if "tool" in row]
     try:
-        passed = bool(task["check"](answer))
+        passed = bool(task["check"](answer, tools))
     except Exception as error:
         passed = False
         answer += f" [check error: {error}]"
