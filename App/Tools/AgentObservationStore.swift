@@ -8,6 +8,20 @@ final class AgentObservationStore: @unchecked Sendable {
         var window: CuaWindowTarget?
         var screenshotData: Data?
         var windowBoundsAX: CGRect?
+        var imageSize: CGSize?
+        var driverScale = 1.0
+
+        func screenPoint(fromImage point: CGPoint) -> CGPoint {
+            guard let bounds = windowBoundsAX, let imageSize, imageSize.width > 0 else { return point }
+            let scale = imageSize.width / bounds.width
+            return CGPoint(x: bounds.minX + point.x / scale, y: bounds.minY + point.y / scale)
+        }
+
+        func imageRect(fromScreen rect: CGRect) -> CGRect {
+            guard let bounds = windowBoundsAX, let imageSize, imageSize.width > 0, bounds.width > 0 else { return rect }
+            let scale = imageSize.width / bounds.width
+            return CGRect(x: (rect.minX - bounds.minX) * scale, y: (rect.minY - bounds.minY) * scale, width: rect.width * scale, height: rect.height * scale)
+        }
     }
 
     static let shared = AgentObservationStore()
@@ -19,7 +33,6 @@ final class AgentObservationStore: @unchecked Sendable {
 
     private var contexts: [UUID: Context] = [:]
     private var generations: [UUID: Int] = [:]
-    private var clickedNames: [UUID: String] = [:]
     private let lock = NSLock()
 
     func setTarget(_ target: CuaTargetHint, runID: UUID) {
@@ -81,19 +94,6 @@ final class AgentObservationStore: @unchecked Sendable {
         defer { lock.unlock() }
         contexts[runID] = nil
         generations[runID] = nil
-        clickedNames[runID] = nil
-    }
-
-    func noteClicked(_ name: String?, runID: UUID) {
-        lock.lock()
-        defer { lock.unlock() }
-        clickedNames[runID] = name
-    }
-
-    func lastClicked(runID: UUID) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return clickedNames[runID]
     }
 
     func restartIDs(runID: UUID) -> String {

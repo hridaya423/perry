@@ -33,13 +33,17 @@ public struct ObservedElement: Sendable, Equatable {
     public var label: String
     public var frame: CGRect
     public var windowID: Int
+    public var value: String?
+    public var pressable: Bool
 
-    public init(id: String, role: String, label: String, frame: CGRect, windowID: Int) {
+    public init(id: String, role: String, label: String, frame: CGRect, windowID: Int, value: String? = nil, pressable: Bool = true) {
         self.id = id
         self.role = role
         self.label = label
         self.frame = frame
         self.windowID = windowID
+        self.value = value
+        self.pressable = pressable
     }
 }
 

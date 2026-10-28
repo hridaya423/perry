@@ -277,6 +277,13 @@ struct CuaCapturedWindow: Sendable {
     let accessibilitySnapshot: String?
     let accessibilitySnapshotModel: AXSnapshot?
     let snapshotID: String?
+    var elementDetails: [String: CuaElementDetail] = [:]
+    var treeComplete = true
+}
+
+struct CuaElementDetail: Sendable, Equatable {
+    let value: String?
+    let pressable: Bool
 }
 
 #if DEBUG
@@ -593,7 +600,9 @@ actor CuaDriverClient {
             screenshotMIMEType: state.imageMIMEType ?? "image/png",
             accessibilitySnapshot: formattedAccessibilitySnapshot(from: state.structuredValue),
             accessibilitySnapshotModel: guideSnapshot(from: structuredValue, target: resolvedTarget),
-            snapshotID: snapshotID
+            snapshotID: snapshotID,
+            elementDetails: elementDetails(from: structuredValue),
+            treeComplete: structuredValue?["truncated"] as? Bool != true
         )
     }
 
@@ -1560,7 +1569,6 @@ actor CuaDriverClient {
             let rawRole = element["role"] as? String ?? ""
             let role = axGuideRole(rawRole)
             let label = nonEmpty(element["label"] as? String)
-                ?? (target.bundleID == "com.apple.finder" && rawRole == "AXTextField" ? nonEmpty(element["value"] as? String) : nil)
             let sensitivity: AXSensitivity = rawRole == "AXSecureTextField" ? .secure : .unknown
             let value: String? = nil
             return AXElement(
@@ -1576,6 +1584,19 @@ actor CuaDriverClient {
             )
         }
         return AXSnapshot(appBundleID: target.bundleID, windowTitle: target.title, elements: mapped)
+    }
+
+    private func elementDetails(from value: [String: Any]?) -> [String: CuaElementDetail] {
+        guard let elements = value?["elements"] as? [[String: Any]] else { return [:] }
+        return elements.reduce(into: [:]) { details, element in
+            guard let token = element["element_token"] as? String, !token.isEmpty else { return }
+            let secure = element["role"] as? String == "AXSecureTextField"
+            let actions = element["actions"] as? [String]
+            details[token] = CuaElementDetail(
+                value: secure ? nil : nonEmpty(element["value"] as? String),
+                pressable: actions?.contains("press") ?? true
+            )
+        }
     }
 
     private func elementLabels(from value: [String: Any]?) -> [String: String] {

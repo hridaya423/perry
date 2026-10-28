@@ -47,24 +47,12 @@ private struct ResolvedTarget {
     let target: ComputerTarget
     let bundleID: String?
     var note: String? = nil
-    var role: String? = nil
+    var pressable = true
 
     var pointerTarget: ComputerTarget {
-        guard let role, pointerOnlyRoles.contains(role) else { return target }
-        return ComputerTarget(stableID: nil, label: nil, coordinates: target.coordinates)
+        pressable ? target : ComputerTarget(stableID: nil, label: nil, coordinates: target.coordinates)
     }
 }
-
-private func finderRenameText(_ text: String, name: String?, bundleID: String?) -> String {
-    guard bundleID?.lowercased() == "com.apple.finder", let name else { return text }
-    let ext = (name as NSString).pathExtension
-    guard !ext.isEmpty, text.count > ext.count + 1, text.lowercased().hasSuffix(".\(ext.lowercased())") else { return text }
-    return String(text.dropLast(ext.count + 1))
-}
-
-private let pointerOnlyRoles: Set<String> = [
-    "AXTextField", "AXTextArea", "AXStaticText", "AXImage", "AXCell", "AXRow", "AXGroup",
-]
 
 private struct ToolResolutionError: Error {
     let message: String
@@ -88,21 +76,15 @@ private func resolveTarget(
                 coordinates: ComputerCoordinates(x: element.frame.midX, y: element.frame.midY)
             ),
             bundleID: window?.bundleID,
-            role: element.role
+            pressable: element.pressable
         ))
     }
     if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
-        let snapshot = observations.snapshot(runID: runID)
-        var point = CGPoint(x: x, y: y)
-        if let bounds = snapshot?.windowBoundsAX, !bounds.contains(point),
-           CGRect(origin: .zero, size: bounds.size).contains(point) {
-            point = CGPoint(x: bounds.minX + x, y: bounds.minY + y)
-        }
-        let hit = snapshot?.index.entries.map(\.element).last { $0.frame.contains(point) && !$0.label.isEmpty }
+        let point = screenPoint(x, y, observations: observations, runID: runID)
         return .success(ResolvedTarget(
             target: ComputerTarget(
                 stableID: nil,
-                label: args["label"]?.stringValue ?? hit?.label,
+                label: args["label"]?.stringValue,
                 coordinates: ComputerCoordinates(x: point.x, y: point.y)
             ),
             bundleID: args["bundleID"]?.stringValue
@@ -153,7 +135,8 @@ private func locateDescribed(
     let found = CGPoint(x: bounds.minX + located.point.x, y: bounds.minY + located.point.y)
     let element = ClickGrounder.snapTarget(found, elements: elements, window: bounds)
     let point = element.map { CGPoint(x: $0.frame.midX, y: $0.frame.midY) } ?? found
-    var note = "Found \"\(description)\" at (\(Int(point.x)), \(Int(point.y)))"
+    let shown = snapshot.imageRect(fromScreen: CGRect(origin: point, size: .zero)).origin
+    var note = "Found \"\(description)\" at (\(Int(shown.x)), \(Int(shown.y)))"
     if let element { note += " on \(element.role) \"\(element.label)\"" }
     note += located.confident ? "." : ". The click model was unsure, so check the window below before going on."
     return .success(ResolvedTarget(
@@ -169,7 +152,7 @@ private func locateDescribed(
 
 private let targetSchemaProperties: JSONValue = .object([
     "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
-    "x": .object(["type": .string("number"), "description": .string("Screen coordinate in points; used when elementID is absent. A point outside the observed window is read as relative to its top-left corner.")]),
+    "x": .object(["type": .string("number"), "description": .string("Pixel in the latest screen.observe screenshot, from its top-left corner; used when elementID is absent")]),
     "y": .object(["type": .string("number")]),
     "label": .object(["type": .string("string"), "description": .string("Accessible label text to match")]),
     "describe": .object(["type": .string("string"), "description": .string("When the target has no element id: describe it for this Mac's click model. Quote its visible text or name its icon, say where it is relative to nearby controls, and say what it does, e.g. \"gear icon at the top right of the sidebar, opens the action menu\".")]),
@@ -181,10 +164,12 @@ private func windowPixels(_ target: ComputerTarget, observations: AgentObservati
 }
 
 private func windowPixels(_ point: ComputerCoordinates, observations: AgentObservationStore, runID: UUID) -> ComputerCoordinates {
-    guard let snapshot = observations.snapshot(runID: runID), let bounds = snapshot.windowBoundsAX, bounds.width > 0 else { return point }
-    let pixelWidth = snapshot.screenshotData.flatMap { NSImage(data: $0)?.cgImage(forProposedRect: nil, context: nil, hints: nil)?.width }
-    let scale = pixelWidth.map { Double($0) / bounds.width } ?? 1
-    return ComputerCoordinates(x: (point.x - bounds.minX) * scale, y: (point.y - bounds.minY) * scale)
+    guard let snapshot = observations.snapshot(runID: runID), let bounds = snapshot.windowBoundsAX else { return point }
+    return ComputerCoordinates(x: (point.x - bounds.minX) * snapshot.driverScale, y: (point.y - bounds.minY) * snapshot.driverScale)
+}
+
+private func screenPoint(_ x: Double, _ y: Double, observations: AgentObservationStore, runID: UUID) -> CGPoint {
+    observations.snapshot(runID: runID)?.screenPoint(fromImage: CGPoint(x: x, y: y)) ?? CGPoint(x: x, y: y)
 }
 
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {
@@ -241,7 +226,6 @@ private struct UIActionExecutor: ToolExecutor {
         let action = ComputerAction(stepID: call.id, operation: operation)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
-            if result.success { observations.noteClicked(resolved.target.label, runID: context.runID) }
             if result.success, let point = resolved.target.coordinates {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
@@ -285,9 +269,7 @@ private struct UITypeExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
-        let name = focused ? observations.lastClicked(runID: context.runID) : (resolved.role == "AXTextField" ? resolved.target.label : nil)
-        let bundleID = resolved.bundleID ?? observations.snapshot(runID: context.runID)?.window?.bundleID
-        let action = ComputerAction(stepID: call.id, operation: .typeText(text: finderRenameText(text, name: name, bundleID: bundleID), target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
+        let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
@@ -437,7 +419,7 @@ private struct UIDragExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: "ui.drag",
-            description: "Drag from one screen point to another. Reviewed: drags have unknown effects.",
+            description: "Drag between two pixels of the latest screen.observe screenshot. Reviewed: drags have unknown effects.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -462,11 +444,13 @@ private struct UIDragExecutor: ToolExecutor {
               let toX = args["toX"]?.doubleValue, let toY = args["toY"]?.doubleValue else {
             return .text(call.id, "ui.drag: needs fromX/fromY/toX/toY", isError: true)
         }
+        let from = screenPoint(fromX, fromY, observations: observations, runID: context.runID)
+        let to = screenPoint(toX, toY, observations: observations, runID: context.runID)
         let action = ComputerAction(
             stepID: call.id,
             operation: .drag(
-                from: windowPixels(ComputerCoordinates(x: fromX, y: fromY), observations: observations, runID: context.runID),
-                to: windowPixels(ComputerCoordinates(x: toX, y: toY), observations: observations, runID: context.runID),
+                from: windowPixels(ComputerCoordinates(x: from.x, y: from.y), observations: observations, runID: context.runID),
+                to: windowPixels(ComputerCoordinates(x: to.x, y: to.y), observations: observations, runID: context.runID),
                 durationMilliseconds: nil, steps: nil
             )
         )
@@ -474,7 +458,7 @@ private struct UIDragExecutor: ToolExecutor {
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success {
-                onActuation?(CGPoint(x: toX, y: toY), nil)
+                onActuation?(to, nil)
             }
             return .text(call.id, result.message, isError: !result.success)
         }
