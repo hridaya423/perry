@@ -67,9 +67,31 @@ public struct ModelRung: Equatable, Sendable {
     public var downloadGB: Double
     public var activeGB: Double
     public var compactActiveGB: Double?
+    public var repo: String
+    public var files: [String]
 
     public var id: String { "\(name)-\(quant)" }
     public var warmGB: Double { downloadGB }
+
+    init(name: String, quant: String, downloadGB: Double, activeGB: Double, compactActiveGB: Double? = nil, repo: String? = nil, files: [String]? = nil) {
+        self.name = name
+        self.quant = quant
+        self.downloadGB = downloadGB
+        self.activeGB = activeGB
+        self.compactActiveGB = compactActiveGB
+        self.repo = repo ?? "unsloth/\(name)-GGUF"
+        self.files = files ?? ["\(name)-\(quant).gguf", "mmproj-F16.gguf"]
+    }
+
+    public static let holo31_4B_Q4KM = ModelRung(
+        name: "Holo-3.1-4B", quant: "Q4_K_M", downloadGB: 3.74, activeGB: 5.9, compactActiveGB: 4.6,
+        repo: "mradermacher/Holo-3.1-4B-GGUF", files: ["Holo-3.1-4B.Q4_K_M.gguf", "Holo-3.1-4B.mmproj-f16.gguf"]
+    )
+    public static let guiOwl15_2B_Q4KM = ModelRung(
+        name: "GUI-Owl-1.5-2B", quant: "Q4_K_M", downloadGB: 1.93, activeGB: 3.0,
+        repo: "mradermacher/GUI-Owl-1.5-2B-Instruct-GGUF",
+        files: ["GUI-Owl-1.5-2B-Instruct.Q4_K_M.gguf", "GUI-Owl-1.5-2B-Instruct.mmproj-f16.gguf"]
+    )
 
     public static let qwen35_0_8B_Q4KM = ModelRung(name: "Qwen3.5-0.8B", quant: "Q4_K_M", downloadGB: 0.73, activeGB: 0.73)
     public static let qwen35_2B_UDQ4KXL = ModelRung(name: "Qwen3.5-2B", quant: "UD-Q4_K_XL", downloadGB: 2.0, activeGB: 3.0)
@@ -113,7 +135,7 @@ public struct Recommendation: Equatable, Sendable {
 }
 
 public struct ModelOffer: Equatable, Sendable {
-    public enum Size: CaseIterable, Sendable { case small, medium, large }
+    public enum Size: CaseIterable, Sendable { case recommended, small }
     public enum Blocker: Equatable, Sendable {
         case memory
         case disk(neededGB: Double)
@@ -140,10 +162,10 @@ public enum ModelFit {
 
     public static let diskHeadroomGB = 2.0
 
+    public static let lineup: [ModelRung] = [.holo31_4B_Q4KM, .guiOwl15_2B_Q4KM]
+
     public static func offers(profile: MachineProfile, freeDiskBytes: Int64) -> [ModelOffer] {
-        let large = [ModelRung.qwen38_27B_UDQ4KXL, .qwen38_27B_UDIQ4XS].first { fits($0, on: profile) } ?? .qwen38_27B_UDIQ4XS
-        let sizes: [(ModelOffer.Size, ModelRung)] = [(.small, .qwen35_4B_UDQ4KXL), (.medium, .qwen35_9B_UDQ4KXL), (.large, large)]
-        return sizes.map { size, rung in
+        zip(ModelOffer.Size.allCases, lineup).map { size, rung in
             let needed = rung.downloadGB + diskHeadroomGB
             let blocker: ModelOffer.Blocker? = if !fits(rung, on: profile) {
                 .memory
@@ -157,7 +179,7 @@ public enum ModelFit {
     }
 
     public static func recommended(_ offers: [ModelOffer]) -> ModelOffer? {
-        offers.last { $0.blocker == nil }
+        offers.first { $0.blocker == nil }
     }
 
     public static func recommend(profile: MachineProfile, budget: MemoryBudget) -> Recommendation {

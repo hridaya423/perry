@@ -27,7 +27,7 @@ struct LocalBrainView: View {
     }
 
     private var rung: ModelRung {
-        local.chosen(from: offers)?.rung ?? offers.first?.rung ?? .qwen35_4B_UDQ4KXL
+        local.chosen(from: offers)?.rung ?? offers.first?.rung ?? .holo31_4B_Q4KM
     }
 
     var body: some View {

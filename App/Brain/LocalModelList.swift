@@ -4,17 +4,15 @@ import SwiftUI
 extension ModelOffer.Size {
     var title: String {
         switch self {
+        case .recommended: "Recommended"
         case .small: "Small"
-        case .medium: "Medium"
-        case .large: "Large"
         }
     }
 
     var promise: String {
         switch self {
-        case .small: "Quick answers and simple steps."
-        case .medium: "Better at longer tasks and reading the screen."
-        case .large: "The strongest. Uses your apps almost like the cloud."
+        case .recommended: "Finds the right button most often, even on busy screens."
+        case .small: "Twice as fast and lighter on memory. Misses more on busy screens."
         }
     }
 }
@@ -47,7 +45,7 @@ struct LocalModelList: View {
                         HStack(spacing: 6) {
                             Text(offer.size.title)
                             Text(Self.modelName(offer.rung)).settingNote()
-                            if offer.size == best {
+                            if offer.size == best, best != .recommended {
                                 Text("Best for this Mac")
                                     .font(PerryTheme.Scale.meta)
                                     .foregroundStyle(PerryTheme.Colors.accent)

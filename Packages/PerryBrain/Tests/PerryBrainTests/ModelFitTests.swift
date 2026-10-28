@@ -26,26 +26,22 @@ final class ModelFitTests: XCTestCase {
         ModelFit.offers(profile: profile("M4 Pro", gb: gb, workingSetShare: workingSetShare), freeDiskBytes: Int64(freeGB * 1e9))
     }
 
-    func testOffersSmallMediumAndQwenThreeEightAsLarge() {
+    func testOffersHoloAsRecommendedAndGuiOwlAsSmall() {
         let result = offers(gb: 48, freeGB: 100)
-        XCTAssertEqual(result.map(\.rung.id), ["Qwen3.5-4B-UD-Q4_K_XL", "Qwen3.5-9B-UD-Q4_K_XL", "Qwen3.8-27B-UD-Q4_K_XL"])
-        XCTAssertEqual(ModelFit.recommended(result)?.size, .large)
+        XCTAssertEqual(result.map(\.rung.id), ["Holo-3.1-4B-Q4_K_M", "GUI-Owl-1.5-2B-Q4_K_M"])
+        XCTAssertEqual(ModelFit.recommended(result)?.size, .recommended)
     }
 
     func testRecommendationStepsDownWhenTheDiskIsTooSmall() {
-        let result = offers(gb: 48, freeGB: 15)
-        XCTAssertEqual(result[2].blocker, .disk(neededGB: 20.5))
-        XCTAssertEqual(ModelFit.recommended(result)?.size, .medium)
-    }
-
-    func testSixteenGigabytesWithASmallWorkingSetBlocksTheBiggerModelsOnMemory() {
-        let result = offers(gb: 16, workingSetShare: 0.67, freeGB: 100)
-        XCTAssertEqual(result.map(\.blocker), [nil, .memory, .memory])
+        let result = offers(gb: 48, freeGB: 4)
+        XCTAssertEqual(result[0].blocker, .disk(neededGB: 5.74))
         XCTAssertEqual(ModelFit.recommended(result)?.size, .small)
     }
 
-    func testLargeFallsBackToTheSmallerQuantBeforeItIsBlocked() {
-        XCTAssertEqual(offers(gb: 32, freeGB: 100)[2].rung.id, "Qwen3.8-27B-UD-IQ4_XS")
+    func testEightGigabytesWithASmallWorkingSetBlocksHoloOnMemory() {
+        let result = offers(gb: 8, workingSetShare: 0.67, freeGB: 100)
+        XCTAssertEqual(result.map(\.blocker), [.memory, nil])
+        XCTAssertEqual(ModelFit.recommended(result)?.size, .small)
     }
 
     func testChipParsing() {
