@@ -931,6 +931,18 @@ final class CuaDriverClientTests: XCTestCase {
         }
     }
 
+    func testClickOnUnmatchedLabelUsesTheObservedPoint() async throws {
+        let client = makeClient()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "unmatched-label"
+        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        let target = ComputerTarget(stableID: nil, label: "Cedar review\nNoor owns the venue checklist.", coordinates: ComputerCoordinates(x: 40, y: 60))
+        _ = try await client.execute(ComputerAction(stepID: "text-area", operation: .click(target)), sessionID: sessionID)
+        let click = try XCTUnwrap(requestLines().last { $0.contains("\"name\":\"click\"") })
+        XCTAssertTrue(click.contains("\"x\":40"), click)
+        XCTAssertFalse(click.contains("element_token"), click)
+    }
+
     func testUnknownElementCannotBecomeAnUntargetedKeyboardAction() async throws {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }

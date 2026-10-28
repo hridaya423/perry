@@ -360,6 +360,15 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
             return false
         }
     }
+
+    var isTargetFact: Bool {
+        switch self {
+        case .targetMismatch, .targetNotFound, .noTargetWindow, .protectedTarget, .unsupportedAction, .toolRejected:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 private struct CuaToolResult: Sendable {
@@ -609,7 +618,7 @@ actor CuaDriverClient {
             )
             return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Clicked it." : result.text)
         case .typeText(let text, let target):
-            var arguments = try await actionArguments(for: target, state: state, sessionID: sessionID)
+            var arguments = try await pointerArguments(for: target, state: state, sessionID: sessionID)
             arguments["text"] = text
             let result: CuaToolResult
             do {
@@ -1152,12 +1161,9 @@ actor CuaDriverClient {
         requiresTarget: Bool = true,
         additionalArguments: [String: Any] = [:]
     ) async throws -> CuaToolResult {
-        var arguments = try await actionArguments(
-            for: target,
-            state: state,
-            sessionID: sessionID,
-            requiresTarget: requiresTarget
-        )
+        var arguments = ["click", "double_click", "right_click"].contains(name)
+            ? try await pointerArguments(for: target, state: state, sessionID: sessionID)
+            : try await actionArguments(for: target, state: state, sessionID: sessionID, requiresTarget: requiresTarget)
         additionalArguments.forEach { arguments[$0.key] = $0.value }
         do {
             return try await callTool(name: name, arguments: arguments)
@@ -1173,6 +1179,14 @@ actor CuaDriverClient {
             )
             additionalArguments.forEach { refreshedArguments[$0.key] = $0.value }
             return try await callTool(name: name, arguments: refreshedArguments)
+        }
+    }
+
+    private func pointerArguments(for target: ComputerTarget?, state: CuaSessionState, sessionID: String) async throws -> [String: Any] {
+        do {
+            return try await actionArguments(for: target, state: state, sessionID: sessionID)
+        } catch CuaDriverError.targetNotFound where target?.coordinates != nil {
+            return try await actionArguments(for: ComputerTarget(stableID: nil, label: nil, coordinates: target?.coordinates), state: state, sessionID: sessionID)
         }
     }
 

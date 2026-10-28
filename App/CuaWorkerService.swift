@@ -265,9 +265,10 @@ actor CuaWorkerService {
             }
             try claim([.application(target.bundleID)], allocation: allocation)
             return try await client.execute(action, sessionID: allocation.uuidString)
-        } catch let error as CuaDriverError where error == .targetMismatch {
-            // A refused identity leaves the worker healthy; the plan, not the
-            // driver, was wrong. Surface the mismatch instead of retiring.
+        } catch let error as CuaDriverError where error.isTargetFact {
+            // A missing, refused, or mismatched target leaves the worker
+            // healthy; the plan, not the driver, was wrong. Surface it instead
+            // of retiring, which would cancel the whole run.
             throw error
         } catch {
             beginRetirement(allocation)

@@ -6,7 +6,7 @@ import PerryRuntimes
 @testable import Perry
 
 final class CuaWorkerProcessTests: XCTestCase {
-    private func makeFixture(sharedTarget: Bool = false) throws -> (CuaWorkerService, URL) {
+    private func makeFixture(sharedTarget: Bool = false, windowOrigin: (x: Int, y: Int) = (0, 0)) throws -> (CuaWorkerService, URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-workers-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let executable = directory.appendingPathComponent("driver")
@@ -23,7 +23,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
             [ -n "$id" ] || continue
             case "$line" in
-                *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":0,"y":0,"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$$" ;;
+                *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$$" ;;
                 *get_window_state*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"AQI=","mimeType":"image/png"}]}}\n' "$id" ;;
                 *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
             esac
@@ -52,6 +52,43 @@ final class CuaWorkerProcessTests: XCTestCase {
             try TestTempDirectory.remove(directory)
         }
         return (service, directory)
+    }
+
+    func testPointClicksAreSentAsWindowPixels() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true, windowOrigin: (100, 50))
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let result = await host.handle(ToolCall(id: "click", name: "ui.click", arguments: .object(["x": .number(160), "y": .number(82)])), context: context)
+            XCTAssertFalse(result.isError, "\(result)")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
+        XCTAssertTrue(click.contains("\"x\":60") && click.contains("\"y\":32"), String(click))
+    }
+
+    func testMissedClickTargetKeepsTheWorkerAlive() async throws {
+        let (service, _) = try makeFixture()
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            _ = try await worker.capture(target: nil)
+            let missing = ComputerAction(stepID: "missing", operation: .click(ComputerTarget(stableID: nil, label: "Missing", coordinates: nil)))
+            do {
+                _ = try await worker.execute(missing)
+                XCTFail("A click on a missing control must fail")
+            } catch let error as CuaDriverError {
+                XCTAssertEqual(error, .targetNotFound)
+            }
+            _ = try await worker.capture(target: nil)
+        }
     }
 
     func testUnrelatedToolRunCannotBorrowForegroundWorker() async throws {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PerryBrain
 import PerryCore
@@ -26,7 +27,7 @@ struct UITools {
             UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIHotkeyExecutor(workers: workers, lease: lease),
-            UIDragExecutor(workers: workers, lease: lease, onActuation: onActuation),
+            UIDragExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
         ]
     }
 }
@@ -138,6 +139,17 @@ private let targetSchemaProperties: JSONValue = .object([
     "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
 ])
 
+private func windowPixels(_ target: ComputerTarget, observations: AgentObservationStore, runID: UUID) -> ComputerTarget {
+    ComputerTarget(stableID: target.stableID, label: target.label, coordinates: target.coordinates.map { windowPixels($0, observations: observations, runID: runID) })
+}
+
+private func windowPixels(_ point: ComputerCoordinates, observations: AgentObservationStore, runID: UUID) -> ComputerCoordinates {
+    guard let snapshot = observations.snapshot(runID: runID), let bounds = snapshot.windowBoundsAX, bounds.width > 0 else { return point }
+    let pixelWidth = snapshot.screenshotData.flatMap { NSImage(data: $0)?.cgImage(forProposedRect: nil, context: nil, hints: nil)?.width }
+    let scale = pixelWidth.map { Double($0) / bounds.width } ?? 1
+    return ComputerCoordinates(x: (point.x - bounds.minX) * scale, y: (point.y - bounds.minY) * scale)
+}
+
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {
     bundleID.map { [.application($0.lowercased())] } ?? []
 }
@@ -183,10 +195,11 @@ private struct UIActionExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "\(kind.rawValue): \(resolved.errorMessage)", isError: true)
         }
+        let onWindow = windowPixels(resolved.target, observations: observations, runID: context.runID)
         let operation: ComputerAction.Operation = switch kind {
-        case .click: .click(resolved.target)
-        case .doubleClick: .doubleClick(resolved.target)
-        case .rightClick: .rightClick(resolved.target)
+        case .click: .click(onWindow)
+        case .doubleClick: .doubleClick(onWindow)
+        case .rightClick: .rightClick(onWindow)
         }
         let action = ComputerAction(stepID: call.id, operation: operation)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
@@ -231,7 +244,7 @@ private struct UITypeExecutor: ToolExecutor {
         guard case .success(let resolved) = resolved else {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
-        let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: resolved.target))
+        let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             let result = try await worker.execute(action)
             if result.success, let point = resolved.target.coordinates {
@@ -278,7 +291,7 @@ private struct UIScrollExecutor: ToolExecutor {
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
-            operation: .scroll(direction: direction, amount: amount, by: nil, target: target?.target)
+            operation: .scroll(direction: direction, amount: amount, by: nil, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
         )
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
@@ -324,7 +337,7 @@ private struct UIKeyExecutor: ToolExecutor {
         let target = try? resolved.get()
         let action = ComputerAction(
             stepID: call.id,
-            operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target?.target)
+            operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
         )
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             let result = try await worker.execute(action)
@@ -375,6 +388,7 @@ private struct UIHotkeyExecutor: ToolExecutor {
 private struct UIDragExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
@@ -408,8 +422,8 @@ private struct UIDragExecutor: ToolExecutor {
         let action = ComputerAction(
             stepID: call.id,
             operation: .drag(
-                from: ComputerCoordinates(x: fromX, y: fromY),
-                to: ComputerCoordinates(x: toX, y: toY),
+                from: windowPixels(ComputerCoordinates(x: fromX, y: fromY), observations: observations, runID: context.runID),
+                to: windowPixels(ComputerCoordinates(x: toX, y: toY), observations: observations, runID: context.runID),
                 durationMilliseconds: nil, steps: nil
             )
         )
