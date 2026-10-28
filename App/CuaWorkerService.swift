@@ -97,8 +97,8 @@ actor CuaWorkerService {
         // respawn via pid+CGWindowID, reads retry boundedly at the service
         // seam, and actions still fail closed — a post-respawn execute has
         // to rebind the session's window before anything can dispatch.
-        let client = configuration.map { CuaDriverClient(configuration: $0, allowsRestart: true) }
-            ?? CuaDriverClient(allowsRestart: true)
+        let client = configuration.map { CuaDriverClient(configuration: $0, allowsRestart: true, allowsForegroundInput: scope == .foreground) }
+            ?? CuaDriverClient(allowsRestart: true, allowsForegroundInput: scope == .foreground)
         workers[allocation] = Worker(scope: scope, client: client, resources: resources)
         let handle = CuaWorkerHandle(service: self, allocation: allocation)
         let serviceID = serviceID

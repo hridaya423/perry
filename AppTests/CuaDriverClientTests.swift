@@ -131,6 +131,8 @@ final class CuaDriverClientTests: XCTestCase {
                     else
                         printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"effect":"confirmed","verified":true},"content":[]}}\n' "$id"
                     fi
+                elif [ -f "$root/refuse-background" ] && [ "$name" = "click" ] && printf '%s\n' "$line" | grep -Fq '"delivery_mode":"background"'; then
+                    printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":"Background input refused (window_not_key): window 1001 is not key"}]}}\n' "$id"
                 elif [ -f "$root/delay-action" ] && [ "$name" = "click" ]; then
                     if [ ! -f "$root/action-delayed" ]; then
                         : > "$root/action-delayed"
@@ -941,6 +943,28 @@ final class CuaDriverClientTests: XCTestCase {
         let click = try XCTUnwrap(requestLines().last { $0.contains("\"name\":\"click\"") })
         XCTAssertTrue(click.contains("\"x\":40"), click)
         XCTAssertFalse(click.contains("element_token"), click)
+    }
+
+    func testOnlyAForegroundClientRetriesRefusedBackgroundInputInTheForeground() async throws {
+        try Data().write(to: testDirectory.appendingPathComponent("refuse-background"))
+        let point = ComputerTarget(stableID: nil, label: nil, coordinates: ComputerCoordinates(x: 5, y: 5))
+        for allowed in [false, true] {
+            let client = CuaDriverClient(configuration: CuaDriverConfiguration(
+                executableURL: driverURL,
+                capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
+                hostBundleID: "dev.perry.PerryTests"
+            ), allowsForegroundInput: allowed)
+            let sessionID = "focus-\(allowed)"
+            _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+            do {
+                _ = try await client.execute(ComputerAction(stepID: "click", operation: .click(point)), sessionID: sessionID)
+                XCTAssertTrue(allowed, "A background client must not take focus")
+            } catch let error as CuaDriverError {
+                XCTAssertFalse(allowed, "\(error)")
+            }
+            await client.shutdown()
+        }
+        XCTAssertEqual(requestLines().filter { $0.contains("\"delivery_mode\":\"foreground\"") }.count, 1)
     }
 
     func testUnknownElementCannotBecomeAnUntargetedKeyboardAction() async throws {

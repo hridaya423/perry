@@ -467,15 +467,18 @@ actor CuaDriverClient {
     private var sessionTargets: [String: CuaWindowTarget] = [:]
     private var ownedProcesses: [UInt64: CuaOwnedProcess] = [:]
     private var retired = false
+    private var allowsForegroundInput = false
     private var retirementTask: Task<Void, Error>?
 
-    init(allowsRestart: Bool = true) {
+    init(allowsRestart: Bool = true, allowsForegroundInput: Bool = false) {
         self.allowsRestart = allowsRestart
+        self.allowsForegroundInput = allowsForegroundInput
         configurationSource = .discover
     }
 
-    init(configuration: CuaDriverConfiguration?, allowsRestart: Bool = true) {
+    init(configuration: CuaDriverConfiguration?, allowsRestart: Bool = true, allowsForegroundInput: Bool = false) {
         self.allowsRestart = allowsRestart
+        self.allowsForegroundInput = allowsForegroundInput
         configurationSource = .resolved(configuration)
     }
 
@@ -1258,6 +1261,22 @@ actor CuaDriverClient {
         arguments: [String: Any],
         generation explicitGeneration: UInt64? = nil,
         timeout: TimeInterval? = nil
+    ) async throws -> CuaToolResult {
+        do {
+            return try await invokeTool(name: name, arguments: arguments, generation: explicitGeneration, timeout: timeout)
+        } catch CuaDriverError.toolRejected(let detail)
+            where allowsForegroundInput && arguments["delivery_mode"] as? String == "background" && detail.contains("Background input refused") {
+            var foreground = arguments
+            foreground["delivery_mode"] = "foreground"
+            return try await invokeTool(name: name, arguments: foreground, generation: explicitGeneration, timeout: timeout)
+        }
+    }
+
+    private func invokeTool(
+        name: String,
+        arguments: [String: Any],
+        generation explicitGeneration: UInt64?,
+        timeout: TimeInterval?
     ) async throws -> CuaToolResult {
         let sessionGeneration = (arguments["session"] as? String).flatMap { startedSessions[$0] }
         let generation = explicitGeneration ?? sessionGeneration
