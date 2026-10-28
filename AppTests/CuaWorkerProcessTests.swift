@@ -72,11 +72,15 @@ final class CuaWorkerProcessTests: XCTestCase {
             _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
             let result = await host.handle(ToolCall(id: "click", name: "ui.click", arguments: .object(["x": .number(160), "y": .number(82)])), context: context)
             XCTAssertFalse(result.isError, "\(result)")
+            let relative = await host.handle(ToolCall(id: "click2", name: "ui.click", arguments: .object(["x": .number(40), "y": .number(30)])), context: context)
+            XCTAssertFalse(relative.isError, "\(relative)")
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
-        XCTAssertTrue(click.contains("\"x\":60") && click.contains("\"y\":32"), String(click))
+        let clicks = requests.split(separator: "\n").filter { $0.contains("\"name\":\"click\"") }
+        XCTAssertEqual(clicks.count, 2, requests)
+        XCTAssertTrue(clicks[0].contains("\"x\":60") && clicks[0].contains("\"y\":32"), String(clicks[0]))
+        XCTAssertTrue(clicks[1].contains("\"x\":40") && clicks[1].contains("\"y\":30"), String(clicks[1]))
     }
 
     func testTypeWithoutTargetGoesToTheFocusedField() async throws {

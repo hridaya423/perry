@@ -92,11 +92,18 @@ private func resolveTarget(
         ))
     }
     if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
+        let snapshot = observations.snapshot(runID: runID)
+        var point = CGPoint(x: x, y: y)
+        if let bounds = snapshot?.windowBoundsAX, !bounds.contains(point),
+           CGRect(origin: .zero, size: bounds.size).contains(point) {
+            point = CGPoint(x: bounds.minX + x, y: bounds.minY + y)
+        }
+        let hit = snapshot?.index.entries.map(\.element).last { $0.frame.contains(point) && !$0.label.isEmpty }
         return .success(ResolvedTarget(
             target: ComputerTarget(
                 stableID: nil,
-                label: args["label"]?.stringValue,
-                coordinates: ComputerCoordinates(x: x, y: y)
+                label: args["label"]?.stringValue ?? hit?.label,
+                coordinates: ComputerCoordinates(x: point.x, y: point.y)
             ),
             bundleID: args["bundleID"]?.stringValue
         ))
@@ -162,7 +169,7 @@ private func locateDescribed(
 
 private let targetSchemaProperties: JSONValue = .object([
     "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
-    "x": .object(["type": .string("number"), "description": .string("AX-space screen coordinate; used when elementID is absent")]),
+    "x": .object(["type": .string("number"), "description": .string("Screen coordinate in points; used when elementID is absent. A point outside the observed window is read as relative to its top-left corner.")]),
     "y": .object(["type": .string("number")]),
     "label": .object(["type": .string("string"), "description": .string("Accessible label text to match")]),
     "describe": .object(["type": .string("string"), "description": .string("When the target has no element id: describe it for this Mac's click model. Quote its visible text or name its icon, say where it is relative to nearby controls, and say what it does, e.g. \"gear icon at the top right of the sidebar, opens the action menu\".")]),
