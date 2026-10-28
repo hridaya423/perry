@@ -141,7 +141,7 @@ public actor AgentLoop {
             do {
                 let capacity = try await provider.contextWindow(for: tier)
                 try Task.checkCancellation()
-                let request = try ModelRequest(system: system, messages: messages, tools: tools, tier: tier, conversationKey: context.threadID).reservingOutput(in: capacity)
+                let request = try ModelRequest(system: system, messages: Self.trimmingStaleObservations(messages), tools: tools, tier: tier, conversationKey: context.threadID).reservingOutput(in: capacity)
                 let stream: AsyncThrowingStream<ModelEvent, Error>
                 if let native = provider as? any ToolExecutingModelProvider {
                     stream = native.stream(request) { call in
@@ -212,6 +212,21 @@ public actor AgentLoop {
                 }
             }
         }
+    }
+
+    static func trimmingStaleObservations(_ messages: [ModelMessage], keeping kept: Int = 2) -> [ModelMessage] {
+        let observed = messages.indices.filter { index in
+            guard case .toolResult(_, let content, _) = messages[index] else { return false }
+            return content.contains { if case .image = $0 { true } else { false } }
+        }
+        var trimmed = messages
+        for index in observed.dropLast(kept) {
+            guard case .toolResult(let callID, let content, let isError) = messages[index] else { continue }
+            let text = content.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: "\n")
+            let head = text.count > 400 ? "\(text.prefix(400))…" : text
+            trimmed[index] = .toolResult(callID: callID, content: [.text("\(head)\n[Older screen removed to save space. Its element ids are stale.]")], isError: isError)
+        }
+        return trimmed
     }
 
     /// Some models write a fake transcript into the answer — `files.list("…")`

@@ -257,6 +257,24 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(finishReason(events), .interrupted)
     }
 
+    func testOnlyTheLatestTwoScreensKeepTheirImagesAndElements() {
+        let screen = ModelContentPart.image(data: Data([1]), mimeType: "image/jpeg")
+        let elements = String(repeating: "{\"id\":\"e1\"}", count: 100)
+        let messages: [ModelMessage] = [
+            .user([.text("goal")]),
+            .toolResult(callID: "a", content: [.text(elements), screen], isError: false),
+            .toolResult(callID: "read", content: [.text(elements)], isError: false),
+            .toolResult(callID: "b", content: [.text(elements), screen], isError: false),
+            .toolResult(callID: "c", content: [.text(elements), screen], isError: false),
+        ]
+        let trimmed = AgentLoop.trimmingStaleObservations(messages)
+        guard case .toolResult(_, let oldest, _) = trimmed[1], case .text(let note) = oldest.first else { return XCTFail() }
+        XCTAssertEqual(oldest.count, 1)
+        XCTAssertLessThan(note.count, 500)
+        XCTAssertTrue(note.contains("stale"))
+        XCTAssertEqual(Array(trimmed[2...]), Array(messages[2...]))
+    }
+
     func testFabricatedToolTranscriptFailsInsteadOfCompleting() async {
         let fabricated = """
             files.list("/tmp")
