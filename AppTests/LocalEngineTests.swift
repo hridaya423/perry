@@ -3,6 +3,7 @@ import XCTest
 
 private final class FakeProcess: LocalEngineProcess {
     var isRunning = true
+    let processIdentifier: Int32 = 0
     var terminations = 0
     func terminate() {
         terminations += 1

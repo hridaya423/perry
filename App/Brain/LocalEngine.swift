@@ -1,8 +1,10 @@
+import AppKit
 import Darwin
 import Foundation
 
 protocol LocalEngineProcess: AnyObject {
     var isRunning: Bool { get }
+    var processIdentifier: Int32 { get }
     func terminate()
 }
 
@@ -47,6 +49,7 @@ final class LocalEngine {
     private var starting: Task<Endpoint, Error>?
     private(set) var endpoint: Endpoint?
     private(set) var lane: Lane?
+    private var termination: NSObjectProtocol?
 
     init(
         binary: URL,
@@ -62,6 +65,9 @@ final class LocalEngine {
         self.health = health
         self.healthBudget = healthBudget
         self.freePort = freePort
+        termination = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stop() }
+        }
     }
 
     static func arguments(lane: Lane, model: Model, port: Int, keyFile: URL, sleepIdleSeconds: Int?) -> [String] {
@@ -107,6 +113,7 @@ final class LocalEngine {
 
     private func boot(lane: Lane, model: Model, sleepIdleSeconds: Int?, exitAfterIdle: Duration?) async throws -> Endpoint {
         stop()
+        reapStale()
         guard let port = freePort() else { throw EngineError.noFreePort }
         let key = Self.randomKey()
         let keyFile = directory.appendingPathComponent("api-key")
@@ -117,6 +124,7 @@ final class LocalEngine {
         }
         let process = try launch(binary, Self.arguments(lane: lane, model: model, port: port, keyFile: keyFile, sleepIdleSeconds: sleepIdleSeconds))
         self.process = process
+        try? String(process.processIdentifier).write(to: pidFile, atomically: true, encoding: .utf8)
         let baseURL = URL(string: "http://127.0.0.1:\(port)")!
         let deadline = ContinuousClock.now + healthBudget
         while ContinuousClock.now < deadline, process.isRunning {
@@ -155,6 +163,18 @@ final class LocalEngine {
         endpoint = nil
         lane = nil
         try? FileManager.default.removeItem(at: directory.appendingPathComponent("api-key"))
+        try? FileManager.default.removeItem(at: pidFile)
+    }
+
+    private var pidFile: URL { directory.appendingPathComponent("server.pid") }
+
+    private func reapStale() {
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        guard let text = try? String(contentsOf: pidFile, encoding: .utf8), let pid = Int32(text), pid > 0 else { return }
+        var path = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(pid, &path, UInt32(path.count)) > 0,
+              String(cString: path).caseInsensitiveCompare(binary.path) == .orderedSame else { return }
+        kill(pid, SIGKILL)
     }
 
     private static func randomKey() -> String {
