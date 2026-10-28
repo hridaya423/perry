@@ -618,10 +618,17 @@ final class BrainController: ObservableObject {
     ) -> ClaudeCodeProvider? {
         guard let executable = try? locate(),
               RuntimeExecutableVerifier.isSignedByAnthropic(executable) else { return nil }
+        var models: BrainModelDefaults?
+#if DEBUG
+        if let model = ProcessInfo.processInfo.environment["PERRY_CLAUDE_CODE_MODEL"] {
+            models = BrainModelDefaults(fast: model, deep: model)
+        }
+#endif
         return ClaudeCodeProvider(
             executable: executable,
             helper: Bundle.main.url(forAuxiliaryExecutable: "perry-mcp"),
-            scopes: scopes
+            scopes: scopes,
+            models: models
         )
     }
 

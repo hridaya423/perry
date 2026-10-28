@@ -40,10 +40,14 @@ case "$cmd" in
         # Lab runs opt into screen capture — Perry chrome is share-hidden
         # by default (PerryWindowChrome.applyChrome) and evidence tooling
         # must be able to record it.
+        ENVS=(--env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}")
+        for name in PERRY_AGENT_TRACE PERRY_CLAUDE_CODE_MODEL PERRY_LAB_AUTO_APPROVE; do
+            [ -n "${!name:-}" ] && ENVS+=(--env "$name=${!name}")
+        done
         if [ "$#" -gt 0 ]; then
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}" --args "$@"
+            open -n "$APP" "${ENVS[@]}" --args "$@"
         else
-            open -n "$APP" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}"
+            open -n "$APP" "${ENVS[@]}"
         fi
         for _ in $(seq 1 30); do
             pid="$(perry_pid)"

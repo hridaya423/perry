@@ -309,6 +309,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--perry-guide-drill") {
             installGuideDrillTrigger()
         }
+        if ProcessInfo.processInfo.arguments.contains("--perry-task-drill") {
+            installTaskDrillTrigger()
+        }
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         notchPresence.start()

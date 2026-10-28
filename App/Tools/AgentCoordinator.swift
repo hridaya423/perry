@@ -376,6 +376,9 @@ final class AgentCoordinator: ObservableObject {
         // element table — later element refs are dropped like before.
         var markup = markupValidIDs.map { InlineMarkupParser(validElementIDs: $0) }
         for await event in loop.run(system: system, messages: messages, context: context, tier: tier) {
+#if DEBUG
+            AgentTrace.record(event)
+#endif
             switch event {
             case .textDelta(let delta):
                 guard let parsed = markup?.feed(delta) else {

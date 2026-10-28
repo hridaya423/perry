@@ -7,6 +7,7 @@ import AppKit
 //   guide-drill click <x> <y>    inject a click at AX-space point (x, y)
 //   guide-drill stop             dismiss the active guide
 //   guide-drill done             the controls' Done button path (userActed)
+//   guide-drill task <goal>      dispatch <goal> as a typed command (--perry-task-drill)
 //   guide-drill frontmost        print the frontmost app's bundle id
 
 let args = CommandLine.arguments
@@ -30,6 +31,12 @@ case "start":
         exit(2)
     }
     post("app.perry.guide-drill", userInfo: ["goal": args[2]])
+case "task":
+    guard args.count >= 3, !args[2].isEmpty else {
+        FileHandle.standardError.write("guide-drill task needs a goal\n".data(using: .utf8)!)
+        exit(2)
+    }
+    post("app.perry.task-drill", userInfo: ["goal": args[2]])
 case "click":
     guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else {
         FileHandle.standardError.write("guide-drill click needs numeric x y\n".data(using: .utf8)!)

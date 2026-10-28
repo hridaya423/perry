@@ -1,6 +1,8 @@
 #if DEBUG
 import AppKit
 import Foundation
+import PerryBrain
+import PerryCore
 import PerryGuide
 import PerryRuntimes
 
@@ -262,8 +264,54 @@ extension AppController {
         }
     }
 
+    func installTaskDrillTrigger() {
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("app.perry.task-drill"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self, let goal = note.userInfo?["goal"] as? String, !goal.isEmpty else { return }
+            self.debugDispatch(goal)
+        }
+    }
+
     func showDebugBackgroundTasksStorageError() {
         homeController.openHome(selection: .tasks)
+    }
+}
+#endif
+
+#if DEBUG
+enum AgentTrace {
+    private static let file = ProcessInfo.processInfo.environment["PERRY_AGENT_TRACE"].map { URL(fileURLWithPath: $0) }
+
+    static func record(_ event: AgentLoopEvent) {
+        guard let file else { return }
+        var row: [String: JSONValue] = ["at": .number(Date().timeIntervalSince1970)]
+        switch event {
+        case .textDelta(let text): row["text"] = .string(text)
+        case .toolCallStarted(let call): row["tool"] = .string(call.name); row["arguments"] = call.arguments
+        case .toolCallFinished(let result):
+            row["result"] = .string(result.content.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: " ").prefix(20000).description)
+            row["error"] = .bool(result.isError)
+            for case .image(let data, let mimeType) in result.content {
+                let image = file.appendingPathExtension("\(Int(Date().timeIntervalSince1970 * 1000)).\(mimeType.hasSuffix("png") ? "png" : "jpg")")
+                try? data.write(to: image)
+                row["image"] = .string(image.lastPathComponent)
+            }
+        case .finished(let finish): row["finished"] = .string(String(describing: finish))
+        case .note(let note): row["note"] = .string(note)
+        case .draw: return
+        }
+        guard var line = try? JSONValue.object(row).data() else { return }
+        line.append(0x0A)
+        if let handle = try? FileHandle(forWritingTo: file) {
+            handle.seekToEndOfFile()
+            handle.write(line)
+            try? handle.close()
+        } else {
+            try? line.write(to: file)
+        }
     }
 }
 #endif
