@@ -689,3 +689,116 @@ Plan: docs/plans/2026-10-26-polish-pass.md (sections 0 to 8, plus 6.1 memory). P
 - Installed for the owner on 2026-10-27 after a full reset. The data backup is in build/backup/reset-2026-10-27b.
 - Open: cloud STT for "Best quality" (owner suggestion; needs a provider choice), the loopback drill (owner clicks
   Allow on the mini), and a screen recording of the notch bounce.
+
+## 9.6 Path coverage walkthrough (2026-10-27)
+
+Done, driven on the mini with contact sheets:
+- `ea45b95`: first-goal field kept one letter (fixed); empty Apps beat skipped; Turn on hides the notch; guide copy; recorder/Try it; no speech prompt at launch; droplet in hello; chips fit; empty Return.
+- `f165a97`: saved interview facts start with a capital.
+- Covered: hello, setup tabs, chooser, access + Turn on + guide close, shortcuts, interview q1-q3, style, review, apps skip, first goal (typed, Something else, Not now), close X, relaunch, Reduce Motion.
+- Suite: 903 app tests, 429 PerryBrain tests, 0 failures.
+Not covered: notch hover (warped pointer posts no mouseMoved; covered by HomeHoverIntentTests and OnboardingDirectorTests:140).
+Note: a test run left a speech-recognition prompt for the Perry test host on the mini.
+Next: blind Sonnet 5.5 review of docs/evidence/qa-2026-10-27 (uncommitted), then fix findings.
+
+## 9.7 Inference benchmark on the owner's MacBook (2026-10-27, in progress)
+
+Owner asked to try every engine and lever on their M4 Pro 48 GB, then delete everything.
+- Workspace: ~/perry-bench (bench.py client, llama.sh runner, results.jsonl, models/). Delete all of it when done.
+- Model on disk: unsloth Qwen3.8-27B UD-IQ4_XS + mmproj-F16 (15.2 GB). llama.cpp b11927 in bin/.
+- lcpp-base (-fa on): decode 5-6 tok/s, prefill 39-57 tok/s, TTFT 41 s with a screenshot. INVALID: macOS Low Power Mode was on (pmset powermode 1), battery 10%.
+- Plan after Low Power Mode is off: lcpp base, -ub 2048, KV q8, ngram-mod, MTP head (1.37 GB), DFlash2 GGUF draft; Splash 1.4.1 with incoai/Qwen3.8-27B-DFlash2 (3.85 GB, --max-cache-disk 0); then delete GGUF and try MLX 4-bit with mlx-lm, dflash-mlx, oMLX.
+- Research delegate running: finetunes and CUA models -> docs/research/2026-10-27/finetunes-and-cua.md.
+- 9B grounding test on the mini (16 click targets on real Perry and System Settings screenshots, 6 JSON tasks, llama.cpp b11927, Q4_K_M):
+  - Qwen3.5-9B, 0-1000 coords, --image-min-tokens 1024, JSON schema: 15/16 clicks, 16/16 valid, 6/6 JSON, 1.4 s/step.
+  - MAI-Gym-9B, pixel coords, same levers: 8/16 strict (11/16 if mixed coordinate readings count), 16/16 valid, 6/6 JSON, 1.3 s/step.
+  - Without the schema Qwen returned malformed click JSON 7/16 times. Without 1024 image tokens llama.cpp warns grounding degrades.
+  - Verdict: keep Qwen3.5-9B; MAI-Gym is not adopted.
+- All models and llama.cpp binaries deleted from both Macs on owner request. Scripts and results remain in ~/perry-bench (20 MB) and the mini's ~/perry-bench.
+
+## 9.8 Local click-model benchmark results (2026-10-27)
+
+Owner decisions: cloud stays the default brain. Local models come in two choices, Recommended and Small. Large local models (27B, 35B) are not offered by default because their RAM cost outweighs a measured gain. A cloud captain with a local clicking subagent is suggested where it fits.
+
+Test sets, all scored by llama.cpp b11927 with an enforced JSON schema and thinking off:
+- Easy: 16 targets on Perry's own screens, 8 px margin.
+- Hard: 41 targets on 8 real macOS app screens, boxes from the accessibility tree, 4 px margin (`~/perry-bench/hard/` on both machines).
+- ScreenSpot-Pro: 60 samples, 10 each from Word, Excel, VS Code, PyCharm, DaVinci and common macOS, no margin (`~/perry-bench/ssp/`, MIT).
+
+Results, MacBook M4 Pro at High Power unless noted (s/step = one screenshot plus one answer):
+
+| Model | Easy 16 | Hard 41 | SS-Pro 60 @1024 | SS-Pro 60 @2048 | s/step @1024 |
+|---|---|---|---|---|---|
+| Holo-3.1-4B | 16 | 29 | 15 (0 icons) | **31 (7 icons)** | 2.8 (5.3 @2048) |
+| GUI-Owl-1.5-2B | 13 (14 with point_2d) | 30 | 18 | 21 | 1.7 (3.8 @2048) |
+| Holo-3.1-9B | 16 | **32** | 20 | 30 (4 icons) | 4.5 (8.9 @2048) |
+| Qwen3.5-9B | 15 | 31 | 14 | not run | 4.7 |
+| Qwen3.5-2B, point_2d | 14 | 27 | 15 | 23 | 1.8 (4.1 @2048) |
+| Qwen3.8-4B-Distill | 16 | 28 | 9 | not run | 2.8 |
+| Holo-3.1-0.8B, point_2d | 14 (mini) | not run | 8 | not run | 0.65 |
+
+Findings:
+- Image detail matters more than model size on dense screens: Holo-4B at 2048 image tokens beats Holo-9B at 1024 by 11 of 60.
+- Each model has a best prompt format. Holo and GUI-Owl-2B both score best with 0–1000 coordinates on ScreenSpot-Pro (GUI-Owl: 18/60 against 17 with point_2d); the Qwen bases prefer point_2d.
+- The earlier "1.4 s per step" figure for Qwen3.5-9B on the mini was wrong; it measured 9.8 s alone.
+- Out: MAI-Gym-9B, MiMo-Distill-9B, Ornith-9B (as grounder), Opus and Claude reasoning distills, Seg2Click, AgentEye, LFM2.5-VL, MiniCPM-V-4.7-1B, Bonsai-2-4B, CUA-Lite-4B, Fara1.5-4B (2/6 JSON), osworld-cuagym-4B (0/6 JSON).
+
+Lineup from these results: Recommended = Holo-3.1-4B at 1024 image tokens, retrying a step at 2048 when a click misses or the screen is dense. Small = GUI-Owl-1.5-2B at 1024. 9B and larger are not offered: Holo-9B at 2048 scored 30/60 against Holo-4B's 31/60 at 1.7x the step time.
+
+## 9.9 Local models wired end to end (2026-10-27 to 10-28)
+
+Owner decisions: under a cloud brain, Claude plans and a local model finds click targets. Under "On this Mac", the local model plans and clicks alone. The engine must be the best available for Holo-3.1-4B and GUI-Owl-1.5-2B on Apple silicon.
+
+Engine comparison, Holo-3.1-4B at 4 bits on the mini (research in `docs/research/2026-10-27/`):
+
+| Engine | Hard 41 | Normal click | SS-Pro 60 | Full-detail click |
+|---|---|---|---|---|
+| llama.cpp b11927, Q4_K_M, enforced JSON schema | 28 | 4.6 s | 32 | 11.1 s |
+| mistral.rs, ISQ afq4/afq6 from safetensors | 30 | 3.2 s | 33 | 15 s |
+| mistral.rs, same GGUF | 24 (36/41 valid JSON) | 4.1 s | not run | not run |
+| MLX, pipenetwork 4-bit | 27 | 3.5 s | 25 | 11.5 s |
+| MNN | dropped: 4.3–5.3 s to first token, ignores thinking off | | | |
+
+Decision: llama.cpp. mistral.rs is 1.4 s faster per click only with ISQ, which needs a 9.7 GB safetensors download and about 30 s of quantising at every launch. With the 3.7 GB GGUF it loses the schema and 4 targets. Q6_K, Q5_K_M and `-ub 2048` gave no gain over Q4_K_M.
+
+Doubt check (`ClickGrounder`): one pass at temperature 0 on a 1280x720 image (about 900 tokens), then two samples at 0.7 on the same image. llama.cpp's prompt cache makes each sample cost about 0.6 s. If any sample lands more than 3% of the window away, one more pass reads the half of the window around the first answer at up to 2048 tokens.
+
+| Model, variant (Python bench, mini) | Hard 41 | Mean s | SS-Pro 60 | Mean s |
+|---|---|---|---|---|
+| Holo-4B plain | 28 | 4.5 | 16 | 4.7 |
+| Holo-4B doubt check, zoom on the first answer | **32** | 6.8 | 22 | 8.1 |
+| Holo-4B doubt check, zoom on the median | 30 | 6.5 | 19 | 8.0 |
+| Holo-4B doubt check, samples at 0.3 | 28 | 6.2 | 20 | 7.3 |
+| Holo-4B plain, full detail (2048 tokens) | 32 | 11.2 | 31 | 11.2 |
+| GUI-Owl-2B plain | 24 | 2.7 | 13 | 2.8 |
+| GUI-Owl-2B doubt check | 25 | 4.0 | 18 | 4.8 |
+
+On everyday Mac screens the doubt check matches full-detail accuracy at about 60% of the time. Dense pro apps (ScreenSpot-Pro) still do better at full detail; that option is not built.
+
+The app's Swift grounder first scored 27–29/41 against 31–32 for the Python bench on the same server. The cause was CoreGraphics' downscale: Swift-made first-pass images scored 26 against 28 for PIL Lanczos, and the sampled passes compounded the loss. vImage high-quality resampling reached 29. Core Image's `CILanczosScaleTransform` matches PIL within 0.14 levels and scored 29–30 (repeats below).
+
+Surprise: GUI-Owl-2B scores 23–26/41 on the mini against 30 on the MacBook, with the same 720p PNG files and prompt. Encoding (PNG vs JPEG) and the token cap (1024 vs 2048) move it by 2 at most. The gap is per machine, cause unknown. Holo-4B moves by 1 (28 vs 29).
+
+Planner check: through llama.cpp `--jinja`, both models emit OpenAI tool calls. GUI-Owl observed the screen first; Holo invented an element ID before observing.
+
+Licences: Holo-3.1-4B Apache-2.0, GUI-Owl-1.5-2B MIT (model card metadata).
+
+Wired:
+- `ModelFit.lineup` is Recommended `Holo-3.1-4B` Q4_K_M (mradermacher, 3.74 GB with the f16 projector) and Small `GUI-Owl-1.5-2B` Q4_K_M (1.93 GB). `ModelRung` carries its repo and files.
+- `ClickGrounder` (PerryBrain) does the doubt check, the zoom, JSON-schema output and AX snapping: the smallest clickable element under the point that covers under a quarter of the window.
+- UI tools take a `describe` target on click, type, scroll and key. With an element ID missing, the brain describes the target, and the local model locates it. The result names the snapped element and warns when unsure.
+- `LocalBrain` marks a downloaded lineup model ready at launch and exposes `clicker` (the grounder) and `provider` (`LocalEngineProvider`, OpenAI-compatible through the local server). `BrainController` puts the bundled provider first in the router, so "On this Mac" runs on it.
+- `LocalEngine` serialises concurrent starts so the planner and the clicker share one server. It sets `--image-max-tokens 2048` and a 32768 context.
+- The llama.cpp b11927 server is bundled: `scripts/fetch-llama-server.sh` (pinned by `scripts/llama-server.lock`, SHA-256 checked) runs as a pre-build phase and copies the server, its dylibs and LICENSE to `App/Resources/LocalEngine` (gitignored, 29 MB). The distribution sign and verify scripts cover it.
+
+Evidence (mini, 2026-10-28):
+- `build-for-testing` succeeds after xcodegen regenerates the project. The built app holds `Contents/Resources/LocalEngine/llama-server`, which runs (`version: 0.7.0-dev (build 11927)`).
+- `scripts/test-bundle-contents.sh`: passed.
+- `swift test --package-path Packages/PerryBrain`: 436 tests, 0 failures, 2 skipped (the live eval skips without a server).
+- Live eval: the bundled server, started with `LocalEngine.arguments` and an API key (401 without it), with Holo-4B. `ClickGrounderEvalTests` scored 30, 29 and 30 of 41 (mean 6.4–6.8 s per click); the Python bench on the same server scored 32, 31 and 30. The test's floor is 28.
+
+Open:
+- App tests (`BrainChoiceTests`, `LocalEngineTests`) compile but cannot run: testmanagerd needs the mini's console login.
+- No end-to-end run in the real app yet (captain plus clicker on a live screen). That needs the GUI login.
+- A full-detail option for dense pro apps.
+- The GUI-Owl machine gap above.
