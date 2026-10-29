@@ -140,9 +140,8 @@ extension TalkSession {
             overlayState.visualGuidanceOverlays = []
             sessionController.updateAsk { $0.isWorking = false }
             output?.guideSetBuddyState(.blocked)
-            output?.guideSetStatus(
-                (error as? LocalizedError)?.errorDescription ?? "I couldn’t answer that."
-            )
+            Self.logger.error("ask turn failed: \(String(describing: error), privacy: .public)")
+            output?.guideSetStatus(Self.failureText(error))
         }
     }
 

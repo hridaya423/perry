@@ -22,10 +22,11 @@ final class ProfileExtractionTests: XCTestCase {
     }
 
     func testThePromptCarriesEveryAnswerAndTheSchemaOnly() {
-        let prompt = ProfileExtraction.prompt(answers: ["I design apps", "Figma and Notion", "Spanish"])
-        for answer in ["I design apps", "Figma and Notion", "Spanish"] { XCTAssertTrue(prompt.contains(answer)) }
+        let answers = ["I design apps", "Figma and Notion", "Spanish"]
+        let prompt = ProfileExtraction.prompt(answers: Array(zip(ProfileExtraction.questions, answers.map(Optional.some))))
+        for answer in answers { XCTAssertTrue(prompt.contains(answer)) }
         XCTAssertTrue(prompt.contains(ProfileExtraction.schema))
-        XCTAssertTrue(ProfileExtraction.prompt(answers: [nil, "Xcode", nil]).contains("(skipped)"))
+        XCTAssertTrue(ProfileExtraction.prompt(answers: [(ProfileExtraction.intro, nil)]).contains("(skipped)"))
     }
 
     func testTheReactionPromptAsksForTwelveWordsAboutTheAnswer() {

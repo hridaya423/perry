@@ -130,21 +130,27 @@ final class ToolHostTests: XCTestCase {
         XCTAssertEqual(PerryToolHost.validate(arguments, against: closed), "arguments: unknown key \"extra\"")
     }
 
-    func testTalkSurfaceRejectsActTool() async {
-        let (host, executors) = host([("ui.click", .yellow, [.agent, .talk])])
-        // Even though the spec claims .talk, the name gate denies it.
+    func testTalkSurfaceRunsAnAgentTool() async {
+        let (host, executors) = host([("ui.click", .yellow, [.agent])])
         let result = await host.handle(call("ui.click"), context: ToolContext(surface: .talk))
+        XCTAssertFalse(result.isError)
+        XCTAssertEqual(executors[0].callCount, 1)
+    }
+
+    func testGuideSurfaceRejectsActTool() async {
+        let (host, executors) = host([("ui.click", .yellow, [.agent, .guide])])
+        let result = await host.handle(call("ui.click"), context: ToolContext(surface: .guide))
         XCTAssertTrue(result.isError)
         XCTAssertEqual(executors[0].callCount, 0)
     }
 
-    func testSpecsForTalkOnlyReturnsObserveAndDraw() {
+    func testSpecsForTalkIncludeAgentTools() {
         let (host, _) = host([
-            ("ui.click", .yellow, [.agent, .talk]),
+            ("ui.click", .yellow, [.agent]),
             ("ring", .green, [.talk]),
             ("screen.observe", .green, [.talk, .agent]),
         ])
-        XCTAssertEqual(host.specs(for: .talk).map(\.name), ["ring", "screen.observe"])
+        XCTAssertEqual(host.specs(for: .talk).map(\.name), ["ring", "screen.observe", "ui.click"])
         XCTAssertEqual(host.specs(for: .agent).map(\.name), ["screen.observe", "ui.click"])
     }
 

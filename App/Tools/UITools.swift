@@ -577,8 +577,7 @@ private struct UIDragExecutor: ToolExecutor {
                 ]),
                 "required": .array([.string("fromX"), .string("fromY"), .string("toX"), .string("toY")]),
             ]),
-            // Unknown-effect GUI input defaults to orange review (Phase 7 spec).
-            tier: .orange,
+            tier: .yellow,
             surfaces: [.agent],
             requiredCapabilities: [.tools, .vision]
         )

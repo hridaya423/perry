@@ -11,7 +11,7 @@ final class InterviewModel: ObservableObject {
     }
 
     enum Kind: Equatable {
-        case work, apps, goal, followUp
+        case intro, work, apps, goal, followUp
     }
 
     struct Facts: Equatable {
@@ -66,9 +66,9 @@ final class InterviewModel: ObservableObject {
     @Published var notes: [Note] = []
     @Published var pasted = ""
 
-    private(set) var questions = ProfileExtraction.questions
-    private var kinds: [Kind] = [.work, .apps, .goal]
-    private var answers: [String?] = Array(repeating: nil, count: ProfileExtraction.questions.count)
+    private(set) var questions = [ProfileExtraction.intro]
+    private var kinds: [Kind] = [.intro]
+    private var answers: [String?] = [nil]
     private var startedAt: Date?
     private var shortStreak = 0
     private let effects: Effects
@@ -124,6 +124,7 @@ final class InterviewModel: ObservableObject {
         answers[index] = answer
         draft = ""
         reaction = nil
+        if kinds[index] == .intro { return introduce(answer, at: index) }
         shortStreak = InterviewPolicy.isShort(answer) ? shortStreak + 1 : 0
         let elapsed = startedAt.map { effects.now().timeIntervalSince($0) } ?? 0
         let followUps = kinds.filter { $0 == .followUp }.count
@@ -158,6 +159,49 @@ final class InterviewModel: ObservableObject {
 
     func kind(at index: Int) -> Kind { kinds[index] }
 
+    private func introduce(_ answer: String?, at index: Int) {
+        guard let answer else { return finishQuestions() }
+        guard let complete = effects.complete else { return ask(missingFacts(), after: index) }
+        thinking = true
+        Task {
+            async let profile = try? withTimeout(seconds: 8) {
+                try await complete(ProfileExtraction.prompt(answers: [(ProfileExtraction.intro, answer)]))
+            }
+            async let followUp = try? withTimeout(seconds: 8) {
+                try await complete(InterviewPolicy.followUpPrompt(question: ProfileExtraction.intro, answer: answer))
+            }
+            let extracted = await profile.flatMap { try? ProfileExtraction.decode($0) }
+            let question = await followUp.flatMap(InterviewPolicy.cleanFollowUp)
+            thinking = false
+            guard step == .question(index) else { return }
+            if let extracted {
+                facts.work = extracted.work.map(Self.capitalized) ?? ""
+                facts.apps = extracted.apps.map(Self.capitalized).joined(separator: ", ")
+                facts.goal = extracted.learningGoal.map(Self.capitalized) ?? ""
+            }
+            let missing = missingFacts()
+            ask(missing.isEmpty ? question.map { [($0, .followUp)] } ?? [] : missing, after: index)
+        }
+    }
+
+    private func missingFacts() -> [(String, Kind)] {
+        zip(ProfileExtraction.questions, [Kind.work, .apps, .goal]).filter { _, kind in
+            switch kind {
+            case .work: facts.work.isEmpty
+            case .apps: facts.apps.isEmpty
+            default: facts.goal.isEmpty
+            }
+        }
+    }
+
+    private func ask(_ next: [(String, Kind)], after index: Int) {
+        guard !next.isEmpty else { return finishQuestions() }
+        questions += next.map(\.0)
+        kinds += next.map(\.1)
+        answers += next.map { _ in nil }
+        step = .question(index + 1)
+    }
+
     func chooseStyle(_ style: String?) {
         guard step == .style else { return }
         facts.style = style ?? ""
@@ -189,11 +233,12 @@ final class InterviewModel: ObservableObject {
             return
         }
         for (kind, answer) in zip(kinds, answers) {
+            guard let answer else { continue }
             switch kind {
             case .work: facts.work = Self.capitalized(answer)
             case .apps: facts.apps = Self.capitalized(answer)
             case .goal: facts.goal = Self.capitalized(answer)
-            case .followUp: break
+            case .intro, .followUp: break
             }
         }
         step = .style
@@ -202,8 +247,9 @@ final class InterviewModel: ObservableObject {
     private func extract() {
         guard let complete = effects.complete else { return }
         let typed = facts
-        let core = zip(kinds, answers).filter { $0.0 != .followUp }.map(\.1)
-        let followUps = zip(zip(questions, answers), kinds).filter { $0.1 == .followUp }.compactMap { pair in
+        let asked = zip(zip(questions, answers), kinds)
+        let core = asked.filter { $0.1 != .followUp }.map { (question: $0.0.0, answer: $0.0.1) }
+        let followUps = asked.filter { $0.1 == .followUp || $0.1 == .intro }.compactMap { pair in
             pair.0.1.map { "Q: \(pair.0.0)\nA: \($0)" }
         }
         extracting = true
@@ -496,7 +542,7 @@ struct InterviewBeat: View {
     }
 
     private func question(_ index: Int) -> some View {
-        OnboardingBeatLayout(title: model.questions[index], message: model.reaction) {
+        OnboardingBeatLayout(title: model.questions[index], message: model.reaction ?? (model.kind(at: index) == .intro ? ProfileExtraction.introHint : nil)) {
             EmptyView()
         } detail: {
             VStack(spacing: 12) {
@@ -542,7 +588,8 @@ struct InterviewBeat: View {
 
     private func answerField(_ index: Int) -> some View {
         HStack(spacing: 8) {
-            TextField(listener.listening ? "Listening…" : "Type or tap the mic", text: $model.draft)
+            TextField(listener.listening ? "Listening…" : "Type or tap the mic", text: $model.draft, axis: .vertical)
+                .lineLimit(1...5)
                 .textFieldStyle(.plain)
                 .multilineTextAlignment(.leading)
                 .font(PerryTheme.Scale.input)
@@ -567,7 +614,9 @@ struct InterviewBeat: View {
         }
         .padding(.leading, 16)
         .padding(.trailing, 6)
-        .frame(width: 360, height: 44)
+        .padding(.vertical, 6)
+        .frame(width: 360)
+        .frame(minHeight: 44)
         .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
@@ -584,7 +633,7 @@ struct InterviewBeat: View {
         let options = switch model.kind(at: index) {
         case .work: InterviewModel.workChips
         case .apps: appChips
-        case .goal, .followUp: [String]()
+        case .intro, .goal, .followUp: [String]()
         }
         if !options.isEmpty {
             ViewThatFits(in: .horizontal) {

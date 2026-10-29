@@ -112,7 +112,7 @@ public final class PerryToolHost: Sendable {
 
     public func specs(for surface: ToolSurface) -> [ToolSpec] {
         (executors.values.map(\.spec) + groups.withLock { $0.values.flatMap { $0.values.map(\.spec) } })
-            .filter { $0.surfaces.contains(surface) && ToolGate.allows($0.name, on: surface) }
+            .filter { $0.isOffered(on: surface) && ToolGate.allows($0.name, on: surface) }
             .sorted { $0.name < $1.name }
     }
 
@@ -128,7 +128,7 @@ public final class PerryToolHost: Sendable {
         if let rejection = ToolGate.check(call, on: context.surface) {
             return fail(.surfaceDenied(name: rejection.toolName, surface: rejection.surface))
         }
-        guard spec.surfaces.contains(context.surface) else {
+        guard spec.isOffered(on: context.surface) else {
             return fail(.surfaceDenied(name: call.name, surface: context.surface))
         }
         if let detail = Self.validate(call.arguments, against: spec.inputSchema) {

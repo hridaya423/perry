@@ -1,8 +1,7 @@
 import AppKit
 import PerryBrain
 
-/// `app.launch` — opens an installed app by name or bundle id. Orange tier:
-/// it foregrounds another app, which the user should see coming.
+/// `app.launch` — opens an installed app by name or bundle id.
 struct AppTools {
     var executors: [any ToolExecutor] { [LaunchTool()] }
 
@@ -17,7 +16,7 @@ struct AppTools {
                     "bundleID": .object(["type": .string("string")]),
                 ]),
             ]),
-            tier: .orange,
+            tier: .yellow,
             surfaces: [.agent]
         )
 

@@ -44,6 +44,7 @@ final class TalkObservationCapture {
                     return observation
                 } catch {
                     PerfMark.markDynamic("talk.capture_local_failed.\(String(describing: error))")
+                    TalkSession.logger.error("local capture failed: \(String(describing: error), privacy: .public)")
                 }
             }
             var resources = Set<BackgroundTaskResource>()
@@ -57,6 +58,7 @@ final class TalkObservationCapture {
             return observation
         } catch {
             PerfMark.markDynamic("talk.capture_failed.\(String(describing: error))")
+            TalkSession.logger.error("capture failed: \(String(describing: error), privacy: .public)")
             throw error
         }
     }

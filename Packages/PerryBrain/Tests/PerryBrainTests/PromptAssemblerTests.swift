@@ -16,10 +16,11 @@ final class PromptAssemblerTests: XCTestCase {
         ("h-cloud-guide", .init(brain: cloud, accessibility: true, screenRecording: true, connectedApps: [], mode: .guide), nil, nil),
     ]
 
-    func testTalkModeKeepsTheDrawingSyntaxAndNeverActs() {
+    func testTalkModeKeepsTheDrawingSyntaxAndActsWhenAsked() {
         let prompt = assemble(Self.cases[2])
         XCTAssertTrue(prompt.contains("⟦verb e1 \"label\"⟧"))
-        XCTAssertTrue(prompt.contains("you never act"))
+        XCTAssertTrue(prompt.contains("When the user asks you to do something"))
+        XCTAssertFalse(prompt.contains("never act"))
     }
 
     func testPerryJobCarriesItsJobAndMemory() {
@@ -110,7 +111,7 @@ final class PromptAssemblerTests: XCTestCase {
     func testCapabilityAnswerFollowsTheSnapshot() {
         let all = PromptAssembler.answerForCapabilityQuestion(Self.cases[0].snapshot)
         XCTAssertTrue(all.contains("see your screen"))
-        XCTAssertTrue(all.contains("do this for me"))
+        XCTAssertTrue(all.contains("Ask me to do something"))
         XCTAssertTrue(all.contains("Gmail, Notion"))
         XCTAssertFalse(all.contains("Settings"))
 
@@ -122,7 +123,7 @@ final class PromptAssemblerTests: XCTestCase {
 
         let noScreen = PromptAssembler.answerForCapabilityQuestion(Self.cases[2].snapshot)
         XCTAssertTrue(noScreen.contains("Accessibility"))
-        XCTAssertFalse(noScreen.contains("do this for me"))
+        XCTAssertFalse(noScreen.contains("Ask me to do something"))
 
         let none = PromptAssembler.answerForCapabilityQuestion(.init(brain: .none, accessibility: true, screenRecording: true, connectedApps: [], mode: .chat))
         XCTAssertEqual(none, PromptAssembler.noBrainAnswer)

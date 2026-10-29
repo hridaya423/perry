@@ -118,48 +118,39 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertEqual(json["undo"]?["arguments"]?["path"]?.stringValue, "n.txt")
     }
 
-    func testFilesToolsDeniedOnTalkSurface() async throws {
+    func testFilesToolsDeniedOnGuideSurface() async throws {
         let host = fileHost()
         for name in ["files.list", "files.read", "files.write", "files.trash"] {
             let result = await host.handle(
                 call(name, ["path": .string("x")]),
-                context: ToolContext(surface: .talk)
+                context: ToolContext(surface: .guide)
             )
-            XCTAssertTrue(result.isError, "\(name) should be denied on talk")
+            XCTAssertTrue(result.isError, "\(name) should be denied on guide")
         }
     }
 
-    func testFilesTrashNeedsApproval() async throws {
+    func testFilesTrashRunsWithoutAskingAndCanBeUndone() async throws {
         try await backend.write(path: "victim.txt", contents: "x")
-        let host = fileHost()
-
-        let denied = await host.handle(
+        let result = await fileHost().handle(
             call("files.trash", ["path": .string("victim.txt")]),
-            context: ToolContext(surface: .agent)
+            context: ToolContext(surface: .talk)
         )
-        XCTAssertTrue(denied.isError)
-        let beforeApprove = try await backend.list(path: ".")
-        XCTAssertFalse(beforeApprove.isEmpty)
-
-        let approved = await host.handle(
-            call("files.trash", ["path": .string("victim.txt")]),
-            context: ToolContext(surface: .agent, approve: { _, _ in .approvedOnce })
-        )
-        XCTAssertFalse(approved.isError)
-        let afterApprove = try await backend.list(path: ".")
-        XCTAssertTrue(afterApprove.isEmpty)
+        XCTAssertFalse(result.isError)
+        let after = try await backend.list(path: ".")
+        XCTAssertTrue(after.isEmpty)
+        XCTAssertEqual(try parse(result)["undo"]?["tool"]?.stringValue, "files.move")
     }
 
-    func testFilesOverwriteNeedsApproval() async throws {
+    func testFilesOverwriteRunsWithoutAskingAndKeepsTheOldContentsForUndo() async throws {
         try await backend.write(path: "a.txt", contents: "old")
-        let host = fileHost()
-        let denied = await host.handle(
+        let result = await fileHost().handle(
             call("files.overwrite", ["path": .string("a.txt"), "contents": .string("new")]),
             context: ToolContext(surface: .agent)
         )
-        XCTAssertTrue(denied.isError)
-        let still = try await backend.read(path: "a.txt", maxBytes: 10)
-        XCTAssertEqual(still.text, "old")
+        XCTAssertFalse(result.isError)
+        let now = try await backend.read(path: "a.txt", maxBytes: 10)
+        XCTAssertEqual(now.text, "new")
+        XCTAssertEqual(try parse(result)["undo"]?["arguments"]?["contents"]?.stringValue, "old")
     }
 
     func testFilesUnknownKeyRejected() async throws {
@@ -374,7 +365,8 @@ final class ToolExecutorCoreTests: XCTestCase {
         ] {
             XCTAssertTrue(names.contains(expected), "missing \(expected)")
         }
-        XCTAssertTrue(host.specs(for: .talk).isEmpty)
+        XCTAssertEqual(host.specs(for: .talk).map(\.name), names)
+        XCTAssertEqual(host.spec(named: "integrations.write")?.tier, .orange)
     }
 }
 

@@ -354,7 +354,7 @@ public enum FileToolExecutors {
                 ]),
                 "required": .array([.string("path"), .string("contents")]),
             ]),
-            tier: .orange, surfaces: [.agent]
+            tier: .yellow, surfaces: [.agent]
         )
         func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
             let path = try FileToolExecutors.path(call)
@@ -434,7 +434,7 @@ public enum FileToolExecutors {
                 "properties": .object(["path": .object(["type": .string("string")])]),
                 "required": .array([.string("path")]),
             ]),
-            tier: .orange, surfaces: [.agent]
+            tier: .yellow, surfaces: [.agent]
         )
         func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
             let path = try FileToolExecutors.path(call)

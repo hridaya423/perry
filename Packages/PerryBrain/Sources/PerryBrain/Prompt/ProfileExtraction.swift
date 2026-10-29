@@ -13,6 +13,10 @@ public struct ProfileFacts: Codable, Equatable, Sendable {
 }
 
 public enum ProfileExtraction {
+    public static let intro = "Tell me about yourself."
+    public static let introHint = "What you do, the apps you use, what you want to learn."
+
+    /// Asked only when the introduction leaves the matching fact empty.
     public static let questions = [
         "What’s your work?",
         "Which apps do you use most?",
@@ -21,8 +25,8 @@ public enum ProfileExtraction {
 
     public static let schema = #"{"work": string or null, "apps": [string], "learningGoal": string or null}"#
 
-    public static func prompt(answers: [String?]) -> String {
-        let pairs = zip(questions, answers).map { question, answer in
+    public static func prompt(answers: [(question: String, answer: String?)]) -> String {
+        let pairs = answers.map { question, answer in
             "Q: \(question)\nA: \(answer?.isEmpty == false ? answer! : "(skipped)")"
         }
         return """

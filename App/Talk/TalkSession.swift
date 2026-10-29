@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import OSLog
 import PerryBrain
 import PerryCore
 import PerryGuide
@@ -15,8 +16,8 @@ extension DictationController: VoiceConversationInput {}
 
 /// The Talk loop: hold ⌃⌥ → listen + trace + capture in parallel → release →
 /// deixis-bound prompt → streamed answer, spoken by sentence and drawn as ink.
-/// Ask-never-acts is structural: the request only ever offers draw/observe
-/// tools, and every model tool call passes `ToolGate.check` before dispatch.
+/// Talk acts on request with the agent's tools; every model tool call passes
+/// `ToolGate.check` before dispatch.
 /// All side effects are injected so the loop is unit-testable with stubs.
 @MainActor
 final class TalkSession: ObservableObject {
@@ -400,14 +401,20 @@ final class TalkSession: ObservableObject {
             sessionController.updateTalk { $0.isWorking = false }
             overlayState.voiceState = .idle
             overlayState.buddyState = .blocked
+            Self.logger.error("talk turn failed: \(String(describing: error), privacy: .public)")
             output?.guideReportFailure(
-                (error as? ModelProviderError).map { AgentLoop.describe($0) }
-                    ?? (error as? LocalizedError)?.errorDescription
-                    ?? "I couldn’t answer that. Try again.",
+                (error as? ModelProviderError).map { AgentLoop.describe($0) } ?? Self.failureText(error),
                 recovery: error is ResponseError || error is ModelProviderError ? .settings(.brain) : nil
             )
             phase = .idle
         }
+    }
+
+    static let logger = Logger(subsystem: "ai.perry.talk", category: "turn")
+
+    static func failureText(_ error: Error) -> String {
+        if let description = (error as? LocalizedError)?.errorDescription { return description }
+        return "I couldn’t answer that (\(String(describing: error))). Try again."
     }
 
     private static func recovery(forInput error: Error) -> FailureRecovery? {
@@ -851,7 +858,8 @@ final class TalkSession: ObservableObject {
             clickState = .idle
         } else {
             clickSpeech.shutUp()
-            error = failureMessage ?? "I couldn’t answer that. Try again."
+            if failureMessage == nil { Self.logger.error("click turn ended without a result") }
+            error = failureMessage ?? "My answer stopped before it finished. Try again."
             clickState = .failed
         }
     }

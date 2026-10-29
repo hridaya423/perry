@@ -14,20 +14,21 @@ final class InterviewModelTests: XCTestCase {
         for _ in 0..<300 where interview.thinking || interview.extracting { try await Task.sleep(for: .milliseconds(10)) }
     }
 
-    func testExtractionFillsTheChipsAfterTheStyle() async throws {
+    func testTheIntroductionAsksOnlyForWhatItLeftOut() async throws {
         let interview = model(complete: { prompt in
             prompt.contains("Reply with JSON only, exactly this shape")
-                ? #"{"work":"Product designer","apps":["Figma","Notion"],"learningGoal":"Spanish"}"#
-                : prompt.contains("Reply with the question or NONE") ? "NONE" : prompt.contains("facts") ? #"{"facts": []}"# : "Designing apps, nice."
+                ? #"{"work":"Product designer","apps":["Figma","Notion"],"learningGoal":null}"#
+                : prompt.contains("Reply with the question or NONE") ? "NONE" : prompt.contains("facts") ? #"{"facts": []}"# : "Spanish, nice."
         })
         interview.begin()
         XCTAssertEqual(interview.step, .pronounce)
         interview.confirmPronunciation()
-        interview.answer("I'm a product designer at a small studio")
+        XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
+        interview.answer("I'm a product designer at a small studio, mostly in Figma and Notion")
         try await settle(interview)
         XCTAssertEqual(interview.step, .question(1))
-        interview.answer("figma, notion")
-        interview.answer("I want to learn Spanish")
+        XCTAssertEqual(interview.questions, [ProfileExtraction.intro, "What do you want to learn next?"])
+        interview.answer("Spanish")
         XCTAssertEqual(interview.step, .style)
         interview.chooseStyle("Short and direct")
         XCTAssertEqual(interview.step, .review)
@@ -35,24 +36,28 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.facts, .init(name: "Ada", work: "Product designer", apps: "Figma, Notion", goal: "Spanish", style: "Short and direct"))
     }
 
-    func testARichAnswerEarnsOneFollowUp() async throws {
+    func testACompleteIntroductionEarnsOneFollowUpInstead() async throws {
         let interview = model(complete: { prompt in
-            prompt.contains("Reply with the question or NONE") ? "Are you raising money right now?" : "ok"
+            prompt.contains("Reply with JSON only, exactly this shape")
+                ? #"{"work":"Startup founder","apps":["Linear"],"learningGoal":"Sales"}"#
+                : prompt.contains("Reply with the question or NONE") ? "Are you raising money right now?" : "ok"
         })
         interview.begin()
         interview.confirmPronunciation()
-        interview.answer("I run a tiny startup that sells software to dentists")
+        interview.answer("I run a tiny startup that sells software to dentists, live in Linear, and want to get better at sales")
         try await settle(interview)
         XCTAssertEqual(interview.step, .question(1))
         XCTAssertEqual(interview.questions[1], "Are you raising money right now?")
         XCTAssertEqual(interview.kind(at: 1), .followUp)
-        XCTAssertEqual(interview.questionCount, 4)
+        XCTAssertEqual(interview.questionCount, 2)
     }
 
     func testTwoShortAnswersEndTheQuestions() {
         let interview = model()
         interview.begin()
         interview.confirmPronunciation()
+        interview.answer("Hi, I'm Ada")
+        XCTAssertEqual(interview.questions.count, 4)
         interview.answer("Student")
         interview.answer(nil)
         XCTAssertEqual(interview.step, .style)
@@ -64,6 +69,7 @@ final class InterviewModelTests: XCTestCase {
         let interview = InterviewModel(name: "Ada", effects: .init(now: { now }))
         interview.begin()
         interview.confirmPronunciation()
+        interview.answer("I teach")
         now = now.addingTimeInterval(120)
         interview.answer("I teach chemistry at a big school")
         XCTAssertEqual(interview.step, .style)
@@ -96,7 +102,6 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.notes.map(\.fact.text), ["Designs for a fintech app", "Likes short answers"])
         interview.confirmPronunciation()
         interview.answer(nil)
-        interview.answer(nil)
         XCTAssertEqual(interview.step, .style)
         interview.chooseStyle(nil)
         interview.notes[1].kept = false
@@ -121,7 +126,7 @@ final class InterviewModelTests: XCTestCase {
         let interview = model(complete: { _ in "" }, saved: { _ in saves += 1 })
         interview.begin()
         interview.confirmPronunciation()
-        for _ in ProfileExtraction.questions { interview.answer(nil) }
+        interview.answer(nil)
         XCTAssertEqual(interview.step, .done)
         XCTAssertEqual(saves, 0)
     }
@@ -201,12 +206,16 @@ final class InterviewModelTests: XCTestCase {
         interview.begin()
         try await shot("2-pronounce")
         interview.confirmPronunciation()
-        try await shot("3-work")
-        interview.answer("Chemistry")
-        interview.draft = "Notion, Figma and Xcode"
-        try await shot("4-apps-with-reaction")
+        try await shot("3-intro")
+        interview.draft = "I teach chemistry at a big school and plan every lab in Notion and Figma."
+        try await shot("3b-intro-typed")
         interview.answer(interview.draft)
-        try await shot("5-goal")
+        try await settle(interview)
+        try await shot("4-work")
+        interview.answer("Chemistry teacher")
+        interview.draft = "Notion, Figma and Xcode"
+        try await shot("5-apps-with-reaction")
+        interview.answer(interview.draft)
         interview.answer("How options trading works")
         try await shot("6-style")
         interview.chooseStyle("Short and direct")

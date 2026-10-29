@@ -20,7 +20,8 @@ public enum ToolGate {
         switch surface {
         case .agent: return true
         case .suggestions: return name == "integrations.list" || name == "integrations.read"
-        case .talk, .guide: return observeTools.contains(name) || drawTools.contains(name)
+        case .talk: return true
+        case .guide: return observeTools.contains(name) || drawTools.contains(name)
         }
     }
 
@@ -28,12 +29,19 @@ public enum ToolGate {
         specs.filter { allows($0.name, on: surface) }
     }
 
-    /// Ask never acts: calls outside the surface's allowlist are rejected and logged
+    /// Guide never acts: calls outside the surface's allowlist are rejected and logged
     /// (tool name only — arguments may carry sensitive content).
     public static func check(_ call: ToolCall, on surface: ToolSurface) -> ToolRejection? {
         guard !allows(call.name, on: surface) else { return nil }
         logger.warning("rejected tool call on \(surface.rawValue): \(call.name, privacy: .public)")
         return ToolRejection(callID: call.id, toolName: call.name, surface: surface)
+    }
+}
+
+extension ToolSpec {
+    /// Talk does what the user asks, so it offers every agent tool.
+    public func isOffered(on surface: ToolSurface) -> Bool {
+        surfaces.contains(surface) || (surface == .talk && surfaces.contains(.agent))
     }
 }
 

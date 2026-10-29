@@ -119,12 +119,15 @@ public enum PromptAssembler {
     static func modeDelta(_ mode: PromptMode, perry: Perry?) -> String {
         switch mode {
         case .chat:
-            return "This is a conversation. Answer in at most three short sentences unless the user asks for more."
+            return """
+                This is a conversation. Answer in at most three short sentences unless the user asks for more. \
+                When the user asks you to do something, such as open an app, do it with your tools, then say what you did.
+                """
         case .talk:
             return """
                 The user points at the screen and talks. Answer in at most three spoken sentences. \
-                You look and point in this mode, and you never act. If the user wants the work done, \
-                tell them to say “do this for me” and Perry will ask before it starts a task.
+                When the user asks you to do something, such as open an app or change a setting, do it with \
+                your tools, then say what you did. When they ask how to do something, show them and let them click.
 
                 Draw attention with: point, ring, arrow, underline, caption, path, clear, as tools \
                 or inline ⟦verb e1 "label"⟧ tags that reference element ids supplied in the current turn.
@@ -238,7 +241,7 @@ public enum PromptAssembler {
             }
         }
         if status[.act] == .available {
-            sentences.append("Say “do this for me” and I’ll do the task myself.")
+            sentences.append("Ask me to do something and I’ll do it myself.")
         }
         if status[.apps] == .available {
             sentences.append("I can also use " + snapshot.connectedApps.joined(separator: ", ") + ".")

@@ -10,9 +10,14 @@ final class ToolGateTests: XCTestCase {
         ToolSpec(name: name, description: "", inputSchema: .object([:]))
     }
 
-    func testUIClickRejectedOnTalk() {
-        let rejection = ToolGate.check(call("ui.click", id: "c9"), on: .talk)
-        XCTAssertEqual(rejection, ToolRejection(callID: "c9", toolName: "ui.click", surface: .talk))
+    func testTalkCanActWhenAsked() {
+        XCTAssertNil(ToolGate.check(call("ui.click"), on: .talk))
+        XCTAssertNil(ToolGate.check(call("app.launch"), on: .talk))
+    }
+
+    func testUIClickRejectedOnGuide() {
+        let rejection = ToolGate.check(call("ui.click", id: "c9"), on: .guide)
+        XCTAssertEqual(rejection, ToolRejection(callID: "c9", toolName: "ui.click", surface: .guide))
     }
 
     func testRingAllowedOnTalk() {
@@ -29,10 +34,18 @@ final class ToolGateTests: XCTestCase {
         XCTAssertNil(ToolGate.check(call("ui.click"), on: .agent))
     }
 
-    func testFilterStripsActToolsForTalk() {
+    func testFilterStripsActToolsForGuide() {
         let specs = [spec("screen.observe"), spec("ui.click"), spec("ring"), spec("files.delete")]
-        XCTAssertEqual(ToolGate.filter(specs, for: .talk).map(\.name), ["screen.observe", "ring"])
+        XCTAssertEqual(ToolGate.filter(specs, for: .guide).map(\.name), ["screen.observe", "ring"])
+        XCTAssertEqual(ToolGate.filter(specs, for: .talk).count, 4)
         XCTAssertEqual(ToolGate.filter(specs, for: .agent).count, 4)
+    }
+
+    func testTalkIsOfferedEveryAgentTool() {
+        let agentOnly = ToolSpec(name: "app.launch", description: "", inputSchema: .object([:]), surfaces: [.agent])
+        XCTAssertTrue(agentOnly.isOffered(on: .talk))
+        XCTAssertFalse(agentOnly.isOffered(on: .guide))
+        XCTAssertFalse(agentOnly.isOffered(on: .suggestions))
     }
 
     func testFilesDeleteRejectedOnGuide() {

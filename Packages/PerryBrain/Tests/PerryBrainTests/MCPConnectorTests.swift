@@ -155,12 +155,11 @@ final class MCPConnectorTests: XCTestCase {
         guard case .text(let text)? = approved.content.first else { return XCTFail() }
         XCTAssertEqual(text, "echo:mutate")
 
-        // And never on the talk surface.
-        let talk = await host.handle(
-            ToolCall(id: "c4", name: "mcp.fake-tools.search", arguments: .object([:])),
+        let talkWithoutApproval = await host.handle(
+            ToolCall(id: "c4", name: "mcp.fake-tools.mutate", arguments: .object([:])),
             context: ToolContext(surface: .talk)
         )
-        XCTAssertTrue(talk.isError)
+        XCTAssertTrue(talkWithoutApproval.isError)
     }
 
     func testTierOverride() async throws {

@@ -1,4 +1,17 @@
-# Current: teaching audit and fixes (2026-10-29)
+# Current: first-use fixes from the owner's laptop install (2026-10-29)
+
+Trigger: on a fresh install the owner said "Can you open T3 Code?" and got "I couldn't answer that". Onboarding still asked three fixed questions. Owner decision: Perry does what it is asked without approval cards; only writes to connected services ask.
+
+In progress (not committed yet):
+- Talk and Ask act: `ToolGate` lets Talk call every agent tool (`ToolSpec.isOffered(on:)`); Guide still only observes and draws. The talk and chat prompts say to do what is asked and report it; the capability answer says "Ask me to do something".
+- No approval for app.launch, ui.drag, files.trash, files.overwrite (yellow). Trash goes to the workspace trash and overwrite returns the old contents as its undo. integrations.write and non-read-only MCP tools stay orange.
+- Talk errors: the hold, ask and click paths show the real error and log it to `ai.perry.talk` (capture failures too). Root cause of the laptop failure is still unknown: the saved thread has no turn, so it failed before the model ran (capture or presentation), and the Release build logged nothing.
+- Onboarding: the interview opens with "Tell me about yourself."; the model extracts work, apps and goal, and only missing facts get their question; a complete introduction earns at most one follow-up.
+
+Evidence so far: PerryBrain 441 tests, 0 failures. App build passes; app tests running.
+Remaining: app tests, live checks on the mini (Talk "open Calculator" with no auto-approve; onboarding render shots), commit, Release build, reinstall on the laptop with a data reset.
+
+# Previous: teaching audit and fixes (2026-10-29)
 
 Trigger: marks never drew (fixed in 7c81de5); the user asked for a full audit of core features judged by real outcomes. A read-only code audit (Sonnet subagent) listed 20 findings; each fix below was checked on the mini with `scripts/lab/teach-bench.py` (real model planner, real clicks, screenshots) or a pixel test.
 
