@@ -314,7 +314,7 @@ struct SetupBeat: View {
         switch voicePick {
         case .cloud(let service): return "\(service.name). Sounds human."
         case .kokoro:
-            return installer.downloading ? "Downloading. Apple voice for now." : "Natural voice on this Mac. Private."
+            return installer.downloading ? "Downloading. Replies show as text until then." : "Natural voice on this Mac. Private."
         case .system: return VoiceController.speakingVoice.map { "\($0.name), Apple voice. Private." } ?? "Apple voice. Private."
         case nil:
             if case .installKokoro = advice.voice { return "Natural voice on this Mac, 380 MB." }

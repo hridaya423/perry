@@ -152,6 +152,7 @@ final class PermissionGuideCoordinator: ObservableObject {
         case .notGranted:
             return
         case .needsRelaunch:
+            GrantMonitor.reopensOnQuit = true
             retryTask?.cancel()
             phase = .restart
             surface.setHidden(false)

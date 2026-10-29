@@ -335,6 +335,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             mcp.startAfterLaunch(directory: dir)
             customConnectors.connectAll()
         }
+        if PerryPreferences.speechEngine.isEmpty, VoiceController.naturalVoices().isEmpty {
+            PerryPreferences.speechEngine = SpeechEngineChoice.kokoro.rawValue
+        }
+        if SpeechEngineChoice.current == .kokoro { KokoroInstaller.shared.start() }
 #if DEBUG
         applyDebugLaunchSurface()
 #else

@@ -113,12 +113,18 @@ final class GrantMonitor {
         observers = []
     }
 
+    static var reopensOnQuit = false
+
     static func relaunchSelf(beforeQuit: () -> Void = {}) {
         beforeQuit()
+        reopensOnQuit = true
+        NSApp.terminate(nil)
+    }
+
+    static func reopenAfterQuit() {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
         try? process.run()
-        NSApp.terminate(nil)
     }
 }

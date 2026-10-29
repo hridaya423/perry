@@ -290,6 +290,10 @@ extension AppController {
         maintenance.requestTermination(sender)
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        if GrantMonitor.reopensOnQuit { GrantMonitor.reopenAfterQuit() }
+    }
+
     func unsavedRequestQuitConfirmation() -> NotchConfirmation {
         MaintenanceCoordinator.unsavedRequestQuitConfirmation()
     }

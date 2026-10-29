@@ -41,7 +41,6 @@ extension VoiceController {
         }
         let languageCode = languageIdentifier.flatMap { Locale(identifier: $0).language.languageCode?.identifier }
         return recommendedSpeechVoices(from: natural, languageCode: languageCode ?? "en", limit: 1).first
-            ?? AVSpeechSynthesisVoice(language: languageIdentifier ?? AVSpeechSynthesisVoice.currentLanguageCode())
     }
 
     static var speakingVoice: AVSpeechSynthesisVoice? {
@@ -297,7 +296,9 @@ extension VoiceController {
             neuralSpeech.enqueue(spoken, voice: voice)
         case .silent:
             overlayState.voiceState = .idle
-            hooks.setStatus("Perry has no natural voice yet, so replies stay in text. Choose one in Settings > Voice.")
+            hooks.setStatus(KokoroInstaller.shared.downloading
+                ? "My voice is still downloading, so this reply is in text."
+                : "Perry has no natural voice yet, so replies stay in text. Choose one in Settings > Voice.")
         }
     }
 

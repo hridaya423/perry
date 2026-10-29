@@ -18,6 +18,11 @@ Evidence: app 931 tests (7 skipped), PerryBrain 441, PerryRuntimes green. Render
 
 Not verified: the legacy route on the M4 Pro itself, the memory import (owner).
 
+Follow-up the same evening:
+- The owner rejected the compact macOS voice ("genuinely horrible"). The system route uses natural voices only; with none, replies stay in text. `testNoNaturalVoiceMeansSilentNotCompact` is restored and now carries that reason.
+- The natural voice starts downloading at launch, so it is ready before Perry first speaks. While it downloads, the status says the reply is in text.
+- On the laptop, macOS's "Quit & Reopen" after the Screen Recording grant quit Perry (Quit AppleEvent at 21:54:08) and nothing reopened it; the voice install was cut off (helper: broken pipe). Perry now reopens itself on quit once it has seen a grant that needs a relaunch.
+
 # Previous: first use, round 4 (2026-10-29)
 
 Owner feedback after the laptop install: five permissions felt like too many; the Screen Recording helper covered the screen; no voice ("Did I say Hridya right" was silent); ChatGPT memory lives in Settings › Personalization, not behind a prompt; dropdowns still failed; Opus processes showed up.

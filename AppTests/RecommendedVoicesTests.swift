@@ -23,12 +23,12 @@ final class RecommendedVoicesTests: XCTestCase {
         XCTAssertEqual(Set(voices.map(\.name)).count, voices.count)
     }
 
-    func testTheSystemEngineAlwaysHasAVoice() {
+    func testNoNaturalVoiceMeansSilentNotCompact() {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         defaults.set("system", forKey: PerryPreferences.$speechEngine.key)
         switch VoiceController.speechRoute(engine: .system, defaults: defaults) {
-        case .system(let voice): XCTAssertEqual(VoiceController.isNaturalVoice(voice), !VoiceController.naturalVoices().isEmpty)
-        case .silent: XCTFail("Perry speaks with the system voice when no natural voice is installed")
+        case .system(let voice): XCTAssertTrue(VoiceController.isNaturalVoice(voice), "The owner finds compact macOS voices unbearable; stay silent instead.")
+        case .silent: XCTAssertTrue(VoiceController.naturalVoices().isEmpty)
         case .neural: XCTFail("system engine never routes to a neural voice")
         }
     }
