@@ -65,6 +65,7 @@ actor CuaWorkerService {
         var retirement: Task<Void, Error>?
         var completion: Task<Void, Error>?
         var stopDeadline: ContinuousClock.Instant?
+        var droppedActions = 0
     }
 
     private let serviceID = UUID()
@@ -264,12 +265,18 @@ actor CuaWorkerService {
                 throw CuaDriverError.targetNotFound
             }
             try claim([.application(target.bundleID)], allocation: allocation)
-            return try await client.execute(action, sessionID: allocation.uuidString)
+            let result = try await client.execute(action, sessionID: allocation.uuidString)
+            workers[allocation]?.droppedActions = 0
+            return result
         } catch let error as CuaDriverError where error.isTargetFact {
             // A missing, refused, or mismatched target leaves the worker
             // healthy; the plan, not the driver, was wrong. Surface it instead
             // of retiring, which would cancel the whole run.
             throw error
+        } catch let error as CuaDriverError where Self.isRespawnableReadFailure(error)
+            && (workers[allocation]?.droppedActions ?? Self.maxReadRetries) < Self.maxReadRetries {
+            workers[allocation]?.droppedActions += 1
+            throw CuaDriverError.actionUnanswered
         } catch {
             beginRetirement(allocation)
             throw error

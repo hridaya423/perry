@@ -14,7 +14,7 @@ enum CuaCapabilityManifest {
         "list_apps", "list_windows", "get_window_state", "get_desktop_state",
         "get_cursor_position", "zoom",
         "click", "right_click", "double_click", "scroll",
-        "type_text", "press_key", "hotkey", "drag", "set_value",
+        "type_text", "press_key", "hotkey", "drag", "set_value", "run_steps",
         "invoke_menu", "verify_state", "launch_app",
         "clipboard_read", "clipboard_write",
         "get_browser_state",

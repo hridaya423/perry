@@ -17,6 +17,8 @@ final class CuaWorkerProcessTests: XCTestCase {
         root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
         printf '%s\n' "$$" > "$root/pid-$$"
         image=$(cat "$root/image.b64" 2>/dev/null || printf 'AQI=')
+        apppid=$$
+        if [ -f "$root/stable-app" ]; then [ -f "$root/app-pid" ] || printf '%s' "$$" > "$root/app-pid"; apppid=$(cat "$root/app-pid"); fi
         bundle="fixture.$$"
         if [ -f "$root/shared-target" ]; then bundle="fixture.shared"; fi
         if [ -f "$root/finder" ]; then bundle="com.apple.finder"; fi
@@ -26,8 +28,9 @@ final class CuaWorkerProcessTests: XCTestCase {
             id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
             [ -n "$id" ] || continue
             case "$line" in
-                *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$$" ;;
-                *get_window_state*) if [ -f "$root/finder" ]; then printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","actions":["press"],"frame":{"x":20,"y":20,"width":80,"height":24}},{"element_token":"name","role":"AXTextField","value":"draft-a.txt","actions":["open","showmenu","confirm"],"frame":{"x":20,"y":60,"width":80,"height":18}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image"; else printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image" ; fi ;;
+                *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$apppid" ;;
+                *get_window_state*) if [ -f "$root/finder" ]; then printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","actions":["AXPress"],"frame":{"x":20,"y":20,"width":80,"height":24}},{"element_token":"name","role":"AXTextField","value":"draft-a.txt","actions":["AXShowMenu","AXConfirm"],"frame":{"x":20,"y":60,"width":80,"height":18}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image"; else printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image" ; fi ;;
+                *set_value*) if [ -f "$root/die-on-set" ]; then rm "$root/die-on-set"; exit 1; fi; printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
                 *type_text*unconfirmed*) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"Sent (unverified) 11 char(s)"}]}}\n' "$id" ;;
                 *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"verified":true}}}\n' "$id" ;;
                 *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
@@ -137,6 +140,94 @@ final class CuaWorkerProcessTests: XCTestCase {
         XCTAssertEqual(clicks.count, 2, requests)
         XCTAssertFalse(clicks[0].contains("element_token"), String(clicks[0]))
         XCTAssertTrue(clicks[1].contains("element_token"), String(clicks[1]))
+    }
+
+    func testSetValueReplacesTheWholeValueThroughTheDriver() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true)
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let set = await host.handle(ToolCall(id: "set", name: "ui.setValue", arguments: .object(["elementID": .string("e1"), "value": .string("cedar-a.txt")])), context: context)
+            XCTAssertFalse(set.isError, "\(set)")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        let set = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"set_value\"") })
+        XCTAssertTrue(set.contains("\"value\":\"cedar-a.txt\"") && set.contains("\"element_token\""), String(set))
+        XCTAssertFalse(set.contains("delivery_mode"), String(set))
+    }
+
+    func testADroppedActionIsReportedAndTheRunCarriesOnWithARespawnedDriver() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true)
+        try Data().write(to: directory.appendingPathComponent("die-on-set"))
+        try Data().write(to: directory.appendingPathComponent("stable-app"))
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let dropped = await host.handle(ToolCall(id: "set", name: "ui.setValue", arguments: .object(["elementID": .string("e1"), "value": .string("cedar")])), context: context)
+            XCTAssertTrue(dropped.isError)
+            XCTAssertTrue("\(dropped)".contains("didn’t answer in time"), "\(dropped)")
+            let again = await host.handle(ToolCall(id: "observe2", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            XCTAssertFalse(again.isError, "\(again)")
+            let retried = await host.handle(ToolCall(id: "set2", name: "ui.setValue", arguments: .object(["elementID": .string("v2e1"), "value": .string("cedar")])), context: context)
+            XCTAssertFalse(retried.isError, "\(retried)")
+        }
+    }
+
+    func testStepsRunAsOneDriverBatch() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true)
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let steps: JSONValue = .array([
+                .object(["action": .string("click"), "elementID": .string("e1")]),
+                .object(["action": .string("key"), "key": .string("Return")]),
+                .object(["action": .string("type"), "text": .string("cedar")]),
+            ])
+            let batch = await host.handle(ToolCall(id: "steps", name: "ui.steps", arguments: .object(["steps": steps])), context: context)
+            XCTAssertFalse(batch.isError, "\(batch)")
+            let unknown = await host.handle(ToolCall(id: "bad", name: "ui.steps", arguments: .object(["steps": .array([.object(["action": .string("click"), "elementID": .string("e99")])])])), context: context)
+            XCTAssertTrue(unknown.isError)
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        let batches = requests.split(separator: "\n").filter { $0.contains("\"name\":\"run_steps\"") }
+        XCTAssertEqual(batches.count, 1, requests)
+        let batch = try XCTUnwrap(batches.first)
+        let data = try XCTUnwrap(String(batch).data(using: .utf8))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let arguments = try XCTUnwrap((json["params"] as? [String: Any])?["arguments"] as? [String: Any])
+        let sent = try XCTUnwrap(arguments["steps"] as? [[String: Any]])
+        XCTAssertEqual(sent.compactMap { $0["tool"] as? String }, ["click", "press_key", "type_text"])
+        XCTAssertEqual(arguments["delay_ms"] as? Int, 300)
+        XCTAssertNotNil((sent[0]["args"] as? [String: Any])?["element_token"])
+        XCTAssertEqual((sent[1]["args"] as? [String: Any])?["key"] as? String, "return")
+        XCTAssertEqual((sent[2]["args"] as? [String: Any])?["text"] as? String, "cedar")
+        XCTAssertFalse(requests.contains("\"name\":\"click\""), requests)
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {

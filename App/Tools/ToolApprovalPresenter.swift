@@ -83,6 +83,8 @@ enum ToolApprovalPresenter {
         case "ui.doubleclick": return target.map { "Double-click “\($0)”?" } ?? "Double-click here?"
         case "ui.rightclick": return target.map { "Right-click “\($0)”?" } ?? "Right-click here?"
         case "ui.type": return "Type into this field?"
+        case "ui.steps": return "Do these steps in this app?"
+        case "ui.setValue": return target.map { "Change “\($0)”?" } ?? "Change this field?"
         case "ui.key": return target.map { "Press \($0)?" } ?? "Press a key?"
         case "ui.hotkey": return "Press a keyboard shortcut?"
         case "ui.drag": return "Drag here?"

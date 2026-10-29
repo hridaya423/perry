@@ -328,6 +328,7 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
     case unsupportedAction
     case terminationUnconfirmed
     case targetMismatch
+    case actionUnanswered
 
     var errorDescription: String? {
         switch self {
@@ -355,6 +356,8 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
             return "I couldn’t confirm that screen control stopped."
         case .targetMismatch:
             return "The window changed since I made the plan, so I stopped instead of acting on the wrong window."
+        case .actionUnanswered:
+            return "The app didn’t answer in time, so screen control restarted. The action may or may not have happened: look at the window again before the next step."
         }
     }
 
@@ -645,6 +648,18 @@ actor CuaDriverClient {
                 result = try await callTool(name: "type_text", arguments: refreshedArguments)
             }
             return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Typed the text." : result.text)
+        case .setValue(let value, let target):
+            guard let token = try await resolveElementToken(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: true) else {
+                throw CuaDriverError.targetNotFound
+            }
+            let result: CuaToolResult
+            do {
+                result = try await callTool(name: "set_value", arguments: ["element_token": token, "value": value, "session": sessionID])
+            } catch let error as CuaDriverError where error.isStaleTarget {
+                guard let token = try await resolveElementToken(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: false) else { throw error }
+                result = try await callTool(name: "set_value", arguments: ["element_token": token, "value": value, "session": sessionID])
+            }
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Set the value." : result.text)
         case .rightClick(let target):
             let result = try await performAction(
                 name: "right_click",
@@ -695,6 +710,17 @@ actor CuaDriverClient {
                 additionalArguments: ["keys": keys]
             )
             return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Pressed \(keys.joined(separator: "+"))." : result.text)
+        case .steps(let operations):
+            var steps: [[String: Any]] = []
+            for operation in operations {
+                let (tool, arguments) = try await stepRequest(for: operation, state: state, sessionID: sessionID)
+                steps.append(["tool": tool, "args": arguments])
+            }
+            let result = try await callTool(
+                name: "run_steps",
+                arguments: ["steps": steps, "session": sessionID, "foreground_fallback": allowsForegroundInput, "delay_ms": 300]
+            )
+            return StepResult(stepID: action.stepID, success: true, message: result.text.isEmpty ? "Did all \(operations.count) steps." : result.text)
         case .drag(let from, let to, let duration, let steps):
             var arguments: [String: Any] = [
                 "from_x": from.x,
@@ -977,6 +1003,7 @@ actor CuaDriverClient {
             "CUA_DRIVER_CAPABILITY_MANIFEST_APPROVED": "1",
             "CUA_DRIVER_RS_UPDATE_CHECK": "0",
             "CUA_DRIVER_RS_TELEMETRY_ENABLED": "0",
+            "CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS": "200",
         ]
         let inherited = ProcessInfo.processInfo.environment
         for key in ["HOME", "TMPDIR", "LANG", "LC_ALL"] {
@@ -1168,6 +1195,54 @@ actor CuaDriverClient {
         }
         try ensureTargetAllowed(currentTarget)
         return currentTarget
+    }
+
+    private func stepRequest(for operation: ComputerAction.Operation, state: CuaSessionState, sessionID: String) async throws -> (String, [String: Any]) {
+        var request: (String, [String: Any])
+        switch operation {
+        case .click(let target):
+            request = ("click", try await pointerArguments(for: target, state: state, sessionID: sessionID))
+        case .doubleClick(let target):
+            request = ("double_click", try await pointerArguments(for: target, state: state, sessionID: sessionID))
+        case .rightClick(let target):
+            request = ("right_click", try await pointerArguments(for: target, state: state, sessionID: sessionID))
+        case .typeText(let text, let target):
+            let focused = target.stableID == nil && target.label == nil && target.coordinates == nil
+            var arguments = focused
+                ? try await actionArguments(for: nil, state: state, sessionID: sessionID, requiresTarget: false)
+                : try await pointerArguments(for: target, state: state, sessionID: sessionID)
+            arguments["text"] = text
+            arguments["delay_ms"] = 10
+            request = ("type_text", arguments)
+        case .setValue(let value, let target):
+            guard let token = try await resolveElementToken(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: true) else {
+                throw CuaDriverError.targetNotFound
+            }
+            request = ("set_value", ["element_token": token, "value": value])
+        case .scroll(let direction, let amount, let by, let target):
+            var arguments = try await actionArguments(for: target, state: state, sessionID: sessionID, requiresTarget: false)
+            arguments["direction"] = direction.rawValue
+            arguments["amount"] = amount
+            if let by { arguments["by"] = by }
+            request = ("scroll", arguments)
+        case .pressKey(let key, let modifiers, let target):
+            var arguments = try await actionArguments(for: target, state: state, sessionID: sessionID, requiresTarget: false)
+            arguments["key"] = key
+            if let modifiers { arguments["modifiers"] = modifiers }
+            request = ("press_key", arguments)
+        case .hotkey(let keys, let target):
+            var arguments = try await actionArguments(for: target, state: state, sessionID: sessionID, requiresTarget: false)
+            arguments["keys"] = keys
+            request = ("hotkey", arguments)
+        case .drag, .steps:
+            throw CuaDriverError.unsupportedAction
+        }
+        request.1["session"] = nil
+        if allowsForegroundInput, request.1["delivery_mode"] as? String == "background",
+           Self.foregroundOnlyBundleIDs.contains(state.target.bundleID.lowercased()) {
+            request.1["delivery_mode"] = "foreground"
+        }
+        return request
     }
 
     private func performAction(
@@ -1594,7 +1669,7 @@ actor CuaDriverClient {
             let actions = element["actions"] as? [String]
             details[token] = CuaElementDetail(
                 value: secure ? nil : nonEmpty(element["value"] as? String),
-                pressable: actions?.contains("press") ?? true
+                pressable: actions?.contains("AXPress") ?? true
             )
         }
     }

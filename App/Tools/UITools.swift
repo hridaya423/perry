@@ -24,6 +24,8 @@ struct UITools {
             UIActionExecutor(kind: .doubleClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
+            UISetValueExecutor(workers: workers, lease: lease, observations: observations),
+            UIStepsExecutor(workers: workers, lease: lease, observations: observations),
             UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIHotkeyExecutor(workers: workers, lease: lease),
@@ -276,6 +278,150 @@ private struct UITypeExecutor: ToolExecutor {
                 onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
             }
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
+        }
+    }
+}
+
+private struct UISetValueExecutor: ToolExecutor {
+    let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
+
+    var spec: ToolSpec {
+        ToolSpec(
+            name: "ui.setValue",
+            description: "Replace an element's whole value in one step: a native text field's text, a pop-up menu's chosen item, a slider or stepper. On a Finder file name (not being edited) it renames the file; give the full new name with its extension. Web page inputs ignore it: click them and use ui.type.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
+                    "value": .object(["type": .string("string")]),
+                    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
+                ]),
+                "required": .array([.string("elementID"), .string("value")]),
+            ]),
+            tier: .yellow,
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
+        )
+    }
+
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+        guard let elementID = call.arguments["elementID"]?.stringValue, let value = call.arguments["value"]?.stringValue else {
+            return .text(call.id, "ui.setValue: needs elementID and value", isError: true)
+        }
+        guard let element = observations.resolveElement(elementID, runID: context.runID) else {
+            return .text(call.id, "ui.setValue: element \(elementID) is stale or unknown — run screen.observe again", isError: true)
+        }
+        let bundleID = observations.snapshot(runID: context.runID)?.window?.bundleID
+        let target = ComputerTarget(stableID: element.id, label: element.label.nilIfEmpty, coordinates: nil)
+        let action = ComputerAction(stepID: call.id, operation: .setValue(value: value, target: target))
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
+            let result = try await worker.execute(action)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+        }
+    }
+}
+
+private struct UIStepsExecutor: ToolExecutor {
+    let workers: CuaWorkerService
+    let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
+
+    var spec: ToolSpec {
+        ToolSpec(
+            name: "ui.steps",
+            description: "Run several actions in one call when you already know them, then see the window once: for example click a row, press return, type a name, press return. Steps run in order and stop at the first failure. Element ids come from the latest screen.observe and stay valid through the batch, so end the batch at a step that opens a new screen and observe before going on.",
+            inputSchema: .object([
+                "type": .string("object"),
+                "properties": .object([
+                    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
+                    "steps": .object([
+                        "type": .string("array"),
+                        "maxItems": .number(20),
+                        "items": .object([
+                            "type": .string("object"),
+                            "properties": .object([
+                                "action": .object(["type": .string("string"), "enum": .array(["click", "doubleclick", "rightclick", "type", "setValue", "key", "hotkey", "scroll"].map { .string($0) })]),
+                                "elementID": .object(["type": .string("string")]),
+                                "x": .object(["type": .string("number"), "description": .string("Screenshot pixel, as in ui.click")]),
+                                "y": .object(["type": .string("number")]),
+                                "text": .object(["type": .string("string"), "description": .string("For type; with no target it goes to the focused field")]),
+                                "value": .object(["type": .string("string"), "description": .string("For setValue")]),
+                                "key": .object(["type": .string("string"), "description": .string("For key")]),
+                                "modifiers": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
+                                "keys": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("For hotkey, like [\"cmd\", \"s\"]")]),
+                                "direction": .object(["type": .string("string"), "enum": .array([.string("up"), .string("down"), .string("left"), .string("right")])]),
+                                "amount": .object(["type": .string("number")]),
+                            ]),
+                            "required": .array([.string("action")]),
+                        ]),
+                    ]),
+                ]),
+                "required": .array([.string("steps")]),
+            ]),
+            tier: .yellow,
+            surfaces: [.agent],
+            requiredCapabilities: [.tools, .vision]
+        )
+    }
+
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+        guard let steps = call.arguments["steps"]?.arrayValue, !steps.isEmpty, steps.count <= 20 else {
+            return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true)
+        }
+        var operations: [ComputerAction.Operation] = []
+        for (index, step) in steps.enumerated() {
+            switch await stepOperation(step, runID: context.runID) {
+            case .success(let operation): operations.append(operation)
+            case .failure(let error): return .text(call.id, "ui.steps: step \(index + 1): \(error.message)", isError: true)
+            }
+        }
+        let bundleID = call.arguments["bundleID"]?.stringValue ?? observations.snapshot(runID: context.runID)?.window?.bundleID
+        let action = ComputerAction(stepID: call.id, operation: .steps(operations))
+        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
+            let result = try await worker.execute(action)
+            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+        }
+    }
+
+    private func stepOperation(_ step: JSONValue, runID: UUID) async -> Result<ComputerAction.Operation, ToolResolutionError> {
+        let targeted = step["elementID"] != nil || (step["x"] != nil && step["y"] != nil)
+        let resolved: ResolvedTarget? = targeted ? try? await resolveTarget(args: step, observations: observations, runID: runID, locate: nil).get() : nil
+        if targeted, resolved == nil {
+            return .failure(ToolResolutionError(message: "element \(step["elementID"]?.stringValue ?? "at x/y") is stale or unknown — run screen.observe again"))
+        }
+        let pointer = resolved.map { windowPixels($0.pointerTarget, observations: observations, runID: runID) }
+        let plain = resolved.map { windowPixels($0.target, observations: observations, runID: runID) }
+        switch step["action"]?.stringValue {
+        case "click", "doubleclick", "rightclick":
+            guard let pointer else { return .failure(ToolResolutionError(message: "needs elementID or x/y")) }
+            switch step["action"]?.stringValue {
+            case "doubleclick": return .success(.doubleClick(pointer))
+            case "rightclick": return .success(.rightClick(pointer))
+            default: return .success(.click(pointer))
+            }
+        case "type":
+            guard let text = step["text"]?.stringValue else { return .failure(ToolResolutionError(message: "type needs text")) }
+            return .success(.typeText(text: text, target: plain ?? ComputerTarget(stableID: nil, label: nil, coordinates: nil)))
+        case "setValue":
+            guard let value = step["value"]?.stringValue, let resolved, resolved.target.stableID != nil else {
+                return .failure(ToolResolutionError(message: "setValue needs elementID and value"))
+            }
+            return .success(.setValue(value: value, target: ComputerTarget(stableID: resolved.target.stableID, label: resolved.target.label, coordinates: nil)))
+        case "key":
+            guard let key = step["key"]?.stringValue else { return .failure(ToolResolutionError(message: "key needs key")) }
+            return .success(.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain))
+        case "hotkey":
+            guard let keys = step["keys"]?.arrayValue?.compactMap(\.stringValue), !keys.isEmpty else { return .failure(ToolResolutionError(message: "hotkey needs keys")) }
+            return .success(.hotkey(keys: keys.map { $0.lowercased() }, target: plain))
+        case "scroll":
+            guard let direction = step["direction"]?.stringValue.flatMap(ComputerAction.Direction.init(rawValue:)) else {
+                return .failure(ToolResolutionError(message: "scroll needs a direction"))
+            }
+            return .success(.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain))
+        default:
+            return .failure(ToolResolutionError(message: "unknown action"))
         }
     }
 }

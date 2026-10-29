@@ -186,6 +186,7 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertEqual(environment["CUA_DRIVER_PERMISSION_MODE"], "bounded")
         XCTAssertEqual(environment["CUA_DRIVER_CAPABILITY_MANIFEST_FILE"], configuration.capabilityManifestURL.path)
         XCTAssertEqual(environment["CUA_DRIVER_CAPABILITY_MANIFEST_APPROVED"], "1")
+        XCTAssertEqual(environment["CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS"], "200")
     }
 
     func testConcurrentHealthCallsShareInitialization() async throws {

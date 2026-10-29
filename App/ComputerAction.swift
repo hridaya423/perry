@@ -18,12 +18,14 @@ struct ComputerAction: Sendable, Equatable {
     enum Operation: Sendable, Equatable {
         case click(ComputerTarget)
         case typeText(text: String, target: ComputerTarget)
+        case setValue(value: String, target: ComputerTarget)
         case rightClick(ComputerTarget)
         case doubleClick(ComputerTarget)
         case scroll(direction: Direction, amount: Int, by: String?, target: ComputerTarget?)
         case pressKey(key: String, modifiers: [String]?, target: ComputerTarget?)
         case hotkey(keys: [String], target: ComputerTarget?)
         case drag(from: ComputerCoordinates, to: ComputerCoordinates, durationMilliseconds: Int?, steps: Int?)
+        indirect case steps([Operation])
     }
 
     let stepID: String
