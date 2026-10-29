@@ -51,7 +51,10 @@ final class OnboardingCoordinator {
                 }
             } else {
                 self?.home().homeModel.deps.controller?.collapseNotch()
-                await PermissionGuideCoordinator.guide(pane)
+                if await PermissionGuideCoordinator.guide(pane) == .needsRelaunch {
+                    GrantMonitor.relaunchSelf()
+                    return
+                }
                 self?.showNotch()
             }
         }

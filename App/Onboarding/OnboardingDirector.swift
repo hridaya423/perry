@@ -45,7 +45,7 @@ final class OnboardingDirector: ObservableObject {
 
     var accessGranted: Bool {
         guard let permissions else { return false }
-        return permissions.accessibility && permissions.microphone.isUsable
+        return permissions.accessibility && permissions.screenRecording.isUsable && permissions.microphone.isUsable
     }
 
     func start(resume: Bool = true) {

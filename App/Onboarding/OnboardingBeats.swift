@@ -40,10 +40,11 @@ struct HomeOnboardingView: View {
                         name: controller.memoryFiles?.profileField("Name") ?? OnboardingDirector.suggestedName(saved: nil, fullName: NSFullUserName()),
                         effects: .init(
                             complete: controller.brain.hasSavedChoice || controller.brain.onDeviceRouteAvailable
-                                ? { try await controller.brain.completeOnDevice($0) } : nil,
+                                ? { try await controller.brain.completeText($0) } : nil,
                             save: { facts in Task { await controller.saveInterview(facts) } },
                             saveNotes: { facts in Task { await controller.saveImportedFacts(facts) } },
-                            sayName: { controller.voice.speak($0) }
+                            sayName: { controller.voice.speak($0) },
+                            say: { await controller.voice.speakAndWait($0) }
                         )
                     ),
                     cloudLine: InterviewModel.cloudLine(choice: controller.brain.modelChoice, hasSavedChoice: controller.brain.hasSavedChoice),
@@ -149,7 +150,7 @@ private struct AccessBeat: View {
     @ObservedObject var director: OnboardingDirector
 
     var body: some View {
-        OnboardingBeatLayout(title: "I need two permissions.") {
+        OnboardingBeatLayout(title: "I need three permissions.") {
             PermissionSketch(lit: director.accessGranted)
                 .scaleEffect(0.38)
                 .modifier(InkDrawOn())
@@ -157,6 +158,8 @@ private struct AccessBeat: View {
             VStack(spacing: 8) {
                 row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read and click in your apps.", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
+                row(.screenRecording, title: PrivacyPane.screenRecording.displayName(), detail: "So I can see what you see.", icon: "rectangle.dashed.badge.record",
+                    granted: director.permissions?.screenRecording.isUsable == true)
                 row(.microphone, title: "Microphone", detail: "So I can hear you when you talk to me.", icon: "mic",
                     granted: director.permissions?.microphone.isUsable == true)
             }

@@ -44,7 +44,7 @@ final class OnboardingDirectorTests: XCTestCase {
         }
     }
 
-    private let granted = PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .granted)
+    private let granted = PerryPermissionSnapshot(accessibility: true, screenRecording: .granted, microphone: .granted)
     private let denied = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
 
     private func suite() throws -> UserDefaults {
@@ -209,7 +209,7 @@ final class OnboardingDirectorTests: XCTestCase {
         XCTAssertEqual(marks.filter { $0 == "onboarding.first_answer" }.count, 1)
     }
 
-    func testAccessAdvancesOnlyWhenEnteredForwardWithBothGrants() async {
+    func testAccessAdvancesOnlyWhenEnteredForwardWithEveryGrant() async {
         var snapshot = granted
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }

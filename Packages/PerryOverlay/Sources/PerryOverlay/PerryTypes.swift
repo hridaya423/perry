@@ -115,7 +115,10 @@ public final class PerryCursorState: ObservableObject {
     @Published public var detectedElementDisplayFrame: CGRect?
     @Published public var agentTaskBubbleText: String?
     @Published public var externalSecondaryCursors: [PerryExternalCursor] = []
-    @Published public var visualGuidanceOverlays: [PerryGuidanceOverlay] = []
+    @Published public var visualGuidanceOverlays: [PerryGuidanceOverlay] = [] {
+        didSet { scheduleMarkExpiry() }
+    }
+    private var expiringMarks: Set<UUID> = []
     @Published public var circleSelectLivePoints: [CGPoint] = []
     @Published public var circleSelectSnappedRect: CGRect?
     @Published public var circleSelectSnapLabel: String?
@@ -138,6 +141,27 @@ public final class PerryCursorState: ObservableObject {
         bubbleExpiry?.cancel()
         bubbleExpiry = expiry
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: expiry)
+    }
+
+    /// The user clicked at `point` (AppKit screen space): a mark on or just
+    /// around it has done its job.
+    public func dismissMarks(at point: CGPoint) {
+        let hit = visualGuidanceOverlays.filter { $0.screenBounds.insetBy(dx: -24, dy: -48).contains(point) }
+        guard !hit.isEmpty else { return }
+        let ids = Set(hit.map(\.id))
+        visualGuidanceOverlays.removeAll { ids.contains($0.id) }
+    }
+
+    private func scheduleMarkExpiry() {
+        for overlay in visualGuidanceOverlays where expiringMarks.insert(overlay.id).inserted {
+            let id = overlay.id
+            let delay = max(0, overlay.createdAt.addingTimeInterval(overlay.duration).timeIntervalSinceNow)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                expiringMarks.remove(id)
+                visualGuidanceOverlays.removeAll { $0.id == id }
+            }
+        }
     }
 
     public func clearDetectedElementLocation() {

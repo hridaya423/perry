@@ -55,7 +55,9 @@ final class PushToTalkController {
 
     func start() {
         guard eventTap == nil, fallbackGlobalMonitor == nil else { return }
-        eventTap = CGEvent.tapCreate(
+        // Creating a tap without access makes macOS ask for Input Monitoring.
+        let mayListen = CGPreflightListenEventAccess() || AXIsProcessTrusted()
+        eventTap = mayListen ? CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
@@ -75,7 +77,7 @@ final class PushToTalkController {
                 return Unmanaged.passUnretained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        )
+        ) : nil
         if let eventTap {
             runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
             if let runLoopSource {

@@ -64,6 +64,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoiceObservation: AnyCancellable?
     var markObservation: AnyCancellable?
+    var markClickMonitor: Any?
 #if DEBUG
     var overlayDump: AnyCancellable?
 #endif
@@ -323,6 +324,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             .scan(([PerryGuidanceOverlay](), [PerryGuidanceOverlay]())) { ($0.1, $1) }
             .filter { $0.1.count > $0.0.count }
             .sink { [weak self] _ in self?.showOverlayForMarks() }
+        markClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
+            let point = NSEvent.mouseLocation
+            Task { @MainActor in self?.overlayState.dismissMarks(at: point) }
+        }
         notchPresence.start()
         perryScheduler?.start()
         suggestionController.start()

@@ -34,6 +34,9 @@ final class InterviewModel: ObservableObject {
         var save: (Facts) -> Void = { _ in }
         var saveNotes: ([LearnedFact]) -> Void = { _ in }
         var sayName: (String) -> Void = { _ in }
+        /// Speaks a line and returns once it has been said, so the mic can open after it.
+        var say: (String) async -> Void = { _ in }
+        var listensAfterSpeaking = true
         var now: () -> Date = Date.init
     }
 
@@ -106,6 +109,18 @@ final class InterviewModel: ObservableObject {
         }
     }
 
+    var spokenName: String { facts.spoken.isEmpty ? facts.name : facts.spoken }
+
+    func spokenPrompt(at index: Int) -> String {
+        kinds[index] == .intro ? "\(ProfileExtraction.intro) \(ProfileExtraction.introHint)" : questions[index]
+    }
+
+    var listensAfterSpeaking: Bool { effects.listensAfterSpeaking }
+
+    func say(_ line: String) async {
+        await effects.say(line)
+    }
+
     func sayName(spelled: String? = nil) {
         effects.sayName(spelled ?? (facts.spoken.isEmpty ? facts.name : facts.spoken))
     }
@@ -161,24 +176,23 @@ final class InterviewModel: ObservableObject {
 
     private func introduce(_ answer: String?, at index: Int) {
         guard let answer else { return finishQuestions() }
-        guard let complete = effects.complete else { return ask(missingFacts(), after: index) }
+        guard let complete = effects.complete else { return finishQuestions() }
         thinking = true
         Task {
-            async let profile = try? withTimeout(seconds: 8) {
+            async let profile = try? withTimeout(seconds: 20) {
                 try await complete(ProfileExtraction.prompt(answers: [(ProfileExtraction.intro, answer)]))
             }
-            async let followUp = try? withTimeout(seconds: 8) {
+            async let followUp = try? withTimeout(seconds: 20) {
                 try await complete(InterviewPolicy.followUpPrompt(question: ProfileExtraction.intro, answer: answer))
             }
             let extracted = await profile.flatMap { try? ProfileExtraction.decode($0) }
             let question = await followUp.flatMap(InterviewPolicy.cleanFollowUp)
             thinking = false
             guard step == .question(index) else { return }
-            if let extracted {
-                facts.work = extracted.work.map(Self.capitalized) ?? ""
-                facts.apps = extracted.apps.map(Self.capitalized).joined(separator: ", ")
-                facts.goal = extracted.learningGoal.map(Self.capitalized) ?? ""
-            }
+            guard let extracted else { return finishQuestions() }
+            facts.work = extracted.work.map(Self.capitalized) ?? ""
+            facts.apps = extracted.apps.map(Self.capitalized).joined(separator: ", ")
+            facts.goal = extracted.learningGoal.map(Self.capitalized) ?? ""
             let missing = missingFacts()
             ask(missing.isEmpty ? question.map { [($0, .followUp)] } ?? [] : missing, after: index)
         }
@@ -374,6 +388,7 @@ struct InterviewBeat: View {
     let appChips: [String]
     @StateObject private var listener = InterviewListener()
     @State private var editing = false
+    @State private var typing = false
     @State private var copied = false
     @FocusState private var focused: Bool
 
@@ -389,8 +404,9 @@ struct InterviewBeat: View {
             case .done: Color.clear
             }
         }
-        .onChange(of: model.step) { _, step in
+        .onChange(of: model.step) { previous, step in
             listener.stop()
+            if previous == .pronounce { typing = false }
             if step == .done { director.skip() }
         }
         .onDisappear { listener.stop() }
@@ -500,42 +516,48 @@ struct InterviewBeat: View {
     }
 
     private var pronounce: some View {
-        OnboardingBeatLayout(title: "How do you say \(model.facts.name)?", message: "Listen to my try. If it is wrong, spell it the way it sounds.") {
+        OnboardingBeatLayout(title: "Did I say \(model.facts.name) right?", message: typing ? "Type it the way it sounds." : nil) {
             EmptyView()
         } detail: {
             HStack(spacing: 8) {
-                Button { model.sayName() } label: {
-                    Image(systemName: "play.fill")
+                Button { model.sayName(spelled: typing && !model.draft.isEmpty ? model.draft : nil) } label: {
+                    Image(systemName: "speaker.wave.2.fill")
                         .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
                 .foregroundStyle(PerryTheme.Colors.accent)
                 .accessibilityLabel("Hear Perry say your name")
-                TextField("For example, Hrid-yah", text: $model.draft)
-                    .textFieldStyle(.plain)
-                    .multilineTextAlignment(.leading)
-                    .font(PerryTheme.Scale.input)
-                    .focused($focused)
-                    .focusEffectDisabled()
-                    .onSubmit { model.confirmPronunciation() }
+                if typing {
+                    TextField("For example, Hrid-yah", text: $model.draft)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.leading)
+                        .font(PerryTheme.Scale.input)
+                        .focused($focused)
+                        .focusEffectDisabled()
+                        .onSubmit { model.confirmPronunciation() }
+                        .task { focused = true }
+                }
             }
             .padding(.horizontal, 10)
-            .frame(width: 360, height: 44)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(focused ? PerryTheme.Colors.accent.opacity(0.5) : PerryTheme.Colors.subtleSeparator) }
-            .task { model.sayName() }
+            .frame(width: typing ? 360 : nil, height: 44)
+            .background(typing ? PerryTheme.Colors.surface : .clear, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+            .task { await model.say("Hi \(model.spokenName). Did I say your name right?") }
         } actions: {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                Button { model.confirmPronunciation() } label: { OnboardingPrimaryLabel(title: model.draft.isEmpty ? "Sounds right" : "Save") }
+                Button {
+                    if !typing { model.draft = "" }
+                    model.confirmPronunciation()
+                } label: { OnboardingPrimaryLabel(title: typing ? "Save" : "Yes") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
+                    .disabled(typing && model.draft.trimmingCharacters(in: .whitespaces).isEmpty)
             } trailing: {
-                if !model.draft.isEmpty {
-                    Button("Hear it") { model.sayName(spelled: model.draft) }
+                if !typing {
+                    Button("Not quite") { typing = true }
                 }
             }
         }
@@ -546,7 +568,11 @@ struct InterviewBeat: View {
             EmptyView()
         } detail: {
             VStack(spacing: 12) {
-                answerField(index)
+                if typing {
+                    answerField(index)
+                } else {
+                    spokenAnswer
+                }
                 chips(index)
             }
         } actions: {
@@ -554,17 +580,66 @@ struct InterviewBeat: View {
                 OnboardingProgress(current: index, count: model.questionCount)
                     .padding(.trailing, 10)
             } primary: {
-                Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: model.thinking ? "Thinking…" : "Continue") }
+                Button {
+                    if listener.listening { listener.finish() } else { model.answer(model.draft) }
+                } label: { OnboardingPrimaryLabel(title: model.thinking ? "Thinking…" : listener.listening ? "Done" : "Continue") }
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.large)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(model.thinking || model.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(model.thinking || (!listener.listening && model.draft.trimmingCharacters(in: .whitespaces).isEmpty))
             } trailing: {
-                Button("Skip") { model.answer(nil) }
-                    .disabled(model.thinking)
+                HStack(spacing: 14) {
+                    if !typing {
+                        Button("Type") {
+                            listener.stop()
+                            typing = true
+                        }
+                    }
+                    Button("Skip") { model.answer(nil) }
+                }
+                .disabled(model.thinking)
             }
         }
         .id(index)
+        .task(id: index) {
+            model.draft = ""
+            await model.say(model.spokenPrompt(at: index))
+            guard !typing, model.listensAfterSpeaking, !Task.isCancelled else { return }
+            listen()
+        }
+    }
+
+    private func listen() {
+        listener.start(onPartial: { model.draft = $0 }, onDone: { text in
+            model.draft = text
+            if !text.trimmingCharacters(in: .whitespaces).isEmpty { model.answer(text) }
+        })
+    }
+
+    private var spokenAnswer: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                if listener.listening { listener.finish() } else { listen() }
+            } label: {
+                Image(systemName: listener.listening ? "waveform" : "mic.fill")
+                    .symbolEffect(.variableColor.iterative, isActive: listener.listening)
+                    .font(PerryTheme.Icon.utility)
+                    .foregroundStyle(listener.listening ? PerryTheme.Colors.accent : PerryTheme.Colors.icon)
+                    .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(listener.listening ? "Stop listening" : "Answer by voice")
+            Text(model.draft.isEmpty ? (listener.listening ? "Listening…" : model.thinking ? "Thinking…" : "Tap the mic to answer.") : model.draft)
+                .font(PerryTheme.Scale.input)
+                .foregroundStyle(model.draft.isEmpty ? PerryTheme.Colors.textTertiary : PerryTheme.Colors.text)
+                .multilineTextAlignment(.leading)
+                .lineLimit(5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
+        }
+        .frame(width: 360)
+        .frame(minHeight: 44)
     }
 
     private var style: some View {

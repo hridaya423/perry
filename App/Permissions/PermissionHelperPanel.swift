@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 final class PermissionHelperPanel: NSPanel {
-    static let cardSize = CGSize(width: 420, height: 150)
+    static let cardSize = CGSize(width: 420, height: 200)
 
     init() {
         super.init(

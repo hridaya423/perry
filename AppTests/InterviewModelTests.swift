@@ -7,7 +7,13 @@ import XCTest
 @MainActor
 final class InterviewModelTests: XCTestCase {
     private func model(complete: ((String) async throws -> String)? = nil, saved: @escaping (InterviewModel.Facts) -> Void = { _ in }) -> InterviewModel {
-        InterviewModel(name: "Ada", effects: .init(complete: complete, save: saved))
+        InterviewModel(name: "Ada", effects: .init(complete: complete, save: saved, listensAfterSpeaking: false))
+    }
+
+    private static let emptyProfile: (String) async throws -> String = { prompt in
+        prompt.contains("Reply with JSON only, exactly this shape")
+            ? #"{"work":null,"apps":[],"learningGoal":null}"#
+            : prompt.contains("Reply with the question or NONE") ? "NONE" : "ok"
     }
 
     private func settle(_ interview: InterviewModel) async throws {
@@ -27,7 +33,7 @@ final class InterviewModelTests: XCTestCase {
         interview.answer("I'm a product designer at a small studio, mostly in Figma and Notion")
         try await settle(interview)
         XCTAssertEqual(interview.step, .question(1))
-        XCTAssertEqual(interview.questions, [ProfileExtraction.intro, "What do you want to learn next?"])
+        XCTAssertEqual(interview.questions, [ProfileExtraction.intro, "What do you want to learn first?"])
         interview.answer("Spanish")
         XCTAssertEqual(interview.step, .style)
         interview.chooseStyle("Short and direct")
@@ -52,11 +58,31 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.questionCount, 2)
     }
 
-    func testTwoShortAnswersEndTheQuestions() {
+    func testAnIntroductionWithoutABrainEndsTheQuestions() {
         let interview = model()
         interview.begin()
         interview.confirmPronunciation()
+        interview.answer("I teach chemistry and want to learn Figma")
+        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
+    }
+
+    func testAnUnreadableReplyNeverFallsBackToFixedQuestions() async throws {
+        let interview = model(complete: { _ in "Sure! Here is what I found." })
+        interview.begin()
+        interview.confirmPronunciation()
+        interview.answer("I teach chemistry and want to learn Figma")
+        try await settle(interview)
+        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
+    }
+
+    func testTwoShortAnswersEndTheQuestions() async throws {
+        let interview = model(complete: Self.emptyProfile)
+        interview.begin()
+        interview.confirmPronunciation()
         interview.answer("Hi, I'm Ada")
+        try await settle(interview)
         XCTAssertEqual(interview.questions.count, 4)
         interview.answer("Student")
         interview.answer(nil)
@@ -64,12 +90,13 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.facts.work, "Student")
     }
 
-    func testTheTimeBudgetEndsTheQuestions() {
+    func testTheTimeBudgetEndsTheQuestions() async throws {
         var now = Date()
-        let interview = InterviewModel(name: "Ada", effects: .init(now: { now }))
+        let interview = InterviewModel(name: "Ada", effects: .init(complete: Self.emptyProfile, now: { now }))
         interview.begin()
         interview.confirmPronunciation()
         interview.answer("I teach")
+        try await settle(interview)
         now = now.addingTimeInterval(120)
         interview.answer("I teach chemistry at a big school")
         XCTAssertEqual(interview.step, .style)
@@ -170,7 +197,10 @@ final class InterviewModelTests: XCTestCase {
         director.start(resume: false)
         while director.beat != .interview { director.skip() }
         defer { director.stop() }
-        let interview = model(complete: { _ in "Teaching chemistry, so labs fill your week." })
+        let interview = model(complete: { prompt in
+            prompt.contains("Reply with JSON only") || prompt.contains("Reply with the question or NONE")
+                ? try await Self.emptyProfile(prompt) : "Teaching chemistry, so labs fill your week."
+        })
         let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: 380)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

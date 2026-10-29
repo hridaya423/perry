@@ -31,7 +31,7 @@ enum DrawVerb: String {
 
     /// Observed frames are AX-space (top-left origin); overlays draw in
     /// AppKit space — same conversion TalkSession uses.
-    func overlay(axRect rect: CGRect, label: String?, duration: Double = 6, near controls: [CGRect] = []) -> PerryGuidanceOverlay {
+    func overlay(axRect rect: CGRect, label: String?, duration: Double = 15, near controls: [CGRect] = []) -> PerryGuidanceOverlay {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         func appKit(_ rect: CGRect) -> CGRect {
             AXCoordinateConverter.appKitRect(
@@ -78,14 +78,14 @@ private struct DrawVerbExecutor: ToolExecutor {
             "x": .object(["type": .string("number"), "description": .string("Pixels in the latest screen.observe screenshot, from its top-left corner; used when elementID is absent")]),
             "y": .object(["type": .string("number")]),
             "label": .object(["type": .string("string")]),
-            "duration": .object(["type": .string("number"), "description": .string("Seconds the mark stays visible (default 6)")]),
+            "duration": .object(["type": .string("number"), "description": .string("Seconds the mark stays visible (default 15)")]),
         ]),
     ])
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let args = call.arguments
         let label = args["label"]?.stringValue
-        let duration = args["duration"]?.doubleValue ?? 6
+        let duration = args["duration"]?.doubleValue ?? 15
 
         // Resolve the mark rect: elementID → observed frame (AX space), else
         // a small box around an explicit (x, y) point.
@@ -158,7 +158,7 @@ private struct PathDrawExecutor: ToolExecutor {
             accentHex: "#34D399",
             lineWidth: 4,
             caption: call.arguments["label"]?.stringValue,
-            duration: call.arguments["duration"]?.doubleValue ?? 6
+            duration: call.arguments["duration"]?.doubleValue ?? 15
         )
         await MainActor.run {
             overlayState.visualGuidanceOverlays.append(overlay)

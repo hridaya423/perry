@@ -4,9 +4,10 @@ import PerryBrain
 import PerryCore
 import PerryRuntimes
 
-/// Actuation tools (`ui.click`, `ui.type`, `ui.scroll`, …) — agent surface
-/// only. All input goes through the background Cua worker: the real pointer
-/// never moves and focus is never stolen. Targets resolve from the thread's
+/// Actuation tools (`ui.click`, `ui.type`, `ui.scroll`, …). Input goes
+/// through the Cua worker. When the user is there, the target window comes
+/// to the front first and the ghost cursor moves to the target before acting;
+/// unattended runs stay in the background. Targets resolve from the thread's
 /// last `screen.observe` (compact element id), a label, or raw coordinates.
 struct UITools {
     let workers: CuaWorkerService
@@ -28,7 +29,7 @@ struct UITools {
             UIStepsExecutor(workers: workers, lease: lease, observations: observations),
             UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UIHotkeyExecutor(workers: workers, lease: lease),
+            UIHotkeyExecutor(workers: workers, lease: lease, observations: observations),
             UIDragExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
         ]
     }
@@ -174,6 +175,48 @@ private func screenPoint(_ x: Double, _ y: Double, observations: AgentObservatio
     observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: runID)
 }
 
+/// Brings the window Perry is about to act on to the front, so the app
+/// accepts the input and the user sees the change happen. Unattended runs
+/// stay in the background.
+private func bringForward(_ bundleID: String?, observations: AgentObservationStore, context: ToolContext) async {
+    guard !context.unattended else { return }
+    let window = observations.snapshot(runID: context.runID)?.window
+    let raised = await MainActor.run { () -> Bool in
+        let app = window.flatMap { NSRunningApplication(processIdentifier: $0.processID) }
+            ?? bundleID.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0).first }
+        guard let app, app.bundleIdentifier != Bundle.main.bundleIdentifier else { return false }
+        let wasActive = app.isActive
+        if let window { raise(window, in: app.processIdentifier) }
+        if !wasActive { app.activate() }
+        return !wasActive
+    }
+    if raised { try? await Task.sleep(for: .milliseconds(300)) }
+}
+
+@MainActor
+private func raise(_ window: CuaWindowTarget, in pid: pid_t) {
+    let app = AXUIElementCreateApplication(pid)
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else { return }
+    let match = windows.first { element in
+        var title: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &title)
+        return (title as? String) == window.title
+    }
+    guard let match else { return }
+    AXUIElementPerformAction(match, kAXRaiseAction as CFString)
+    AXUIElementSetAttributeValue(match, kAXMainAttribute as CFString, kCFBooleanTrue)
+}
+
+/// Moves the ghost cursor to the target and lets it arrive before the action,
+/// so the user sees where Perry is about to act.
+private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?) async {
+    guard let onActuation else { return }
+    onActuation(point, label)
+    try? await Task.sleep(for: .milliseconds(350))
+}
+
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {
     bundleID.map { [.application($0.lowercased())] } ?? []
 }
@@ -226,11 +269,12 @@ private struct UIActionExecutor: ToolExecutor {
         case .rightClick: .rightClick(onWindow)
         }
         let action = ComputerAction(stepID: call.id, operation: operation)
+        await bringForward(resolved.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
-            let result = try await worker.execute(action)
-            if result.success, let point = resolved.target.coordinates {
-                onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
+            if let point = resolved.target.coordinates {
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label)
             }
+            let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
         }
     }
@@ -272,11 +316,12 @@ private struct UITypeExecutor: ToolExecutor {
             return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
         }
         let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
+        await bringForward(resolved.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
-            let result = try await worker.execute(action)
-            if result.success, let point = resolved.target.coordinates {
-                onActuation?(CGPoint(x: point.x, y: point.y), resolved.target.label)
+            if let point = resolved.target.coordinates {
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label)
             }
+            let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
         }
     }
@@ -290,7 +335,7 @@ private struct UISetValueExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: "ui.setValue",
-            description: "Replace an element's whole value in one step: a native text field's text, a pop-up menu's chosen item, a slider or stepper. On a Finder file name (not being edited) it renames the file; give the full new name with its extension. Web page inputs ignore it: click them and use ui.type.",
+            description: "Replace an element's whole value in one step: a native text field's text, a pop-up menu's chosen item, a slider or stepper. On a Finder file name (not being edited) it renames the file; give the full new name with its extension. Not for web pages: for a web input, click it and use ui.type; for a web dropdown, click it, then pick with ui.key (down, return), because setting it directly makes macOS ask the user for Automation access.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -316,6 +361,7 @@ private struct UISetValueExecutor: ToolExecutor {
         let bundleID = observations.snapshot(runID: context.runID)?.window?.bundleID
         let target = ComputerTarget(stableID: element.id, label: element.label.nilIfEmpty, coordinates: nil)
         let action = ComputerAction(stepID: call.id, operation: .setValue(value: value, target: target))
+        await bringForward(bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
@@ -379,6 +425,7 @@ private struct UIStepsExecutor: ToolExecutor {
         }
         let bundleID = call.arguments["bundleID"]?.stringValue ?? observations.snapshot(runID: context.runID)?.window?.bundleID
         let action = ComputerAction(stepID: call.id, operation: .steps(operations))
+        await bringForward(bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
@@ -464,11 +511,12 @@ private struct UIScrollExecutor: ToolExecutor {
             stepID: call.id,
             operation: .scroll(direction: direction, amount: amount, by: nil, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
         )
+        await bringForward(target?.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
-            let result = try await worker.execute(action)
-            if result.success, let point = target?.target.coordinates {
-                onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
+            if let point = target?.target.coordinates {
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label)
             }
+            let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
         }
     }
@@ -510,11 +558,12 @@ private struct UIKeyExecutor: ToolExecutor {
             stepID: call.id,
             operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
         )
+        await bringForward(target?.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
-            let result = try await worker.execute(action)
-            if result.success, let point = target?.target.coordinates {
-                onActuation?(CGPoint(x: point.x, y: point.y), target?.target.label)
+            if let point = target?.target.coordinates {
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label)
             }
+            let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
         }
     }
@@ -523,6 +572,7 @@ private struct UIKeyExecutor: ToolExecutor {
 private struct UIHotkeyExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
+    let observations: AgentObservationStore
 
     var spec: ToolSpec {
         ToolSpec(
@@ -549,6 +599,7 @@ private struct UIHotkeyExecutor: ToolExecutor {
         }
         let bundleID = call.arguments["bundleID"]?.stringValue
         let action = ComputerAction(stepID: call.id, operation: .hotkey(keys: keys.map { $0.lowercased() }, target: nil))
+        await bringForward(bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
             let result = try await worker.execute(action)
             return .text(call.id, result.message, isError: !result.success)
@@ -600,11 +651,10 @@ private struct UIDragExecutor: ToolExecutor {
             )
         )
         let bundleID = args["bundleID"]?.stringValue
+        await bringForward(bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
+            await showActuation(onActuation, at: to, label: nil)
             let result = try await worker.execute(action)
-            if result.success {
-                onActuation?(to, nil)
-            }
             return .text(call.id, result.message, isError: !result.success)
         }
     }

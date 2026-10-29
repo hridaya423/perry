@@ -77,7 +77,9 @@ final class ModifierHoldMonitor {
 
     func start() {
         guard eventTap == nil, fallbackGlobalMonitors.isEmpty else { return }
-        eventTap = CGEvent.tapCreate(
+        // Creating a tap without access makes macOS ask for Input Monitoring.
+        let mayListen = CGPreflightListenEventAccess() || AXIsProcessTrusted()
+        eventTap = mayListen ? CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
@@ -115,7 +117,7 @@ final class ModifierHoldMonitor {
                 return Unmanaged.passUnretained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        )
+        ) : nil
         if let eventTap {
             runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
             if let runLoopSource {

@@ -228,6 +228,18 @@ extension VoiceController {
         play(cleaned, route: Self.speechRoute(for: lastDictationLanguageIdentifier), rate: preferences.rateMultiplier)
     }
 
+    /// Speaks `text` and returns when it has been said (or after `limit`),
+    /// so a listener can open the mic without hearing Perry.
+    func speakAndWait(_ text: String, limit: Duration = .seconds(15)) async {
+        speak(text)
+        let clock = ContinuousClock()
+        let deadline = clock.now + limit
+        let started = clock.now + .seconds(1)
+        while clock.now < deadline, isSpeaking || clock.now < started, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     func speak(_ text: String, copiesReplyWhenMuted: Bool = false) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }

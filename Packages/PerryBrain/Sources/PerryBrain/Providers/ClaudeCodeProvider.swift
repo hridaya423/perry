@@ -8,9 +8,9 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
     private let executable: URL
     private let helper: URL?
     private let scopes: (any MCPScopeHost)?
-    private let models: BrainModelDefaults?
+    private let models: BrainModelDefaults
 
-    public init(executable: URL, helper: URL?, scopes: (any MCPScopeHost)?, models: BrainModelDefaults? = nil) {
+    public init(executable: URL, helper: URL?, scopes: (any MCPScopeHost)?, models: BrainModelDefaults = BrainModelCatalog.claudeCode) {
         self.executable = executable
         self.helper = helper
         self.scopes = scopes
@@ -52,7 +52,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         defer { try? FileManager.default.removeItem(at: workspace) }
 
         let stop = AgentTurnStop()
-        var arguments = Self.baseArguments(system: request.system, model: models?.model(for: request.tier))
+        var arguments = Self.baseArguments(system: request.system, model: models.model(for: request.tier), effort: Self.effort(for: request.tier))
         var scope: MCPScope?
         defer { scope?.close() }
         if let executeTool, !request.tools.isEmpty {
@@ -125,7 +125,12 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         }
     }
 
-    static func baseArguments(system: String, model: String?) -> [String] {
+    /// Quick turns answer at low effort; deep work keeps medium.
+    static func effort(for tier: ModelTier) -> String {
+        tier == .fast ? "low" : "medium"
+    }
+
+    static func baseArguments(system: String, model: String?, effort: String? = nil) -> [String] {
         var arguments = [
             "-p", "--output-format", "stream-json", "--input-format", "stream-json",
             "--verbose", "--include-partial-messages",
@@ -134,6 +139,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         ]
         if !system.isEmpty { arguments += ["--system-prompt", system] }
         if let model, !model.isEmpty { arguments += ["--model", model] }
+        if let effort { arguments += ["--effort", effort] }
         return arguments
     }
 

@@ -86,6 +86,7 @@ final class TalkSession: ObservableObject {
     private var clickFinalizeTask: Task<Void, Never>?
     private var clickSilenceTask: Task<Void, Never>?
     private var clickTurnTask: Task<Void, Never>?
+    private var clickOpenedForReply = false
     private var clickThreadID: UUID?
     private var clickSubmitted = false
     private var clickDetector: EndOfTurnDetector?
@@ -386,6 +387,10 @@ final class TalkSession: ObservableObject {
             if answerText.count > Self.bubbleCapacity, !VoiceController.speechIsAudible() {
                 output?.guideReportFailure("Perry’s full answer is in your conversation.", recovery: .thread(run.threadID))
             }
+            if Self.asksForReply(answerText) {
+                while services.output.isSpeaking, !Task.isCancelled { try await Task.sleep(for: .milliseconds(100)) }
+                startClick(forReply: true)
+            }
         } catch is CancellationError {
             guard !Task.isCancelled else { return }
             PerfMark.markDynamic("talk.turn_cancelled")
@@ -534,13 +539,13 @@ final class TalkSession: ObservableObject {
         var overlay: PerryGuidanceOverlay
         switch command.verb {
         case .point:
-            overlay = .pointMark(center: CGPoint(x: rect.midX, y: rect.midY), accentHex: accentHex, caption: command.label)
+            overlay = .pointMark(center: CGPoint(x: rect.midX, y: rect.midY), accentHex: accentHex, caption: command.label, duration: 15)
         case .arrow:
-            overlay = .arrowMark(to: rect, accentHex: accentHex, caption: command.label)
+            overlay = .arrowMark(to: rect, accentHex: accentHex, caption: command.label, duration: 15)
         case .underline:
-            overlay = .underlineMark(below: rect, accentHex: accentHex, caption: command.label)
+            overlay = .underlineMark(below: rect, accentHex: accentHex, caption: command.label, duration: 15)
         case .ring, .caption:
-            overlay = .ringMark(around: rect, accentHex: accentHex, caption: command.label)
+            overlay = .ringMark(around: rect, accentHex: accentHex, caption: command.label, duration: 15)
         case .clear:
             return
         }
@@ -622,8 +627,14 @@ final class TalkSession: ObservableObject {
 
     private var clickSpeech: any TalkSpeechOutput { services.clickOutput ?? services.output }
 
-    func startClick() {
+    /// A spoken answer that ends by asking the user something opens the mic.
+    static func asksForReply(_ answer: String) -> Bool {
+        answer.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?")
+    }
+
+    func startClick(forReply: Bool = false) {
         guard clickState == .idle || clickState == .failed else { return }
+        clickOpenedForReply = forReply
         clickGeneration += 1
         let generation = clickGeneration
         clickSubmitted = false
@@ -853,6 +864,7 @@ final class TalkSession: ObservableObject {
             clickThreadID = nil
             clickState = .idle
             onTurnCompleted?()
+            if Self.asksForReply(answer) { startClick(forReply: true) }
         } else if interrupted {
             clickSpeech.shutUp()
             clickState = .idle
@@ -881,6 +893,7 @@ final class TalkSession: ObservableObject {
         clickSilenceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
             guard let self, !Task.isCancelled, self.clickGeneration == generation, self.clickState == .listening else { return }
+            if self.clickOpenedForReply { return self.cancelClick() }
             self.failClick("I didn’t hear anything. Check your microphone.")
         }
     }

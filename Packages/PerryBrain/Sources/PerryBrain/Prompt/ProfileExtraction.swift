@@ -14,13 +14,13 @@ public struct ProfileFacts: Codable, Equatable, Sendable {
 
 public enum ProfileExtraction {
     public static let intro = "Tell me about yourself."
-    public static let introHint = "What you do, the apps you use, what you want to learn."
+    public static let introHint = "What do you do, and what do you want to learn first?"
 
     /// Asked only when the introduction leaves the matching fact empty.
     public static let questions = [
         "What’s your work?",
         "Which apps do you use most?",
-        "What do you want to learn next?",
+        "What do you want to learn first?",
     ]
 
     public static let schema = #"{"work": string or null, "apps": [string], "learningGoal": string or null}"#

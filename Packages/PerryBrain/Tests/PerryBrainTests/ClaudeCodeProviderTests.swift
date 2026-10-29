@@ -49,6 +49,9 @@ final class ClaudeCodeProviderTests: XCTestCase {
         let config = try JSONValue(parsing: Data(arguments[1].utf8))
         XCTAssertEqual(config["mcpServers"]?["perry"]?["env"]?["PERRY_MCP_TOKEN"]?.stringValue, "t0k")
         XCTAssertTrue(ClaudeCodeProvider.baseArguments(system: "", model: nil).contains("--strict-mcp-config"))
+        let fast = ClaudeCodeProvider.baseArguments(system: "", model: BrainModelCatalog.claudeCode.fast, effort: ClaudeCodeProvider.effort(for: .fast))
+        XCTAssertEqual(Array(fast.suffix(4)), ["--model", "claude-sonnet-5-5", "--effort", "low"])
+        XCTAssertEqual(ClaudeCodeProvider.effort(for: .deep), "medium")
     }
 
     func testStreamsTextFromTheCLIAndFailsWhenItExitsWithoutAResult() async throws {

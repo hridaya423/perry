@@ -1,15 +1,19 @@
-# Current: first-use fixes from the owner's laptop install (2026-10-29)
+# Current: first-use UX round 2 from the owner's laptop (2026-10-29)
 
-Trigger: on a fresh install the owner said "Can you open T3 Code?" and got "I couldn't answer that". Onboarding still asked three fixed questions. Owner decision: Perry does what it is asked without approval cards; only writes to connected services ask.
+Owner report after the fresh install: keystroke prompt at launch, clipped permission card, onboarding not voice native and still three fixed questions, marks that never go away, cursor arriving after the mark, a dropdown and Finder navigation that failed, slow replies, no Screen Recording request, no auto mic.
 
-In progress (not committed yet):
-- Talk and Ask act: `ToolGate` lets Talk call every agent tool (`ToolSpec.isOffered(on:)`); Guide still only observes and draws. The talk and chat prompts say to do what is asked and report it; the capability answer says "Ask me to do something".
-- No approval for app.launch, ui.drag, files.trash, files.overwrite (yellow). Trash goes to the workspace trash and overwrite returns the old contents as its undo. integrations.write and non-read-only MCP tools stay orange.
-- Talk errors: the hold, ask and click paths show the real error and log it to `ai.perry.talk` (capture failures too). Root cause of the laptop failure is still unknown: the saved thread has no turn, so it failed before the model ran (capture or presentation), and the Release build logged nothing.
-- Onboarding: the interview opens with "Tell me about yourself."; the model extracts work, apps and goal, and only missing facts get their question; a complete introduction earns at most one follow-up.
+Root causes (from the laptop's threads and unified log) and fixes:
+- Acting failed because input went to background windows (cua refused window_not_key, off_space, web dropdown in background). UI tools now raise the target window and activate its app when the user is there; unattended runs stay in the background. Live on the mini: "Go to my Documents folder in Finder" with Calculator in front ends with Finder showing Documents; "Change the fruit dropdown to Banana" in Safari selects Banana.
+- ui.setValue on a web dropdown makes cua use Apple Events, which raised an Automation prompt; its description now sends web dropdowns to click + keys.
+- Ghost cursor moved after the action; it now moves to the target and pauses 350 ms before acting.
+- Marks never expired (duration only drove the draw animation). PerryCursorState removes a mark after its duration and on a click on or near it (global mouse-down monitor). Answer marks last 15 s. Unit-tested (MarkLifetimeTests); expiry seen live (overlay dump empty after 15 s). Click dismissal not proven live: the mini will not let ssh or Terminal post a real pointer click.
+- Claude Code used the account default (Opus 5.5, default effort). Perry now passes claude-sonnet-5-5 with --effort low (fast) or medium (deep). Each call still has a ~6 s floor from spawning the CLI (measured on the mini).
+- The hotkey event taps were created before any grant, which made macOS ask for Input Monitoring; they are created only once Accessibility or Input Monitoring is granted.
+- Onboarding asked for Accessibility and Microphone only; it now asks for Screen Recording too (relaunching when macOS needs it). The permission card was 150 pt for ~175 pt of content; now 200 pt.
+- Interview: extraction ran on the on-device model via completeOnDevice and its reply was not usable, so all three fixed questions came back. It now uses the chosen brain with 20 s timeouts, and an unreadable reply or no brain ends the questions instead of asking fixed ones. Perry speaks each prompt ("Hi Hridya. Did I say your name right?" with Yes / Not quite; "Tell me about yourself. What do you do, and what do you want to learn first?") and opens the mic after speaking; the answer shows as live text and submits at end of turn. "Type" reveals a field.
+- A spoken answer that ends with a question opens the mic after Perry finishes; silence closes it quietly.
 
-Evidence so far: PerryBrain 441 tests, 0 failures. App build passes; app tests running.
-Remaining: app tests, live checks on the mini (Talk "open Calculator" with no auto-approve; onboarding render shots), commit, Release build, reinstall on the laptop with a data reset.
+Evidence: app tests 931 (5 failures fixed by updating fixtures to the new rules, then the affected suites pass), PerryBrain 441, PerryOverlay 40. Renders checked: pronounce, intro, permission card.
 
 # Previous: teaching audit and fixes (2026-10-29)
 
