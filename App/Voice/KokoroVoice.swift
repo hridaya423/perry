@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct KokoroVoice: NeuralVoice {
     static let defaultVoice = "af_heart"
@@ -21,12 +22,22 @@ struct KokoroVoice: NeuralVoice {
             .appendingPathComponent("Perry/Voices/Kokoro", isDirectory: true)
     }
 
+    static var usesLegacyRoute: Bool { ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27 }
+
+    static var helperArguments: [String] {
+        ["--models", modelsDirectory.path] + (usesLegacyRoute ? ["--legacy"] : [])
+    }
+
+    private static var marker: URL {
+        modelsDirectory.appendingPathComponent(usesLegacyRoute ? ".installed-ane" : ".installed")
+    }
+
     static var isInstalled: Bool {
-        FileManager.default.fileExists(atPath: modelsDirectory.appendingPathComponent(".installed").path)
+        FileManager.default.fileExists(atPath: marker.path)
     }
 
     static func installed(speed: Double) -> KokoroVoice? {
-        guard isInstalled else { return nil }
+        guard isInstalled, !KokoroHelper.shared.crashed else { return nil }
         let voice = UserDefaults.standard.string(forKey: voicePreferenceKey) ?? defaultVoice
         return KokoroVoice(voice: voice, speed: speed)
     }
@@ -53,7 +64,7 @@ struct KokoroVoice: NeuralVoice {
         }
         let process = Process()
         process.executableURL = helper
-        process.arguments = ["--install", "--models", modelsDirectory.path]
+        process.arguments = ["--install"] + helperArguments
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
@@ -68,8 +79,35 @@ struct KokoroVoice: NeuralVoice {
             }
             do { try process.run() } catch { continuation.resume(throwing: error) }
         }
-        FileManager.default.createFile(atPath: modelsDirectory.appendingPathComponent(".installed").path, contents: Data())
+        FileManager.default.createFile(atPath: marker.path, contents: Data())
+        if usesLegacyRoute {
+            try? FileManager.default.removeItem(at: modelsDirectory.appendingPathComponent("kokoro-82m-coreml/ANE-v3"))
+            try? FileManager.default.removeItem(at: modelsDirectory.appendingPathComponent(".installed"))
+        }
         progress("Ready")
+    }
+}
+
+@MainActor
+final class KokoroInstaller: ObservableObject {
+    static let shared = KokoroInstaller()
+
+    @Published private(set) var downloading = false
+    @Published private(set) var failure: String?
+
+    func start() {
+        guard !downloading, !KokoroVoice.isInstalled,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        downloading = true
+        failure = nil
+        Task {
+            do {
+                try await KokoroVoice.install { _ in }
+            } catch {
+                failure = error.localizedDescription
+            }
+            downloading = false
+        }
     }
 }
 
@@ -87,6 +125,9 @@ final class KokoroHelper: @unchecked Sendable {
     private var input: FileHandle?
     private var output: FileHandle?
     private var idleTimer: DispatchWorkItem?
+    private let crashFlag = OSAllocatedUnfairLock(initialState: false)
+
+    var crashed: Bool { crashFlag.withLock { $0 } }
 
     func warm() {
         queue.async { [self] in
@@ -123,6 +164,7 @@ final class KokoroHelper: @unchecked Sendable {
         var pcm = Data()
         while pcm.count < count {
             guard let chunk = try output.read(upToCount: count - pcm.count), !chunk.isEmpty else {
+                crashFlag.withLock { $0 = true }
                 terminate()
                 throw NeuralSpeechError(message: "The local voice stopped unexpectedly.")
             }
@@ -138,7 +180,7 @@ final class KokoroHelper: @unchecked Sendable {
         }
         let process = Process()
         process.executableURL = helper
-        process.arguments = ["--models", KokoroVoice.modelsDirectory.path]
+        process.arguments = KokoroVoice.helperArguments
         let stdin = Pipe(), stdout = Pipe()
         process.standardInput = stdin
         process.standardOutput = stdout
@@ -159,6 +201,7 @@ final class KokoroHelper: @unchecked Sendable {
         var line = Data()
         while true {
             guard let byte = try handle.read(upToCount: 1), let value = byte.first else {
+                crashFlag.withLock { $0 = true }
                 terminate()
                 throw NeuralSpeechError(message: "The local voice stopped unexpectedly.")
             }

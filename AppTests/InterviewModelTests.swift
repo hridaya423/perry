@@ -118,6 +118,9 @@ final class InterviewModelTests: XCTestCase {
         interview.answer(nil)
         XCTAssertEqual(interview.step, .importOffer)
         interview.chooseImport(.chatGPT)
+        XCTAssertEqual(interview.step, .importConsent(.chatGPT))
+        XCTAssertEqual(asked, [])
+        interview.allowImport(true)
         for _ in 0..<300 where interview.step != .summary { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(asked, [.chatGPT])
         XCTAssertEqual(interview.notes.map(\.fact.text), ["Designs for a fintech app", "Likes short answers"])
@@ -134,6 +137,18 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.step, .importOffer)
         interview.chooseImport(InterviewModel.MemoryService.heard("neither, thanks"))
         XCTAssertEqual(interview.step, .done)
+    }
+
+    func testSayingNoToOpeningMemoryOpensNothing() {
+        var asked: [InterviewModel.MemoryService] = []
+        let interview = InterviewModel(name: "Ada", effects: .init(complete: { _ in "" }, listensAfterSpeaking: false,
+                                                                   importMemory: { asked.append($0); return nil }))
+        interview.confirmPronunciation()
+        interview.answer(nil)
+        interview.chooseImport(.claude)
+        interview.allowImport(InterviewModel.heardYes("no, not now") ?? true)
+        XCTAssertEqual(interview.step, .done)
+        XCTAssertEqual(asked, [])
     }
 
     func testASpokenCorrectionFixesOnlyWhatItNames() async throws {
@@ -279,6 +294,8 @@ final class InterviewModelTests: XCTestCase {
         try await settle(interview)
         try await shot("6-import-offer")
         interview.chooseImport(.chatGPT)
+        try await shot("6b-import-consent")
+        interview.allowImport(true)
         try await shot("7-importing")
         interview.cancelImport()
         try await shot("8-summary")

@@ -50,7 +50,7 @@ struct SetupBeat: View {
     @State private var brainOverride: SetupRecommendation.Brain?
     @State private var voiceOverride: SpeechEngineChoice?
     @State private var hideOverride: Bool?
-    @State private var installing: String?
+    @ObservedObject private var installer = KokoroInstaller.shared
     @State private var voiceError: String?
     @State private var refresh = 0
     @State private var chooserTab = SetupRecommendation.Brain.cloud
@@ -116,7 +116,7 @@ struct SetupBeat: View {
                         .buttonStyle(InkButtonStyle())
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(brain.isSigningIn || installing != nil)
+                        .disabled(brain.isSigningIn)
                 }
             } trailing: {
                 if brain.isSigningIn {
@@ -135,7 +135,11 @@ struct SetupBeat: View {
             refresh += 1
             if case .system = advice.voice, voiceOverride == nil { voice.preview(SetupFactsProbe.sample(name: name), engine: .system) }
         }
+        .onChange(of: installer.downloading) { _, downloading in
+            if !downloading { installFinished() }
+        }
         .onAppear {
+            if case .installKokoro = advice.voice, voiceOverride == nil { installKokoro() }
             freeGB = Double(local.freeDiskBytes) / 1e9
             offers = local.offers(profile: profile)
             SetupFactsProbe.forget()
@@ -219,7 +223,7 @@ struct SetupBeat: View {
     }
 
     private var brainRow: some View {
-        SetupRow(systemImage: "sparkles", tint: TileTint.lilac, title: "Brain", detail: brainDetail) {
+        SetupRow(systemImage: "sparkles", tint: TileTint.lilac, brand: brainBrand, title: "Brain", detail: brainDetail) {
             if needsChatGPT {
                 Button("Connect") {
                     brain.signInWithChatGPT { connected in if connected { brain.modelChoice = .chatGPT } }
@@ -230,6 +234,15 @@ struct SetupBeat: View {
                 chooserTab = brainPick
                 director.choosingBrain = true
             }
+        }
+    }
+
+    private var brainBrand: String? {
+        guard brainPick == .cloud else { return nil }
+        switch cloudRow {
+        case .claudeCode: return "claude"
+        case .chatGPT: return "chatgpt"
+        case .agent, .apiKey: return nil
         }
     }
 
@@ -257,9 +270,8 @@ struct SetupBeat: View {
 
     private var voiceRow: some View {
         SetupRow(systemImage: "waveform", tint: TileTint.pink, title: "Voice", detail: voiceDetail) {
-            if let installing {
+            if installer.downloading {
                 ProgressView().controlSize(.small)
-                Text(installing).font(PerryTheme.Scale.meta).foregroundStyle(PerryTheme.Colors.textSecondary)
             } else if let pick = voicePick {
                 Button { voice.preview(SetupFactsProbe.sample(name: name), engine: pick) } label: { Image(systemName: "play.fill") }
                     .help("Play a sample")
@@ -301,7 +313,8 @@ struct SetupBeat: View {
         }
         switch voicePick {
         case .cloud(let service): return "\(service.name). Sounds human."
-        case .kokoro: return "Natural voice on this Mac. Private."
+        case .kokoro:
+            return installer.downloading ? "Downloading. Apple voice for now." : "Natural voice on this Mac. Private."
         case .system: return VoiceController.speakingVoice.map { "\($0.name), Apple voice. Private." } ?? "Apple voice. Private."
         case nil:
             if case .installKokoro = advice.voice { return "Natural voice on this Mac, 380 MB." }
@@ -337,20 +350,18 @@ struct SetupBeat: View {
 
     private func installKokoro() {
         voiceError = nil
-        installing = "Downloading…"
-        Task {
-            do {
-                try await KokoroVoice.install { _ in }
-                installing = nil
-                voiceOverride = .kokoro
-                SetupFactsProbe.forget()
-                refresh += 1
-                voice.preview(SetupFactsProbe.sample(name: name), engine: .kokoro)
-            } catch {
-                installing = nil
-                voiceError = error.localizedDescription
-            }
+        voiceOverride = .kokoro
+        installer.start()
+    }
+
+    private func installFinished() {
+        if let failure = installer.failure {
+            voiceError = failure
+            return
         }
+        SetupFactsProbe.forget()
+        refresh += 1
+        voice.preview(SetupFactsProbe.sample(name: name), engine: .kokoro)
     }
 
     private func openVoiceManager() {
@@ -399,13 +410,18 @@ extension View {
 private struct SetupRow<Trailing: View>: View {
     let systemImage: String
     let tint: Color
+    var brand: String?
     let title: String
     let detail: String
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            SymbolTile(systemImage: systemImage, tint: tint, size: 28)
+            if let brand {
+                BrandMark(id: brand, size: 28)
+            } else {
+                SymbolTile(systemImage: systemImage, tint: tint, size: 28)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(PerryTheme.Scale.rowTitle).foregroundStyle(PerryTheme.Colors.text)
                 Text(detail)

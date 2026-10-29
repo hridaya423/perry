@@ -57,14 +57,14 @@ final class NotchPresence {
             MainActor.assumeIsolated { self?.cachedEnabled = nil }
         }
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            MainActor.assumeIsolated { self?.pointerMoved() }
+            self?.pointerMoved()
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
             self?.pointerMoved()
             return event
         } as Any)
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-            MainActor.assumeIsolated { self?.mouseDown() }
+            self?.mouseDown()
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.engaged()
@@ -72,7 +72,7 @@ final class NotchPresence {
             return event
         } as Any)
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated { self?.keyDown(event) }
+            self?.keyDown(event)
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if ShortcutRecorder.recording { return event }

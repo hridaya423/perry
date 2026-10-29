@@ -16,7 +16,7 @@ struct VoiceSettingsPage: View {
     @StateObject private var keyCapture = VoiceKeyCapture()
     @State private var cloudVoices: [VoiceService: [CloudVoiceOption]] = [:]
     @State private var pastedKey = ""
-    @State private var installing = false
+    @ObservedObject private var installer = KokoroInstaller.shared
     @State private var refresh = 0
     @State private var error: String?
 
@@ -72,6 +72,11 @@ struct VoiceSettingsPage: View {
             }
         }
         .onDisappear { keyCapture.stop() }
+        .onChange(of: installer.downloading) { _, downloading in
+            guard !downloading else { return }
+            if let failure = installer.failure { error = failure } else { controller.voice.preview(sample, engine: .kokoro) }
+            refresh += 1
+        }
         .onReceive(NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)) { _ in refresh += 1 }
         .task(id: engineRaw) {
             if case .cloud(let service) = engine, service.hasKey, cloudVoices[service] == nil { await loadVoices(service) }
@@ -105,10 +110,10 @@ struct VoiceSettingsPage: View {
             } else {
                 SettingsDivider()
                 SettingsRow(title: "Download the natural voice", detail: "About 380 MB. It never leaves this Mac.") {
-                    if installing {
+                    if installer.downloading {
                         ProgressView().controlSize(.small)
                     } else {
-                        Button("Download") { installKokoro() }
+                        Button("Download") { installer.start() }
                     }
                 }
             }
@@ -196,20 +201,6 @@ struct VoiceSettingsPage: View {
             cloudVoices[service] = try await service.verify(key: key)
         } catch {
             self.error = error.localizedDescription
-        }
-    }
-
-    private func installKokoro() {
-        installing = true
-        Task {
-            do {
-                try await KokoroVoice.install { _ in }
-                controller.voice.preview(sample, engine: .kokoro)
-            } catch {
-                self.error = error.localizedDescription
-            }
-            installing = false
-            refresh += 1
         }
     }
 

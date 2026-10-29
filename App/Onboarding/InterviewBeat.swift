@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor
 final class InterviewModel: ObservableObject {
     enum Step: Equatable {
-        case pronounce, question(Int), importOffer, importing(MemoryService), summary, done
+        case pronounce, question(Int), importOffer, importConsent(MemoryService), importing(MemoryService), summary, done
     }
 
     enum MemoryService: String, CaseIterable {
@@ -101,13 +101,19 @@ final class InterviewModel: ObservableObject {
     static func heardYes(_ text: String) -> Bool? {
         let words = Set(text.lowercased().split { !$0.isLetter }.map(String.init))
         if !words.isDisjoint(with: ["no", "nope", "not", "wrong", "actually", "but"]) { return false }
-        if !words.isDisjoint(with: ["yes", "yeah", "yep", "yup", "right", "correct", "sure", "perfect", "exactly"]) { return true }
+        if !words.isDisjoint(with: ["yes", "yeah", "yep", "yup", "right", "correct", "sure", "perfect", "exactly", "ok", "okay"]) { return true }
         return nil
     }
 
     func chooseImport(_ service: MemoryService?) {
         guard step == .importOffer else { return }
-        guard let service, let importMemory = effects.importMemory, let complete = effects.complete else { return summarize() }
+        guard let service, effects.importMemory != nil, effects.complete != nil else { return summarize() }
+        step = .importConsent(service)
+    }
+
+    func allowImport(_ allowed: Bool) {
+        guard case .importConsent(let service) = step else { return }
+        guard allowed, let importMemory = effects.importMemory, let complete = effects.complete else { return summarize() }
         step = .importing(service)
         Task {
             let text = await importMemory(service)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -122,7 +128,10 @@ final class InterviewModel: ObservableObject {
     }
 
     func cancelImport() {
-        guard case .importing = step else { return }
+        switch step {
+        case .importConsent, .importing: break
+        default: return
+        }
         summarize()
     }
 
@@ -365,14 +374,16 @@ extension AppController {
         let browserName = browser?.deletingPathExtension().lastPathComponent ?? "the browser"
         let goal = switch service {
         case .chatGPT: """
-            ChatGPT’s settings are open in \(browserName), on Personalization. Open Memory, using Manage memories or the memory summary. \
-            If ChatGPT is still writing the memory summary, wait until it is done. Then read every memory, or the whole summary, \
-            and give it back word for word as your answer, with nothing added. Do not change or delete anything. \
+            ChatGPT’s settings are open in \(browserName), on Personalization. Open the memory summary, or Manage memories. \
+            It opens in a dialog over the settings. ChatGPT can take up to a minute to write the summary, so look again every few \
+            seconds until the text appears. Read the text inside the dialog, not the page behind it, and scroll inside the dialog \
+            to its end if it is long. Give all of it back word for word as your answer, with nothing added. Do not change or delete anything. \
             If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
             """
         case .claude: """
             Claude’s settings are open in \(browserName), on Capabilities. Find Memory and open what Claude remembers about me. \
-            Wait until it has loaded, then read all of it and give it back word for word as your answer, with nothing added. \
+            It may open in a dialog: read the text inside the dialog, not the page behind it, and scroll inside it to the end. \
+            Wait until it has loaded, then give all of it back word for word as your answer, with nothing added. \
             Do not change or delete anything. If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
             """
         }
@@ -485,6 +496,7 @@ struct InterviewBeat: View {
             case .pronounce: pronounce
             case .question(let index): question(index)
             case .importOffer: importOffer
+            case .importConsent(let service): importConsent(service)
             case .importing(let service): importing(service)
             case .summary: summary
             case .done: Color.clear
@@ -638,10 +650,10 @@ struct InterviewBeat: View {
                 .foregroundStyle(model.draft.isEmpty ? PerryTheme.Colors.textTertiary : PerryTheme.Colors.text)
                 .multilineTextAlignment(.leading)
                 .lineLimit(5)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: model.draft.isEmpty ? nil : .infinity, alignment: .leading)
                 .padding(.top, 6)
         }
-        .frame(width: 360)
+        .frame(width: model.draft.isEmpty ? nil : 360)
         .frame(minHeight: 44)
     }
 
@@ -739,9 +751,9 @@ struct InterviewBeat: View {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                EmptyView()
-            } trailing: {
                 Button("Neither") { model.chooseImport(nil) }
+            } trailing: {
+                EmptyView()
             }
         }
         .task {
@@ -755,6 +767,35 @@ struct InterviewBeat: View {
         }
     }
 
+    private func importConsent(_ service: InterviewModel.MemoryService) -> some View {
+        let question = "Can I open \(service.rawValue) and read your memory?"
+        return OnboardingBeatLayout(title: question, message: "I’ll open its memory page and read it. I won’t change anything.") {
+            EmptyView()
+        } detail: {
+            spokenAnswer
+        } actions: {
+            OnboardingFooter {
+                EmptyView()
+            } primary: {
+                Button { model.allowImport(true) } label: { OnboardingPrimaryLabel(title: "Open \(service.rawValue)") }
+                    .buttonStyle(InkButtonStyle())
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+            } trailing: {
+                Button("Not now") { model.allowImport(false) }
+            }
+        }
+        .task {
+            model.draft = ""
+            await model.say("\(question) I won’t change anything.")
+            guard model.listensAfterSpeaking, !Task.isCancelled else { return }
+            listener.start(onPartial: { model.draft = $0 }, onDone: { text in
+                model.draft = text
+                if let allowed = InterviewModel.heardYes(text) { model.allowImport(allowed) }
+            })
+        }
+    }
+
     private func importing(_ service: InterviewModel.MemoryService) -> some View {
         OnboardingBeatLayout(title: "Reading what \(service.rawValue) remembers…", message: "If it asks you to sign in, sign in and I’ll carry on.") {
             EmptyView()
@@ -764,9 +805,9 @@ struct InterviewBeat: View {
             OnboardingFooter {
                 EmptyView()
             } primary: {
-                EmptyView()
-            } trailing: {
                 Button("Skip") { model.cancelImport() }
+            } trailing: {
+                EmptyView()
             }
         }
     }

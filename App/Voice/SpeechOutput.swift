@@ -301,6 +301,14 @@ extension VoiceController {
         }
     }
 
+    func speakWithSystemVoice(_ text: String) {
+        guard let voice = Self.speakingVoice(for: lastDictationLanguageIdentifier) else { return }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = voice
+        utterance.rate = Self.speechRate(for: Self.currentSpeechPreferences().rateMultiplier)
+        synthesizer.speak(utterance)
+    }
+
     func deliverVoiceReply(_ text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }

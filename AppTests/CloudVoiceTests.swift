@@ -94,8 +94,26 @@ private struct ToneVoice: NeuralVoice {
     }
 }
 
+private struct CrashingVoice: NeuralVoice {
+    var spellsNumbers: Bool { false }
+    func audio(for text: String, previous: String?) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { $0.finish(throwing: NeuralSpeechError(message: "The local voice stopped unexpectedly.")) }
+    }
+}
+
 @MainActor
 final class NeuralSpeechPlayerTests: XCTestCase {
+    func testAFailedSentenceIsHandedBackToBeSpokenAnotherWay() async throws {
+        let player = NeuralSpeechPlayer()
+        let handed = expectation(description: "handed back")
+        player.onFailure = { text in
+            XCTAssertEqual(text, "Did I say your name right?")
+            handed.fulfill()
+        }
+        player.enqueue("Did I say your name right?", voice: CrashingVoice())
+        await fulfillment(of: [handed], timeout: 5)
+    }
+
     func testQueuedSentencesPlayThenReportIdle() async throws {
         let player = NeuralSpeechPlayer()
         let idle = expectation(description: "idle")

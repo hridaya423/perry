@@ -1,4 +1,24 @@
-# Current: first use, round 4 (2026-10-29)
+# Current: first use, round 5 (2026-10-29)
+
+Owner feedback: no voice at all, occasional crashes, onboarding waits on the voice download, the brain row should show the Claude logo, import text misaligned, Perry should ask before opening memory, and it struggled to read the ChatGPT memory dialog.
+
+Root causes (laptop crash reports, read-only):
+- `perry-voice` crashed 25 times: SIGABRT in MPSGraph `GPURegionRuntime` (Metal). FluidAudio 0.17.7's Kokoro v3 pins Noise, Tail and SourceGenerator to `.cpuAndGPU`; on macOS 27 that route aborts on some chips (upstream #843, FB24243070). The laptop is an M4 Pro (Mac16,7); the mini's M4 ran 15/15 sentences on v3 without a crash.
+- Perry crashed once: SIGSEGV in `swift_task_isMainExecutorImpl`, reached from an explicit `MainActor.assumeIsolated` in NotchPresence's global mouse-moved monitor. The executor pointer was 0x40. The other global monitors call their handler directly and never crashed.
+
+Fixes:
+- On macOS 27 the helper uses Kokoro's legacy route (`--legacy`), which runs Noise and Tail on CPU. Its own install marker `.installed-ane`; installing it removes the v3 models. Evidence (mini): 15/15 sentences; `sample` during 12 syntheses shows 0 `GPURegionRuntime` frames on legacy against 52 on v3.
+- A failed neural sentence is spoken with the system voice; after one helper crash Perry stops using the helper for the session. Test: `testAFailedSentenceIsHandedBackToBeSpokenAnotherWay`.
+- NotchPresence's global monitors call their handlers directly.
+- The voice downloads in the background (`KokoroInstaller`), starts on its own when recommended, and "Looks good" stays enabled. Downloads never run under XCTest (a render test had downloaded 79 MB on the mini; removed).
+- The brain row shows the Claude or ChatGPT app icon.
+- Import asks "Can I open ChatGPT and read your memory?" (voice yes/no or buttons) before opening anything. Lone footer buttons are centered. The agent is told the memory opens in a dialog, to wait up to a minute for the summary, and to read and scroll inside the dialog.
+
+Evidence: app 931 tests (7 skipped), PerryBrain 441, PerryRuntimes green. Renders checked: import offer, consent, importing (centered), setup (brain mark).
+
+Not verified: the legacy route on the M4 Pro itself, the memory import (owner).
+
+# Previous: first use, round 4 (2026-10-29)
 
 Owner feedback after the laptop install: five permissions felt like too many; the Screen Recording helper covered the screen; no voice ("Did I say Hridya right" was silent); ChatGPT memory lives in Settings › Personalization, not behind a prompt; dropdowns still failed; Opus processes showed up.
 

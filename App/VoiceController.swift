@@ -169,6 +169,7 @@ final class VoiceController: NSObject, ObservableObject {
         synthesizer.delegate = self
         neuralSpeech.onIdle = { [weak self] in self?.neuralSpeechFinished() }
         neuralSpeech.onError = { [weak self] message in self?.hooks.setStatus(message) }
+        neuralSpeech.onFailure = { [weak self] text in self?.speakWithSystemVoice(text) }
     }
 
     /// Starts the global input listeners once the app is up.

@@ -19,7 +19,7 @@ func send(_ header: [String: Any], payload: Data = Data()) {
 }
 
 func makeManager() -> KokoroAneManager {
-    if #available(macOS 15, *) {
+    if #available(macOS 15, *), !arguments.contains("--legacy") {
         return KokoroAneManager(directory: directory, version: .v3)
     }
     return KokoroAneManager(directory: directory)

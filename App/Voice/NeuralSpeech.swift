@@ -19,6 +19,7 @@ final class NeuralSpeechPlayer {
 
     var onIdle: () -> Void = {}
     var onError: (String) -> Void = { _ in }
+    var onFailure: (String) -> Void = { _ in }
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -58,7 +59,7 @@ final class NeuralSpeechPlayer {
                 if carry.count >= 2 { self.schedule(carry.prefix(carry.count - carry.count % 2), generation: generation) }
             } catch {
                 guard self.generation == generation else { return }
-                self.onError(error.localizedDescription)
+                self.onFailure(text)
             }
             guard self.generation == generation else { return }
             self.queuedSentences -= 1
