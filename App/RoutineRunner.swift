@@ -37,6 +37,7 @@ final class RoutineRunner {
 
     private struct RehearsalContext {
         var plan: ExecutionPlan
+        var planElements: [AXElement]
         var target: CuaWindowTarget?
         var markIDs: Set<UUID>
         var seenPlanRequest = false
@@ -105,6 +106,7 @@ final class RoutineRunner {
         )
         return try await execute(
             plan: plan,
+            planElements: observation.snapshot.elements,
             routine: routine,
             observe: observe,
             goal: routine.name,
@@ -119,6 +121,7 @@ final class RoutineRunner {
 
     private func execute(
         plan: ExecutionPlan,
+        planElements: [AXElement],
         routine: LearnedRoutine,
         observe: @escaping @Sendable () async throws -> GuideObservation,
         goal: String,
@@ -183,7 +186,7 @@ final class RoutineRunner {
             }
         )
         activeSupervisor = supervisor
-        var context = RehearsalContext(plan: plan, target: captured.target, markIDs: [])
+        var context = RehearsalContext(plan: plan, planElements: planElements, target: captured.target, markIDs: [])
         let painted = await paintRehearsalMarks(context: context)
         context.markIDs = painted.overlayIDs
         rehearsalContext = context
@@ -261,7 +264,7 @@ final class RoutineRunner {
         } catch {
             return ([], [])
         }
-        let marks = RehearsalMarks.marks(for: plan, elements: elements)
+        let marks = RehearsalMarks.marks(for: plan, elements: elements, planElements: context.planElements)
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let centers = marks.map { mark -> CGPoint in
             let rect = AXCoordinateConverter.appKitRect(
@@ -489,12 +492,15 @@ enum RehearsalMarks {
         let sensitive: Bool
     }
 
-    static func marks(for plan: ExecutionPlan, elements: [AXElement]) -> [Mark] {
+    /// `planElements` is the read the plan's ids came from; ids are per
+    /// read, so each target is found again in `elements` by what it is.
+    static func marks(for plan: ExecutionPlan, elements: [AXElement], planElements: [AXElement] = []) -> [Mark] {
         plan.actions.enumerated().compactMap { index, action in
             guard case .computer(_, let command) = action.operation,
                   let selector = primarySelector(of: command),
                   case .accessibilityID(let identifier) = selector,
-                  let element = elements.first(where: { $0.stableID == identifier }) else {
+                  let element = elements.element(withStableID: identifier)
+                    ?? planElements.element(withStableID: identifier).flatMap({ elements.counterpart(of: $0) }) else {
                 return nil
             }
             return Mark(
@@ -502,7 +508,7 @@ enum RehearsalMarks {
                 actionID: action.id,
                 caption: action.summary,
                 frame: element.frame,
-                sensitive: element.sensitivity != .ordinary
+                sensitive: element.sensitivity == .secure || (command.typesText && element.sensitivity != .ordinary)
             )
         }
     }
@@ -564,5 +570,12 @@ extension ExecutionPlan {
             },
             requestedScopes: requestedScopes
         )
+    }
+}
+
+private extension ExecutableAction.ComputerCommand {
+    var typesText: Bool {
+        if case .typeText = self { return true }
+        return false
     }
 }

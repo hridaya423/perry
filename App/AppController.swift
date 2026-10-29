@@ -63,6 +63,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var homeController: HomeController { subsystems.homeController }
     var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoiceObservation: AnyCancellable?
+    var markObservation: AnyCancellable?
 #if DEBUG
     var overlayDump: AnyCancellable?
 #endif
@@ -318,6 +319,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installOverlayDump()
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
+        markObservation = overlayState.$visualGuidanceOverlays
+            .scan(([PerryGuidanceOverlay](), [PerryGuidanceOverlay]())) { ($0.1, $1) }
+            .filter { $0.1.count > $0.0.count }
+            .sink { [weak self] _ in self?.showOverlayForMarks() }
         notchPresence.start()
         perryScheduler?.start()
         suggestionController.start()
@@ -452,6 +457,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         intentCards.dismiss()
         Task { await self.foreground.cancelActiveSupervisor() }
         clearSessionSurfaces()
+    }
+
+    /// Marks drawn from any surface (Home, a routine, a Do run) need the
+    /// overlay window, which only wake and Guide used to show.
+    func showOverlayForMarks() {
+        guard !overlayManager.isShowingOverlay() else { return }
+        overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
     }
 
     /// Takes every session mark off the overlay, hides the overlay and panel,

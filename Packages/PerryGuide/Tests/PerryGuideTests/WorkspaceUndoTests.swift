@@ -190,6 +190,33 @@ final class WorkspaceUndoTests: XCTestCase {
 
     // MARK: - Not undoable / unsafe paths
 
+    func testUndoRemovesAFolderAndTheFileMadeInsideIt() async throws {
+        let folder = workspace.appendingPathComponent("reports", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        let file = try write("reports/q3.txt")
+
+        try await runInversePlan(receipts: [
+            receipt(.createdDirectory(path: "reports")),
+            receipt(.createdFile(path: "reports/q3.txt", byteCount: 5)),
+        ])
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    func testUndoReversesARenameOfARename() async throws {
+        let final = try write("c.txt")
+        let (device, inode) = try identity(of: final)
+
+        try await runInversePlan(receipts: [
+            receipt(.renamed(source: "a.txt", destination: "b.txt", device: device, inode: inode)),
+            receipt(.renamed(source: "b.txt", destination: "c.txt", device: device, inode: inode)),
+        ])
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("a.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: final.path))
+    }
+
     func testLegacyEffectIsNotUndoable() {
         XCTAssertNil(engine.inverseDescription(for: receipt(.legacy(path: "x", byteCount: 1))))
         XCTAssertThrowsError(try engine.inversePlan(receipts: [receipt(.legacy(path: "x", byteCount: 1))], goal: "undo")) { error in

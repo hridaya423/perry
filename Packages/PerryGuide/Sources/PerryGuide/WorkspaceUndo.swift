@@ -71,7 +71,8 @@ public struct WorkspaceUndoEngine: Sendable {
         taskID: TaskID = TaskID(UUID().uuidString)
     ) throws -> ExecutionPlan {
         let workspace = URL(fileURLWithPath: workspacePath, isDirectory: true)
-        let actions = try receipts.reversed().map { try inverseAction(for: $0, workspace: workspace) }
+        var state = PlannedState()
+        let actions = try receipts.reversed().map { try inverseAction(for: $0, workspace: workspace, state: &state) }
         return try ExecutionPlan(
             taskID: taskID,
             goal: goal,
@@ -80,9 +81,50 @@ public struct WorkspaceUndoEngine: Sendable {
         )
     }
 
+    /// The workspace as it will be once the inverses planned so far have run,
+    /// so a chain (a folder and the file made in it, a rename of a rename)
+    /// is checked against the state each inverse will really meet.
+    private struct PlannedState {
+        var vacated: Set<String> = []
+        var moved: [String: URL] = [:]
+
+        func stat(_ url: URL) -> Darwin.stat? {
+            let real: URL
+            if let moved = moved[url.path] {
+                real = moved
+            } else if vacated.contains(url.path) {
+                return nil
+            } else {
+                real = url
+            }
+            var info = Darwin.stat()
+            return Darwin.lstat(real.path, &info) == 0 ? info : nil
+        }
+
+        func children(of url: URL) -> [String] {
+            let real = moved[url.path] ?? url
+            let onDisk = ((try? FileManager.default.contentsOfDirectory(atPath: real.path)) ?? [])
+                .map { url.appendingPathComponent($0).path }
+                .filter { !vacated.contains($0) }
+            let arriving = moved.keys.filter { ($0 as NSString).deletingLastPathComponent == url.path }
+            return Array(Set(onDisk + arriving))
+        }
+
+        mutating func vacate(_ url: URL) {
+            vacated.insert(url.path)
+            moved[url.path] = nil
+        }
+
+        mutating func move(_ real: URL, to url: URL) {
+            vacated.remove(url.path)
+            moved[url.path] = real
+        }
+    }
+
     private func inverseAction(
         for receipt: WorkspaceFileExecutionReceipt,
-        workspace: URL
+        workspace: URL,
+        state: inout PlannedState
     ) throws -> ExecutableAction {
         guard let summary = inverseDescription(for: receipt) else {
             throw WorkspaceUndoError.notUndoable("receipts without verified identity cannot be undone")
@@ -92,8 +134,7 @@ public struct WorkspaceUndoEngine: Sendable {
         switch receipt.effect {
         case .createdFile(let path, let byteCount):
             let url = try resolveWorkspace(path)
-            var info = stat()
-            guard Darwin.lstat(url.path, &info) == 0 else {
+            guard let info = state.stat(url) else {
                 throw WorkspaceUndoError.conflicted("the created file is no longer there")
             }
             guard info.st_mode & S_IFMT == S_IFREG else {
@@ -104,32 +145,43 @@ public struct WorkspaceUndoEngine: Sendable {
             }
             command = .moveToTrash(path: path)
             postcondition = .trashedItem(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
+            state.vacate(url)
         case .createdDirectory(let path):
             let url = try resolveWorkspace(path)
-            var info = stat()
-            guard Darwin.lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else {
+            guard let info = state.stat(url), info.st_mode & S_IFMT == S_IFDIR else {
                 throw WorkspaceUndoError.conflicted("the created directory is no longer there")
             }
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-            guard contents.isEmpty else {
+            guard state.children(of: url).isEmpty else {
                 throw WorkspaceUndoError.conflicted("“\(path)” is no longer empty")
             }
             command = .moveToTrash(path: path)
             postcondition = .trashedItem(device: UInt64(info.st_dev), inode: UInt64(info.st_ino))
+            state.vacate(url)
         case .renamed(let source, let destination, let device, let inode):
-            try requireIdentity(try resolveWorkspace(destination), device: device, inode: inode, what: "The renamed item")
-            try requireAbsent(try resolveWorkspace(source), what: "The original name")
+            let destinationURL = try resolveWorkspace(destination)
+            let sourceURL = try resolveWorkspace(source)
+            try requireIdentity(destinationURL, device: device, inode: inode, what: "The renamed item", state: state)
+            try requireAbsent(sourceURL, what: "The original name", state: state)
             command = .rename(path: destination, destination: source)
             postcondition = .renamedItem(device: device, inode: inode)
+            let real = state.moved[destinationURL.path] ?? destinationURL
+            state.vacate(destinationURL)
+            state.move(real, to: sourceURL)
         case .trashed(let source, let entryName, let device, let inode):
-            try requireIdentity(try resolveTrashEntry(entryName), device: device, inode: inode, what: "The Trash entry")
-            try requireAbsent(try resolveWorkspace(source), what: "The restore location")
+            let entryURL = try resolveTrashEntry(entryName)
+            let sourceURL = try resolveWorkspace(source)
+            try requireIdentity(entryURL, device: device, inode: inode, what: "The Trash entry", state: state)
+            try requireAbsent(sourceURL, what: "The restore location", state: state)
             command = .restoreFromTrash(entryName: entryName, destination: source)
             postcondition = .renamedItem(device: device, inode: inode)
+            state.vacate(entryURL)
+            state.move(entryURL, to: sourceURL)
         case .restored(let source, _, let device, let inode):
-            try requireIdentity(try resolveWorkspace(source), device: device, inode: inode, what: "The restored item")
+            let sourceURL = try resolveWorkspace(source)
+            try requireIdentity(sourceURL, device: device, inode: inode, what: "The restored item", state: state)
             command = .moveToTrash(path: source)
             postcondition = .trashedItem(device: device, inode: inode)
+            state.vacate(sourceURL)
         case .legacy:
             throw WorkspaceUndoError.notUndoable("receipts without verified identity cannot be undone")
         }
@@ -180,9 +232,8 @@ public struct WorkspaceUndoEngine: Sendable {
         return candidate
     }
 
-    private func requireIdentity(_ url: URL, device: UInt64, inode: UInt64, what: String) throws {
-        var info = stat()
-        guard Darwin.lstat(url.path, &info) == 0 else {
+    private func requireIdentity(_ url: URL, device: UInt64, inode: UInt64, what: String, state: PlannedState) throws {
+        guard let info = state.stat(url) else {
             throw WorkspaceUndoError.conflicted("\(what.lowercased()) is no longer where Perry left it")
         }
         guard info.st_mode & S_IFMT != S_IFLNK,
@@ -192,9 +243,8 @@ public struct WorkspaceUndoEngine: Sendable {
         }
     }
 
-    private func requireAbsent(_ url: URL, what: String) throws {
-        var info = stat()
-        if Darwin.lstat(url.path, &info) == 0 {
+    private func requireAbsent(_ url: URL, what: String, state: PlannedState) throws {
+        if state.stat(url) != nil {
             throw WorkspaceUndoError.conflicted("\(what.lowercased()) is now occupied by something else")
         }
     }

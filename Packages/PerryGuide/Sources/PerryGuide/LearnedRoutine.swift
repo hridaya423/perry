@@ -240,6 +240,9 @@ public enum RecordedEvent: Equatable, Sendable {
     case click(RoutineTarget)
     case doubleClick(RoutineTarget)
     case typed(text: String, into: RoutineTarget?)
+    /// Typing into a field that might hold a secret: the text is never kept,
+    /// and the routine asks for it on every run.
+    case typedWithheld(into: RoutineTarget?)
     case keyPress(String)
     case chord(key: String, modifiers: [String])
     case unrecognizedClick
@@ -266,6 +269,12 @@ public enum RoutineInference {
                     index += 2
                     continue
                 }
+                if index + 1 < events.count, case .typedWithheld(let typedTarget) = events[index + 1],
+                   (typedTarget ?? target) == target {
+                    steps.append(askStep(target: target, number: steps.count + 1))
+                    index += 2
+                    continue
+                }
                 steps.append(RoutineStep(summary: "Click \(target.label ?? target.role)", target: target, action: .click))
             case .doubleClick(let target):
                 steps.append(RoutineStep(summary: "Double-click \(target.label ?? target.role)", target: target, action: .doubleClick))
@@ -280,6 +289,8 @@ public enum RoutineInference {
                 steps.append(typeStep(text: merged, target: target))
                 index = next
                 continue
+            case .typedWithheld(let target):
+                steps.append(askStep(target: target, number: steps.count + 1))
             case .unrecognizedClick:
                 steps.append(RoutineStep(summary: "Click something I could not identify", action: .click, requiresHuman: true))
             case .keyPress(let key):
@@ -291,6 +302,15 @@ public enum RoutineInference {
             index += 1
         }
         return try LearnedRoutine(name: name, appBundleIDs: [demonstration.bundleID], steps: steps)
+    }
+
+    private static func askStep(target: RoutineTarget?, number: Int) -> RoutineStep {
+        let field = target.map { $0.label ?? $0.role } ?? "the field"
+        return RoutineStep(
+            summary: "Type what you choose into \(field)",
+            target: target,
+            action: .typeText(.parameter(name: "text\(number)", prompt: "What should I type into \(field)?"))
+        )
     }
 
     private static func typeStep(text: String, target: RoutineTarget?) -> RoutineStep {

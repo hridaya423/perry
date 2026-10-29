@@ -392,6 +392,7 @@ final class AgentCoordinator: ObservableObject {
             var command = command
             if let id = command.elementID, let element = observations.resolveElement(id, runID: runID) {
                 command.frame = element.frame
+                command.nearbyFrames = observations.snapshot(runID: runID)?.index.controlFrames(near: element.frame) ?? []
             }
             return command
         }

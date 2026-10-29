@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import PerryBrain
 import PerryCore
@@ -130,7 +131,14 @@ final class HomeModel: ObservableObject {
     @Published var routines: [LearnedRoutine] = []
     @Published var remembered: [UUID: [MemoryRecord]] = [:]
     var onForgetMemory: ((MemoryRecord) -> Void)?
-    var deps = Deps()
+    var deps = Deps() {
+        didSet {
+            backgroundTasksObservation = deps.backgroundTasks?.objectWillChange.sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+        }
+    }
+    private var backgroundTasksObservation: AnyCancellable?
 
     var onDraftChanged: ((UUID, String) -> Void)?
     var onSend: ((UUID, String) -> Void)?

@@ -22,6 +22,20 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertEqual(routine.steps[1].summary, "Click Save")
     }
 
+    func testWithheldTypingBecomesAStepThatAsksEachRun() throws {
+        let demo = RecordedDemonstration(bundleID: "com.example.app", events: [
+            .click(fieldTarget),
+            .typedWithheld(into: fieldTarget),
+            .click(saveTarget)
+        ])
+        let routine = try RoutineInference.infer(demonstration: demo, name: "Search")
+        XCTAssertEqual(routine.steps.map(\.action), [
+            .typeText(.parameter(name: "text1", prompt: "What should I type into Search?")),
+            .click
+        ])
+        XCTAssertEqual(routine.requiredParameters.map(\.name), ["text1"])
+    }
+
     func testConsecutiveTypingOnSameTargetMerges() throws {
         let demo = RecordedDemonstration(bundleID: "com.example.app", events: [
             .typed(text: "hello", into: fieldTarget),

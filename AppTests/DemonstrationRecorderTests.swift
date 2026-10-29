@@ -102,6 +102,24 @@ final class DemonstrationRecorderTests: XCTestCase {
         ])
     }
 
+    func testTypingIntoAFieldOfUnknownSensitivityIsRecordedWithoutItsText() async {
+        let field = AXElement(
+            stableID: "ax-field", role: .textField, label: "Subject",
+            frame: AXElementFrame(x: 0, y: 0, width: 100, height: 20),
+            isActionable: true
+        )
+        let recorder = makeRecorder(elements: [field])
+        recorder.start()
+        await recorder.recordClick(axPoint: CGPointShim(x: 10, y: 10))
+        recorder.recordKey(characters: "h", keyCode: 4, modifiers: [])
+        recorder.recordKey(characters: "i", keyCode: 34, modifiers: [])
+        let demo = await recorder.stop()
+        XCTAssertEqual(demo?.events, [
+            .click(RoutineTarget(role: "textField", label: "Subject")),
+            .typedWithheld(into: RoutineTarget(role: "textField", label: "Subject")),
+        ])
+    }
+
     func testTimeLimitWarnsThenSignalsStop() async throws {
         var warnings = 0
         var limitHit = false

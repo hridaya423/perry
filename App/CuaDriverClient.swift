@@ -1310,6 +1310,16 @@ actor CuaDriverClient {
         return nil
     }
 
+    /// The one element whose label is the target label, or failing that the
+    /// one whose label contains it. Two candidates ("Close" on a sheet and
+    /// on its window, "Save" and "Save As…") are ambiguous, never the first.
+    static func uniqueLabelMatch(_ targetLabel: String, in elements: [[String: Any]]) -> [String: Any]? {
+        let labelled = elements.compactMap { element in (element["label"] as? String).map { (element, $0) } }
+        let exact = labelled.filter { $0.1.caseInsensitiveCompare(targetLabel) == .orderedSame }
+        let candidates = exact.isEmpty ? labelled.filter { $0.1.localizedCaseInsensitiveContains(targetLabel) } : exact
+        return candidates.count == 1 ? candidates[0].0 : nil
+    }
+
     private func queryElementToken(
         label targetLabel: String,
         state: CuaSessionState,
@@ -1332,12 +1342,7 @@ actor CuaDriverClient {
         guard let elements = result.structuredValue?["elements"] as? [[String: Any]] else {
             throw CuaDriverError.targetNotFound
         }
-        let match = elements.first { element in
-            guard let label = element["label"] as? String else { return false }
-            return label.caseInsensitiveCompare(targetLabel) == .orderedSame
-                || label.localizedCaseInsensitiveContains(targetLabel)
-        }
-        guard let token = match?["element_token"] as? String else {
+        guard let token = Self.uniqueLabelMatch(targetLabel, in: elements)?["element_token"] as? String else {
             throw CuaDriverError.targetNotFound
         }
         let currentState = sessionStates[sessionID]

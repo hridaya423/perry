@@ -25,6 +25,7 @@ final class DemonstrationRecorder {
     private var bundleID: String?
     private var lastClickTarget: RoutineTarget?
     private var typingBlocked = false
+    private var typingWithheld = false
     private var consecutiveEscapes = 0
     private var recording = false
     private var correlationChain: Task<Void, Never>?
@@ -130,6 +131,7 @@ final class DemonstrationRecorder {
         // Secure or unknown-sensitivity fields keep their click but typing
         // into them is dropped — a routine must never hold a secret.
         typingBlocked = element.sensitivity != .ordinary
+        typingWithheld = element.sensitivity == .unknown && element.role == .textField
         append(.click(lastClickTarget!))
     }
 
@@ -170,12 +172,21 @@ final class DemonstrationRecorder {
         }
         if let name = Self.namedKey(keyCode: keyCode) {
             append(.keyPress(name))
-            if name == "tab" || name == "return" { typingBlocked = true }
+            if name == "tab" || name == "return" {
+                typingBlocked = true
+                typingWithheld = false
+            }
             return
         }
         guard let characters, !characters.isEmpty,
               modifiers.intersection([.command, .control, .option, .function]).isEmpty else { return }
-        guard !typingBlocked else { return }
+        guard !typingBlocked else {
+            if typingWithheld {
+                typingWithheld = false
+                append(.typedWithheld(into: lastClickTarget))
+            }
+            return
+        }
         append(.typed(text: characters, into: lastClickTarget))
     }
 

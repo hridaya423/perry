@@ -48,10 +48,13 @@ public enum CaptionPlacer {
     /// anchor, breaking ties by overflow, then by preference order. The
     /// winner is clamped into `screen` (minus `margin`) so a caption is
     /// never half-off-screen even when every slot overlaps something.
+    /// `preferablyAvoiding` (the app's own controls) only chooses among the
+    /// four sides of the anchor; it never sends a caption to a screen corner.
     public static func place(
         size: CGSize,
         anchor: CGRect,
         avoiding: [CGRect] = [],
+        preferablyAvoiding: [CGRect] = [],
         in screen: CGRect,
         margin: CGFloat = defaultMargin,
         gap: CGFloat = defaultGap
@@ -59,15 +62,20 @@ public enum CaptionPlacer {
         let obstacles = [anchor] + avoiding
         let bounds = screen.insetBy(dx: margin, dy: margin)
 
-        var best: (rect: CGRect, score: CGFloat)?
-        for slot in candidates(size: size, anchor: anchor, screen: screen,
-                               margin: margin, gap: gap) {
+        var best: (rect: CGRect, score: CGFloat, soft: CGFloat)?
+        for (index, slot) in candidates(size: size, anchor: anchor, screen: screen,
+                                        margin: margin, gap: gap).enumerated() {
             let clamped = clamp(slot, into: bounds)
             let overlap = obstacles.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) }
             // Overflow dominates: an off-screen caption is worse than overlap.
             let score = overlap + 4 * overflowArea(clamped, in: screen)
-            if best == nil || score < best!.score - 0.5 {
-                best = (clamped, score)
+            let soft = index < 4 ? preferablyAvoiding.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) } : 0
+            guard let current = best else {
+                best = (clamped, score, soft)
+                continue
+            }
+            if score < current.score - 0.5 || (index < 4 && abs(score - current.score) <= 0.5 && soft < current.soft - 0.5) {
+                best = (clamped, score, soft)
             }
         }
         return best?.rect

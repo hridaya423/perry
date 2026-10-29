@@ -45,7 +45,7 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideSpeak(_ text: String, identity: GuideSpeechIdentity) {
-        host?.voice.deliverVoiceReply(text, guideSpeechIdentity: identity)
+        host?.voice.deliverVoiceReply(text)
     }
 
     func guideIsSpeaking() -> Bool {

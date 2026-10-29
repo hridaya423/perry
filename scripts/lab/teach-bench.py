@@ -64,19 +64,25 @@ def settings_open():
 
 
 def close_finder_windows():
-    for _ in range(40):
+    deadline, quiet_since = time.time() + 30, time.time()
+    while time.time() < deadline and time.time() - quiet_since < 4:
         windows = [w for w in driver("list_windows", {"on_screen_only": True}).get("windows", [])
                    if w.get("app_name") == "Finder" and w["bounds"]["width"] > 200]
-        if not windows:
-            return
-        driver("invoke_menu", {"pid": windows[0]["pid"], "window_id": windows[0]["window_id"], "path": ["File", "Close Window"]})
-        time.sleep(0.3)
+        if windows:
+            driver("invoke_menu", {"pid": windows[0]["pid"], "window_id": windows[0]["window_id"], "path": ["File", "Close Window"]})
+            quiet_since = time.time()
+        time.sleep(0.4)
 
 
 def hidden_path_bar():
     bench.sh("defaults write com.apple.finder ShowPathbar -bool false")
+    bench.shutil.copytree(bench.FIXTURES / "finder/inbox", bench.RUN / "inbox")
+    bench.quit_apps("Finder")
+    bench.sh("open -R " + str(bench.RUN / "inbox/draft-c.txt"))
+    time.sleep(2)
     close_finder_windows()
-    bench.fresh_inbox()
+    bench.sh("open -R " + str(bench.RUN / "inbox/draft-c.txt"))
+    time.sleep(2)
     finder = [w for w in driver("list_windows", {"on_screen_only": False}).get("windows", [])
               if w.get("app_name") == "Finder" and w["bounds"]["width"] > 200]
     print(json.dumps(dict(finder_windows=len(finder))), flush=True)

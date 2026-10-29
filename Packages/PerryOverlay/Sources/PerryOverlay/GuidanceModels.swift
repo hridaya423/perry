@@ -99,6 +99,9 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
     public var style: PerryGuidanceStyle
     public var duration: TimeInterval
     public var createdAt: Date
+    /// The app's controls around the mark, in screen points; its caption
+    /// avoids covering them when a free side exists.
+    public var nearbyControls: [CGRect]?
 
     init(
         id: UUID = UUID(),
@@ -161,6 +164,7 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
                 width: rect.width, height: rect.height
             )
         }
+        copy.nearbyControls = nearbyControls?.map { $0.offsetBy(dx: delta.x, dy: delta.y) }
         return copy
     }
 }

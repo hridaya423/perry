@@ -31,23 +31,29 @@ enum DrawVerb: String {
 
     /// Observed frames are AX-space (top-left origin); overlays draw in
     /// AppKit space — same conversion TalkSession uses.
-    func overlay(axRect rect: CGRect, label: String?, duration: Double = 6) -> PerryGuidanceOverlay {
+    func overlay(axRect rect: CGRect, label: String?, duration: Double = 6, near controls: [CGRect] = []) -> PerryGuidanceOverlay {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let appKitRect = AXCoordinateConverter.appKitRect(
-            axX: rect.origin.x, axY: rect.origin.y,
-            width: rect.width, height: rect.height,
-            primaryScreenMaxY: primaryMaxY
-        )
+        func appKit(_ rect: CGRect) -> CGRect {
+            AXCoordinateConverter.appKitRect(
+                axX: rect.origin.x, axY: rect.origin.y,
+                width: rect.width, height: rect.height,
+                primaryScreenMaxY: primaryMaxY
+            )
+        }
+        let appKitRect = appKit(rect)
+        var overlay: PerryGuidanceOverlay
         switch self {
         case .point:
-            return .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
         case .arrow:
-            return .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         case .underline:
-            return .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         case .ring, .caption:
-            return .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
         }
+        overlay.nearbyControls = controls.map(appKit)
+        return overlay
     }
 }
 
@@ -84,11 +90,13 @@ private struct DrawVerbExecutor: ToolExecutor {
         // Resolve the mark rect: elementID → observed frame (AX space), else
         // a small box around an explicit (x, y) point.
         let rect: CGRect
+        var nearby: [CGRect] = []
         if let elementID = args["elementID"]?.stringValue {
             guard let element = observations.resolveElement(elementID, runID: context.runID) else {
                 return .text(call.id, "\(verb.rawValue): element \(elementID) is stale or unknown — run screen.observe again", isError: true)
             }
             rect = element.frame
+            nearby = observations.snapshot(runID: context.runID)?.index.controlFrames(near: rect) ?? []
         } else if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
             let point = observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: context.runID)
             rect = CGRect(x: point.x - 12, y: point.y - 12, width: 24, height: 24)
@@ -96,7 +104,7 @@ private struct DrawVerbExecutor: ToolExecutor {
             return .text(call.id, "\(verb.rawValue): needs elementID or x/y", isError: true)
         }
 
-        let overlay = verb.overlay(axRect: rect, label: label, duration: duration)
+        let overlay = verb.overlay(axRect: rect, label: label, duration: duration, near: nearby)
         await MainActor.run {
             overlayState.visualGuidanceOverlays.append(overlay)
         }
@@ -175,5 +183,29 @@ private struct ClearDrawExecutor: ToolExecutor {
             overlayState.visualGuidanceOverlays = []
         }
         return .text(call.id, "cleared")
+    }
+}
+
+extension PerryCursorState {
+    /// A mark from inline markup: drawn on the control the brain named,
+    /// or every mark cleared.
+    func apply(_ command: DrawCommand) {
+        if command.verb == .clear {
+            visualGuidanceOverlays = []
+        } else if let frame = command.frame, let verb = DrawVerb(rawValue: command.verb.rawValue) {
+            visualGuidanceOverlays.append(verb.overlay(axRect: frame, label: command.label, near: command.nearbyFrames))
+        }
+    }
+}
+
+extension ElementIndex {
+    /// Controls around `rect` that a mark's caption should not cover, in the
+    /// same AX space. Containers that enclose the mark are left out.
+    func controlFrames(near rect: CGRect) -> [CGRect] {
+        let area = rect.insetBy(dx: -160, dy: -100)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        return entries.map(\.element.frame).filter {
+            $0 != rect && $0.intersects(area) && !$0.contains(center) && $0.width * $0.height < 40_000
+        }
     }
 }

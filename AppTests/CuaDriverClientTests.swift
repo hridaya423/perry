@@ -2138,3 +2138,23 @@ private struct AlwaysVerifiedTypedVerifier: TypedActionVerifier {
         .verified(evidence: "fixture verification")
     }
 }
+
+final class CuaLabelMatchTests: XCTestCase {
+    private func element(_ label: String, _ token: String) -> [String: Any] {
+        ["label": label, "element_token": token]
+    }
+
+    func testAnExactLabelBeatsALongerOneThatContainsIt() {
+        let match = CuaDriverClient.uniqueLabelMatch("Save", in: [element("Save As…", "s1:1"), element("Save", "s1:2")])
+        XCTAssertEqual(match?["element_token"] as? String, "s1:2")
+    }
+
+    func testTwoControlsWithTheSameLabelAreAmbiguous() {
+        XCTAssertNil(CuaDriverClient.uniqueLabelMatch("Close", in: [element("Close", "s1:1"), element("Close", "s1:2")]))
+    }
+
+    func testAPartialLabelMatchesOnlyWhenItIsTheOnlyOne() {
+        XCTAssertEqual(CuaDriverClient.uniqueLabelMatch("Export", in: [element("Export PDF…", "s1:3")])?["element_token"] as? String, "s1:3")
+        XCTAssertNil(CuaDriverClient.uniqueLabelMatch("Save", in: [element("Save As…", "s1:1"), element("Don’t Save", "s1:2")]))
+    }
+}

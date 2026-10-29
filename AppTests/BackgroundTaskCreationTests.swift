@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import XCTest
 import PerryCore
@@ -11,6 +12,26 @@ final class BackgroundTaskCreationTests: XCTestCase {
     func testUndoingAnUndoRepeatsTheOriginalGoal() {
         XCTAssertEqual(BackgroundTaskController.undoGoal(for: "create file a.txt"), "Undo “create file a.txt”")
         XCTAssertEqual(BackgroundTaskController.undoGoal(for: "Undo “create file a.txt”"), "create file a.txt")
+    }
+
+    func testTheNotchRepublishesWhenTheTaskListChanges() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let controller = makeController(directory: directory, probe: BackgroundCreationProbe())
+        let model = HomeModel()
+        model.deps.backgroundTasks = controller.backgroundTasks
+        var changes = 0
+        let observation = model.objectWillChange.sink { changes += 1 }
+        defer { observation.cancel() }
+
+        _ = try await controller.backgroundTaskCoordinator.enqueue(
+            agentPlan: AgentTaskPlan(goal: "tidy the downloads folder", threadID: UUID()), taskID: TaskID()
+        )
+        await controller.backgroundTasks.reloadRecords()
+
+        XCTAssertGreaterThan(changes, 0)
     }
 
     func testStoppedAgentTaskOffersResume() async throws {

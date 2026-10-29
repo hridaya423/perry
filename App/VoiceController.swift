@@ -22,7 +22,6 @@ final class VoiceController: NSObject, ObservableObject {
         var wake: () -> Void = {}
         var sessionIsIdle: () -> Bool = { false }
         var wakeListeningChanged: () -> Void = {}
-        var guideSpeechFinished: (GuideSpeechIdentity) -> Void = { _ in }
         var executingTaskID: () -> UUID? = { nil }
     }
 
@@ -37,8 +36,6 @@ final class VoiceController: NSObject, ObservableObject {
     let neuralSpeech = NeuralSpeechPlayer()
     var speechStream = SpeechText.Stream()
     var currentSpeechText: String?
-    var guideSpeechIdentities: [ObjectIdentifier: GuideSpeechIdentity] = [:]
-    var pendingGuideIdentity: GuideSpeechIdentity?
     var realtimeVoiceSession: RealtimeVoiceSession?
     private var realtimeTranscriptBuffer = ""
     private var realtimeCommandDispatched = false

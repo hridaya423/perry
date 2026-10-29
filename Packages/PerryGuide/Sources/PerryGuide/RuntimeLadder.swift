@@ -272,6 +272,7 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         \(progress.userConfirmedInstructions.isEmpty ? "none yet" : progress.userConfirmedInstructions.joined(separator: "\n"))
         Choose the single next control the user should click to make progress on the goal. The instruction names only that click.
         When an open menu shows the item the goal needs, the next step is that item.
+        The screenshot shows the window after the user's last click. When it shows the goal done, reply done. Never send the user into a menu only to check a result.
         Reply: {"step":{"instruction":"<short spoken instruction>","target":"<control id>"}}
         For guidance that has no on-screen target: {"step":{"instruction":"...","target":null,"wait":false}}
         When the click opens a sheet, popover, or new window in the same app, add "opens_window":true to that step.

@@ -516,11 +516,7 @@ final class ForegroundTaskController: ObservableObject {
             case .note(let note):
                 hooks.setStatus(note)
             case .draw(let command):
-                if command.verb == .clear {
-                    overlayState.visualGuidanceOverlays = []
-                } else if let frame = command.frame, let verb = DrawVerb(rawValue: command.verb.rawValue) {
-                    overlayState.visualGuidanceOverlays.append(verb.overlay(axRect: frame, label: command.label))
-                }
+                overlayState.apply(command)
             case .finished(let finish):
                 terminal = finish
             }

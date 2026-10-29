@@ -524,7 +524,7 @@ final class TalkSession: ObservableObject {
                 } ?? .zero
             )
         } ?? "#34D399"
-        let overlay: PerryGuidanceOverlay
+        var overlay: PerryGuidanceOverlay
         switch command.verb {
         case .point:
             overlay = .pointMark(center: CGPoint(x: rect.midX, y: rect.midY), accentHex: accentHex, caption: command.label)
@@ -536,6 +536,12 @@ final class TalkSession: ObservableObject {
             overlay = .ringMark(around: rect, accentHex: accentHex, caption: command.label)
         case .clear:
             return
+        }
+        overlay.nearbyControls = (command.nearbyFrames.isEmpty ? index.controlFrames(near: frame) : command.nearbyFrames).map {
+            AXCoordinateConverter.appKitRect(
+                axX: $0.origin.x, axY: $0.origin.y, width: $0.width, height: $0.height,
+                primaryScreenMaxY: primaryMaxY
+            )
         }
         overlayState.visualGuidanceOverlays.append(overlay)
         markOverlayIDs.insert(overlay.id)

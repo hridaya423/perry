@@ -135,6 +135,32 @@ final class CaptionPlacerTests: XCTestCase {
         XCTAssertEqual(placed.minY, anchor.maxY + CaptionPlacer.defaultGap, accuracy: 0.5)
     }
 
+    func testACaptionMovesToTheSideWithoutAControlUnderIt() {
+        let seven = CGRect(x: 100, y: 100, width: 36, height: 36)
+        let four = CGRect(x: 100, y: 144, width: 36, height: 36)
+        let eight = CGRect(x: 144, y: 100, width: 36, height: 36)
+        let nine = CGRect(x: 188, y: 100, width: 36, height: 36)
+        let placed = CaptionPlacer.place(
+            size: CGSize(width: 20, height: 20), anchor: seven,
+            preferablyAvoiding: [four, eight, nine, CGRect(x: 100, y: 56, width: 36, height: 36)],
+            in: CGRect(x: 0, y: 0, width: 600, height: 400)
+        )
+        XCTAssertLessThan(placed.maxX, seven.minX)
+    }
+
+    func testControlsNeverPushACaptionIntoAScreenCorner() {
+        let target = CGRect(x: 280, y: 180, width: 40, height: 40)
+        let around = [
+            CGRect(x: 240, y: 228, width: 120, height: 60), CGRect(x: 240, y: 112, width: 120, height: 60),
+            CGRect(x: 328, y: 150, width: 120, height: 100), CGRect(x: 152, y: 150, width: 120, height: 100),
+        ]
+        let placed = CaptionPlacer.place(
+            size: CGSize(width: 60, height: 20), anchor: target, preferablyAvoiding: around,
+            in: CGRect(x: 0, y: 0, width: 600, height: 400)
+        )
+        XCTAssertLessThan(hypot(placed.midX - target.midX, placed.midY - target.midY), 80)
+    }
+
     func testFlipsAboveWhenBottomIsCrowded() {
         // Target hugging the bottom edge: below overflows, above is clean.
         let anchor = CGRect(x: 600, y: 860, width: 80, height: 40)

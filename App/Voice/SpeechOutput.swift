@@ -204,19 +204,11 @@ extension VoiceController {
         synthesizer.stopSpeaking(at: boundary)
         neuralSpeech.stop()
         speechStream = SpeechText.Stream()
-        if let identity = pendingGuideIdentity {
-            pendingGuideIdentity = nil
-            hooks.guideSpeechFinished(identity)
-        }
     }
 
     func neuralSpeechFinished() {
         if !dictation.isRunning { overlayState.voiceState = .idle }
         overlayState.expireTaskBubble(after: 1.5)
-        if let identity = pendingGuideIdentity {
-            pendingGuideIdentity = nil
-            hooks.guideSpeechFinished(identity)
-        }
     }
 
     func enqueueSpeech(_ text: String) {
@@ -236,7 +228,7 @@ extension VoiceController {
         play(cleaned, route: Self.speechRoute(for: lastDictationLanguageIdentifier), rate: preferences.rateMultiplier)
     }
 
-    func speak(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil, copiesReplyWhenMuted: Bool = false) {
+    func speak(_ text: String, copiesReplyWhenMuted: Bool = false) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         let preferences = Self.currentSpeechPreferences()
@@ -267,16 +259,7 @@ extension VoiceController {
         stopSpeech(at: .immediate)
         currentSpeechText = cleaned
         let route = Self.speechRoute(for: lastDictationLanguageIdentifier)
-        if case .system = route, let guideSpeechIdentity {
-            play(cleaned, route: route, rate: preferences.rateMultiplier) { utterance in
-                self.guideSpeechIdentities[ObjectIdentifier(utterance)] = guideSpeechIdentity
-            }
-        } else {
-            play(cleaned, route: route, rate: preferences.rateMultiplier)
-            if let guideSpeechIdentity {
-                if case .neural = route { pendingGuideIdentity = guideSpeechIdentity } else { hooks.guideSpeechFinished(guideSpeechIdentity) }
-            }
-        }
+        play(cleaned, route: route, rate: preferences.rateMultiplier)
         PerfMark.mark("talk.speak.start")
     }
 
@@ -284,7 +267,7 @@ extension VoiceController {
         PronunciationStore.respell(text, with: PronunciationStore(directory: supportDirectory()).entries())
     }
 
-    private func play(_ text: String, route: SpeechRoute, rate: Double, prepare: (AVSpeechUtterance) -> Void = { _ in }) {
+    private func play(_ text: String, route: SpeechRoute, rate: Double) {
         switch route {
         case .system(let voice):
             let spoken = respelled(speechStream.next(text))
@@ -293,7 +276,6 @@ extension VoiceController {
             let utterance = AVSpeechUtterance(string: spoken)
             utterance.voice = voice
             utterance.rate = Self.speechRate(for: rate)
-            prepare(utterance)
             synthesizer.speak(utterance)
         case .neural(let voice):
             let spoken = respelled(speechStream.next(text, spellNumbers: voice.spellsNumbers))
@@ -306,7 +288,7 @@ extension VoiceController {
         }
     }
 
-    func deliverVoiceReply(_ text: String, guideSpeechIdentity: GuideSpeechIdentity? = nil) {
+    func deliverVoiceReply(_ text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         if let realtimeVoiceSession {
@@ -318,7 +300,7 @@ extension VoiceController {
                 break
             }
         }
-        speak(cleaned, guideSpeechIdentity: guideSpeechIdentity, copiesReplyWhenMuted: true)
+        speak(cleaned, copiesReplyWhenMuted: true)
     }
 
     func preview(_ text: String, engine: SpeechEngineChoice, voiceID: String? = nil) {
@@ -365,15 +347,11 @@ extension VoiceController: AVSpeechSynthesizerDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             PerfMark.mark("talk.speak.end")
-            let guideIdentity = self.guideSpeechIdentities.removeValue(forKey: ObjectIdentifier(utterance))
             if !self.dictation.isRunning {
                 self.overlayState.voiceState = .idle
             }
             if !self.synthesizer.isSpeaking {
                 self.overlayState.expireTaskBubble(after: 1.5)
-            }
-            if let guideIdentity {
-                self.hooks.guideSpeechFinished(guideIdentity)
             }
         }
     }
@@ -381,12 +359,8 @@ extension VoiceController: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let guideIdentity = self.guideSpeechIdentities.removeValue(forKey: ObjectIdentifier(utterance))
             if !self.synthesizer.isSpeaking {
                 self.overlayState.expireTaskBubble(after: 1.5)
-            }
-            if let guideIdentity {
-                self.hooks.guideSpeechFinished(guideIdentity)
             }
         }
     }

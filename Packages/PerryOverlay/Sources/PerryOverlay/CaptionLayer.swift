@@ -36,10 +36,10 @@ func estimatedCaptionBubbleSize(for caption: String) -> CGSize {
     return CGSize(width: width, height: height)
 }
 
-func captionRect(size: CGSize, beside anchor: CGRect, avoiding: [CGRect], screenFrame: CGRect) -> CGRect {
+func captionRect(size: CGSize, beside anchor: CGRect, avoiding: [CGRect], preferablyAvoiding: [CGRect] = [], screenFrame: CGRect) -> CGRect {
     let visible = NSScreen.screens.first { $0.frame == screenFrame }?.visibleFrame ?? screenFrame
     return CaptionPlacer.place(
-        size: size, anchor: anchor, avoiding: avoiding,
+        size: size, anchor: anchor, avoiding: avoiding, preferablyAvoiding: preferablyAvoiding,
         in: PerryOverlaySpace.localRect(visible, in: screenFrame)
     )
 }
@@ -61,13 +61,15 @@ extension PerryCursorState {
         let marks = localMarkRects(in: screenFrame)
         var layout = CaptionLayout()
         var placed: [CGRect] = []
-        func place(_ caption: String?, beside screenRect: CGRect) -> CGRect? {
+        func place(_ caption: String?, beside screenRect: CGRect, controls: [CGRect] = []) -> CGRect? {
             guard let caption = caption?.trimmingCharacters(in: .whitespacesAndNewlines), !caption.isEmpty,
                   !screenRect.isNull, screenRect.intersects(screenFrame) else { return nil }
             let rect = captionRect(
                 size: estimatedCaptionBubbleSize(for: caption),
                 beside: PerryOverlaySpace.localRect(screenRect, in: screenFrame),
-                avoiding: marks + placed, screenFrame: screenFrame
+                avoiding: marks + placed,
+                preferablyAvoiding: controls.map { PerryOverlaySpace.localRect($0, in: screenFrame) },
+                screenFrame: screenFrame
             )
             placed.append(rect)
             return rect
@@ -76,7 +78,7 @@ extension PerryCursorState {
             layout.stepLabel = place(activeControlGlowLabel, beside: glow)
         }
         for overlay in visualGuidanceOverlays {
-            layout.markCaptions[overlay.id] = place(overlay.style.caption, beside: overlay.screenBounds)
+            layout.markCaptions[overlay.id] = place(overlay.style.caption, beside: overlay.screenBounds, controls: overlay.nearbyControls ?? [])
         }
         layout.obstacles = marks + placed
         return layout

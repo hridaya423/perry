@@ -587,11 +587,14 @@ final class AppSubsystems {
             var text = ""
             var finish: AgentFinish = .interrupted
             for await event in self.agentCoordinator.run(threadID: threadID, goal: prompt, runID: input.request.id, target: target, waitingInputID: input.request.id) {
-                if case .textDelta(let delta) = event {
+                switch event {
+                case .textDelta(let delta):
                     text += delta
                     onPartial(text)
+                case .draw(let command): app.overlayState.apply(command)
+                case .finished(let outcome): finish = outcome
+                default: break
                 }
-                if case .finished(let outcome) = event { finish = outcome }
             }
             if finish == .completed { app.onboarding.noteTalkTurnCompleted() }
             return finish

@@ -23,6 +23,18 @@ final class RehearsalMarksTests: XCTestCase {
         ])
     }
 
+    func testAMarkFindsItsTargetInALaterReadWhoseIDsChanged() throws {
+        let plan = try plan(actions: [computerAction("Click Save", command: .click(.accessibilityID("s1:4")))])
+        let planned = [AXElement(stableID: "s1:4", role: .button, label: "Save",
+                                 frame: AXElementFrame(x: 10, y: 20, width: 40, height: 20), isActionable: true)]
+        let later = [AXElement(stableID: "s2:9", role: .button, label: "Save",
+                               frame: AXElementFrame(x: 110, y: 20, width: 40, height: 20), isActionable: true)]
+
+        let marks = RehearsalMarks.marks(for: plan, elements: later, planElements: planned)
+
+        XCTAssertEqual(marks.map(\.frame), [AXElementFrame(x: 110, y: 20, width: 40, height: 20)])
+    }
+
     func testPixelTargetsAndUngroundedSelectorsProduceNoMarks() throws {
         let plan = try plan(actions: [
             computerAction("Click pixel", command: .click(.windowPixels(x: 10, y: 10))),
@@ -66,6 +78,21 @@ final class RehearsalMarksTests: XCTestCase {
         XCTAssertEqual(masked.actions.map(\.operation), plan.actions.map(\.operation))
         XCTAssertEqual(masked.planID, plan.planID)
         XCTAssertEqual(masked.taskID, plan.taskID)
+    }
+
+    func testOnlyTypingIntoAnUnknownFieldIsMaskedNotAClick() throws {
+        let plan = try plan(actions: [
+            computerAction("Click Save", command: .click(.accessibilityID("ax-save"))),
+            computerAction("Type note", command: .typeText("hello", target: .accessibilityID("ax-note"))),
+        ])
+        let elements = [
+            AXElement(stableID: "ax-save", role: .button, label: "Save",
+                      frame: AXElementFrame(x: 0, y: 0, width: 10, height: 10), isActionable: true),
+            AXElement(stableID: "ax-note", role: .textField, label: "Note",
+                      frame: AXElementFrame(x: 0, y: 20, width: 10, height: 10), isActionable: true),
+        ]
+
+        XCTAssertEqual(RehearsalMarks.marks(for: plan, elements: elements).map(\.sensitive), [false, true])
     }
 
     func testOrdinaryTargetsAreNotMasked() throws {

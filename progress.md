@@ -17,9 +17,19 @@ Done (committed with this entry):
 
 Evidence (mini, 2026-10-29): 922 app tests, 0 failures; PerryGuide 287 (only the known keychain test fails); PerryOverlay 36; PerryBrain 438. Bench rounds cap10-cap12: path bar 10/10 over the last rounds with 0 Done presses (one run adds a check step), Calculator 3/3 with display 84 and 0 Dones, Dark Mode passes, point/circle/talk marks land on their targets in the screenshots.
 
-In progress, not committed: routine rehearsal marks rebind by role and label (they never matched) and mask only typing; Watch & Learn records typing into a field of unknown sensitivity as an ask-each-run parameter step (secure fields still dropped).
+Second commit (2026-10-29), each checked on the mini:
+- Undo: inverses are checked against the state the earlier inverses leave, so a folder and the file made in it, or a rename of a rename, undo. The two new tests fail on 5d1d30d.
+- Watch & Learn: typing into a field of unknown sensitivity records an ask-each-run parameter step with no text; secure fields still drop.
+- Routine rehearsal marks rebind to the fresh read by role and label, and only typing steps mask as sensitive. Unit-tested only: `scripts/lab/routine-drill.sh` is stale (it waits for the old Home window).
+- Notch rail and peek task counts republish when the task list changes.
+- Do clicks by label take the one exact match, or the one partial match; two candidates are treated as not found (coordinates are used when present).
+- Home composer marks: markup marks are drawn, and the overlay window opens whenever a mark is added from any surface. Not driven live from the composer yet.
+- Mark captions avoid the app's controls next to the mark when a free side exists (the "7" label no longer covers the 4 key; screenshot cap19).
+- The planner is told the screenshot shows the result and not to open a menu only to check.
+- The dead speech-finished plumbing is deleted.
+- Bench: Finder restores its saved windows when `open -R` relaunches it; setup now closes them after the relaunch.
 
-Open: a mark's caption can cover a neighbouring control (captions avoid marks, not app controls); Do from the composer may not show the overlay; Undo of dependent changes; label re-resolution takes the first fuzzy match; notch rail and peek do not observe the task controller; the speech-finished hook has no listener.
+Evidence: 929 app tests, 0 failures; PerryGuide 290 (keychain test aside); PerryBrain 438; PerryOverlay 38. Bench cap19: path bar 5/5 in two steps with 0 Done presses; cap18: Calculator, Dark Mode, Talk marks pass.
 
 # Current: first-impressions rework (2026-10-25)
 
