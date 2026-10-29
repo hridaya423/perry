@@ -319,6 +319,39 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertEqual(actionRequests, 0)
     }
 
+    func testUserRequestedRunAsksNothingForLocalActions() async throws {
+        let rename = try ExecutableAction(
+            id: ActionID("rename-report"),
+            summary: "Rename report",
+            approvalRequirement: .action,
+            operation: .transform(
+                workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
+                command: .rename(path: "report.txt", destination: "done.txt")
+            ),
+            postcondition: .renamedItem(device: 1, inode: 2)
+        )
+        let plan = try PerryRuntimes.ExecutionPlan(
+            taskID: TaskID("user-requested-task"),
+            goal: "Write report",
+            actions: [try makeAction(), rename],
+            requestedScopes: [.workspaceWrite]
+        )
+        let confirmer = RehearsalRecordingConfirmer()
+        let executor = RecordingTypedActionExecutor()
+        let supervisor = DoSupervisor(
+            activityLog: ActivityLog(),
+            confirmer: confirmer,
+            typedVerifier: RecordingTypedActionVerifier(),
+            userRequested: true
+        )
+
+        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
+        let requests = await confirmer.requests
+
+        XCTAssertEqual(outcome, .completed(stepsRun: 2))
+        XCTAssertEqual(requests.count, 0)
+    }
+
     func testReplayPreviewReasksWithoutDispatching() async throws {
         let action = try makeAction()
         let plan = try makePlan(action: action)

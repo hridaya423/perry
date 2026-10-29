@@ -47,7 +47,7 @@ final class OnboardingCoordinator {
                 if PerryPermissionProbe.checkMicrophone() == .denied {
                     pane.open()
                 } else {
-                    _ = await PerryPermissionProbe.requestMicrophone()
+                    _ = await DictationController.requestPermission()
                 }
             } else {
                 self?.home().homeModel.deps.controller?.collapseNotch()
@@ -58,14 +58,14 @@ final class OnboardingCoordinator {
                 self?.showNotch()
             }
         }
+        effects.say = { [weak self] text in
+            await self?.home().homeModel.deps.controller?.voice.speakAndWait(text)
+        }
         effects.saveName = { [weak self] name in
             try? self?.home().homeModel.deps.controller?.memoryFiles?.setProfileField("Name", name)
         }
         effects.dismiss = { [weak self] in self?.tearDown() }
         effects.finish = { [weak self] keepNotchOpen in self?.finish(keepNotchOpen: keepNotchOpen) }
-        effects.hasApps = { [weak self] in
-            self?.home().homeModel.deps.controller.map { !AppsBeatPlan.tiles(for: $0).isEmpty } ?? false
-        }
         let director = OnboardingDirector(effects: effects, defaults: .standard)
         self.director = director
         let home = home()
@@ -105,6 +105,7 @@ final class OnboardingCoordinator {
         effects.permissionProbe = {
             PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
         }
+        effects.systemProbe = { SystemGrants(speech: .notDetermined, notifications: .notDetermined, calendar: .notDetermined) }
         start(effects: effects)
     }
 #endif

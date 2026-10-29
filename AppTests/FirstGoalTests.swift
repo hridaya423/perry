@@ -25,7 +25,11 @@ final class FirstGoalTests: XCTestCase {
         XCTAssertTrue(FirstGoal.guide(app: "Figma").needsScreen)
         XCTAssertTrue(FirstGoal.make.needsScreen)
         XCTAssertFalse(FirstGoal.ask.needsScreen)
-        XCTAssertTrue(FirstGoal.askPrompt(for: "Spanish").contains("three-line starter plan"))
+    }
+
+    func testASavedGoalIsSentInTheUsersOwnTerms() {
+        XCTAssertEqual(FirstGoal.request(saved: "Spanish", route: .ask), "I want to learn Spanish.")
+        XCTAssertEqual(FirstGoal.request(saved: "Make a budget spreadsheet", route: .make), "Make a budget spreadsheet")
     }
 
     func testStartingTheFirstTaskFinishesWithTheNotchOpen() throws {

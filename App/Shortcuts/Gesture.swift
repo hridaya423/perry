@@ -51,6 +51,14 @@ struct ModifierSet: OptionSet, Hashable, Sendable {
         Self.names.filter { contains($0.0) }.map(\.1).joined(separator: "+")
     }
 
+    var words: String {
+        let said: [(ModifierSet, String)] = [
+            (.capsLock, "Caps Lock"), (.function, "Function"), (.control, "Control"), (.rightOption, "right Option"),
+            (.option, "Option"), (.shift, "Shift"), (.command, "Command"),
+        ]
+        return said.filter { contains($0.0) && !($0.0 == .option && contains(.rightOption)) }.map(\.1).joined(separator: " and ")
+    }
+
     init?(token: String) {
         var set: ModifierSet = []
         for part in token.split(separator: "+") {
@@ -112,6 +120,14 @@ enum Gesture: Equatable, Hashable, Sendable, RawRepresentable {
         case .hold(let set): set.symbols
         case .doubleTap(let set): "2× \(set.symbols)"
         case .chord(let set, let key): set.symbols + KeyName.name(for: key)
+        }
+    }
+
+    var said: String {
+        switch self {
+        case .hold(let set): "Hold \(set.words)"
+        case .doubleTap(let set): "Double-tap \(set.words)"
+        case .chord(let set, let key): "Press \(set.words) \(KeyName.name(for: key))"
         }
     }
 

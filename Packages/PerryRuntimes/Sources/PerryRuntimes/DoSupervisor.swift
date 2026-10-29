@@ -166,6 +166,7 @@ public actor DoSupervisor {
     private var cancelActiveConfirmation: (@Sendable () -> Void)?
     private var attemptedActionPolicies: [ActionID: IdempotencyPolicy] = [:]
     private var idempotencyKeySignatures: [String: String] = [:]
+    private let userRequested: Bool
 
     public init(
         trustGuard: TrustGuard = TrustGuard(),
@@ -173,6 +174,7 @@ public actor DoSupervisor {
         confirmer: Confirmer,
         typedVerifier: any TypedActionVerifier = NoOpTypedActionVerifier(),
         cancelWindow: TimeInterval = 0,
+        userRequested: Bool = false,
         onEvent: (@Sendable (DoEvent) async -> Void)? = nil,
         onTypedEvent: (@Sendable (TypedDoEvent) async -> Void)? = nil
     ) {
@@ -182,6 +184,7 @@ public actor DoSupervisor {
         self.orchestrator = SupervisorStateMachine()
         self.typedVerifier = typedVerifier
         self.cancelWindow = max(0, cancelWindow)
+        self.userRequested = userRequested
         self.onEvent = onEvent
         self.onTypedEvent = onTypedEvent
     }
@@ -310,6 +313,18 @@ public actor DoSupervisor {
                 return .blocked(reason: "user cancelled the task")
             }
 
+            if !planApprovalChecked, userRequested {
+                planApprovalChecked = true
+                if plan.actions.contains(where: { $0.approvalRequirement == .plan }) {
+                    do {
+                        planApprovalGrant = try ExecutionApprovalGrant(plan: plan, scope: .plan)
+                    } catch {
+                        let reason = "typed plan approval could not be issued: \(error)"
+                        await markFailed(stepSummary: "approval", reason: reason)
+                        return .failed(stepSummary: "approval", reason: reason)
+                    }
+                }
+            }
             if !planApprovalChecked {
                 switch await requestTypedPlanApproval(for: plan, targetWindow: targetWindow) {
                 case .approved(_, let wantsStepThrough):
@@ -350,6 +365,9 @@ public actor DoSupervisor {
             if stepThrough {
                 needsConfirmation = true
                 confirmationReason = "step-through review"
+            } else if userRequested {
+                needsConfirmation = action.operation.kind == .integration || action.operation.kind == .askUser
+                confirmationReason = action.operation.kind == .integration ? "writes to a connected service" : "needs your answer"
             } else if policy.trustTier >= .orange {
                 needsConfirmation = action.approvalRequirement == .action || planApprovalGrant == nil
                 confirmationReason = policy.trustTier >= .red

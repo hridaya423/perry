@@ -190,7 +190,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
     }
 
-    func testStepsRunAsOneDriverBatch() async throws {
+    func testForegroundStepsRunOneAtATimeSoThePointerCanFollow() async throws {
         let (service, directory) = try makeFixture(sharedTarget: true)
         let observations = AgentObservationStore()
         let lease = ForegroundWorkerLease()
@@ -199,6 +199,33 @@ final class CuaWorkerProcessTests: XCTestCase {
             + UITools(workers: service, lease: lease, observations: observations).executors
         )
         let context = ToolContext(surface: .agent, runID: UUID())
+        try await service.withWorker(scope: .foreground, resources: []) { worker in
+            lease.set(worker, for: context.runID)
+            defer { lease.set(nil, for: context.runID) }
+            _ = await host.handle(ToolCall(id: "observe", name: "screen.observe", arguments: .object(["bundleID": .string("fixture.shared")])), context: context)
+            let steps: JSONValue = .array([
+                .object(["action": .string("click"), "elementID": .string("e1")]),
+                .object(["action": .string("key"), "key": .string("Return")]),
+            ])
+            let result = await host.handle(ToolCall(id: "steps", name: "ui.steps", arguments: .object(["steps": steps])), context: context)
+            XCTAssertFalse(result.isError, "\(result)")
+        }
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
+        XCTAssertFalse(requests.contains("\"name\":\"run_steps\""), requests)
+        XCTAssertTrue(requests.contains("\"name\":\"click\""), requests)
+        XCTAssertTrue(requests.contains("\"name\":\"press_key\""), requests)
+    }
+
+    func testUnattendedStepsRunAsOneDriverBatch() async throws {
+        let (service, directory) = try makeFixture(sharedTarget: true)
+        let observations = AgentObservationStore()
+        let lease = ForegroundWorkerLease()
+        let host = PerryToolHost(executors:
+            ScreenTools(workers: service, lease: lease, observations: observations).executors
+            + UITools(workers: service, lease: lease, observations: observations).executors
+        )
+        let context = ToolContext(surface: .agent, runID: UUID(), unattended: true)
         try await service.withWorker(scope: .foreground, resources: []) { worker in
             lease.set(worker, for: context.runID)
             defer { lease.set(nil, for: context.runID) }
@@ -799,7 +826,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             executable: try CLIRuntime.locateExecutable(),
             helper: try XCTUnwrap(Bundle.main.url(forAuxiliaryExecutable: "perry-mcp")),
             scopes: server,
-            models: BrainModelDefaults(fast: "claude-haiku-5-5", deep: "claude-haiku-5-5")
+            models: { BrainModelDefaults(fast: "claude-haiku-5-5", deep: "claude-haiku-5-5") }
         )
         let calls = ToolNames()
         let request = ModelRequest(

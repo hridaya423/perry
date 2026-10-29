@@ -65,6 +65,8 @@ struct BrainChoiceSection: View {
             SettingsCard(title: "ChatGPT") {
                 HomeConnectionView(brain: brain, openSettings: { brain.modelChoice = .direct })
                     .settingsRowPadding()
+                SettingsDivider()
+                modelPicker(BrainController.chatGPTModels, selection: Binding(get: { brain.chatGPTModel }, set: { brain.chatGPTModel = $0 }))
             }
         case .claudeCode:
             SettingsCard(title: "Claude Code") {
@@ -73,6 +75,10 @@ struct BrainChoiceSection: View {
                     : "Claude Code isn’t installed. Install it, sign in with `claude`, then come back.")
                     .fixedSize(horizontal: false, vertical: true)
                     .settingsRowPadding()
+                if brain.claudeCodeAvailable {
+                    SettingsDivider()
+                    modelPicker(BrainController.claudeCodeModels, selection: Binding(get: { brain.claudeCodeModel }, set: { brain.claudeCodeModel = $0 }))
+                }
             }
         case .acp:
             SettingsCard(title: "Coding agent") {
@@ -90,6 +96,14 @@ struct BrainChoiceSection: View {
             }
         case .local:
             LocalBrainView(brain: brain, local: local, profile: profile, bench: bench)
+        }
+    }
+
+    private func modelPicker(_ options: [BrainController.ModelOption], selection: Binding<String?>) -> some View {
+        SettingsPicker(title: "Model", detail: "Automatic answers quick questions with a fast model and bigger tasks with a stronger one.", selection: selection) {
+            ForEach(options, id: \.self) { option in
+                Text(option.title).tag(option.id)
+            }
         }
     }
 }

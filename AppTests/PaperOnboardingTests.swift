@@ -91,7 +91,7 @@ final class PaperOnboardingTests: XCTestCase {
 
         let permissions = OnboardingDirector(effects: .init(permissionProbe: {
             PerryPermissionSnapshot(accessibility: true, screenRecording: .denied, microphone: .denied)
-        }))
+        }, systemProbe: { .answered }))
         permissions.start(resume: false)
         while permissions.beat != .access { permissions.skip() }
         await permissions.refreshPermissions()

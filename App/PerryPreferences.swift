@@ -114,6 +114,8 @@ enum PerryPreferences {
     @Preference("perry.brain.profiles") static var modelProfiles: Data? = nil
     @Preference("perry.brain.activeProfile") static var activeModelProfile: String? = nil
     @Preference("perry.brain.acpAgent") static var acpAgent: Data? = nil
+    @Preference("perry.brain.claudeCodeModel") static var claudeCodeModel: String? = nil
+    @Preference("perry.brain.chatGPTModel") static var chatGPTModel: String? = nil
     @Preference("perry.byok.vision.endpoint") static var byokVisionEndpoint: String? = nil
     @Preference("perry.byok.vision.model") static var byokVisionModel: String? = nil
     @Preference("perry.cua.driver.path") static var cuaDriverPath = ""

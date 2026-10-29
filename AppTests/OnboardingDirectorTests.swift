@@ -55,7 +55,7 @@ final class OnboardingDirectorTests: XCTestCase {
     }
 
     func testBeatsRunHelloToFirstGoal() {
-        XCTAssertEqual(OnboardingDirector.Beat.allCases, [.hello, .brain, .access, .shortcuts, .interview, .apps, .firstGoal])
+        XCTAssertEqual(OnboardingDirector.Beat.allCases, [.hello, .brain, .access, .interview, .firstGoal])
         let director = OnboardingDirector()
         director.start()
         var seen: [OnboardingDirector.Beat] = []
@@ -66,23 +66,8 @@ final class OnboardingDirectorTests: XCTestCase {
         XCTAssertEqual(seen, OnboardingDirector.Beat.allCases)
     }
 
-    func testAppsBeatIsLeftOutWhenNoAppCanConnect() throws {
-        let defaults = try suite()
-        defaults.set("apps", forKey: "perry.onboarding.beat")
-        var effects = OnboardingDirector.Effects()
-        effects.hasApps = { false }
-        let director = OnboardingDirector(effects: effects, defaults: defaults)
-        director.start()
-        XCTAssertEqual(director.beat, .firstGoal)
-        director.goBack()
-        XCTAssertEqual(director.beat, .interview)
-        director.skip()
-        XCTAssertEqual(director.beat, .firstGoal)
-        director.stop()
-    }
-
     func testOldSavedBeatNamesRestartAtHello() throws {
-        for old in ["greet", "firstTalk", "screenAccess", "brainChoice", "practice", "finale", "nonsense"] {
+        for old in ["greet", "firstTalk", "screenAccess", "brainChoice", "practice", "finale", "shortcuts", "apps", "nonsense"] {
             let defaults = try suite()
             defaults.set(old, forKey: "perry.onboarding.beat")
             let director = OnboardingDirector(defaults: defaults)
@@ -213,12 +198,13 @@ final class OnboardingDirectorTests: XCTestCase {
         var snapshot = granted
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }
+        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         director.start()
         director.skip()
         director.skip()
         await director.refreshPermissions()
-        XCTAssertEqual(director.beat, .shortcuts, "entering forward with access granted skips ahead")
+        XCTAssertEqual(director.beat, .interview, "entering forward with access granted skips ahead")
         director.goBack()
         await director.refreshPermissions()
         XCTAssertEqual(director.beat, .access, "going back never bounces forward")
@@ -237,6 +223,7 @@ final class OnboardingDirectorTests: XCTestCase {
         var asked: [PrivacyPane] = []
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { self.denied }
+        effects.systemProbe = { .answered }
         effects.grant = { asked.append($0) }
         let director = OnboardingDirector(effects: effects)
         director.start()
@@ -256,6 +243,7 @@ final class OnboardingDirectorTests: XCTestCase {
         var release: CheckedContinuation<PerryPermissionSnapshot, Never>?
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { await withCheckedContinuation { release = $0; entered.fulfill() } }
+        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         director.start()
         director.skip()
@@ -265,7 +253,7 @@ final class OnboardingDirectorTests: XCTestCase {
         director.skip()
         release?.resume(returning: granted)
         await probe.value
-        XCTAssertEqual(director.beat, .shortcuts)
+        XCTAssertEqual(director.beat, .interview)
         director.stop()
     }
 

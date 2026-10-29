@@ -30,8 +30,8 @@ enum FirstGoal: Equatable {
         files?.profileField("Learning goal")
     }
 
-    static func askPrompt(for goal: String) -> String {
-        "I want to learn \(goal). Give me a three-line starter plan, then ask me one question."
+    static func request(saved goal: String, route: FirstGoal) -> String {
+        route == .make ? goal : "I want to learn \(goal)."
     }
 
     var needsScreen: Bool { self != .ask }
@@ -43,14 +43,6 @@ enum FirstGoal: Equatable {
         case .make: .task
         }
     }
-
-    func promise(_ goal: String) -> String {
-        switch self {
-        case .guide(let app): "I’ll open \(app) and walk you through it, one step at a time."
-        case .ask: "I’ll give you a short plan and one question."
-        case .make: "I’ll start on it and ask before I change anything."
-        }
-    }
 }
 
 struct FirstGoalBeat: View {
@@ -58,20 +50,21 @@ struct FirstGoalBeat: View {
     @ObservedObject var model: HomeModel
     @State var goal: String
     let installedApps: [String]
-    @State private var draft = ""
+    @StateObject private var listener = InterviewListener()
+    @AppStorage(PerryPreferences.$talkGesture.key) private var talkRaw = Gesture.defaultTalk.rawValue
+    @State private var heard = ""
+    @State private var typing = false
     @State private var closing = false
-    @State private var asking = false
     @FocusState private var focused: Bool
 
-    private var trimmed: String { goal.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var editing: Bool { trimmed.isEmpty || asking }
-    private var typed: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var route: FirstGoal { FirstGoal.route(trimmed, installedApps: installedApps) }
-    private var needsScreenAccess: Bool { route.needsScreen && !PerryPermissionProbe.checkScreenRecording().isUsable }
+    private var talk: Gesture { Gesture(rawValue: talkRaw) ?? .defaultTalk }
+    private var saved: String { goal.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var typed: String { heard.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var title: String { saved.isEmpty ? "What do you want to learn first?" : "Shall we start with \(saved)?" }
 
     var body: some View {
         if closing {
-            OnboardingBeatLayout(title: "I’m up here whenever you need me.") {
+            OnboardingBeatLayout(title: "I’m up here whenever you need me.", message: "\(talk.spoken) any time to talk to me.") {
                 EmptyView()
             } detail: {
                 EmptyView()
@@ -79,73 +72,111 @@ struct FirstGoalBeat: View {
                 EmptyView()
             }
             .task {
-                try? await Task.sleep(for: .seconds(2.5))
+                listener.stop()
+                await say("I’m up here whenever you need me. \(talk.said) any time to talk to me.")
                 director.skip()
             }
         } else {
-            OnboardingBeatLayout(
-                title: editing ? "What do you want to learn first?" : "I’ll start with \(trimmed).",
-                message: editing ? nil : route.promise(trimmed)
-            ) {
+            OnboardingBeatLayout(title: title, message: "\(talk.spoken) any time to talk to me.") {
                 EmptyView()
             } detail: {
-                if editing {
-                    TextField("Figma auto layout, Spanish, SQL", text: $draft)
+                if typing {
+                    TextField("Figma auto layout, Spanish, SQL", text: $heard)
                         .textFieldStyle(.plain)
                         .font(PerryTheme.Scale.input)
                         .multilineTextAlignment(.leading)
                         .focused($focused)
                         .focusEffectDisabled()
-                        .onSubmit(commit)
+                        .onSubmit { start(words: typed) }
                         .padding(.horizontal, 16)
                         .frame(width: 360, height: 44)
                         .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
                         .overlay { RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous).strokeBorder(PerryTheme.Colors.subtleSeparator) }
-                        .task {
-                            await Task.yield()
-                            focused = true
-                        }
+                        .task { focused = true }
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: listener.listening ? "waveform" : "mic.fill")
+                            .symbolEffect(.variableColor.iterative, isActive: listener.listening)
+                            .foregroundStyle(listener.listening ? PerryTheme.Colors.accent : PerryTheme.Colors.icon)
+                        Text(typed.isEmpty ? (listener.listening ? "Listening…" : " ") : typed)
+                            .font(PerryTheme.Scale.input)
+                            .foregroundStyle(typed.isEmpty ? PerryTheme.Colors.textTertiary : PerryTheme.Colors.text)
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(width: 360)
+                    .frame(minHeight: 44)
                 }
             } actions: {
                 OnboardingFooter {
-                    if !editing {
-                        Button("Something else") {
-                            draft = ""
-                            asking = true
+                    if !typing {
+                        Button("Type") {
+                            listener.stop()
+                            heard = ""
+                            typing = true
                         }
                     }
                 } primary: {
-                    Button(action: editing ? commit : start) { OnboardingPrimaryLabel(title: editing ? "Continue" : "Start") }
-                        .buttonStyle(InkButtonStyle())
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(editing && typed.isEmpty)
+                    if !listener.listening, typing || !saved.isEmpty {
+                        Button { typing ? start(words: typed) : start(words: nil) } label: { OnboardingPrimaryLabel(title: "Start") }
+                            .buttonStyle(InkButtonStyle())
+                            .controlSize(.large)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(typing && typed.isEmpty)
+                    }
                 } trailing: {
                     Button("Not now") { closing = true }
                 }
             }
+            .task(id: saved) {
+                guard !typing else { return }
+                heard = ""
+                await say(title)
+                guard !Task.isCancelled else { return }
+                listener.start(onPartial: { heard = $0 }, onDone: hear)
+            }
+            .onDisappear { listener.stop() }
         }
     }
 
-    private func commit() {
-        guard !typed.isEmpty else { return }
-        goal = typed
-        asking = false
+    private func say(_ line: String) async {
+        await model.deps.controller?.voice.speakAndWait(line)
     }
 
-    private func start() {
-        let route = route
-        let goal = trimmed
+    private func hear(_ text: String) {
+        heard = text
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        if saved.isEmpty { return start(words: words) }
+        switch InterviewModel.heardYes(words) {
+        case true?: start(words: nil)
+        case false? where words.split(separator: " ").count <= 2: goal = ""
+        default: start(words: words)
+        }
+    }
+
+    private func start(words: String?) {
+        let text: String
+        let route: FirstGoal
+        if let words, !words.isEmpty {
+            route = FirstGoal.route(words, installedApps: installedApps)
+            text = words
+        } else {
+            guard !saved.isEmpty else { return }
+            route = FirstGoal.route(saved, installedApps: installedApps)
+            text = FirstGoal.request(saved: saved, route: route)
+        }
+        listener.stop()
         Task {
-            if needsScreenAccess {
+            if route.needsScreen, !PerryPermissionProbe.checkScreenRecording().isUsable {
                 if await PermissionGuideCoordinator.guide(.screenRecording) == .needsRelaunch {
-                    try? model.deps.controller?.memoryFiles?.setProfileField("Learning goal", goal)
+                    try? model.deps.controller?.memoryFiles?.setProfileField("Learning goal", words ?? saved)
                     GrantMonitor.relaunchSelf()
                     return
                 }
             }
             model.composerMode = route.mode
-            model.onStartConversation?(route == .ask ? FirstGoal.askPrompt(for: goal) : goal)
+            model.onStartConversation?(text)
             director.beginFirstTask()
         }
     }

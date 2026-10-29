@@ -7,7 +7,19 @@ import SwiftUI
 @MainActor
 final class InterviewModel: ObservableObject {
     enum Step: Equatable {
-        case consent, importNotes, pronounce, question(Int), style, review, done
+        case pronounce, question(Int), importOffer, importing(MemoryService), summary, done
+    }
+
+    enum MemoryService: String, CaseIterable {
+        case chatGPT = "ChatGPT"
+        case claude = "Claude"
+
+        static func heard(_ text: String) -> MemoryService? {
+            let lowered = text.lowercased()
+            if lowered.contains("claude") || lowered.contains("cloud") { return .claude }
+            if lowered.contains("gpt") || lowered.contains("chat") { return .chatGPT }
+            return nil
+        }
     }
 
     enum Kind: Equatable {
@@ -37,12 +49,12 @@ final class InterviewModel: ObservableObject {
         /// Speaks a line and returns once it has been said, so the mic can open after it.
         var say: (String) async -> Void = { _ in }
         var listensAfterSpeaking = true
+        var importMemory: ((MemoryService) async -> String?)?
         var now: () -> Date = Date.init
     }
 
     static let knownApps = ["Notion", "Figma", "Xcode", "Slack", "Linear", "Visual Studio Code", "Cursor", "Safari", "Google Chrome", "Arc", "Mail", "Microsoft Word", "Keynote"]
     static let workChips = ["Student", "Designer", "Developer", "Founder"]
-    static let styles = ["Short and direct", "More detail"]
 
     static func appChips(installed: (String) -> Bool = { FileManager.default.fileExists(atPath: "/Applications/\($0).app") }) -> [String] {
         Array(knownApps.filter(installed).prefix(5))
@@ -60,14 +72,14 @@ final class InterviewModel: ObservableObject {
         return service.map { "I share your notes with \($0) when I answer." }
     }
 
-    @Published private(set) var step = Step.consent
+    @Published private(set) var step: Step
     @Published private(set) var reaction: String?
     @Published private(set) var extracting = false
     @Published private(set) var thinking = false
     @Published var draft = ""
     @Published var facts: Facts
     @Published var notes: [Note] = []
-    @Published var pasted = ""
+    @Published private(set) var importFailed = false
 
     private(set) var questions = [ProfileExtraction.intro]
     private var kinds: [Kind] = [.intro]
@@ -79,33 +91,79 @@ final class InterviewModel: ObservableObject {
     init(name: String, effects: Effects) {
         self.facts = Facts(name: name)
         self.effects = effects
+        self.step = name.isEmpty ? .question(0) : .pronounce
+        self.startedAt = effects.now()
     }
 
-    var canImport: Bool { effects.complete != nil }
     var questionCount: Int { questions.count }
+    var canImport: Bool { effects.complete != nil && effects.importMemory != nil }
 
-    func begin() {
-        guard step == .consent || step == .importNotes else { return }
-        startedAt = effects.now()
-        step = facts.name.isEmpty ? .question(0) : .pronounce
+    static func heardYes(_ text: String) -> Bool? {
+        let words = Set(text.lowercased().split { !$0.isLetter }.map(String.init))
+        if !words.isDisjoint(with: ["no", "nope", "not", "wrong", "actually", "but"]) { return false }
+        if !words.isDisjoint(with: ["yes", "yeah", "yep", "yup", "right", "correct", "sure", "perfect", "exactly"]) { return true }
+        return nil
     }
 
-    func startImport() {
-        guard step == .consent, canImport else { return }
-        step = .importNotes
-    }
-
-    func readImport() {
-        guard step == .importNotes, let complete = effects.complete else { return }
-        let text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return begin() }
-        extracting = true
+    func chooseImport(_ service: MemoryService?) {
+        guard step == .importOffer else { return }
+        guard let service, let importMemory = effects.importMemory, let complete = effects.complete else { return summarize() }
+        step = .importing(service)
         Task {
-            defer { extracting = false }
-            let reply = try? await complete(MemoryExtraction.importPrompt(text))
-            notes += (reply.map(MemoryExtraction.decodeImport) ?? []).map { Note(fact: $0) }
-            pasted = ""
-            begin()
+            let text = await importMemory(service)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let text, !text.isEmpty, let reply = try? await complete(MemoryExtraction.importPrompt(text)) {
+                let known = Set(notes.map { $0.fact.text.lowercased() })
+                notes += MemoryExtraction.decodeImport(reply).filter { !known.contains($0.text.lowercased()) }.map { Note(fact: $0) }
+            }
+            guard step == .importing(service) else { return }
+            importFailed = notes.isEmpty
+            summarize()
+        }
+    }
+
+    func cancelImport() {
+        guard case .importing = step else { return }
+        summarize()
+    }
+
+    var summaryLines: [String] {
+        [("Work", facts.work), ("Apps", facts.apps), ("First thing to learn", facts.goal)]
+            .filter { !$0.1.isEmpty }
+            .map { "\($0.0): \($0.1)." } + notes.map(\.fact.text)
+    }
+
+    var spokenSummary: String {
+        let known = [("Work", facts.work), ("Apps", facts.apps), ("First thing to learn", facts.goal)].filter { !$0.1.isEmpty }
+        let lines = known.map { "\($0.0): \($0.1)." }
+        let imported = notes.isEmpty ? [] : ["And \(notes.count) \(notes.count == 1 ? "thing" : "things") from your other assistant."]
+        let failed = importFailed ? ["I couldn’t read your other assistant. You can paste its notes later in Settings, under You."] : []
+        return (failed + ["Here’s what I have."] + lines + imported + ["Did I get that right?"]).joined(separator: " ")
+    }
+
+    func confirmSummary() {
+        guard step == .summary else { return }
+        effects.save(facts)
+        effects.saveNotes(notes.filter(\.kept).map(\.fact))
+        step = .done
+    }
+
+    func correct(_ text: String) {
+        guard step == .summary, !thinking else { return }
+        let correction = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !correction.isEmpty, let complete = effects.complete else { return confirmSummary() }
+        let understood = summaryLines.prefix(3).joined(separator: " ")
+        thinking = true
+        Task {
+            defer { thinking = false }
+            let reply = try? await withTimeout(seconds: 20) {
+                try await complete(ProfileExtraction.prompt(answers: [("I understood: \(understood) Did I get that right?", correction)]))
+            }
+            if let fixed = reply.flatMap({ try? ProfileExtraction.decode($0) }) {
+                if let work = fixed.work { facts.work = Self.capitalized(work) }
+                if !fixed.apps.isEmpty { facts.apps = fixed.apps.map(Self.capitalized).joined(separator: ", ") }
+                if let goal = fixed.learningGoal { facts.goal = Self.capitalized(goal) }
+            }
+            confirmSummary()
         }
     }
 
@@ -216,20 +274,6 @@ final class InterviewModel: ObservableObject {
         step = .question(index + 1)
     }
 
-    func chooseStyle(_ style: String?) {
-        guard step == .style else { return }
-        facts.style = style ?? ""
-        step = .review
-        extract()
-    }
-
-    func confirm() {
-        guard step == .review else { return }
-        effects.save(facts)
-        effects.saveNotes(notes.filter(\.kept).map(\.fact))
-        step = .done
-    }
-
     func cancel() {
         step = .done
     }
@@ -242,10 +286,6 @@ final class InterviewModel: ObservableObject {
     }
 
     private func finishQuestions() {
-        guard answers.contains(where: { $0 != nil }) || !notes.isEmpty || !facts.spoken.isEmpty else {
-            step = .done
-            return
-        }
         for (kind, answer) in zip(kinds, answers) {
             guard let answer else { continue }
             switch kind {
@@ -255,7 +295,18 @@ final class InterviewModel: ObservableObject {
             case .intro, .followUp: break
             }
         }
-        step = .style
+        extract()
+        if canImport { step = .importOffer } else { summarize() }
+    }
+
+    private func summarize() {
+        let knowsSomething = !facts.work.isEmpty || !facts.apps.isEmpty || !facts.goal.isEmpty || !notes.isEmpty
+        if knowsSomething {
+            step = .summary
+        } else {
+            if !facts.spoken.isEmpty { effects.save(facts) }
+            step = .done
+        }
     }
 
     private func extract() {
@@ -270,7 +321,7 @@ final class InterviewModel: ObservableObject {
         Task {
             defer { extracting = false }
             if let text = try? await complete(ProfileExtraction.prompt(answers: core)),
-               let extracted = try? ProfileExtraction.decode(text), step == .review, facts == typed {
+               let extracted = try? ProfileExtraction.decode(text), step != .done, facts == typed {
                 facts.work = extracted.work.map(Self.capitalized) ?? typed.work
                 facts.apps = extracted.apps.isEmpty ? typed.apps : extracted.apps.map(Self.capitalized).joined(separator: ", ")
                 facts.goal = extracted.learningGoal.map(Self.capitalized) ?? typed.goal
@@ -305,6 +356,33 @@ extension AppController {
             try? PronunciationStore(directory: storageDirectory).set(Pronunciation(written: facts.name, spoken: facts.spoken))
         }
         await setMemoryEnabled(true)
+    }
+
+    func importMemory(from service: InterviewModel.MemoryService) async -> String? {
+        let request = MemoryExtraction.importRequest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let page = service == .chatGPT ? "https://chatgpt.com/?q=\(request)" : "https://claude.ai/new?q=\(request)"
+        guard let url = URL(string: page) else { return nil }
+        NSWorkspace.shared.open(url)
+        let goal = """
+        \(service.rawValue) is open in the browser in front, with a message about me in its box. \
+        If the message is not sent yet, send it. Wait until the reply has finished, then read the reply and give it back word for word as your answer, with nothing added. \
+        If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
+        """
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                voice.speak("Sign in to \(service.rawValue), and I’ll try again.")
+                try? await Task.sleep(for: .seconds(20))
+                guard !Task.isCancelled else { return nil }
+            }
+            var answer = ""
+            for await event in agentCoordinator.run(threadID: UUID(), goal: goal, task: true) {
+                if case .textDelta(let delta) = event { answer += delta }
+            }
+            let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            if reply.contains("SIGNED_OUT") { continue }
+            return reply.isEmpty ? nil : reply
+        }
+        return nil
     }
 
     func saveImportedFacts(_ facts: [LearnedFact]) async {
@@ -387,20 +465,17 @@ struct InterviewBeat: View {
     let cloudLine: String?
     let appChips: [String]
     @StateObject private var listener = InterviewListener()
-    @State private var editing = false
     @State private var typing = false
-    @State private var copied = false
     @FocusState private var focused: Bool
 
     var body: some View {
         Group {
             switch model.step {
-            case .consent: consent
-            case .importNotes: importNotes
             case .pronounce: pronounce
             case .question(let index): question(index)
-            case .style: style
-            case .review: review
+            case .importOffer: importOffer
+            case .importing(let service): importing(service)
+            case .summary: summary
             case .done: Color.clear
             }
         }
@@ -412,107 +487,8 @@ struct InterviewBeat: View {
         .onDisappear { listener.stop() }
     }
 
-    private var consent: some View {
-        OnboardingBeatLayout(
-            title: "Tell me about you.",
-            message: (["A few quick questions. I keep notes on this Mac, and you can delete them any time."] + [cloudLine].compactMap { $0 }).joined(separator: " ")
-        ) {
-            EmptyView()
-        } detail: {
-            if model.canImport {
-                Button { model.startImport() } label: {
-                    HStack(spacing: 8) {
-                        if Self.installedAssistants.isEmpty {
-                            Image(systemName: "tray.and.arrow.down")
-                        } else {
-                            HStack(spacing: -5) {
-                                ForEach(Self.installedAssistants, id: \.self) { BrandMark(id: $0, size: 18) }
-                            }
-                        }
-                        Text("Import memory from ChatGPT or Claude")
-                    }
-                }
-                .buttonStyle(ChipStyle())
-            }
-        } actions: {
-            OnboardingFooter {
-                EmptyView()
-            } primary: {
-                Button { model.begin() } label: { OnboardingPrimaryLabel(title: "Start") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-            } trailing: {
-                Button("Skip") { model.cancel() }
-            }
-        }
-    }
-
-    private var importNotes: some View {
-        OnboardingBeatLayout(title: "Import your memory", message: "I’ll copy a request. Paste it into ChatGPT or Claude, then paste the reply here.") {
-            EmptyView()
-        } detail: {
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    assistantButton("chatgpt", name: "ChatGPT", web: "https://chatgpt.com")
-                    assistantButton("claude", name: "Claude", web: "https://claude.ai/new")
-                    Spacer(minLength: 0)
-                    if copied {
-                        GrantedMark(title: "Request copied")
-                    }
-                }
-                TextEditor(text: $model.pasted)
-                    .font(PerryTheme.Scale.secondary)
-                    .scrollContentBackground(.hidden)
-                    .padding(6)
-                    .frame(height: 72)
-                    .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
-                    .overlay(alignment: .topLeading) {
-                        if model.pasted.isEmpty {
-                            Text("Paste the reply").font(PerryTheme.Scale.secondary).foregroundStyle(PerryTheme.Colors.textTertiary)
-                                .padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
-                        }
-                    }
-            }
-            .multilineTextAlignment(.leading)
-        } actions: {
-            OnboardingFooter {
-                EmptyView()
-            } primary: {
-                Button { model.readImport() } label: { OnboardingPrimaryLabel(title: model.extracting ? "Reading…" : "Continue") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(model.extracting)
-            } trailing: {
-                Button("Skip") { model.begin() }
-            }
-        }
-    }
-
     private static let installedAssistants = ["chatgpt", "claude"].filter { id in
         BrandCatalog.entries[id]?.bundleIDs.contains { AppIcons.installed(bundleID: $0) != nil } == true
-    }
-
-    private func assistantButton(_ id: String, name: String, web: String) -> some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(MemoryExtraction.importRequest, forType: .string)
-            copied = true
-            let app = BrandCatalog.entries[id]?.bundleIDs.lazy.compactMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }.first
-            if let app {
-                NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
-            } else if let url = URL(string: web) {
-                NSWorkspace.shared.open(url)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                if Self.installedAssistants.contains(id) { BrandMark(id: id, size: 16) }
-                Text("Open \(name)")
-            }
-        }
-        .buttonStyle(InkButtonStyle(.secondary))
-        .controlSize(.small)
     }
 
     private var pronounce: some View {
@@ -542,7 +518,18 @@ struct InterviewBeat: View {
             .padding(.horizontal, 10)
             .frame(width: typing ? 360 : nil, height: 44)
             .background(typing ? PerryTheme.Colors.surface : .clear, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
-            .task { await model.say("Hi \(model.spokenName). Did I say your name right?") }
+            .task {
+                await model.say("Hi \(model.spokenName). Did I say your name right?")
+                guard model.listensAfterSpeaking, !typing, !Task.isCancelled else { return }
+                listener.start(onPartial: { _ in }, onDone: { text in
+                    if InterviewModel.heardYes(text) == false {
+                        typing = true
+                    } else {
+                        model.draft = ""
+                        model.confirmPronunciation()
+                    }
+                })
+            }
         } actions: {
             OnboardingFooter {
                 EmptyView()
@@ -574,19 +561,24 @@ struct InterviewBeat: View {
                     spokenAnswer
                 }
                 chips(index)
+                if model.kind(at: index) == .intro {
+                    Text(cloudLine ?? "I keep notes on this Mac. You can delete them any time.")
+                        .font(PerryTheme.Scale.secondary)
+                        .foregroundStyle(PerryTheme.Colors.textTertiary)
+                }
             }
         } actions: {
             OnboardingFooter {
                 OnboardingProgress(current: index, count: model.questionCount)
                     .padding(.trailing, 10)
             } primary: {
-                Button {
-                    if listener.listening { listener.finish() } else { model.answer(model.draft) }
-                } label: { OnboardingPrimaryLabel(title: model.thinking ? "Thinking…" : listener.listening ? "Done" : "Continue") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(model.thinking || (!listener.listening && model.draft.trimmingCharacters(in: .whitespaces).isEmpty))
+                if !listener.listening, typing || model.thinking || !model.draft.isEmpty {
+                    Button { model.answer(model.draft) } label: { OnboardingPrimaryLabel(title: model.thinking ? "Thinking…" : "Continue") }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(model.thinking || model.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             } trailing: {
                 HStack(spacing: 14) {
                     if !typing {
@@ -640,25 +632,6 @@ struct InterviewBeat: View {
         }
         .frame(width: 360)
         .frame(minHeight: 44)
-    }
-
-    private var style: some View {
-        OnboardingBeatLayout(title: "How should I answer?", message: "You can change this any time.") {
-            EmptyView()
-        } detail: {
-            Color.clear.frame(height: 0)
-        } actions: {
-            OnboardingFooter {
-                EmptyView()
-            } primary: {
-                Button { model.chooseStyle(InterviewModel.styles[0]) } label: { OnboardingPrimaryLabel(title: "Short and direct") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-            } trailing: {
-                Button(InterviewModel.styles[1]) { model.chooseStyle(InterviewModel.styles[1]) }
-            }
-        }
     }
 
     private func answerField(_ index: Int) -> some View {
@@ -732,81 +705,140 @@ struct InterviewBeat: View {
         }
     }
 
-    private var review: some View {
-        OnboardingBeatLayout(title: "What I know about you", message: model.extracting ? "Sorting your answers…" : "I haven’t saved this yet.") {
+    private var importOffer: some View {
+        OnboardingBeatLayout(title: "Do you use ChatGPT or Claude?", message: "I can open it and read what it remembers about you.") {
             EmptyView()
         } detail: {
-            ScrollView {
-                VStack(spacing: 0) {
-                    fact("Name", $model.facts.name, play: model.facts.name.isEmpty ? nil : { model.sayName() })
-                    SettingsDivider()
-                    fact("Work", $model.facts.work)
-                    SettingsDivider()
-                    fact("Apps", $model.facts.apps)
-                    SettingsDivider()
-                    fact("Learning goal", $model.facts.goal)
-                    SettingsDivider()
-                    fact("Answers", $model.facts.style)
-                    ForEach($model.notes) { $note in
-                        SettingsDivider()
-                        Toggle(isOn: $note.kept) {
-                            Text(note.fact.text).font(PerryTheme.Scale.body).lineLimit(2)
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    ForEach(InterviewModel.MemoryService.allCases, id: \.self) { service in
+                        Button { model.chooseImport(service) } label: {
+                            HStack(spacing: 6) {
+                                let id = service == .chatGPT ? "chatgpt" : "claude"
+                                if Self.installedAssistants.contains(id) { BrandMark(id: id, size: 16) }
+                                Text(service.rawValue)
+                            }
                         }
-                        .toggleStyle(.checkbox)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
+                        .buttonStyle(ChipStyle())
                     }
                 }
-                .padding(.vertical, 2)
-            }
-            .frame(maxHeight: 220)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
-                    .strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1)
+                spokenAnswer
             }
         } actions: {
             OnboardingFooter {
-                Button(editing ? "Done" : "Edit") { editing.toggle() }
+                EmptyView()
             } primary: {
-                Button { model.confirm() } label: { OnboardingPrimaryLabel(title: "Save") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
+                EmptyView()
             } trailing: {
-                Button("Don’t save") { model.cancel() }
+                Button("Neither") { model.chooseImport(nil) }
+            }
+        }
+        .task {
+            model.draft = ""
+            await model.say("Do you use ChatGPT or Claude? I can open it and read what it remembers about you.")
+            guard model.listensAfterSpeaking, !Task.isCancelled else { return }
+            listener.start(onPartial: { model.draft = $0 }, onDone: { text in
+                model.draft = text
+                model.chooseImport(InterviewModel.MemoryService.heard(text))
+            })
+        }
+    }
+
+    private func importing(_ service: InterviewModel.MemoryService) -> some View {
+        OnboardingBeatLayout(title: "Reading what \(service.rawValue) remembers…", message: "If it asks you to sign in, sign in and I’ll carry on.") {
+            EmptyView()
+        } detail: {
+            ProgressView().controlSize(.small)
+        } actions: {
+            OnboardingFooter {
+                EmptyView()
+            } primary: {
+                EmptyView()
+            } trailing: {
+                Button("Skip") { model.cancelImport() }
             }
         }
     }
 
-    private func fact(_ label: String, _ value: Binding<String>, play: (() -> Void)? = nil) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(PerryTheme.Scale.secondary)
-                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                .frame(width: 96, alignment: .leading)
-            if editing {
-                TextField(label, text: value)
-                    .textFieldStyle(.plain)
-                    .font(PerryTheme.Scale.body)
-            } else {
-                Text(value.wrappedValue.isEmpty ? "Skipped" : value.wrappedValue)
-                    .font(PerryTheme.Scale.body)
-                    .foregroundStyle(value.wrappedValue.isEmpty ? PerryTheme.Colors.textTertiary : PerryTheme.Colors.text)
-                    .lineLimit(1)
+    private var summary: some View {
+        OnboardingBeatLayout(title: "Did I get that right?", message: model.thinking ? "Fixing it…" : nil) {
+            EmptyView()
+        } detail: {
+            VStack(spacing: 12) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(model.summaryLines, id: \.self) { line in
+                            Text(line)
+                                .font(PerryTheme.Scale.body)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                }
+                .frame(maxHeight: 160)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
+                .multilineTextAlignment(.leading)
+                if typing {
+                    TextField("What should I change?", text: $model.draft)
+                        .textFieldStyle(.plain)
+                        .font(PerryTheme.Scale.input)
+                        .focused($focused)
+                        .focusEffectDisabled()
+                        .onSubmit { model.correct(model.draft) }
+                        .padding(.horizontal, 16)
+                        .frame(width: 360, height: 44)
+                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
+                        .task { focused = true }
+                } else {
+                    spokenAnswer
+                }
             }
-            Spacer(minLength: 0)
-            if let play {
-                Button(action: play) { Image(systemName: "play.fill").imageScale(.small) }
-                    .buttonStyle(.pressable)
-                    .foregroundStyle(PerryTheme.Colors.icon)
-                    .accessibilityLabel("Hear your name")
+        } actions: {
+            OnboardingFooter {
+                EmptyView()
+            } primary: {
+                if !listener.listening {
+                    Button { model.confirmSummary() } label: { OnboardingPrimaryLabel(title: "That’s right") }
+                        .buttonStyle(InkButtonStyle())
+                        .controlSize(.large)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(model.thinking)
+                }
+            } trailing: {
+                if !typing {
+                    Button("Type") {
+                        listener.stop()
+                        typing = true
+                    }
+                }
             }
         }
-        .multilineTextAlignment(.leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .task {
+            typing = false
+            model.draft = ""
+            await model.say(model.spokenSummary)
+            hearSummaryAnswer()
+        }
+    }
+
+    private func hearSummaryAnswer() {
+        guard model.listensAfterSpeaking, !typing else { return }
+        listener.start(onPartial: { model.draft = $0 }, onDone: { text in
+            model.draft = text
+            switch InterviewModel.heardYes(text) {
+            case true?:
+                model.confirmSummary()
+            case false? where text.split(separator: " ").count <= 2:
+                model.draft = ""
+                Task {
+                    await model.say("What should I change?")
+                    hearSummaryAnswer()
+                }
+            default:
+                model.correct(text)
+            }
+        })
     }
 }

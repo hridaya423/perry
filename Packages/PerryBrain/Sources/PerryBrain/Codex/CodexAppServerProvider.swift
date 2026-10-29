@@ -26,7 +26,7 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
 
     private let process: CodexAppServerProcess
     private let toolHandler: ToolCallHandler?
-    private let models: BrainModelDefaults?
+    private let models: @Sendable () -> BrainModelDefaults?
     private let supportsDynamicTools: Bool
     private let lock = NSLock()
     private var monitorTask: Task<Void, Never>?
@@ -83,7 +83,7 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
     public init(
         process: CodexAppServerProcess,
         toolHandler: ToolCallHandler? = nil,
-        models: BrainModelDefaults? = nil,
+        models: @escaping @Sendable () -> BrainModelDefaults? = { nil },
         supportsDynamicTools: Bool = true
     ) {
         self.process = process
@@ -294,7 +294,7 @@ public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecke
             "approvalPolicy": .string("never"),
             "sandboxPolicy": .object(["type": .string("readOnly")]),
         ]
-        if let model = models?.model(for: request.tier) {
+        if let model = models()?.model(for: request.tier) {
             turnParams["model"] = .string(model)
         }
         if request.tier == .fast {

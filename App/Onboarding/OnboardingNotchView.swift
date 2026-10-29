@@ -6,7 +6,7 @@ struct OnboardingNotchView: View {
     @ObservedObject var director: OnboardingDirector
     @ObservedObject var model: HomeModel
 
-    private var beats: [OnboardingDirector.Beat] { director.beats }
+    private var beats: [OnboardingDirector.Beat] { OnboardingDirector.Beat.allCases }
 
     private var beatIndex: Int {
         director.beat.flatMap { beats.firstIndex(of: $0) } ?? 0

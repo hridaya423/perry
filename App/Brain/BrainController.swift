@@ -60,7 +60,7 @@ final class BrainController: ObservableObject {
     private lazy var codex: CodexAppServerProvider? = codexFactory()
     var toolScopes: (any MCPScopeHost)?
     var bundledLocal: () -> LocalEngineProvider? = { nil }
-    private lazy var claudeCode: ClaudeCodeProvider? = Self.makeClaudeCodeProvider(scopes: toolScopes)
+    private lazy var claudeCode: ClaudeCodeProvider? = Self.makeClaudeCodeProvider(scopes: toolScopes, defaults: defaults)
     private var acceptsSetup = true
     private var setupGeneration = UUID()
     private var loginCleanupTask: Task<Void, Never>?
@@ -106,7 +106,7 @@ final class BrainController: ObservableObject {
         openAuthenticationURL: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) }
     ) {
         self.openAuthenticationURL = openAuthenticationURL
-        self.codexFactory = codexFactory ?? { Self.makeCodexProvider() }
+        self.codexFactory = codexFactory ?? { Self.makeCodexProvider(defaults: defaults) }
         self.readCredential = readCredential
         self.saveCredential = saveCredential
         self.deleteCredential = deleteCredential
@@ -133,6 +133,44 @@ final class BrainController: ObservableObject {
     var hasSavedChoice: Bool { defaults.string(forKey: PerryPreferences.$modelChoice.key) != nil }
 
     var claudeCodeAvailable: Bool { claudeCode != nil }
+
+    struct ModelOption: Hashable {
+        let id: String?
+        let title: String
+    }
+
+    static let claudeCodeModels = [
+        ModelOption(id: nil, title: "Automatic"),
+        ModelOption(id: "claude-haiku-5-5", title: "Haiku 5.5"),
+        ModelOption(id: "claude-sonnet-5-5", title: "Sonnet 5.5"),
+        ModelOption(id: "claude-opus-5-5", title: "Opus 5.5"),
+    ]
+
+    static let chatGPTModels = [
+        ModelOption(id: nil, title: "Automatic"),
+        ModelOption(id: BrainModelCatalog.codex.fast, title: BrainModelCatalog.codex.fast),
+        ModelOption(id: BrainModelCatalog.codex.deep, title: BrainModelCatalog.codex.deep),
+    ]
+
+    var claudeCodeModel: String? {
+        get { defaults.string(forKey: PerryPreferences.$claudeCodeModel.key) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: PerryPreferences.$claudeCodeModel.key)
+        }
+    }
+
+    var chatGPTModel: String? {
+        get { defaults.string(forKey: PerryPreferences.$chatGPTModel.key) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: PerryPreferences.$chatGPTModel.key)
+        }
+    }
+
+    nonisolated static func models(chosen: String?, otherwise catalog: BrainModelDefaults) -> BrainModelDefaults {
+        chosen.map { BrainModelDefaults(fast: $0, deep: $0) } ?? catalog
+    }
 
     func refreshSetupStates(using catalog: RuntimeCatalog) async {
         let snapshot = await catalog.currentSetup()
@@ -618,25 +656,28 @@ final class BrainController: ObservableObject {
 
     static func makeClaudeCodeProvider(
         scopes: (any MCPScopeHost)?,
+        defaults: UserDefaults = .standard,
         locate: () throws -> URL = { try CLIRuntime.locateExecutable() }
     ) -> ClaudeCodeProvider? {
         guard let executable = try? locate(),
               RuntimeExecutableVerifier.isSignedByAnthropic(executable) else { return nil }
-        var models = BrainModelCatalog.claudeCode
-#if DEBUG
-        if let model = ProcessInfo.processInfo.environment["PERRY_CLAUDE_CODE_MODEL"] {
-            models = BrainModelDefaults(fast: model, deep: model)
-        }
-#endif
+        let key = PerryPreferences.$claudeCodeModel.key
         return ClaudeCodeProvider(
             executable: executable,
             helper: Bundle.main.url(forAuxiliaryExecutable: "perry-mcp"),
             scopes: scopes,
-            models: models
+            models: {
+#if DEBUG
+                if let model = ProcessInfo.processInfo.environment["PERRY_CLAUDE_CODE_MODEL"] {
+                    return BrainModelDefaults(fast: model, deep: model)
+                }
+#endif
+                return Self.models(chosen: defaults.string(forKey: key), otherwise: BrainModelCatalog.claudeCode)
+            }
         )
     }
 
-    private static func makeCodexProvider() -> CodexAppServerProvider? {
+    private static func makeCodexProvider(defaults: UserDefaults) -> CodexAppServerProvider? {
         guard let binary = Bundle.main.resourceURL?.appendingPathComponent("CodexRuntime/bin/codex"),
               FileManager.default.isExecutableFile(atPath: binary.path),
               let home = RuntimeCatalog.codexRuntimeHome else { return nil }
@@ -645,7 +686,9 @@ final class BrainController: ObservableObject {
         return CodexAppServerProvider(process: CodexAppServerProcess(configuration: CodexAppServerConfiguration(
             binaryURL: binary, codexHome: home, workingDirectory: workingDirectory,
             stderrLogURL: home.appendingPathComponent("app-server-stderr.log")
-        )), models: BrainModelCatalog.codex)
+        )), models: { [key = PerryPreferences.$chatGPTModel.key] in
+            Self.models(chosen: defaults.string(forKey: key), otherwise: BrainModelCatalog.codex)
+        })
     }
 
 #if DEBUG

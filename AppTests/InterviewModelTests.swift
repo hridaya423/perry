@@ -26,7 +26,6 @@ final class InterviewModelTests: XCTestCase {
                 ? #"{"work":"Product designer","apps":["Figma","Notion"],"learningGoal":null}"#
                 : prompt.contains("Reply with the question or NONE") ? "NONE" : prompt.contains("facts") ? #"{"facts": []}"# : "Spanish, nice."
         })
-        interview.begin()
         XCTAssertEqual(interview.step, .pronounce)
         interview.confirmPronunciation()
         XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
@@ -35,11 +34,9 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.step, .question(1))
         XCTAssertEqual(interview.questions, [ProfileExtraction.intro, "What do you want to learn first?"])
         interview.answer("Spanish")
-        XCTAssertEqual(interview.step, .style)
-        interview.chooseStyle("Short and direct")
-        XCTAssertEqual(interview.step, .review)
+        XCTAssertEqual(interview.step, .summary)
         try await settle(interview)
-        XCTAssertEqual(interview.facts, .init(name: "Ada", work: "Product designer", apps: "Figma, Notion", goal: "Spanish", style: "Short and direct"))
+        XCTAssertEqual(interview.facts, .init(name: "Ada", work: "Product designer", apps: "Figma, Notion", goal: "Spanish"))
     }
 
     func testACompleteIntroductionEarnsOneFollowUpInstead() async throws {
@@ -48,7 +45,6 @@ final class InterviewModelTests: XCTestCase {
                 ? #"{"work":"Startup founder","apps":["Linear"],"learningGoal":"Sales"}"#
                 : prompt.contains("Reply with the question or NONE") ? "Are you raising money right now?" : "ok"
         })
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("I run a tiny startup that sells software to dentists, live in Linear, and want to get better at sales")
         try await settle(interview)
@@ -60,52 +56,47 @@ final class InterviewModelTests: XCTestCase {
 
     func testAnIntroductionWithoutABrainEndsTheQuestions() {
         let interview = model()
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("I teach chemistry and want to learn Figma")
-        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.step, .done)
         XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
     }
 
     func testAnUnreadableReplyNeverFallsBackToFixedQuestions() async throws {
         let interview = model(complete: { _ in "Sure! Here is what I found." })
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("I teach chemistry and want to learn Figma")
         try await settle(interview)
-        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.step, .done)
         XCTAssertEqual(interview.questions, [ProfileExtraction.intro])
     }
 
     func testTwoShortAnswersEndTheQuestions() async throws {
         let interview = model(complete: Self.emptyProfile)
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("Hi, I'm Ada")
         try await settle(interview)
         XCTAssertEqual(interview.questions.count, 4)
         interview.answer("Student")
         interview.answer(nil)
-        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.step, .summary)
         XCTAssertEqual(interview.facts.work, "Student")
     }
 
     func testTheTimeBudgetEndsTheQuestions() async throws {
         var now = Date()
         let interview = InterviewModel(name: "Ada", effects: .init(complete: Self.emptyProfile, now: { now }))
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("I teach")
         try await settle(interview)
         now = now.addingTimeInterval(120)
         interview.answer("I teach chemistry at a big school")
-        XCTAssertEqual(interview.step, .style)
+        XCTAssertEqual(interview.step, .summary)
     }
 
     func testPronunciationIsKeptAndSpoken() {
         var spoken: [String] = []
         let interview = InterviewModel(name: "Hridya", effects: .init(sayName: { spoken.append($0) }))
-        interview.begin()
         interview.sayName()
         interview.draft = "Hrid-yah"
         interview.confirmPronunciation()
@@ -114,44 +105,82 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(interview.facts.spoken, "Hrid-yah")
     }
 
-    func testImportedNotesBecomeCheckableFacts() async throws {
+    func testPerryImportsMemoryItselfAndKeepsCheckedFacts() async throws {
         var kept: [LearnedFact] = []
+        var asked: [InterviewModel.MemoryService] = []
         let interview = InterviewModel(name: "Ada", effects: .init(
             complete: { _ in #"{"facts": [{"text": "Designs for a fintech app", "kind": "profile", "subject": "work"}, {"text": "Likes short answers", "kind": "preference", "subject": "style"}]}"# },
-            saveNotes: { kept = $0 }
+            saveNotes: { kept = $0 },
+            listensAfterSpeaking: false,
+            importMemory: { asked.append($0); return "- designs for a fintech app\n- likes short answers" }
         ))
-        interview.startImport()
-        XCTAssertEqual(interview.step, .importNotes)
-        interview.pasted = "- designs for a fintech app\n- likes short answers"
-        interview.readImport()
-        try await settle(interview)
-        XCTAssertEqual(interview.step, .pronounce)
-        XCTAssertEqual(interview.notes.map(\.fact.text), ["Designs for a fintech app", "Likes short answers"])
         interview.confirmPronunciation()
         interview.answer(nil)
-        XCTAssertEqual(interview.step, .style)
-        interview.chooseStyle(nil)
+        XCTAssertEqual(interview.step, .importOffer)
+        interview.chooseImport(.chatGPT)
+        for _ in 0..<300 where interview.step != .summary { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(asked, [.chatGPT])
+        XCTAssertEqual(interview.notes.map(\.fact.text), ["Designs for a fintech app", "Likes short answers"])
+        XCTAssertTrue(interview.spokenSummary.hasSuffix("Did I get that right?"))
         interview.notes[1].kept = false
-        interview.confirm()
+        interview.confirmSummary()
         XCTAssertEqual(kept.map(\.text), ["Designs for a fintech app"])
+    }
+
+    func testDecliningTheImportGoesStraightToTheSummary() {
+        let interview = InterviewModel(name: "Ada", effects: .init(complete: { _ in "" }, listensAfterSpeaking: false, importMemory: { _ in nil }))
+        interview.confirmPronunciation()
+        interview.answer(nil)
+        XCTAssertEqual(interview.step, .importOffer)
+        interview.chooseImport(InterviewModel.MemoryService.heard("neither, thanks"))
+        XCTAssertEqual(interview.step, .done)
+    }
+
+    func testASpokenCorrectionFixesOnlyWhatItNames() async throws {
+        var saved: InterviewModel.Facts?
+        let interview = model(complete: { prompt in
+            prompt.contains("I understood") ? #"{"work":"Chemistry teacher","apps":[],"learningGoal":null}"# : try await Self.emptyProfile(prompt)
+        }, saved: { saved = $0 })
+        interview.confirmPronunciation()
+        interview.answer("Hi")
+        try await settle(interview)
+        interview.answer("I study chemistry at university")
+        interview.answer("Figma")
+        interview.answer("Spanish")
+        try await settle(interview)
+        XCTAssertEqual(interview.step, .summary)
+        interview.correct("No, I teach chemistry now")
+        try await settle(interview)
+        XCTAssertEqual(interview.step, .done)
+        XCTAssertEqual(saved?.work, "Chemistry teacher")
+        XCTAssertEqual(saved?.apps, "Figma")
+        XCTAssertEqual(saved?.goal, "Spanish")
+    }
+
+    func testHearingYesNoAndAService() {
+        XCTAssertEqual(InterviewModel.heardYes("Yeah, that's right"), true)
+        XCTAssertEqual(InterviewModel.heardYes("Not quite"), false)
+        XCTAssertEqual(InterviewModel.heardYes("Yes, but I moved to Berlin"), false)
+        XCTAssertNil(InterviewModel.heardYes("Hmm"))
+        XCTAssertEqual(InterviewModel.MemoryService.heard("I use ChatGPT mostly"), .chatGPT)
+        XCTAssertEqual(InterviewModel.MemoryService.heard("Claude"), .claude)
+        XCTAssertNil(InterviewModel.MemoryService.heard("neither"))
     }
 
     func testCancellingSavesNothing() {
         var saves = 0
         let interview = model(complete: { _ in "" }, saved: { _ in saves += 1 })
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer("Founder")
         interview.cancel()
         XCTAssertEqual(interview.step, .done)
-        interview.confirm()
+        interview.confirmSummary()
         XCTAssertEqual(saves, 0)
     }
 
     func testSkippingEveryQuestionSavesNothing() {
         var saves = 0
         let interview = model(complete: { _ in "" }, saved: { _ in saves += 1 })
-        interview.begin()
         interview.confirmPronunciation()
         interview.answer(nil)
         XCTAssertEqual(interview.step, .done)
@@ -197,10 +226,14 @@ final class InterviewModelTests: XCTestCase {
         director.start(resume: false)
         while director.beat != .interview { director.skip() }
         defer { director.stop() }
-        let interview = model(complete: { prompt in
-            prompt.contains("Reply with JSON only") || prompt.contains("Reply with the question or NONE")
-                ? try await Self.emptyProfile(prompt) : "Teaching chemistry, so labs fill your week."
-        })
+        let interview = InterviewModel(name: "Ada", effects: .init(
+            complete: { prompt in
+                prompt.contains("Reply with JSON only") || prompt.contains("Reply with the question or NONE")
+                    ? try await Self.emptyProfile(prompt) : "Teaching chemistry, so labs fill your week."
+            },
+            listensAfterSpeaking: false,
+            importMemory: { _ in try? await Task.sleep(for: .seconds(30)); return nil }
+        ))
         let frame = NSRect(x: 0, y: 0, width: PerryTheme.Sizing.onboardingContentWidth, height: 380)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -230,10 +263,6 @@ final class InterviewModelTests: XCTestCase {
             try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
                 .write(to: destination.appendingPathComponent("interview-\(name).png"))
         }
-        try await shot("1-consent")
-        interview.startImport()
-        try await shot("1b-import")
-        interview.begin()
         try await shot("2-pronounce")
         interview.confirmPronunciation()
         try await shot("3-intro")
@@ -247,9 +276,12 @@ final class InterviewModelTests: XCTestCase {
         try await shot("5-apps-with-reaction")
         interview.answer(interview.draft)
         interview.answer("How options trading works")
-        try await shot("6-style")
-        interview.chooseStyle("Short and direct")
-        try await shot("7-review")
+        try await settle(interview)
+        try await shot("6-import-offer")
+        interview.chooseImport(.chatGPT)
+        try await shot("7-importing")
+        interview.cancelImport()
+        try await shot("8-summary")
     }
 
     func testSavedFactsStartWithACapital() {

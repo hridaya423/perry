@@ -177,7 +177,7 @@ final class RoutineRunner {
             activityLog: activityLog,
             confirmer: confirmer,
             typedVerifier: typedVerifier,
-            cancelWindow: 5,
+            userRequested: true,
             onEvent: { [weak self] event in
                 await self?.handleDoEvent(event, taskID: execution.taskID)
             },

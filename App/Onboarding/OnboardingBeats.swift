@@ -28,10 +28,6 @@ struct HomeOnboardingView: View {
             }
         case .access:
             AccessBeat(director: director)
-        case .shortcuts:
-            if let controller = model.deps.controller {
-                ShortcutsBeat(director: director, controller: controller, check: controller.shortcutCheck)
-            }
         case .interview:
             if let controller = model.deps.controller {
                 InterviewBeat(
@@ -44,16 +40,13 @@ struct HomeOnboardingView: View {
                             save: { facts in Task { await controller.saveInterview(facts) } },
                             saveNotes: { facts in Task { await controller.saveImportedFacts(facts) } },
                             sayName: { controller.voice.speak($0) },
-                            say: { await controller.voice.speakAndWait($0) }
+                            say: { await controller.voice.speakAndWait($0) },
+                            importMemory: { await controller.importMemory(from: $0) }
                         )
                     ),
                     cloudLine: InterviewModel.cloudLine(choice: controller.brain.modelChoice, hasSavedChoice: controller.brain.hasSavedChoice),
                     appChips: InterviewModel.appChips()
                 )
-            }
-        case .apps:
-            if let controller = model.deps.controller {
-                AppsBeat(director: director, controller: controller, tiles: AppsBeatPlan.tiles(for: controller))
             }
         case .firstGoal:
             FirstGoalBeat(
@@ -150,18 +143,20 @@ private struct AccessBeat: View {
     @ObservedObject var director: OnboardingDirector
 
     var body: some View {
-        OnboardingBeatLayout(title: "I need three permissions.") {
+        OnboardingBeatLayout(title: "I need a few permissions.") {
             PermissionSketch(lit: director.accessGranted)
                 .scaleEffect(0.38)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
+                row(.microphone, title: "Microphone and Speech", detail: "So I can hear you when you talk to me.", icon: "mic",
+                    granted: director.permissions?.microphone.isUsable == true && director.systemGrants?.speech != .notDetermined)
+                row(.notifications, title: "Notifications", detail: "So I can tell you when a task is done.", icon: "bell")
+                row(.calendar, title: "Calendar", detail: "So I can answer questions about your day.", icon: "calendar")
                 row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read and click in your apps.", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
-                row(.screenRecording, title: PrivacyPane.screenRecording.displayName(), detail: "So I can see what you see.", icon: "rectangle.dashed.badge.record",
+                row(.screenRecording, title: PrivacyPane.screenRecording.displayName(), detail: "So I can see what you see. I’ll restart once.", icon: "rectangle.dashed.badge.record",
                     granted: director.permissions?.screenRecording.isUsable == true)
-                row(.microphone, title: "Microphone", detail: "So I can hear you when you talk to me.", icon: "mic",
-                    granted: director.permissions?.microphone.isUsable == true)
             }
         } actions: {
             OnboardingFooter {
@@ -179,7 +174,27 @@ private struct AccessBeat: View {
                 EmptyView()
             }
         }
-        .task(id: director.beat) { await director.refreshPermissions() }
+        .task(id: director.beat) {
+            await director.refreshPermissions()
+            await director.introduceAccess()
+        }
+    }
+
+    private func row(_ grant: SystemGrant, title: String, detail: String, icon: String) -> some View {
+        OnboardingRow(title: title, detail: detail) {
+            LeadDisc(systemImage: icon, tint: PerryTheme.Colors.icon)
+        } trailing: {
+            switch director.systemGrants?[grant] {
+            case .granted:
+                GrantedMark()
+            case .denied:
+                Text("Off")
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+            default:
+                Button("Turn on") { Task { await director.grant(grant) } }
+                    .buttonStyle(RowButtonStyle(prominent: true))
+            }
+        }
     }
 
     private func row(_ pane: PrivacyPane, title: String, detail: String, icon: String, granted: Bool) -> some View {
@@ -355,56 +370,5 @@ struct BrainBeat: View {
         .buttonStyle(.pressable)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct ShortcutsBeat: View {
-    @ObservedObject var director: OnboardingDirector
-    let controller: AppController
-    @ObservedObject var check: ShortcutCheck
-    @AppStorage(PerryPreferences.$talkGesture.key) private var talkRaw = Gesture.defaultTalk.rawValue
-    @AppStorage(PerryPreferences.$openAtLogin.key) private var openAtLogin = true
-
-    private var talk: Gesture { Gesture(rawValue: talkRaw) ?? .defaultTalk }
-
-    var body: some View {
-        OnboardingBeatLayout(title: "\(talk.spoken) and say hi.", message: "Click the key to change it.") {
-            EmptyView()
-        } detail: {
-            VStack(spacing: 0) {
-                ShortcutRecorders(controller: controller, roles: [.talk], presetLimit: 0)
-                SettingsDivider()
-                HStack {
-                    Text("Open Perry when you log in")
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                    Spacer(minLength: 8)
-                    Toggle("Open at login", isOn: $openAtLogin)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(PerryTheme.Colors.accent)
-                        .controlSize(.small)
-                }
-                .settingsRowPadding()
-            }
-            .setupCard()
-            .multilineTextAlignment(.leading)
-            .buttonStyle(InkButtonStyle(.secondary))
-            .controlSize(.small)
-            .font(PerryTheme.Scale.body)
-        } actions: {
-            OnboardingFooter {
-                EmptyView()
-            } primary: {
-                Button { director.skip() } label: { OnboardingPrimaryLabel(title: "Continue") }
-                    .buttonStyle(InkButtonStyle())
-                    .controlSize(.large)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(check.result == .needsInputMonitoring)
-            } trailing: {
-                if check.result == .needsInputMonitoring {
-                    Button("Skip") { director.skip() }
-                }
-            }
-        }
     }
 }

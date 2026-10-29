@@ -26,7 +26,7 @@ struct UITools {
             UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UISetValueExecutor(workers: workers, lease: lease, observations: observations),
-            UIStepsExecutor(workers: workers, lease: lease, observations: observations),
+            UIStepsExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
             UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
             UIHotkeyExecutor(workers: workers, lease: lease, observations: observations),
@@ -211,10 +211,25 @@ private func raise(_ window: CuaWindowTarget, in pid: pid_t) {
 
 /// Moves the ghost cursor to the target and lets it arrive before the action,
 /// so the user sees where Perry is about to act.
-private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?) async {
-    guard let onActuation else { return }
-    onActuation(point, label)
-    try? await Task.sleep(for: .milliseconds(350))
+private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?, movesPointer: Bool = false) async {
+    onActuation?(point, label)
+    if movesPointer { await glidePointer(to: point) }
+    guard onActuation != nil || movesPointer else { return }
+    try? await Task.sleep(for: .milliseconds(movesPointer ? 120 : 350))
+}
+
+private func glidePointer(to target: CGPoint) async {
+    guard var expected = CGEvent(source: nil)?.location else { return }
+    let start = expected
+    let steps = 12
+    for step in 1...steps {
+        guard let now = CGEvent(source: nil)?.location, hypot(now.x - expected.x, now.y - expected.y) < 3 else { return }
+        let progress = Double(step) / Double(steps)
+        let eased = progress * progress * (3 - 2 * progress)
+        expected = CGPoint(x: start.x + (target.x - start.x) * eased, y: start.y + (target.y - start.y) * eased)
+        CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: expected, mouseButton: .left)?.post(tap: .cghidEventTap)
+        try? await Task.sleep(for: .milliseconds(20))
+    }
 }
 
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {
@@ -272,7 +287,7 @@ private struct UIActionExecutor: ToolExecutor {
         await bringForward(resolved.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             if let point = resolved.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label)
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
@@ -319,7 +334,7 @@ private struct UITypeExecutor: ToolExecutor {
         await bringForward(resolved.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
             if let point = resolved.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label)
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
@@ -373,6 +388,7 @@ private struct UIStepsExecutor: ToolExecutor {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
+    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
 
     var spec: ToolSpec {
         ToolSpec(
@@ -416,23 +432,35 @@ private struct UIStepsExecutor: ToolExecutor {
         guard let steps = call.arguments["steps"]?.arrayValue, !steps.isEmpty, steps.count <= 20 else {
             return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true)
         }
-        var operations: [ComputerAction.Operation] = []
+        var planned: [(operation: ComputerAction.Operation, target: ComputerTarget?)] = []
         for (index, step) in steps.enumerated() {
             switch await stepOperation(step, runID: context.runID) {
-            case .success(let operation): operations.append(operation)
+            case .success(let operation): planned.append(operation)
             case .failure(let error): return .text(call.id, "ui.steps: step \(index + 1): \(error.message)", isError: true)
             }
         }
         let bundleID = call.arguments["bundleID"]?.stringValue ?? observations.snapshot(runID: context.runID)?.window?.bundleID
-        let action = ComputerAction(stepID: call.id, operation: .steps(operations))
         await bringForward(bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            guard !context.unattended else {
+                let result = try await worker.execute(ComputerAction(stepID: call.id, operation: .steps(planned.map(\.operation))))
+                return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+            }
+            var last: StepResult?
+            for (index, step) in planned.enumerated() {
+                if let point = step.target?.coordinates {
+                    await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: step.target?.label, movesPointer: true)
+                }
+                let result = try await worker.execute(ComputerAction(stepID: "\(call.id)-\(index)", operation: step.operation))
+                guard result.success else { return .text(call.id, "ui.steps: step \(index + 1): \(result.message)", isError: true) }
+                last = result
+            }
+            guard let last else { return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true) }
+            return await verifiedResult(call, last, worker: worker, observations: observations, runID: context.runID)
         }
     }
 
-    private func stepOperation(_ step: JSONValue, runID: UUID) async -> Result<ComputerAction.Operation, ToolResolutionError> {
+    private func stepOperation(_ step: JSONValue, runID: UUID) async -> Result<(operation: ComputerAction.Operation, target: ComputerTarget?), ToolResolutionError> {
         let targeted = step["elementID"] != nil || (step["x"] != nil && step["y"] != nil)
         let resolved: ResolvedTarget? = targeted ? try? await resolveTarget(args: step, observations: observations, runID: runID, locate: nil).get() : nil
         if targeted, resolved == nil {
@@ -444,29 +472,29 @@ private struct UIStepsExecutor: ToolExecutor {
         case "click", "doubleclick", "rightclick":
             guard let pointer else { return .failure(ToolResolutionError(message: "needs elementID or x/y")) }
             switch step["action"]?.stringValue {
-            case "doubleclick": return .success(.doubleClick(pointer))
-            case "rightclick": return .success(.rightClick(pointer))
-            default: return .success(.click(pointer))
+            case "doubleclick": return .success((.doubleClick(pointer), resolved?.target))
+            case "rightclick": return .success((.rightClick(pointer), resolved?.target))
+            default: return .success((.click(pointer), resolved?.target))
             }
         case "type":
             guard let text = step["text"]?.stringValue else { return .failure(ToolResolutionError(message: "type needs text")) }
-            return .success(.typeText(text: text, target: plain ?? ComputerTarget(stableID: nil, label: nil, coordinates: nil)))
+            return .success((.typeText(text: text, target: plain ?? ComputerTarget(stableID: nil, label: nil, coordinates: nil)), resolved?.target))
         case "setValue":
             guard let value = step["value"]?.stringValue, let resolved, resolved.target.stableID != nil else {
                 return .failure(ToolResolutionError(message: "setValue needs elementID and value"))
             }
-            return .success(.setValue(value: value, target: ComputerTarget(stableID: resolved.target.stableID, label: resolved.target.label, coordinates: nil)))
+            return .success((.setValue(value: value, target: ComputerTarget(stableID: resolved.target.stableID, label: resolved.target.label, coordinates: nil)), resolved.target))
         case "key":
             guard let key = step["key"]?.stringValue else { return .failure(ToolResolutionError(message: "key needs key")) }
-            return .success(.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain))
+            return .success((.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain), resolved?.target))
         case "hotkey":
             guard let keys = step["keys"]?.arrayValue?.compactMap(\.stringValue), !keys.isEmpty else { return .failure(ToolResolutionError(message: "hotkey needs keys")) }
-            return .success(.hotkey(keys: keys.map { $0.lowercased() }, target: plain))
+            return .success((.hotkey(keys: keys.map { $0.lowercased() }, target: plain), resolved?.target))
         case "scroll":
             guard let direction = step["direction"]?.stringValue.flatMap(ComputerAction.Direction.init(rawValue:)) else {
                 return .failure(ToolResolutionError(message: "scroll needs a direction"))
             }
-            return .success(.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain))
+            return .success((.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain), resolved?.target))
         default:
             return .failure(ToolResolutionError(message: "unknown action"))
         }
@@ -514,7 +542,7 @@ private struct UIScrollExecutor: ToolExecutor {
         await bringForward(target?.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             if let point = target?.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label)
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label, movesPointer: !context.unattended)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
@@ -561,7 +589,7 @@ private struct UIKeyExecutor: ToolExecutor {
         await bringForward(target?.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             if let point = target?.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label)
+                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label, movesPointer: !context.unattended)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)

@@ -1,4 +1,25 @@
-# Current: first-use UX round 2 from the owner's laptop (2026-10-29)
+# Current: first use, round 3 (2026-10-29)
+
+Plan: `docs/plans/2026-10-29-first-use-round-3.md`. The owner tests the memory import personally.
+
+Done (code and unit tests; mini build green before the last copy fix):
+- A1 measured the Claude Code floor (`docs/evidence/lab/claude-floor-2026-10-29.md`). Boot is under 1 s, so A2 (warm process) is skipped.
+- A3 quick turns use Haiku 5.5. Settings › Brain has a Model menu for ChatGPT and Claude Code (Automatic or one model).
+- B4 learned routines run with `DoSupervisor(userRequested: true)`: no rehearsal card, no 5 s countdown; only connected-service writes and askUser steps confirm. Scheduled routines and background goals already ran green/yellow tools unattended.
+- C5 the access beat has five rows: Microphone and Speech, Notifications, Calendar, Accessibility, Screen Recording (last; Perry says it will restart). Background tasks no longer ask for notifications.
+- D6 shortcuts and apps beats deleted. D7 interview: no consent, style or review screens; voice yes/no on the name; spoken summary with "Did I get that right?" and spoken corrections. D8 Perry opens ChatGPT or Claude with the request prefilled and reads the reply through a Talk agent turn (owner to test). D9 first goal is voice-led, sends the user's words, no canned prompt, and teaches the talk shortcut aloud.
+- E10 typed Home answers are spoken. E11 the real pointer glides to the target before a foreground action and stops if the user moves the mouse. E12 the muted banner says the sound is off.
+
+Evidence (mini, 2026-10-29):
+- Tests: app 929 (7 skipped), PerryBrain 441, PerryRuntimes green. `testHomeStopWaitsForGuideRetirementAndPreservesInput` failed once and passed 3/3 alone (guide path, untouched).
+- Renders reviewed: access beat (five rows, unclipped), intro, import offer, importing, summary, first goal (footer fixed).
+- Live drill `/tmp/live6.sh`: process list shows `--model claude-haiku-5-5 --effort low`; "Type 46 times 3 into the calculator and press equals" gave 138 with the real pointer stepping key to key (macOS "Equals" tooltip under the pointer).
+- Haiku answered "Work out 23 times 9 on the calculator" without acting. The Talk prompt now says to work in a named app; the same wording then gave 207 in Calculator.
+- `ui.steps` runs one step at a time in the foreground so the pointer can follow; unattended runs keep one driver batch.
+
+Not verified live: memory import (owner tests it), the permission chain with real TCC prompts, routine replay without a card (unit test only).
+
+# Previous: first-use UX round 2 from the owner's laptop (2026-10-29)
 
 Owner report after the fresh install: keystroke prompt at launch, clipped permission card, onboarding not voice native and still three fixed questions, marks that never go away, cursor arriving after the mark, a dropdown and Finder navigation that failed, slow replies, no Screen Recording request, no auto mic.
 

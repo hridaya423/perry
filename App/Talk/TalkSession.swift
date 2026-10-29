@@ -385,7 +385,7 @@ final class TalkSession: ObservableObject {
             sessionController.updateTalk { $0.threadID = run.threadID }
             try await stream(events: run.events, observation: observation)
             if answerText.count > Self.bubbleCapacity, !VoiceController.speechIsAudible() {
-                output?.guideReportFailure("Perry’s full answer is in your conversation.", recovery: .thread(run.threadID))
+                output?.guideReportFailure("Your sound is off, so the full answer is in our conversation.", recovery: .thread(run.threadID))
             }
             if Self.asksForReply(answerText) {
                 while services.output.isSpeaking, !Task.isCancelled { try await Task.sleep(for: .milliseconds(100)) }

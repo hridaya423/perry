@@ -4,7 +4,7 @@ import PerryCapture
 @MainActor
 final class OnboardingDirector: ObservableObject {
     enum Beat: String, CaseIterable, Sendable {
-        case hello, brain, access, shortcuts, interview, apps, firstGoal
+        case hello, brain, access, interview, firstGoal
     }
 
     enum Direction: Sendable {
@@ -13,12 +13,14 @@ final class OnboardingDirector: ObservableObject {
 
     struct Effects {
         var permissionProbe: () async -> PerryPermissionSnapshot = { await PerryPermissionSnapshot.probe() }
+        var systemProbe: () async -> SystemGrants = { await SystemGrants.probe() }
         var grant: (PrivacyPane) async -> Void = { _ in }
+        var requestSystem: (SystemGrant) async -> Void = { await SystemGrants.request($0) }
+        var say: (String) async -> Void = { _ in }
         var saveName: (String) -> Void = { _ in }
         var mark: (StaticString) -> Void = { _ in }
         var dismiss: () -> Void = {}
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
-        var hasApps: () -> Bool = { true }
     }
 
     static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
@@ -26,6 +28,7 @@ final class OnboardingDirector: ObservableObject {
     @Published private(set) var beat: Beat?
     @Published private(set) var direction = Direction.forward
     @Published private(set) var permissions: PerryPermissionSnapshot?
+    @Published private(set) var systemGrants: SystemGrants?
     @Published var choosingBrain = false
 
     private let effects: Effects
@@ -44,8 +47,9 @@ final class OnboardingDirector: ObservableObject {
     }
 
     var accessGranted: Bool {
-        guard let permissions else { return false }
+        guard let permissions, let systemGrants else { return false }
         return permissions.accessibility && permissions.screenRecording.isUsable && permissions.microphone.isUsable
+            && systemGrants.allAnswered
     }
 
     func start(resume: Bool = true) {
@@ -53,7 +57,7 @@ final class OnboardingDirector: ObservableObject {
         defaults?.removeObject(forKey: PerryPreferences.$onboardingDismissed.key)
         firstAnswerMarked = false
         effects.mark("onboarding.start")
-        enter(saved == .apps && !effects.hasApps() ? .firstGoal : saved ?? .hello, direction: .forward)
+        enter(saved ?? .hello, direction: .forward)
     }
 
     func skip() {
@@ -79,12 +83,8 @@ final class OnboardingDirector: ObservableObject {
         enter(previous, direction: .backward)
     }
 
-    var beats: [Beat] {
-        Beat.allCases.filter { $0 != .apps || effects.hasApps() }
-    }
-
     private func neighbor(of beat: Beat, step: Int) -> Beat? {
-        let beats = beats
+        let beats = Beat.allCases
         guard let index = beats.firstIndex(of: beat) else { return nil }
         return beats.indices.contains(index + step) ? beats[index + step] : nil
     }
@@ -108,8 +108,22 @@ final class OnboardingDirector: ObservableObject {
 
     func grant(_ pane: PrivacyPane) async {
         guard beat == .access else { return }
+        if pane == .screenRecording {
+            await effects.say("Once you allow this, I’ll restart and we’ll carry on.")
+        }
         await effects.grant(pane)
         await refreshPermissions()
+    }
+
+    func grant(_ grant: SystemGrant) async {
+        guard beat == .access else { return }
+        await effects.requestSystem(grant)
+        await refreshPermissions()
+    }
+
+    func introduceAccess() async {
+        guard beat == .access, !accessGranted else { return }
+        await effects.say("I need a few permissions. Each one says what it’s for.")
     }
 
     func refreshPermissions() async {
@@ -118,8 +132,10 @@ final class OnboardingDirector: ObservableObject {
         defer { isRefreshingPermissions = false }
         let isFirstProbe = permissions == nil
         let snapshot = await effects.permissionProbe()
+        let grants = await effects.systemProbe()
         guard beat == .access else { return }
         permissions = snapshot
+        systemGrants = grants
         if isFirstProbe, direction == .forward, accessGranted { skip() }
     }
 
@@ -140,6 +156,7 @@ final class OnboardingDirector: ObservableObject {
         choosingBrain = false
         beat = next
         permissions = nil
+        systemGrants = nil
         defaults?.set(next.rawValue, forKey: PerryPreferences.$onboardingBeat.key)
         effects.mark(Self.mark(for: next))
     }
@@ -149,9 +166,7 @@ final class OnboardingDirector: ObservableObject {
         case .hello: "onboarding.beat.hello"
         case .brain: "onboarding.beat.brain"
         case .access: "onboarding.beat.access"
-        case .shortcuts: "onboarding.beat.shortcuts"
         case .interview: "onboarding.beat.interview"
-        case .apps: "onboarding.beat.apps"
         case .firstGoal: "onboarding.beat.firstGoal"
         }
     }

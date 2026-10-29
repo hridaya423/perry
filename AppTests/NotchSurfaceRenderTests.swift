@@ -231,6 +231,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         var snapshot = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }
+        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         model.sidebarSelection = nil
         model.onboarding = director
@@ -389,6 +390,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         defer { controller.notchPresence.stop() }
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied) }
+        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         model.sidebarSelection = nil
         model.onboarding = director

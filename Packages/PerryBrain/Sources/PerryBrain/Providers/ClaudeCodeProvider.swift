@@ -8,9 +8,9 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
     private let executable: URL
     private let helper: URL?
     private let scopes: (any MCPScopeHost)?
-    private let models: BrainModelDefaults
+    private let models: @Sendable () -> BrainModelDefaults
 
-    public init(executable: URL, helper: URL?, scopes: (any MCPScopeHost)?, models: BrainModelDefaults = BrainModelCatalog.claudeCode) {
+    public init(executable: URL, helper: URL?, scopes: (any MCPScopeHost)?, models: @escaping @Sendable () -> BrainModelDefaults = { BrainModelCatalog.claudeCode }) {
         self.executable = executable
         self.helper = helper
         self.scopes = scopes
@@ -52,7 +52,7 @@ public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Se
         defer { try? FileManager.default.removeItem(at: workspace) }
 
         let stop = AgentTurnStop()
-        var arguments = Self.baseArguments(system: request.system, model: models.model(for: request.tier), effort: Self.effort(for: request.tier))
+        var arguments = Self.baseArguments(system: request.system, model: models().model(for: request.tier), effort: Self.effort(for: request.tier))
         var scope: MCPScope?
         defer { scope?.close() }
         if let executeTool, !request.tools.isEmpty {

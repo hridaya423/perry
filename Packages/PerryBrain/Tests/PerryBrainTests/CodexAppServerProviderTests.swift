@@ -399,7 +399,7 @@ final class CodexAppServerProviderTests: XCTestCase {
         let process = try makeProcess(scenario: "b", log: log)
         let provider = CodexAppServerProvider(
             process: process,
-            models: BrainModelDefaults(fast: "gpt-5.6-terra", deep: "gpt-6-luna")
+            models: { BrainModelDefaults(fast: "gpt-5.6-terra", deep: "gpt-6-luna") }
         )
         let fast = { () -> ModelRequest in
             var request = sampleRequest()

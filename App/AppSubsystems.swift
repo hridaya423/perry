@@ -586,17 +586,22 @@ final class AppSubsystems {
             }
             var text = ""
             var finish: AgentFinish = .interrupted
+            var chunker = SentenceChunker()
             for await event in self.agentCoordinator.run(threadID: threadID, goal: prompt, runID: input.request.id, target: target, waitingInputID: input.request.id) {
                 switch event {
                 case .textDelta(let delta):
                     text += delta
                     onPartial(text)
+                    chunker.feed(delta).forEach(app.voice.enqueueSpeech)
                 case .draw(let command): app.overlayState.apply(command)
                 case .finished(let outcome): finish = outcome
                 default: break
                 }
             }
-            if finish == .completed { app.onboarding.noteTalkTurnCompleted() }
+            if finish == .completed {
+                if let rest = chunker.finish() { app.voice.enqueueSpeech(rest) }
+                app.onboarding.noteTalkTurnCompleted()
+            }
             return finish
         }
         controller.onStop = { [weak app = app] id in app?.agentCoordinator.stop(threadID: id) }

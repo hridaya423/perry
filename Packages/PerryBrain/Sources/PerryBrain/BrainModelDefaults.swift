@@ -20,7 +20,7 @@ public struct BrainModelDefaults: Sendable, Equatable {
 public enum BrainModelCatalog {
     public static var openAI = BrainModelDefaults(fast: "gpt-5-mini", deep: "gpt-5")
     public static var anthropic = BrainModelDefaults(fast: "claude-haiku-5-5", deep: "claude-sonnet-5-5")
-    public static var claudeCode = BrainModelDefaults(fast: "claude-sonnet-5-5", deep: "claude-sonnet-5-5")
+    public static var claudeCode = BrainModelDefaults(fast: "claude-haiku-5-5", deep: "claude-sonnet-5-5")
     public static var gemini = BrainModelDefaults(fast: "gemini-2.5-flash", deep: "gemini-2.5-pro")
     public static var openRouter = BrainModelDefaults(fast: "openai/gpt-5-mini", deep: "openai/gpt-5")
     /// Codex account models measured in docs/evidence/phase-1/talk-brain-decision.md:
