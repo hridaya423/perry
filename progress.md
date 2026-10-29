@@ -1,4 +1,24 @@
-# Current: first use, round 3 (2026-10-29)
+# Current: first use, round 4 (2026-10-29)
+
+Owner feedback after the laptop install: five permissions felt like too many; the Screen Recording helper covered the screen; no voice ("Did I say Hridya right" was silent); ChatGPT memory lives in Settings › Personalization, not behind a prompt; dropdowns still failed; Opus processes showed up.
+
+Fixes:
+- Onboarding asks only for the System Settings permissions (Accessibility, Screen Recording). Popup permissions (mic and speech, notifications, calendar) are asked when first needed. `SystemGrants.swift` deleted.
+- The permission helper docks to the Settings window found through Accessibility when CGWindowList hides it (no Screen Recording yet). With no window, it shows a 420×200 card at the bottom right instead of a full-width strip.
+- Speech falls back to the system voice for the language when no natural voice is installed. This reverses the earlier "silent rather than compact" rule (the laptop has only compact Samantha, so Perry was silent).
+- Memory import opens ChatGPT `#settings/Personalization` or Claude `settings/capabilities` in the default browser and reads the memory summary itself, waiting for it to generate (up to 3 attempts). The owner tests this.
+- Foreground clicks and named keys use real input once the pointer has glided to the target (CGEvent at the HID tap), then settle 400 ms. cua handles the rest, and every unattended run. Real input needs the actuation hook, which only the app sets, so tests never touch the screen.
+- Talk prompt: each new request stands on its own. The Opus processes were T3 Code's; Perry's last T3 thread had been carried into a new request. Perry uses Haiku 5.5 for quick turns and Sonnet 5.5 for deep ones; Opus is only a manual choice.
+
+Evidence (mini):
+- Tests: app 929 (7 skipped), PerryBrain 441 with the Talk golden regenerated, PerryRuntimes green.
+- Live, Safari `<select>` page whose title reports the change: "choose Cherry in the Fruit dropdown" did two real clicks, no fallback, title "picked Cherry". An earlier run showed the menu still fading when the post-click check ran, which caused a redundant setValue; the 400 ms settle fixed it.
+- Live, Calculator: "Work out 58 times 7" gave 406 with the pointer on Equals.
+- Render: access beat shows two rows, "I need two permissions."
+
+Not verified live: memory import (owner), the Settings helper card placement on a real TCC flow, speech on the laptop's voices.
+
+# Previous: first use, round 3 (2026-10-29)
 
 Plan: `docs/plans/2026-10-29-first-use-round-3.md`. The owner tests the memory import personally.
 

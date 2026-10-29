@@ -256,6 +256,7 @@ final class BackgroundTaskController: ObservableObject {
         let setupTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.setupTasks[id] = nil }
+            _ = await self.notifier.requestAuthorization()
             do {
                 // Open-ended goals run as unattended agent turns — the same
                 // pipeline as a foreground Do. No worker or workspace is

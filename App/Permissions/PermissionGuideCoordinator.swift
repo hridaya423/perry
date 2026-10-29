@@ -99,7 +99,7 @@ final class PermissionGuideCoordinator: ObservableObject {
         open(pane)
         let window = await tracker.waitForStableFrame()
         phase = .instruction
-        surface.show(window.map(dock) ?? dock(SettingsWindowSnapshot(id: 0, frame: visibleFrame(.zero))))
+        surface.show(window.map(dock) ?? Self.cardFrame(in: visibleFrame(.zero)))
         tracker.onChange = { [weak self] snapshot in
             guard let self else { return }
             surface.move(dock(snapshot))
@@ -177,6 +177,11 @@ final class PermissionGuideCoordinator: ObservableObject {
 
     private func dock(_ snapshot: SettingsWindowSnapshot) -> NSRect {
         SettingsWindowTracker.dockFrame(settings: snapshot.frame, visible: visibleFrame(snapshot.frame), cardHeight: PermissionHelperPanel.cardSize.height)
+    }
+
+    static func cardFrame(in visible: NSRect) -> NSRect {
+        let size = PermissionHelperPanel.cardSize
+        return NSRect(x: visible.maxX - size.width - 16, y: visible.minY + 16, width: size.width, height: size.height)
     }
 
     static func visibleFrame(around frame: NSRect) -> NSRect {

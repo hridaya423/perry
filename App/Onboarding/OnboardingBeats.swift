@@ -143,16 +143,12 @@ private struct AccessBeat: View {
     @ObservedObject var director: OnboardingDirector
 
     var body: some View {
-        OnboardingBeatLayout(title: "I need a few permissions.") {
+        OnboardingBeatLayout(title: "I need two permissions.") {
             PermissionSketch(lit: director.accessGranted)
                 .scaleEffect(0.38)
                 .modifier(InkDrawOn())
         } detail: {
             VStack(spacing: 8) {
-                row(.microphone, title: "Microphone and Speech", detail: "So I can hear you when you talk to me.", icon: "mic",
-                    granted: director.permissions?.microphone.isUsable == true && director.systemGrants?.speech != .notDetermined)
-                row(.notifications, title: "Notifications", detail: "So I can tell you when a task is done.", icon: "bell")
-                row(.calendar, title: "Calendar", detail: "So I can answer questions about your day.", icon: "calendar")
                 row(.accessibility, title: PrivacyPane.accessibility.displayName(), detail: "So I can read and click in your apps.", icon: "accessibility",
                     granted: director.permissions?.accessibility == true)
                 row(.screenRecording, title: PrivacyPane.screenRecording.displayName(), detail: "So I can see what you see. I’ll restart once.", icon: "rectangle.dashed.badge.record",
@@ -177,23 +173,6 @@ private struct AccessBeat: View {
         .task(id: director.beat) {
             await director.refreshPermissions()
             await director.introduceAccess()
-        }
-    }
-
-    private func row(_ grant: SystemGrant, title: String, detail: String, icon: String) -> some View {
-        OnboardingRow(title: title, detail: detail) {
-            LeadDisc(systemImage: icon, tint: PerryTheme.Colors.icon)
-        } trailing: {
-            switch director.systemGrants?[grant] {
-            case .granted:
-                GrantedMark()
-            case .denied:
-                Text("Off")
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-            default:
-                Button("Turn on") { Task { await director.grant(grant) } }
-                    .buttonStyle(RowButtonStyle(prominent: true))
-            }
         }
     }
 

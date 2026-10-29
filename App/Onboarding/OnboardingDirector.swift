@@ -13,9 +13,7 @@ final class OnboardingDirector: ObservableObject {
 
     struct Effects {
         var permissionProbe: () async -> PerryPermissionSnapshot = { await PerryPermissionSnapshot.probe() }
-        var systemProbe: () async -> SystemGrants = { await SystemGrants.probe() }
         var grant: (PrivacyPane) async -> Void = { _ in }
-        var requestSystem: (SystemGrant) async -> Void = { await SystemGrants.request($0) }
         var say: (String) async -> Void = { _ in }
         var saveName: (String) -> Void = { _ in }
         var mark: (StaticString) -> Void = { _ in }
@@ -28,7 +26,6 @@ final class OnboardingDirector: ObservableObject {
     @Published private(set) var beat: Beat?
     @Published private(set) var direction = Direction.forward
     @Published private(set) var permissions: PerryPermissionSnapshot?
-    @Published private(set) var systemGrants: SystemGrants?
     @Published var choosingBrain = false
 
     private let effects: Effects
@@ -47,9 +44,8 @@ final class OnboardingDirector: ObservableObject {
     }
 
     var accessGranted: Bool {
-        guard let permissions, let systemGrants else { return false }
-        return permissions.accessibility && permissions.screenRecording.isUsable && permissions.microphone.isUsable
-            && systemGrants.allAnswered
+        guard let permissions else { return false }
+        return permissions.accessibility && permissions.screenRecording.isUsable
     }
 
     func start(resume: Bool = true) {
@@ -115,15 +111,9 @@ final class OnboardingDirector: ObservableObject {
         await refreshPermissions()
     }
 
-    func grant(_ grant: SystemGrant) async {
-        guard beat == .access else { return }
-        await effects.requestSystem(grant)
-        await refreshPermissions()
-    }
-
     func introduceAccess() async {
         guard beat == .access, !accessGranted else { return }
-        await effects.say("I need a few permissions. Each one says what it’s for.")
+        await effects.say("I need two permissions in System Settings. I’ll show you where.")
     }
 
     func refreshPermissions() async {
@@ -132,10 +122,8 @@ final class OnboardingDirector: ObservableObject {
         defer { isRefreshingPermissions = false }
         let isFirstProbe = permissions == nil
         let snapshot = await effects.permissionProbe()
-        let grants = await effects.systemProbe()
         guard beat == .access else { return }
         permissions = snapshot
-        systemGrants = grants
         if isFirstProbe, direction == .forward, accessGranted { skip() }
     }
 
@@ -156,7 +144,6 @@ final class OnboardingDirector: ObservableObject {
         choosingBrain = false
         beat = next
         permissions = nil
-        systemGrants = nil
         defaults?.set(next.rawValue, forKey: PerryPreferences.$onboardingBeat.key)
         effects.mark(Self.mark(for: next))
     }

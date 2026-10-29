@@ -359,23 +359,34 @@ extension AppController {
     }
 
     func importMemory(from service: InterviewModel.MemoryService) async -> String? {
-        let request = MemoryExtraction.importRequest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let page = service == .chatGPT ? "https://chatgpt.com/?q=\(request)" : "https://claude.ai/new?q=\(request)"
-        guard let url = URL(string: page) else { return nil }
-        NSWorkspace.shared.open(url)
-        let goal = """
-        \(service.rawValue) is open in the browser in front, with a message about me in its box. \
-        If the message is not sent yet, send it. Wait until the reply has finished, then read the reply and give it back word for word as your answer, with nothing added. \
-        If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
-        """
+        let page = URL(string: service == .chatGPT ? "https://chatgpt.com/#settings/Personalization" : "https://claude.ai/settings/capabilities")!
+        let browser = NSWorkspace.shared.urlForApplication(toOpen: page)
+        let bundleID = browser.flatMap { Bundle(url: $0)?.bundleIdentifier }
+        let browserName = browser?.deletingPathExtension().lastPathComponent ?? "the browser"
+        let goal = switch service {
+        case .chatGPT: """
+            ChatGPT’s settings are open in \(browserName), on Personalization. Open Memory, using Manage memories or the memory summary. \
+            If ChatGPT is still writing the memory summary, wait until it is done. Then read every memory, or the whole summary, \
+            and give it back word for word as your answer, with nothing added. Do not change or delete anything. \
+            If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
+            """
+        case .claude: """
+            Claude’s settings are open in \(browserName), on Capabilities. Find Memory and open what Claude remembers about me. \
+            Wait until it has loaded, then read all of it and give it back word for word as your answer, with nothing added. \
+            Do not change or delete anything. If the page asks me to sign in or log in, answer exactly SIGNED_OUT.
+            """
+        }
         for attempt in 0..<3 {
             if attempt > 0 {
                 voice.speak("Sign in to \(service.rawValue), and I’ll try again.")
                 try? await Task.sleep(for: .seconds(20))
                 guard !Task.isCancelled else { return nil }
             }
+            NSWorkspace.shared.open(page)
+            try? await Task.sleep(for: .seconds(3))
+            let target = bundleID.map { CuaTargetHint(bundleID: $0) }
             var answer = ""
-            for await event in agentCoordinator.run(threadID: UUID(), goal: goal, task: true) {
+            for await event in agentCoordinator.run(threadID: UUID(), goal: goal, target: target, task: true) {
                 if case .textDelta(let delta) = event { answer += delta }
             }
             let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)

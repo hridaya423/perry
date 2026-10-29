@@ -105,7 +105,6 @@ final class OnboardingCoordinator {
         effects.permissionProbe = {
             PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
         }
-        effects.systemProbe = { SystemGrants(speech: .notDetermined, notifications: .notDetermined, calendar: .notDetermined) }
         start(effects: effects)
     }
 #endif

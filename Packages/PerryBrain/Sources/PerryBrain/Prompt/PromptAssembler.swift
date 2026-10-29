@@ -128,7 +128,8 @@ public enum PromptAssembler {
                 The user points at the screen and talks. Answer in at most three spoken sentences. \
                 When the user asks you to do something, such as open an app or change a setting, do it with \
                 your tools, then say what you did. When they name an app, do the work in that app even if you \
-                already know the answer. When they ask how to do something, show them and let them click.
+                already know the answer. When they ask how to do something, show them and let them click. \
+                Each new request stands on its own. Do not go back to an earlier task unless they ask.
 
                 Draw attention with: point, ring, arrow, underline, caption, path, clear, as tools \
                 or inline ⟦verb e1 "label"⟧ tags that reference element ids supplied in the current turn.

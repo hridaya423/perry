@@ -13,9 +13,9 @@ struct UITools {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
-    /// Ghost cursor hook: called with the AX-space point each ui.* tool acts
-    /// on, so the overlay can show where the agent is working without ever
-    /// moving the real pointer.
+    /// Actuation hook: called with the AX-space point each ui.* tool acts on.
+    /// When set, foreground runs also glide the real pointer there and click
+    /// and press keys with real input.
     var onActuation: (@Sendable (CGPoint, String?) -> Void)?
     var locate: LocateTarget?
 
@@ -211,25 +211,66 @@ private func raise(_ window: CuaWindowTarget, in pid: pid_t) {
 
 /// Moves the ghost cursor to the target and lets it arrive before the action,
 /// so the user sees where Perry is about to act.
-private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?, movesPointer: Bool = false) async {
+@discardableResult
+private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?, movesPointer: Bool = false) async -> Bool {
     onActuation?(point, label)
-    if movesPointer { await glidePointer(to: point) }
-    guard onActuation != nil || movesPointer else { return }
+    let arrived = movesPointer && onActuation != nil ? await glidePointer(to: point) : false
+    guard onActuation != nil || movesPointer else { return false }
     try? await Task.sleep(for: .milliseconds(movesPointer ? 120 : 350))
+    return arrived
 }
 
-private func glidePointer(to target: CGPoint) async {
-    guard var expected = CGEvent(source: nil)?.location else { return }
+private func glidePointer(to target: CGPoint) async -> Bool {
+    guard var expected = CGEvent(source: nil)?.location else { return false }
     let start = expected
     let steps = 12
     for step in 1...steps {
-        guard let now = CGEvent(source: nil)?.location, hypot(now.x - expected.x, now.y - expected.y) < 3 else { return }
+        guard let now = CGEvent(source: nil)?.location, hypot(now.x - expected.x, now.y - expected.y) < 3 else { return false }
         let progress = Double(step) / Double(steps)
         let eased = progress * progress * (3 - 2 * progress)
         expected = CGPoint(x: start.x + (target.x - start.x) * eased, y: start.y + (target.y - start.y) * eased)
         CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: expected, mouseButton: .left)?.post(tap: .cghidEventTap)
         try? await Task.sleep(for: .milliseconds(20))
     }
+    return true
+}
+
+private func pointerClick(at point: CGPoint, kind: UIClickKind) async {
+    let right = kind == .rightClick
+    let button: CGMouseButton = right ? .right : .left
+    for click in 1...(kind == .doubleClick ? 2 : 1) {
+        for type: CGEventType in right ? [.rightMouseDown, .rightMouseUp] : [.leftMouseDown, .leftMouseUp] {
+            let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button)
+            event?.setIntegerValueField(.mouseEventClickState, value: Int64(click))
+            event?.post(tap: .cghidEventTap)
+        }
+        try? await Task.sleep(for: .milliseconds(60))
+    }
+    try? await Task.sleep(for: .milliseconds(400))
+}
+
+private func keyboardPress(_ key: String, modifiers: [String]?) -> Bool {
+    let codes: [String: CGKeyCode] = [
+        "return": 36, "enter": 76, "tab": 48, "space": 49, "delete": 51, "backspace": 51, "escape": 53, "esc": 53,
+        "left": 123, "right": 124, "down": 125, "up": 126, "home": 115, "end": 119, "pageup": 116, "pagedown": 121,
+    ]
+    guard let code = codes[key.lowercased()] else { return false }
+    var flags: CGEventFlags = []
+    for modifier in modifiers ?? [] {
+        switch modifier.lowercased() {
+        case "cmd", "command": flags.insert(.maskCommand)
+        case "shift": flags.insert(.maskShift)
+        case "option", "alt": flags.insert(.maskAlternate)
+        case "control", "ctrl": flags.insert(.maskControl)
+        default: return false
+        }
+    }
+    for down in [true, false] {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down)
+        event?.flags = flags
+        event?.post(tap: .cghidEventTap)
+    }
+    return true
 }
 
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {
@@ -286,8 +327,11 @@ private struct UIActionExecutor: ToolExecutor {
         let action = ComputerAction(stepID: call.id, operation: operation)
         await bringForward(resolved.bundleID, observations: observations, context: context)
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
-            if let point = resolved.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended)
+            if let point = resolved.target.coordinates,
+               await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended) {
+                await pointerClick(at: CGPoint(x: point.x, y: point.y), kind: kind)
+                let clicked = StepResult(stepID: call.id, success: true, message: "Clicked \(resolved.target.label ?? "the target") with the pointer.")
+                return await verifiedResult(call, clicked, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
@@ -448,8 +492,13 @@ private struct UIStepsExecutor: ToolExecutor {
             }
             var last: StepResult?
             for (index, step) in planned.enumerated() {
+                var arrived = false
                 if let point = step.target?.coordinates {
-                    await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: step.target?.label, movesPointer: true)
+                    arrived = await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: step.target?.label, movesPointer: true)
+                }
+                if let handled = await performWithPointer(step.operation, at: step.target?.coordinates, arrived: arrived) {
+                    last = StepResult(stepID: "\(call.id)-\(index)", success: true, message: handled)
+                    continue
                 }
                 let result = try await worker.execute(ComputerAction(stepID: "\(call.id)-\(index)", operation: step.operation))
                 guard result.success else { return .text(call.id, "ui.steps: step \(index + 1): \(result.message)", isError: true) }
@@ -457,6 +506,26 @@ private struct UIStepsExecutor: ToolExecutor {
             }
             guard let last else { return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true) }
             return await verifiedResult(call, last, worker: worker, observations: observations, runID: context.runID)
+        }
+    }
+
+    private func performWithPointer(_ operation: ComputerAction.Operation, at point: ComputerCoordinates?, arrived: Bool) async -> String? {
+        switch operation {
+        case .click, .doubleClick, .rightClick:
+            guard arrived, let point else { return nil }
+            let kind: UIClickKind = switch operation {
+            case .doubleClick: .doubleClick
+            case .rightClick: .rightClick
+            default: .click
+            }
+            await pointerClick(at: CGPoint(x: point.x, y: point.y), kind: kind)
+            return "Clicked with the pointer."
+        case .pressKey(let key, let modifiers, _):
+            guard onActuation != nil, keyboardPress(key, modifiers: modifiers) else { return nil }
+            try? await Task.sleep(for: .milliseconds(150))
+            return "Pressed \(key)."
+        default:
+            return nil
         }
     }
 
@@ -590,6 +659,11 @@ private struct UIKeyExecutor: ToolExecutor {
         return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
             if let point = target?.target.coordinates {
                 await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label, movesPointer: !context.unattended)
+            }
+            if !context.unattended, onActuation != nil, keyboardPress(key, modifiers: modifiers) {
+                try? await Task.sleep(for: .milliseconds(150))
+                let pressed = StepResult(stepID: call.id, success: true, message: "Pressed \(key).")
+                return await verifiedResult(call, pressed, worker: worker, observations: observations, runID: context.runID, located: target?.note)
             }
             let result = try await worker.execute(action)
             return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)

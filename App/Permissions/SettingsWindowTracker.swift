@@ -83,6 +83,25 @@ final class SettingsWindowTracker {
             return SettingsWindowSnapshot(id: id, frame: appKitFrame(fromCG: cgFrame, primaryHeight: NSScreen.screens.first?.frame.height ?? 0))
         }
         return candidates.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+            ?? pids.lazy.compactMap(locateWithAccessibility).first
+    }
+
+    private static func locateWithAccessibility(pid: pid_t) -> SettingsWindowSnapshot? {
+        var value: CFTypeRef?
+        guard AXIsProcessTrusted(),
+              AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute as CFString, &value) == .success,
+              let window = value, CFGetTypeID(window) == AXUIElementGetTypeID() else { return nil }
+        let element = window as! AXUIElement
+        var origin = CGPoint.zero, size = CGSize.zero
+        var position: CFTypeRef?, extent: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &extent) == .success,
+              let position, let extent,
+              AXValueGetValue(position as! AXValue, .cgPoint, &origin),
+              AXValueGetValue(extent as! AXValue, .cgSize, &size),
+              size.width >= 300, size.height >= 200 else { return nil }
+        let frame = CGRect(origin: origin, size: size)
+        return SettingsWindowSnapshot(id: 0, frame: appKitFrame(fromCG: frame, primaryHeight: NSScreen.screens.first?.frame.height ?? 0))
     }
 
     static func appKitFrame(fromCG frame: CGRect, primaryHeight: CGFloat) -> CGRect {

@@ -198,7 +198,6 @@ final class OnboardingDirectorTests: XCTestCase {
         var snapshot = granted
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }
-        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         director.start()
         director.skip()
@@ -223,7 +222,6 @@ final class OnboardingDirectorTests: XCTestCase {
         var asked: [PrivacyPane] = []
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { self.denied }
-        effects.systemProbe = { .answered }
         effects.grant = { asked.append($0) }
         let director = OnboardingDirector(effects: effects)
         director.start()
@@ -243,7 +241,6 @@ final class OnboardingDirectorTests: XCTestCase {
         var release: CheckedContinuation<PerryPermissionSnapshot, Never>?
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { await withCheckedContinuation { release = $0; entered.fulfill() } }
-        effects.systemProbe = { .answered }
         let director = OnboardingDirector(effects: effects)
         director.start()
         director.skip()

@@ -41,6 +41,7 @@ extension VoiceController {
         }
         let languageCode = languageIdentifier.flatMap { Locale(identifier: $0).language.languageCode?.identifier }
         return recommendedSpeechVoices(from: natural, languageCode: languageCode ?? "en", limit: 1).first
+            ?? AVSpeechSynthesisVoice(language: languageIdentifier ?? AVSpeechSynthesisVoice.currentLanguageCode())
     }
 
     static var speakingVoice: AVSpeechSynthesisVoice? {
