@@ -833,3 +833,24 @@ Rename consistency (2026-10-28, Finder column view, Finder restarted per run, 5 
 - Haiku 5.5: 5/5, 16-34 s, median 20 s. Sonnet 5.5: 5/5, 16-26 s, median 18 s. Before the fixes: 26-78 s, with spirals to 165 s.
 - Fixes: text-field clicks are pointer clicks (d33c271); Finder column-view rows carry their names and rename typing keeps one extension (a9e26dc); window-relative click points land in the window (381a1c4).
 - Lab traps found: a pending Screen Recording prompt for Perry stole focus from Finder (owner granted it); the bench quit apps with AppleScript, which has no Apple Events permission over ssh, so Finder never restarted and its AX tree slowed to 275 nodes in 8 s. The bench now uses pkill.
+
+## 9.11 Set values, step batches, slow apps (2026-10-29)
+
+Done (6cb463f, research 9fd7ef4):
+- `ui.setValue` sets a field's whole value through `set_value`. On a Finder file name, it renames the file. Finder's Automation permission is granted on the mini.
+- `ui.steps` sends one `run_steps` batch with `delay_ms` 300.
+- A timed-out driver request now returns `actionUnanswered`, up to 3 times per worker. The worker and the run stay alive.
+- Elements without `AXPress` get pointer clicks. `CUA_DRIVER_WINDOW_CHANGE_TIMEOUT_MS` is 200.
+- The research verdict is to keep cua-driver (`docs/research/2026-10-28-computer-use-drivers.md`).
+
+Evidence, mini, Claude Code captain:
+- Rename: 10/10 at 8-10 s with 2-3 tool calls. Haiku 5/5, Sonnet 5/5. Before this change, a rename took 16-20 s with 5-9 calls.
+- Full set on Sonnet: 8/8. Folder 40 s, pdf 4 s, table 4 s, form 12 s, textedit 12 s, darkmode 12 s, calculator 12 s.
+- CuaWorkerProcessTests and CuaDriverClientTests: 83 tests, 0 failures.
+
+Remaining:
+- `ui.steps` has no real-app check. No benchmark task chose it.
+- The folder task needs 16 calls.
+- The idle-probe check and Retina verification have not run.
+- The MacBook copy of `App/Resources/CuaDriver` is 0.22.1, and the mini has 0.38.0. Exclude that folder from rsync.
+- ssh to the mini resets on long sessions, so run long jobs detached with `nohup`.
