@@ -114,7 +114,7 @@ final class WakeWordListener {
         recognitionRequest.requiresOnDeviceRecognition = true
         request = recognitionRequest
         let levels = levels
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, when in
+        let tapped = DictationController.installTap(on: input, format: format) { buffer, when in
             recognitionRequest.append(buffer)
             let rms = DictationController.rms(buffer)
             let capturing = levels.withLock { levels in
@@ -125,6 +125,7 @@ final class WakeWordListener {
             let time = AVAudioTime.seconds(forHostTime: when.hostTime)
             Task { @MainActor [weak self] in self?.hear(rms: rms, at: time) }
         }
+        guard tapped else { throw ListenerError.unavailable }
         tapInstalled = true
         audioEngine.prepare()
         try audioEngine.start()

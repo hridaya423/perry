@@ -35,6 +35,9 @@ targets:
   Perry:
     type: application
     platform: macOS
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: App/Perry-Bridging-Header.h
     sources:
       - path: App
         excludes:

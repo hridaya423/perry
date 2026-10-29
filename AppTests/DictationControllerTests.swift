@@ -3,6 +3,14 @@ import XCTest
 @testable import Perry
 
 final class DictationControllerTests: XCTestCase {
+    func testATapAVAudioEngineRefusesComesBackAsFalseInsteadOfAnException() {
+        let engine = AVAudioEngine()
+        let mixer = engine.mainMixerNode
+        XCTAssertTrue(DictationController.installTap(on: mixer, format: nil) { _, _ in })
+        XCTAssertFalse(DictationController.installTap(on: mixer, format: nil) { _, _ in })
+        mixer.removeTap(onBus: 0)
+    }
+
     func testLevelIsTheRootMeanSquareOfTheBuffer() throws {
         let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024))

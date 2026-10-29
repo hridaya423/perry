@@ -574,7 +574,7 @@ final class RealtimeVoiceSession {
         )
         inputTapGeneration = generation
         installAudioIngressConsumer(ingress, tag: ingressTag)
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
+        let tapped = DictationController.installTap(on: input, format: inputFormat) { buffer, _ in
             let data = RealtimePCM16Encoder.encode(buffer, converter: converter)
             guard !data.isEmpty else { return }
             ingress.yield(RealtimeVoiceAudioPacket(
@@ -583,6 +583,7 @@ final class RealtimeVoiceSession {
                 utteranceGeneration: generation
             ))
         }
+        guard tapped else { throw RealtimeVoiceError.audioUnavailable }
         inputTapInstalled = true
     }
 

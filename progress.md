@@ -1,4 +1,16 @@
-# Current: first use, round 5 (2026-10-29)
+# Current: crash root cause (2026-10-29)
+
+Owner: Perry sometimes gets stuck and crashes.
+
+Evidence (laptop, read-only): two Perry crashes (21:30, 22:09), both SIGSEGV in `swift_task_isMainExecutorImpl` with garbage executor identities (0x40, 0x1), from different callers (an explicit `assumeIsolated`, then SwiftUI's own `.task`). Twenty seconds before each, the log has an AVFAudio NSException caught by AppKit: `Format mismatch: input hw 1 ch 44100 Hz, client format 1 ch 16000 Hz`, thrown from `installTapOnBus` in `DictationController.startEngine`, reached from a Swift task (`TalkSession.holdCommitted`). These are the only two mismatches in three hours of log.
+
+Mechanism: the long-lived AVAudioEngine kept the Bluetooth headset's 16 kHz mic format after the hardware moved to 44.1 kHz. installTap raised an Objective-C exception, which Swift cannot catch. AppKit caught it after it unwound through Swift task frames, so the concurrency runtime's per-thread executor record was never restored. The next isolation check read it and crashed. The failed mic start is also the "stuck" Talk state.
+
+Fix: a fresh AVAudioEngine per dictation start; every installTap (dictation, mic test, wake word, realtime) goes through `DictationController.installTap`, which catches the exception in a small Objective-C shim (`App/ObjCException.m`, bridging header) and returns false, so callers throw a Swift error and take the existing fallback. Test: `testATapAVAudioEngineRefusesComesBackAsFalseInsteadOfAnException` (a second tap on one bus raises; the helper returns false).
+
+Not reproduced on the mini: it has no physical mic, and a CLI repro on the BlackHole device crashed inside AVFAudio itself. App tests 932 green.
+
+# Previous: first use, round 5 (2026-10-29)
 
 Owner feedback: no voice at all, occasional crashes, onboarding waits on the voice download, the brain row should show the Claude logo, import text misaligned, Perry should ask before opening memory, and it struggled to read the ChatGPT memory dialog.
 

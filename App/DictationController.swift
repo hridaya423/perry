@@ -115,7 +115,7 @@ final class DictationController {
     private let onLanguageDetected: (String?) -> Void
     private let onWords: ([SpokenWord]) -> Void
     private let selectFallbackInput: (AVAudioEngine) -> Bool
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine = AVAudioEngine()
     private var recognizer: SFSpeechRecognizer?
     private var session: RecognitionSession?
     private var analyzerTarget: AnalyzerTarget?
@@ -261,6 +261,7 @@ final class DictationController {
     func start() throws {
         guard !isRunning else { return }
         abortRecognition()
+        audioEngine = AVAudioEngine()
         clearAudioBuffer()
         rerouting = false
         _ = recognitionGate.advance()
@@ -340,13 +341,16 @@ final class DictationController {
             throw DictationError.unavailable
         }
 
-        session = recognitionSession
-
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, when in
+        let tapped = Self.installTap(on: input, format: format) { [weak self] buffer, when in
             self?.retainAudio(buffer)
             recognitionSession.append(buffer)
             self?.onLevel(AVAudioTime.seconds(forHostTime: when.hostTime), Self.rms(buffer))
         }
+        guard tapped else {
+            recognitionSession.cancel()
+            throw DictationError.deviceUnavailable
+        }
+        session = recognitionSession
         inputTapInstalled = true
 
         audioEngine.prepare()
@@ -570,6 +574,12 @@ final class DictationController {
         return nil
     }
 
+    /// AVAudioEngine raises an Objective-C exception, not a Swift error, when the tap's
+    /// format no longer matches the input hardware (after a device or Bluetooth profile change).
+    nonisolated static func installTap(on input: AVAudioNode, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) -> Bool {
+        PerryCatchException { input.installTap(onBus: 0, bufferSize: 1024, format: format, block: block) } == nil
+    }
+
     static func rms(_ buffer: AVAudioPCMBuffer) -> Double {
         guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return 0 }
         var value: Float = 0
@@ -743,9 +753,13 @@ final class MicrophoneLevelMeter: ObservableObject {
             problem = "That microphone isn’t available, so I’ll use the built-in one."
             return
         }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+        let tapped = DictationController.installTap(on: input, format: format) { [weak self] buffer, _ in
             let value = Self.normalized(DictationController.rms(buffer))
             Task { @MainActor in self?.level = value }
+        }
+        guard tapped else {
+            problem = "I couldn’t open that microphone."
+            return
         }
         do {
             try engine.start()
