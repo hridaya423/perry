@@ -242,7 +242,15 @@ extension AppController {
             guard let self,
                   let x = (note.userInfo?["x"] as? NSNumber)?.doubleValue,
                   let y = (note.userInfo?["y"] as? NSNumber)?.doubleValue else { return }
-            self.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
+            guard note.userInfo?["real"] as? Bool == true else {
+                self.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
+                return
+            }
+            let point = CGPoint(x: x, y: y)
+            for type in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+                CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+                usleep(40_000)
+            }
         }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill-stop"),

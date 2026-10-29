@@ -306,7 +306,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
             installTalkDrillTrigger()
         }
-        if ProcessInfo.processInfo.arguments.contains("--perry-guide-drill") {
+        if GuideDrillRecorder.enabled {
             installGuideDrillTrigger()
         }
         if ProcessInfo.processInfo.arguments.contains("--perry-task-drill") {

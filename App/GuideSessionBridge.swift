@@ -126,7 +126,7 @@ extension AppController {
 /// click the marked element and time click→next-mark without voice or a
 /// model round-trip.
 enum GuideDrillRecorder {
-    private static let enabled = ProcessInfo.processInfo.arguments.contains("--perry-guide-drill")
+    static let enabled = !Set(ProcessInfo.processInfo.arguments).isDisjoint(with: ["--perry-guide-drill", "--perry-guide-live"])
     private static let statePath = ProcessInfo.processInfo.environment["PERRY_GUIDE_DRILL_STATE"]
         ?? NSTemporaryDirectory() + "perry-guide-drill-state.json"
     private static var sequence = 0
@@ -145,7 +145,9 @@ enum GuideDrillRecorder {
             "x": target?.frame.x ?? 0,
             "y": target?.frame.y ?? 0,
             "w": target?.frame.width ?? 0,
-            "h": target?.frame.height ?? 0
+            "h": target?.frame.height ?? 0,
+            "targetID": target?.stableID ?? "",
+            "postcondition": presentation.step.postcondition.flatMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) } ?? ""
         ])
     }
 

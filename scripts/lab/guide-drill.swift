@@ -5,6 +5,7 @@ import AppKit
 // app.perry.guide-drill* distributed notifications Perry listens for.
 //   guide-drill start <goal>     begin a guide session for <goal>
 //   guide-drill click <x> <y>    inject a click at AX-space point (x, y)
+//   guide-drill tap <x> <y>      Perry posts a real mouse click at (x, y)
 //   guide-drill stop             dismiss the active guide
 //   guide-drill done             the controls' Done button path (userActed)
 //   guide-drill task <goal>      dispatch <goal> as a typed command (--perry-task-drill)
@@ -37,12 +38,12 @@ case "task":
         exit(2)
     }
     post("app.perry.task-drill", userInfo: ["goal": args[2]])
-case "click":
+case "click", "tap":
     guard args.count >= 4, let x = Double(args[2]), let y = Double(args[3]) else {
-        FileHandle.standardError.write("guide-drill click needs numeric x y\n".data(using: .utf8)!)
+        FileHandle.standardError.write("guide-drill \(args[1]) needs numeric x y\n".data(using: .utf8)!)
         exit(2)
     }
-    post("app.perry.guide-drill-click", userInfo: ["x": NSNumber(value: x), "y": NSNumber(value: y)])
+    post("app.perry.guide-drill-click", userInfo: ["x": NSNumber(value: x), "y": NSNumber(value: y), "real": args[1] == "tap"])
 case "stop":
     post("app.perry.guide-drill-stop")
 case "done":
