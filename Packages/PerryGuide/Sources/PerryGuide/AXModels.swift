@@ -127,7 +127,24 @@ public struct AXSnapshot: Codable, Equatable, Sendable {
     }
 
     public func element(withStableID id: String) -> AXElement? {
-        elements.first { $0.stableID == id }
+        elements.element(withStableID: id)
+    }
+}
+
+public extension Array where Element == AXElement {
+    /// cua-driver element tokens are `s<read>:<index>`, and the read part
+    /// changes on every observation of the same window. A token from an
+    /// earlier read still names the element at the same index.
+    func element(withStableID id: String) -> AXElement? {
+        if let exact = first(where: { $0.stableID == id }) { return exact }
+        guard let index = Self.readIndex(id) else { return nil }
+        return first { Self.readIndex($0.stableID) == index }
+    }
+
+    private static func readIndex(_ token: String) -> Substring? {
+        guard token.first == "s", let colon = token.lastIndex(of: ":"),
+              token[token.index(after: token.startIndex)..<colon].allSatisfy(\.isNumber) else { return nil }
+        return token[token.index(after: colon)...]
     }
 }
 

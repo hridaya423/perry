@@ -19,7 +19,7 @@ public struct ClickAdvanceMatcher: Sendable {
         elements: [AXElement]
     ) -> Outcome {
         guard case .axElement(let stableID)? = target,
-              let element = elements.first(where: { $0.stableID == stableID }) else {
+              let element = elements.element(withStableID: stableID) else {
             return .miss
         }
         let frame = element.frame

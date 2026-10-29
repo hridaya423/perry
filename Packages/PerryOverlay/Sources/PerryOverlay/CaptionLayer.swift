@@ -126,7 +126,7 @@ struct PerryAnchoredCaption: View {
 /// The status bubble riding the pointer while a task or agent run is in
 /// flight ("Working on …"), hidden while Perry is listening or thinking.
 struct TaskBubbleLayer: View {
-    let state: PerryCursorState
+    @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
     /// Live pointer position in local coordinates — the bubble anchors to it.
     let anchor: CGPoint

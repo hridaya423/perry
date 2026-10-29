@@ -4,7 +4,7 @@ import SwiftUI
 /// The guide's active-control highlight: a pulsing accent ring around the
 /// target rect with its step caption, drawn under the ghost cursors and ink.
 struct ControlGlowLayer: View {
-    let state: PerryCursorState
+    @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -39,7 +39,7 @@ struct ControlGlowLayer: View {
 /// published by tools and Guide, plus the circle-select trail and snapped
 /// highlight while a spatial selection is being drawn.
 struct InkLayer: View {
-    let state: PerryCursorState
+    @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
     /// Read at draw time, not observed: a caption without screen bounds
     /// anchors where the pointer was when the overlay appeared.

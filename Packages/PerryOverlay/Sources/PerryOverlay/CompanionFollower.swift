@@ -240,7 +240,7 @@ private struct PointerRiders: View {
 }
 
 struct CompanionFollower: View {
-    let cursorState: PerryCursorState
+    @ObservedObject var cursorState: PerryCursorState
     let screenFrame: CGRect
     let position: CGPoint
     let isVisible: Bool

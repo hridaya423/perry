@@ -111,6 +111,10 @@ final class AgentObservationStore: @unchecked Sendable {
         return generation == 1 ? "e" : "v\(generation)e"
     }
 
+    func screenPoint(fromImage point: CGPoint, runID: UUID) -> CGPoint {
+        snapshot(runID: runID)?.screenPoint(fromImage: point) ?? point
+    }
+
     func resolveElement(_ elementID: String, runID: UUID) -> ObservedElement? {
         snapshot(runID: runID)?.index.element(for: elementID)
     }

@@ -148,4 +148,17 @@ final class AXModelTests: XCTestCase {
         XCTAssertFalse(generated.observationID.isEmpty)
         XCTAssertNotEqual(generated.observationID, GuideObservation(snapshot: snapshot).observationID)
     }
+
+    func testChecksWrittenAgainstOneReadHoldInTheNextRead() {
+        let later = AXSnapshot(appBundleID: "com.apple.calculator", windowTitle: "Calculator", elements: [
+            element(id: "s00000002:12", label: "AC"),
+            element(id: "s00000002:13", label: "1"),
+        ])
+        XCTAssertEqual(later.element(withStableID: "s00000001:13")?.label, "1")
+        XCTAssertTrue(GuidePostcondition.elementExists(stableID: "s00000001:13").isSatisfied(in: later))
+        XCTAssertTrue(GuidePostcondition.elementLabelEquals(stableID: "s00000001:13", label: "1").isSatisfied(in: later))
+        XCTAssertFalse(GuidePostcondition.elementAbsent(stableID: "s00000001:12").isSatisfied(in: later))
+        XCTAssertNil(later.element(withStableID: "s00000001:99"))
+        XCTAssertNil(later.element(withStableID: "cua-index:13"))
+    }
 }

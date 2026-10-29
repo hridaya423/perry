@@ -545,10 +545,11 @@ final class GuideEngineTests: XCTestCase {
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
         XCTAssertEqual(result, .explanationEnded)
-        // start read + two verification reads (unsatisfied, then satisfied).
+        // start read, two verification reads (unsatisfied, then satisfied),
+        // then the full read the planner sees before the next step.
         let reads = await observer.readCount()
         let elementReads = await observer.elementReadCount()
-        XCTAssertEqual(reads, 3)
+        XCTAssertEqual(reads, 4)
         XCTAssertEqual(elementReads, 2)
     }
 

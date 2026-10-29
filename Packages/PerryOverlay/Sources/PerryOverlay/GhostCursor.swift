@@ -4,7 +4,7 @@ import SwiftUI
 /// pointer per external cursor plus its caption, so parallel workers are
 /// visible without ever reading as the user's own cursor.
 struct GhostCursorLayer: View {
-    let state: PerryCursorState
+    @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
 
     private var cursorsOnThisScreen: [PerryExternalCursor] {

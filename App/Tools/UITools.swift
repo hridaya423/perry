@@ -171,7 +171,7 @@ private func windowPixels(_ point: ComputerCoordinates, observations: AgentObser
 }
 
 private func screenPoint(_ x: Double, _ y: Double, observations: AgentObservationStore, runID: UUID) -> CGPoint {
-    observations.snapshot(runID: runID)?.screenPoint(fromImage: CGPoint(x: x, y: y)) ?? CGPoint(x: x, y: y)
+    observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: runID)
 }
 
 private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource> {

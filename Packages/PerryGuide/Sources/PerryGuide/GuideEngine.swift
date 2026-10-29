@@ -358,6 +358,7 @@ public actor GuideEngine {
     /// success.
     private func presentNext(observation: GuideObservation, allowsNewWindow: Bool = false) async -> AdvanceResult {
         do {
+            let observation = try await planningObservation(observation)
             guard let step = try await nextValidStep(observation: observation, allowsNewWindow: allowsNewWindow) else {
                 phase = .finished
                 return .finished
@@ -376,6 +377,12 @@ public actor GuideEngine {
             phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
             return .blocked(reason: error.localizedDescription)
         }
+    }
+
+    private func planningObservation(_ observation: GuideObservation) async throws -> GuideObservation {
+        guard observation.screenshotData == nil,
+              plannedSteps.isEmpty || observation.snapshot.elements.isEmpty else { return observation }
+        return try await observer.observe()
     }
 
     /// Planner call wrapped in the trust boundary: protected observations and

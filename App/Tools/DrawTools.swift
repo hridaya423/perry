@@ -18,7 +18,7 @@ struct DrawTools {
             DrawVerbExecutor(verb: .arrow, overlayState: overlayState, observations: observations),
             DrawVerbExecutor(verb: .underline, overlayState: overlayState, observations: observations),
             DrawVerbExecutor(verb: .caption, overlayState: overlayState, observations: observations),
-            PathDrawExecutor(overlayState: overlayState),
+            PathDrawExecutor(overlayState: overlayState, observations: observations),
             ClearDrawExecutor(overlayState: overlayState),
         ]
     }
@@ -38,7 +38,7 @@ private struct DrawVerbExecutor: ToolExecutor {
     var spec: ToolSpec {
         ToolSpec(
             name: verb.rawValue,
-            description: "Draw a \(verb.rawValue) mark on an element (compact id like e12) or point (x, y in screen points).",
+            description: "Draw a \(verb.rawValue) mark on an element (compact id like e12) or at x, y pixels in the latest screen.observe screenshot.",
             inputSchema: Self.schema,
             requiredCapabilities: [.tools, .vision]
         )
@@ -48,7 +48,7 @@ private struct DrawVerbExecutor: ToolExecutor {
         "type": .string("object"),
         "properties": .object([
             "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
-            "x": .object(["type": .string("number"), "description": .string("Screen point (AppKit bottom-left origin); used when elementID is absent")]),
+            "x": .object(["type": .string("number"), "description": .string("Pixels in the latest screen.observe screenshot, from its top-left corner; used when elementID is absent")]),
             "y": .object(["type": .string("number")]),
             "label": .object(["type": .string("string")]),
             "duration": .object(["type": .string("number"), "description": .string("Seconds the mark stays visible (default 6)")]),
@@ -69,7 +69,8 @@ private struct DrawVerbExecutor: ToolExecutor {
             }
             rect = element.frame
         } else if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
-            rect = CGRect(x: x - 12, y: y - 12, width: 24, height: 24)
+            let point = observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: context.runID)
+            rect = CGRect(x: point.x - 12, y: point.y - 12, width: 24, height: 24)
         } else {
             return .text(call.id, "\(verb.rawValue): needs elementID or x/y", isError: true)
         }
@@ -104,11 +105,12 @@ private struct DrawVerbExecutor: ToolExecutor {
 
 private struct PathDrawExecutor: ToolExecutor {
     let overlayState: PerryCursorState
+    let observations: AgentObservationStore
 
     var spec: ToolSpec {
         ToolSpec(
             name: "path",
-            description: "Draw a freehand stroke through the given screen points.",
+            description: "Draw a freehand stroke through points given as pixels in the latest screen.observe screenshot.",
             inputSchema: .object([
                 "type": .string("object"),
                 "properties": .object([
@@ -132,10 +134,12 @@ private struct PathDrawExecutor: ToolExecutor {
         )
     }
 
-    func run(_ call: ToolCall, context _: ToolContext) async throws -> ToolResult {
+    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let points = call.arguments["points"]?.arrayValue?.compactMap { value -> CGPoint? in
             guard let x = value["x"]?.doubleValue, let y = value["y"]?.doubleValue else { return nil }
-            return CGPoint(x: x, y: y)
+            let point = observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: context.runID)
+            return CGPoint(x: point.x, y: primaryMaxY - point.y)
         } ?? []
         guard points.count >= 2 else {
             return .text(call.id, "path: needs at least 2 points", isError: true)
