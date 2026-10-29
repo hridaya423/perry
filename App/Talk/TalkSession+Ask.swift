@@ -124,6 +124,7 @@ extension TalkSession {
             try GuideTargetValidator.requireUnprotected(baseline)
             try Task.checkCancellation()
             guard case .asking(let ask) = sessionController.state, ask.id == askID else { throw CancellationError() }
+            index = ElementIndex(elements: baseline.observedElements)
             let spatial = AgentCoordinator.SpatialContext(
                 observation: baseline,
                 bindings: [],
@@ -132,7 +133,7 @@ extension TalkSession {
             let run = services.run(accepted, spatial)
             presentationTask = run.completion
             sessionController.updateAsk { $0.threadID = run.threadID }
-            try await streamAsk(run.events, askID: askID)
+            try await streamAsk(run.events, askID: askID, observation: baseline)
         } catch is CancellationError {
         } catch {
             guard !Task.isCancelled, activeAskID == askID else { return }
@@ -145,7 +146,7 @@ extension TalkSession {
         }
     }
 
-    private func streamAsk(_ events: AsyncStream<AgentLoopEvent>, askID: UUID) async throws {
+    private func streamAsk(_ events: AsyncStream<AgentLoopEvent>, askID: UUID, observation: GuideObservation) async throws {
         var answer = ""
         var finish: AgentFinish?
         for await event in events {
@@ -156,6 +157,7 @@ extension TalkSession {
                 if answer.isEmpty { PerfMark.mark("answer.first_text") }
                 answer += delta
                 sessionController.updateAsk { $0.answerText = answer }
+            case .draw(let command): draw(command, observation: observation)
             case .finished(let outcome): finish = outcome
             default: break
             }

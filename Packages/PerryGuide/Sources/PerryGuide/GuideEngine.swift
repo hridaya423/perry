@@ -21,7 +21,7 @@ public actor GuideEngine {
     private(set) public var progress = GuideProgress()
     /// Every step the user was shown, in order — Back re-presents the
     /// previous one rather than asking the planner for it again.
-    private var presentedSteps: [GuideStep] = []
+    private var presentedSteps: [(step: GuideStep, snapshot: AXSnapshot)] = []
 
     /// True once a second presented step exists to go back to.
     public var canGoBack: Bool {
@@ -42,6 +42,7 @@ public actor GuideEngine {
     /// while each target still validates against the live window; the first
     /// deviation discards the rest and falls back to a live replan.
     private var plannedSteps: [GuideStep] = []
+    private var plannedFrom: AXSnapshot?
 
     public init(
         planner: GuidePlanner,
@@ -62,11 +63,12 @@ public actor GuideEngine {
         // Seed the horizon with one plan call; each later step validates
         // against the live window instead of paying a planner round-trip.
         plannedSteps = (try? await planner.visiblePath(goal: goal, observation: observation, context: context)) ?? []
-        guard let step = try await nextValidStep(observation: observation) else {
+        plannedFrom = observation.snapshot
+        guard let (step, planned) = try await nextValidStep(observation: observation) else {
             phase = .finished
             return nil
         }
-        present(step, observation: observation)
+        present(step, observation: planned)
         return step
     }
 
@@ -92,6 +94,7 @@ public actor GuideEngine {
         // The map's remaining steps are the seeded horizon — same plan, no
         // extra planner call when the user picks up mid-path.
         plannedSteps = Array(steps.dropFirst(selectedIndex + 1))
+        plannedFrom = observation.snapshot
         let step = try GuideTargetValidator.validated(steps[selectedIndex], in: observation)
         present(step, observation: observation)
         return step
@@ -122,7 +125,9 @@ public actor GuideEngine {
         let observation = try await observer.observe()
         try GuideTargetValidator.requireUnprotected(observation)
         try requireSameTarget(observation, as: baseline, allowsNewWindow: step.opensWindow)
-        try GuideTargetValidator.validated(step, in: observation)
+        let rebound = try GuideTargetValidator.validated(step.rebound(from: baseline.snapshot, to: observation.snapshot), in: observation)
+        currentStep = rebound
+        presentedSteps[presentedSteps.count - 1] = (rebound, observation.snapshot)
         presentationObservation = observation
         actionBaseline = observation
         return currentPresentation()
@@ -189,7 +194,7 @@ public actor GuideEngine {
         guard currentStepIndex != nil, presentedSteps.count >= 2 else {
             return .notPresenting
         }
-        let previous = presentedSteps[presentedSteps.count - 2]
+        let (planned, plannedAgainst) = presentedSteps[presentedSteps.count - 2]
         let observation: GuideObservation
         do {
             observation = try await observer.observe()
@@ -199,12 +204,13 @@ public actor GuideEngine {
             phase = .waitingForUser(stepIndex: progress.presentedCount - 1)
             return .blocked(reason: "I couldn’t read the window to go back.")
         }
+        let previous: GuideStep
         do {
             try GuideTargetValidator.requireUnprotected(observation)
             if let baseline = presentationObservation {
                 try requireSameTarget(observation, as: baseline)
             }
-            _ = try GuideTargetValidator.validated(previous, in: observation)
+            previous = try GuideTargetValidator.validated(planned.rebound(from: plannedAgainst, to: observation.snapshot), in: observation)
         } catch is CancellationError {
             return .notPresenting
         } catch {
@@ -212,6 +218,7 @@ public actor GuideEngine {
             return .blocked(reason: error.localizedDescription)
         }
         presentedSteps.removeLast()
+        presentedSteps[presentedSteps.count - 1] = (previous, observation.snapshot)
         progress.recordUnpresented()
         currentStep = previous
         presentationObservation = observation
@@ -257,6 +264,7 @@ public actor GuideEngine {
         hasRepointed = false
         inputAnswer = nil
         plannedSteps = []
+        plannedFrom = nil
     }
 
     private func reset(goal: String, context: GuideContext, maximumSteps: Int?) {
@@ -271,6 +279,7 @@ public actor GuideEngine {
         hasRepointed = false
         inputAnswer = nil
         plannedSteps = []
+        plannedFrom = nil
         presentedSteps = []
     }
 
@@ -313,9 +322,9 @@ public actor GuideEngine {
                 // A deadline without a signal means the UI went quiet — the
                 // last read's verdict stands rather than paying another.
                 if reads > 0, !signaled { break }
-                // A postconditionless click can only fail-closed or wait —
-                // the element payload is never consulted, so probe identity
-                // instead of paying for the full AX walk.
+                // A postconditionless click on the target counts as the user
+                // doing the step — the element payload is never consulted, so
+                // probe identity instead of paying for the full AX walk.
                 observation = step.postcondition == nil && !userConfirmed
                     ? try await observer.probeTarget()
                     : try await observer.observeElements()
@@ -332,15 +341,20 @@ public actor GuideEngine {
             guard currentStep?.id == step.id else { return .notPresenting }
             reads += 1
             guard let postcondition = step.postcondition else {
-                guard userConfirmed else {
-                    phase = .waitingForUser(stepIndex: stepIndex)
-                    return .stillWaiting(stepIndex: stepIndex)
-                }
                 progress.recordUserConfirmed(step)
                 return await presentNext(observation: observation, allowsNewWindow: step.opensWindow)
             }
-            if postcondition.isSatisfied(in: observation.snapshot) {
-                progress.recordCompleted(step)
+            let proof = postcondition.rebound(from: baseline.snapshot, to: observation.snapshot)
+            if proof.isSatisfied(in: observation.snapshot) {
+                if postcondition.isSatisfied(in: baseline.snapshot) {
+                    progress.recordUserConfirmed(step)
+                } else {
+                    progress.recordCompleted(step)
+                }
+                return await presentNext(observation: observation, allowsNewWindow: step.opensWindow)
+            }
+            if userConfirmed || proof.citesVanishedElement || Self.clickedControlChanged(step, from: baseline.snapshot, to: observation.snapshot) {
+                progress.recordUserConfirmed(step)
                 return await presentNext(observation: observation, allowsNewWindow: step.opensWindow)
             }
             if reads >= Self.maxVerificationReads {
@@ -352,6 +366,19 @@ public actor GuideEngine {
         return .stillWaiting(stepIndex: stepIndex)
     }
 
+    /// The control the user clicked vanished, changed in place, or opened
+    /// its menu, so the click took effect even when the planner's proof
+    /// cannot be read.
+    static func clickedControlChanged(_ step: GuideStep, from before: AXSnapshot, to after: AXSnapshot) -> Bool {
+        guard case .axElement(let id) = step.target, let clicked = before.element(withStableID: id) else { return false }
+        if clicked.role == .menu, !before.elements.contains(where: { $0.role == .menuItem }),
+           after.elements.contains(where: { $0.role == .menuItem }) {
+            return true
+        }
+        guard let now = after.elements.counterpart(of: clicked, relabeled: true) else { return true }
+        return now.label != clicked.label || now.value != clicked.value
+    }
+
     /// Asks the planner for the next step from this observation, validates it,
     /// and presents it — or finishes when the planner has nothing honest left.
     /// Planner and validation failures surface as blocked, never as a silent
@@ -359,11 +386,11 @@ public actor GuideEngine {
     private func presentNext(observation: GuideObservation, allowsNewWindow: Bool = false) async -> AdvanceResult {
         do {
             let observation = try await planningObservation(observation)
-            guard let step = try await nextValidStep(observation: observation, allowsNewWindow: allowsNewWindow) else {
+            guard let (step, planned) = try await nextValidStep(observation: observation, allowsNewWindow: allowsNewWindow) else {
                 phase = .finished
                 return .finished
             }
-            present(step, observation: observation)
+            present(step, observation: planned)
             return .advanced(toStep: step, stepIndex: progress.presentedCount - 1)
         } catch GuidePlannerError.explanationEnded {
             phase = .finished
@@ -387,7 +414,8 @@ public actor GuideEngine {
 
     /// Planner call wrapped in the trust boundary: protected observations and
     /// targets that don't validate against the live window both throw.
-    private func nextValidStep(observation: GuideObservation, allowsNewWindow: Bool = false) async throws -> GuideStep? {
+    private func nextValidStep(observation: GuideObservation, allowsNewWindow: Bool = false) async throws -> (GuideStep, GuideObservation)? {
+        var observation = observation
         try GuideTargetValidator.requireUnprotected(observation)
         if let baseline = presentationObservation {
             try requireSameTarget(observation, as: baseline, allowsNewWindow: allowsNewWindow)
@@ -402,18 +430,26 @@ public actor GuideEngine {
         let answer = inputAnswer
         inputAnswer = nil
         if !plannedSteps.isEmpty {
-            let candidate = plannedSteps.removeFirst()
+            let planned = plannedSteps.removeFirst()
+            let candidate = plannedFrom.map { planned.rebound(from: $0, to: observation.snapshot) } ?? planned
             // Mid-run, a planned step that no longer grounds is a deviation:
             // drop the stale horizon and replan. At session start there is no
             // prior state to deviate from — a bad first step is the planner's
             // own output and surfaces instead of being silently retried.
             if presentationObservation != nil {
                 if let validated = try? GuideTargetValidator.validated(candidate, in: observation) {
-                    return validated
+                    return (validated, observation)
                 }
                 plannedSteps = []
+                if observation.screenshotData == nil {
+                    observation = try await observer.observe()
+                    try GuideTargetValidator.requireUnprotected(observation)
+                    if let baseline = presentationObservation {
+                        try requireSameTarget(observation, as: baseline, allowsNewWindow: allowsNewWindow)
+                    }
+                }
             } else {
-                return try GuideTargetValidator.validated(candidate, in: observation)
+                return (try GuideTargetValidator.validated(candidate, in: observation), observation)
             }
         }
         let decision = try await planner.nextStep(
@@ -429,7 +465,7 @@ public actor GuideEngine {
         )
         try Task.checkCancellation()
         switch decision {
-        case .step(let step): return try GuideTargetValidator.validated(step, in: observation)
+        case .step(let step): return (try GuideTargetValidator.validated(step, in: observation), observation)
         case .complete(evidence: .explanationOnly): throw GuidePlannerError.explanationEnded
         case .complete(evidence: .observedGoal(let condition)):
             guard context.goalPostcondition == condition, condition.isSatisfied(in: observation.snapshot) else {
@@ -445,7 +481,7 @@ public actor GuideEngine {
         currentStep = step
         presentationObservation = observation
         actionBaseline = observation
-        presentedSteps.append(step)
+        presentedSteps.append((step, observation.snapshot))
         progress.recordPresented()
         phase = .presenting(stepIndex: progress.presentedCount - 1)
     }

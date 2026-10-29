@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import Combine
 import Foundation
 import PerryBrain
 import PerryCore
@@ -269,6 +270,22 @@ extension AppController {
             queue: .main
         ) { [weak self] _ in
             self?.guideCoordinator.advanceGuide()
+        }
+    }
+
+    func installOverlayDump() {
+        guard let path = ProcessInfo.processInfo.environment["PERRY_OVERLAY_DUMP"] else { return }
+        FileManager.default.createFile(atPath: path, contents: nil)
+        overlayDump = overlayState.$visualGuidanceOverlays.sink { overlays in
+            let row: [String: Any] = [
+                "at": Date().timeIntervalSince1970,
+                "overlays": overlays.compactMap { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode($0))) },
+            ]
+            guard let data = try? JSONSerialization.data(withJSONObject: row),
+                  let handle = FileHandle(forWritingAtPath: path) else { return }
+            handle.seekToEndOfFile()
+            handle.write(data + Data([0x0a]))
+            try? handle.close()
         }
     }
 

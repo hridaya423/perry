@@ -93,7 +93,6 @@ final class GuideWorkerSession {
     var scopeTask: Task<Void, Never>?
     var finalizationTask: Task<Void, Never>?
     var repointTask: Task<Void, Never>?
-    var highlightClearTask: Task<Void, Never>?
     var finishTask: Task<Void, Never>?
     var everythingTimeoutTask: Task<Void, Never>?
     private(set) var workerBodyActive = false
@@ -200,7 +199,6 @@ final class GuideWorkerSession {
 
     func cancelCallbacks() {
         repointTask?.cancel()
-        highlightClearTask?.cancel()
         finishTask?.cancel()
         everythingTimeoutTask?.cancel()
         actionTask?.cancel()
@@ -309,10 +307,6 @@ final class GuideSessionCoordinator {
 
     var debugGuideSpeechIdentity: GuideSpeechIdentity? {
         lastGuideSpeechIdentity
-    }
-
-    func debugHandleSpeechFinished(_ identity: GuideSpeechIdentity) {
-        handleSpeechFinished(identity: identity)
     }
 
     #if DEBUG
@@ -460,11 +454,6 @@ final class GuideSessionCoordinator {
         lastGuideSpeechIdentity = nil
         guidePersistenceSuppressed = false
         guideAdmissionOpen = true
-    }
-
-    func handleSpeechFinished(identity: GuideSpeechIdentity) {
-        guard lastGuideSpeechIdentity == identity else { return }
-        scheduleGuideHighlightClear(after: identity)
     }
 
     private var currentGuideScope: GuideWorkerSession? {
@@ -1209,7 +1198,7 @@ final class GuideSessionCoordinator {
     private func marker(at point: CGPointShim, in plan: EverythingViewPlan) -> EverythingViewPlan.Marker? {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         return plan.markers.first { marker in
-            let screenPoint = AXCoordinateConverter.appKitPoint(axX: marker.position.x, axY: marker.position.y, primaryScreenMaxY: primaryMaxY, elementHeight: 24)
+            let screenPoint = AXCoordinateConverter.appKitPoint(axX: marker.position.x, axY: marker.position.y, primaryScreenMaxY: primaryMaxY, elementHeight: 0)
             return hypot(screenPoint.x - point.x, screenPoint.y - point.y) <= 32
         }
     }
@@ -1223,8 +1212,6 @@ final class GuideSessionCoordinator {
 
     private func present(step: GuideStep) {
         guard let scope = currentGuideScope, let engine = scope.engine else { return }
-        scope.highlightClearTask?.cancel()
-        scope.highlightClearTask = nil
         activeGuideStepID = step.id
         activeGuideInstruction = step.instruction
         output?.guideSetStatus(step.instruction)
@@ -1245,31 +1232,6 @@ final class GuideSessionCoordinator {
             self.guideControlsState.targetLabel = presentation.target?.label ?? presentation.target?.role.rawValue
             self.guideControlsState.canGoBack = await engine.canGoBack
         }
-        scope.addCallback(task, id: callbackID)
-    }
-
-    private func scheduleGuideHighlightClear(after identity: GuideSpeechIdentity) {
-        guard isGuiding,
-              let guideID = activeGuideID,
-              guideID == identity.guideID,
-              activeGuideInstruction == identity.text,
-              let stepID = activeGuideStepID,
-              identity.stepID == stepID,
-              let scope = currentGuideScope,
-              scope.id == identity.scopeID else { return }
-        scope.highlightClearTask?.cancel()
-        let callbackID = UUID()
-        let task = Task { @MainActor [weak self, weak scope] in
-            defer { scope?.removeCallback(callbackID) }
-            do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
-            guard let self,
-                  self.activeGuideID == guideID,
-                  self.currentGuideScope === scope,
-                  self.activeGuideStepID == stepID,
-                  self.lastGuideSpeechIdentity == identity else { return }
-            self.output?.guideClearHighlight()
-        }
-        scope.highlightClearTask = task
         scope.addCallback(task, id: callbackID)
     }
 }

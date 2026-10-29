@@ -1112,57 +1112,6 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
     }
 
-    func testStaleGuideSpeechCompletionCannotClearReplacementHighlight() async throws {
-        let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
-            appBundleID: "fixture.app",
-            windowTitle: "Fixture window",
-            elements: [
-                AXElement(
-                    stableID: "save",
-                    role: .button,
-                    label: "Save",
-                    frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30),
-                    isActionable: true
-                )
-            ]
-        ))
-        let controller = makeController(
-            directory: directory,
-            fullGuideCaptureLoader: { _, _ in capture },
-            fullGuidePlanner: { _, _, _ in
-                [GuideStep(instruction: "this one Save", target: .axElement(stableID: "save"))]
-            }
-        )
-
-        let firstRun = Task { @MainActor in
-            await controller.showEverything(goal: "first")
-        }
-        let firstSpeech = await waitUntil { controller.guideCoordinator.debugGuideSpeechIdentity != nil }
-        XCTAssertTrue(firstSpeech)
-        let staleIdentity = try XCTUnwrap(controller.guideCoordinator.debugGuideSpeechIdentity)
-        controller.dismiss()
-
-        let replacementRun = Task { @MainActor in
-            await controller.showEverything(goal: "replacement")
-        }
-        let replacementSpeech = await waitUntil {
-            guard let identity = controller.guideCoordinator.debugGuideSpeechIdentity else { return false }
-            return identity.guideID != staleIdentity.guideID
-        }
-        XCTAssertTrue(replacementSpeech)
-        let replacementIdentity = controller.guideCoordinator.debugGuideSpeechIdentity
-
-        controller.guideCoordinator.debugHandleSpeechFinished(staleIdentity)
-        await Task.yield()
-
-        XCTAssertEqual(controller.guideCoordinator.debugGuideSpeechIdentity, replacementIdentity)
-        controller.dismiss()
-        await firstRun.value
-        await replacementRun.value
-    }
-
     func testStaleStartupErrorCannotOverwriteReplacementAttempt() async throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
@@ -1856,5 +1805,27 @@ private final class StaleErrorProvider: ModelProvider, @unchecked Sendable {
                 }
             }
         }
+    }
+}
+
+@MainActor
+final class DoSummaryTests: XCTestCase {
+    func testARunWithNoActionsReportsTheModelsAnswerInsteadOfDone() {
+        XCTAssertEqual(
+            ForegroundTaskController.doHeadline(actionsDone: 0, lastActionFailure: nil, answer: " Dark Mode is already on. "),
+            "Dark Mode is already on."
+        )
+        XCTAssertEqual(ForegroundTaskController.doHeadline(actionsDone: 0, lastActionFailure: nil, answer: ""), "I didn’t change anything.")
+    }
+
+    func testAFailedLastActionIsNotReportedAsDone() {
+        XCTAssertEqual(
+            ForegroundTaskController.doHeadline(actionsDone: 2, lastActionFailure: "ui.click Save failed: element is gone", answer: "Saved."),
+            "I finished, but my last action failed: ui.click Save failed: element is gone."
+        )
+    }
+
+    func testSuccessfulActionsKeepTheStandardSummary() {
+        XCTAssertNil(ForegroundTaskController.doHeadline(actionsDone: 3, lastActionFailure: nil, answer: "Saved."))
     }
 }

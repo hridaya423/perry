@@ -37,6 +37,17 @@ final class DrawToolsTests: XCTestCase {
         XCTAssertEqual(stroke.map { $0["x"] }, [100, 500])
         XCTAssertEqual(stroke.map { $0["y"] }, [primaryMaxY - 200, primaryMaxY - 500])
     }
+
+    func testARetinaWindowShotReachesTheModelAtOnePixelPerPoint() throws {
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 800, pixelsHigh: 600, bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let fitted = ModelImage.fitting(png, mimeType: "image/png", maxWidth: 400)
+        XCTAssertEqual(fitted.size, CGSize(width: 400, height: 300))
+        XCTAssertEqual(NSImage(data: fitted.data)?.representations.first?.pixelsWide, 400)
+    }
 }
 
 private extension PerryGuidanceOverlay {

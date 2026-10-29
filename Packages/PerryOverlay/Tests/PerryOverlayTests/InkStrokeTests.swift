@@ -126,6 +126,15 @@ final class CaptionPlacerTests: XCTestCase {
         XCTAssertFalse(placed.intersects(anchor))
     }
 
+    func testPrefersBelowForFractionalCaptionSizes() {
+        let anchor = CGRect(x: 150, y: 140, width: 100, height: 60)
+        let placed = CaptionPlacer.place(
+            size: CGSize(width: 123.6, height: 25), anchor: anchor,
+            in: CGRect(x: 0, y: 0, width: 400, height: 300)
+        )
+        XCTAssertEqual(placed.minY, anchor.maxY + CaptionPlacer.defaultGap, accuracy: 0.5)
+    }
+
     func testFlipsAboveWhenBottomIsCrowded() {
         // Target hugging the bottom edge: below overflows, above is clean.
         let anchor = CGRect(x: 600, y: 860, width: 80, height: 40)
@@ -163,5 +172,29 @@ final class CaptionPlacerTests: XCTestCase {
         let placed = CaptionPlacer.place(size: huge, anchor: anchor, in: screen)
         XCTAssertEqual(placed.midX, screen.midX, accuracy: 1)
         XCTAssertEqual(placed.midY, screen.midY, accuracy: 1)
+    }
+}
+
+@MainActor
+final class CaptionLayoutTests: XCTestCase {
+    func testCaptionsOfNeighbouringMarksNeitherOverlapNorCoverAMark() {
+        let screen = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let state = PerryCursorState()
+        let left = CGRect(x: 300, y: 300, width: 60, height: 40)
+        state.visualGuidanceOverlays = [
+            .ringMark(around: left, caption: "Seven"),
+            .ringMark(around: left.offsetBy(dx: 64, dy: 0), caption: "Eight"),
+        ]
+        state.activeControlGlowRect = left.offsetBy(dx: 0, dy: -60)
+        state.activeControlGlowLabel = "Click Four"
+
+        let layout = state.captionLayout(in: screen)
+        let captions = [layout.stepLabel].compactMap { $0 } + layout.markCaptions.values
+        XCTAssertEqual(captions.count, 3)
+        for (i, a) in captions.enumerated() {
+            for b in captions.dropFirst(i + 1) { XCTAssertFalse(a.intersects(b), "\(a) overlaps \(b)") }
+            for mark in state.localMarkRects(in: screen) { XCTAssertFalse(a.intersects(mark), "\(a) covers \(mark)") }
+        }
+        XCTAssertEqual(layout.obstacles.count, 6)
     }
 }

@@ -265,12 +265,12 @@ func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: A
 enum ModelImage {
     static let maxLongEdge = 1568.0
 
-    static func fitting(_ data: Data, mimeType: String) -> (data: Data, mimeType: String, size: CGSize, sourceWidth: Double) {
+    static func fitting(_ data: Data, mimeType: String, maxWidth: Double? = nil) -> (data: Data, mimeType: String, size: CGSize, sourceWidth: Double) {
         guard let image = NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return (data, mimeType, .zero, 0)
         }
         let source = CGSize(width: image.width, height: image.height)
-        let scale = min(1, maxLongEdge / max(source.width, source.height))
+        let scale = min(1, maxLongEdge / max(source.width, source.height), (maxWidth ?? source.width) / source.width)
         guard scale < 1 else { return (data, mimeType, source, source.width) }
         let size = CGSize(width: (source.width * scale).rounded(), height: (source.height * scale).rounded())
         guard let context = CGContext(

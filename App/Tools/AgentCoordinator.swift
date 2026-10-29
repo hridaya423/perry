@@ -187,6 +187,10 @@ final class AgentCoordinator: ObservableObject {
         host.spec(named: name)?.tier
     }
 
+    func toolIsReadOnly(named name: String) -> Bool {
+        host.spec(named: name)?.readOnly ?? false
+    }
+
     private func execute(
         threadID: UUID,
         goal: String,
@@ -241,13 +245,19 @@ final class AgentCoordinator: ObservableObject {
                 sink(.textDelta(answer))
                 finish = .completed
             } else {
+                let spatialImage = spatialContext.flatMap { context in
+                    context.observation.screenshotData.map {
+                        ModelImage.fitting($0, mimeType: context.observation.screenshotMIMEType, maxWidth: context.observation.windowBounds?.width)
+                    }
+                }
                 if let spatialContext {
                     try GuideTargetValidator.requireUnprotected(spatialContext.observation)
                     let observation = spatialContext.observation
                     observations.store(AgentObservationStore.Snapshot(
                         index: ElementIndex(elements: observation.observedElements, prefix: observations.restartIDs(runID: runID)), window: nil,
-                        screenshotData: observation.screenshotData,
-                        windowBoundsAX: observation.windowBounds.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+                        screenshotData: spatialImage?.data,
+                        windowBoundsAX: observation.windowBounds.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) },
+                        imageSize: spatialImage?.size
                     ), runID: runID)
                 }
                 let capabilities: ModelCapabilities = spatialContext != nil ? [.vision, .streaming] : (surface == .suggestions || unattended ? [.tools] : [.streaming])
@@ -286,7 +296,7 @@ final class AgentCoordinator: ObservableObject {
                 try Task.checkCancellation()
                 let markupValidIDs = spatialContext.map {
                     ElementIndex(elements: $0.observation.observedElements).validIDs
-                } ?? (surface == .talk ? [] : nil)
+                } ?? []
                 let scope = thread.perryID ?? threadID.uuidString
                 let context = ToolContext(
                     surface: surface,
@@ -307,8 +317,8 @@ final class AgentCoordinator: ObservableObject {
                 let loop = AgentLoop(provider: selected, host: host)
                 loops[threadID] = loop
                 var parts: [ModelContentPart] = [.text(goal)]
-                if selected.capabilities.contains(.vision), let observation = spatialContext?.observation, let screenshot = observation.screenshotData {
-                    parts.append(.image(data: screenshot, mimeType: observation.screenshotMIMEType))
+                if selected.capabilities.contains(.vision), let spatialImage {
+                    parts.append(.image(data: spatialImage.data, mimeType: spatialImage.mimeType))
                 }
                 let prepared = try await loop.prepareConversation(
                     thread: thread, question: goal, runID: runID, store: threads,
@@ -373,8 +383,18 @@ final class AgentCoordinator: ObservableObject {
         // The single inline-markup decode (plan Phase 2 item 6): runs that got
         // the Talk prompt emit clean text deltas and .draw commands here, so
         // downstream consumers never parse tags again. A re-observe wipes the
-        // element table — later element refs are dropped like before.
+        // element table until the read finishes; refs then resolve against
+        // the new read and carry its frame.
         var markup = markupValidIDs.map { InlineMarkupParser(validElementIDs: $0) }
+        let runID = context.runID
+        let observations = self.observations
+        func resolved(_ command: DrawCommand) -> DrawCommand {
+            var command = command
+            if let id = command.elementID, let element = observations.resolveElement(id, runID: runID) {
+                command.frame = element.frame
+            }
+            return command
+        }
         for await event in loop.run(system: system, messages: messages, context: context, tier: tier) {
 #if DEBUG
             AgentTrace.record(event)
@@ -388,7 +408,7 @@ final class AgentCoordinator: ObservableObject {
                 }
                 answer += parsed.text
                 if !parsed.text.isEmpty { sink(.textDelta(parsed.text)) }
-                for command in parsed.commands { sink(.draw(command)) }
+                for command in parsed.commands { sink(.draw(resolved(command))) }
             case .toolCallStarted(let call):
                 if markup != nil, ToolGate.observeTools.contains(call.name) {
                     markup = InlineMarkupParser(validElementIDs: [])
@@ -396,6 +416,9 @@ final class AgentCoordinator: ObservableObject {
                 sink(event)
             case .toolCallFinished(let result):
                 if !result.isError, let label = Self.actuationLabel(result.content) { labels.append(label) }
+                if markup != nil, let index = observations.snapshot(runID: runID)?.index {
+                    markup = InlineMarkupParser(validElementIDs: index.validIDs)
+                }
                 sink(event)
             case .finished(let reason):
                 finish = reason
@@ -406,7 +429,7 @@ final class AgentCoordinator: ObservableObject {
         if let tail = markup?.finish() {
             answer += tail.text
             if !tail.text.isEmpty { sink(.textDelta(tail.text)) }
-            for command in tail.commands { sink(.draw(command)) }
+            for command in tail.commands { sink(.draw(resolved(command))) }
         }
         return (answer, labels, finish)
     }

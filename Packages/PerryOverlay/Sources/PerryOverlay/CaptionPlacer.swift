@@ -66,7 +66,7 @@ public enum CaptionPlacer {
             let overlap = obstacles.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) }
             // Overflow dominates: an off-screen caption is worse than overlap.
             let score = overlap + 4 * overflowArea(clamped, in: screen)
-            if best == nil || score < best!.score {
+            if best == nil || score < best!.score - 0.5 {
                 best = (clamped, score)
             }
         }

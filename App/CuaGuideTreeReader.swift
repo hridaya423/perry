@@ -103,8 +103,14 @@ struct CuaGuideTreeReader: GuideObserving {
         }
         let target = capture.target
         await targetStore.set(target.hint)
+        let menuBar = MenuBarReader.elements(pid: pid_t(target.processID))
+        let menuOpen = menuBar.contains { $0.role == .menuItem }
+        let windowElements = menuOpen ? snapshot.elements.filter { $0.role != .menu && $0.role != .menuItem } : snapshot.elements
         return GuideObservation(
-            snapshot: snapshot,
+            snapshot: AXSnapshot(
+                appBundleID: snapshot.appBundleID, windowTitle: snapshot.windowTitle,
+                elements: windowElements + menuBar
+            ),
             processID: target.processID,
             windowID: target.windowID,
             connectionGeneration: target.connectionGeneration,

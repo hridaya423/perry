@@ -30,16 +30,15 @@ struct GuideOverlayPresenter {
     func showFullPath(_ viewPlan: EverythingViewPlan) {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let overlays = viewPlan.markers.map { marker in
-            let point = AXCoordinateConverter.appKitPoint(
+            let center = AXCoordinateConverter.appKitPoint(
                 axX: marker.position.x,
                 axY: marker.position.y,
                 primaryScreenMaxY: primaryMaxY,
-                elementHeight: 24
+                elementHeight: 0
             )
-            return PerryGuidanceOverlay.scribble(
-                points: [point, point],
+            return PerryGuidanceOverlay.pointMark(
+                center: center,
                 accentHex: "#34D399",
-                lineWidth: 6,
                 caption: "\(marker.number). \(marker.caption)",
                 duration: 20
             )

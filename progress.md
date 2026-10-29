@@ -1,3 +1,26 @@
+# Current: teaching audit and fixes (2026-10-29)
+
+Trigger: marks never drew (fixed in 7c81de5); the user asked for a full audit of core features judged by real outcomes. A read-only code audit (Sonnet subagent) listed 20 findings; each fix below was checked on the mini with `scripts/lab/teach-bench.py` (real model planner, real clicks, screenshots) or a pixel test.
+
+Done (committed with this entry):
+- Captions: `PerryCaptionBubble` was left-aligned in a 340 pt frame, so short labels rendered up to 140 pt left of their slot. The guide step label was anchored inside its own control. The placer let float noise beat the preferred slot. All captions now go through `PerryCursorState.captionLayout` (off every mark and every other caption, inside the visible frame). Pixel tests in `InkRenderTests`; they fail on 9f39462.
+- Point mark: 13 pt loop with a 59 pt leader (was 5 pt and 26 pt).
+- Menus: `App/MenuBarReader.swift` adds the app's menu bar and any open menu to guide and talk reads. When a menu is open, the cua copies of its items are dropped, the prompt says the menu is open (the window screenshot cannot show it), and its items lead the list.
+- Proofs: a proof already true before the click counts as user-confirmed, not verified (it was how "Click View, then choose Show Path Bar" got logged as verified and the planner looped on View). A click advances as user-confirmed when the step has no proof, its proof element vanished, or the clicked control vanished, changed, or opened its menu. Done always advances as user-confirmed. An absent/label proof naming an element missing from the read is dropped instead of ending the guide.
+- Planner replies: ids copied with their list brackets ground; a reply that breaks the strict JSON format is asked for once more with the reason. Path steps are one click each.
+- Step identity: the 7c81de5 token-index fallback is gone. `GuideStep.rebound(from:to:)` moves ids to the same control (role, label, nearest frame) in each later read.
+- Guide highlight no longer clears 2 s after the spoken instruction. A replan after a deviation re-reads with a screenshot.
+- Agent x/y marks: the spatial screenshot is fitted to one pixel per point and its size recorded. Markup marks resolve against the latest read and carry their frame; typed Ask and Do draw them, on every surface.
+- "Show me everything" markers are point marks centred on the control.
+- Do summary: only actions that went through count as steps (observes and failed calls did before); a run whose last action failed, or that took no action, no longer says "Done. I ran N steps".
+- Lab: `teach-bench.py` reads the Calculator display through AX, closes stale Finder windows, and writes the planner's prompt and answer per guide run (`PERRY_AGENT_TRACE` now records guide planner calls in DEBUG).
+
+Evidence (mini, 2026-10-29): 922 app tests, 0 failures; PerryGuide 287 (only the known keychain test fails); PerryOverlay 36; PerryBrain 438. Bench rounds cap10-cap12: path bar 10/10 over the last rounds with 0 Done presses (one run adds a check step), Calculator 3/3 with display 84 and 0 Dones, Dark Mode passes, point/circle/talk marks land on their targets in the screenshots.
+
+In progress, not committed: routine rehearsal marks rebind by role and label (they never matched) and mask only typing; Watch & Learn records typing into a field of unknown sensitivity as an ask-each-run parameter step (secure fields still dropped).
+
+Open: a mark's caption can cover a neighbouring control (captions avoid marks, not app controls); Do from the composer may not show the overlay; Undo of dependent changes; label re-resolution takes the first fuzzy match; notch rail and peek do not observe the task controller; the speech-finished hook has no listener.
+
 # Current: first-impressions rework (2026-10-25)
 
 - Plan: `docs/plans/2026-10-25-perry-first-impressions.md`. Research: `docs/research/2026-10-25/` (r1-r10, c1-c4).

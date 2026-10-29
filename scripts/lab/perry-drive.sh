@@ -41,7 +41,7 @@ case "$cmd" in
         # by default (PerryWindowChrome.applyChrome) and evidence tooling
         # must be able to record it.
         ENVS=(--env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}")
-        for name in PERRY_AGENT_TRACE PERRY_CLAUDE_CODE_MODEL PERRY_LAB_AUTO_APPROVE; do
+        for name in PERRY_AGENT_TRACE PERRY_CLAUDE_CODE_MODEL PERRY_LAB_AUTO_APPROVE PERRY_GUIDE_DRILL_STATE PERRY_OVERLAY_DUMP; do
             [ -n "${!name:-}" ] && ENVS+=(--env "$name=${!name}")
         done
         if [ "$#" -gt 0 ]; then

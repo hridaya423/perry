@@ -99,7 +99,7 @@ final class TalkSession: ObservableObject {
     var askTransitionTask: Task<Void, Never>?
     var askInputSaveTask: Task<Bool, Never>?
     var activeAskID: UUID?
-    private var index = ElementIndex(elements: [])
+    var index = ElementIndex(elements: [])
     private var answerText = ""
     private var firstTextMarked = false
     private var firstInkMarked = false
@@ -495,7 +495,7 @@ final class TalkSession: ObservableObject {
 
     // MARK: Drawing
 
-    private func draw(_ command: DrawCommand, observation: GuideObservation) {
+    func draw(_ command: DrawCommand, observation: GuideObservation) {
         switch command.verb {
         case .clear:
             overlayState.visualGuidanceOverlays = []
@@ -505,12 +505,12 @@ final class TalkSession: ObservableObject {
         default:
             break
         }
-        guard let element = index.element(for: command.elementID ?? "") else { return }
+        guard let frame = command.frame ?? index.element(for: command.elementID ?? "")?.frame else { return }
         let rect = AXCoordinateConverter.appKitRect(
-            axX: element.frame.origin.x,
-            axY: element.frame.origin.y,
-            width: element.frame.width,
-            height: element.frame.height,
+            axX: frame.origin.x,
+            axY: frame.origin.y,
+            width: frame.width,
+            height: frame.height,
             primaryScreenMaxY: primaryMaxY
         )
         // Luminance-adaptive ink (§5): sample the in-memory capture patch
@@ -518,7 +518,7 @@ final class TalkSession: ObservableObject {
         let accentHex = observation.screenshotData.flatMap { data in
             InkAccentSampler.accentHex(
                 imageJPEG: data,
-                elementCenterAX: CGPoint(x: element.frame.midX, y: element.frame.midY),
+                elementCenterAX: CGPoint(x: frame.midX, y: frame.midY),
                 windowBoundsAX: observation.windowBounds.map {
                     CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
                 } ?? .zero

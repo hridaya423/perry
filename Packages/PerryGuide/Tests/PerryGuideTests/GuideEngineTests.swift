@@ -265,7 +265,124 @@ final class GuideEngineTests: XCTestCase {
 
     // MARK: - Verification
 
-    func testNoScreenChangeKeepsWaiting() async throws {
+    func testAPlannedStepRingsItsOwnControlAfterTheReadsIndexesShift() async throws {
+        func row(_ id: String, _ label: String, y: Double) -> AXElement {
+            AXElement(stableID: id, role: .button, label: label,
+                      frame: AXElementFrame(x: 10, y: y, width: 180, height: 24), isActionable: true)
+        }
+        let first = snapshot([row("s1:12", "Appearance", y: 200), row("s1:20", "Dark", y: 300)])
+        let second = snapshot([row("s2:12", "Light", y: 300), row("s2:20", "Accent", y: 340), row("s2:25", "Dark", y: 320)])
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "Click Appearance", target: .axElement(stableID: "s1:12")),
+                GuideStep(instruction: "Click Dark", target: .axElement(stableID: "s1:20")),
+            ]),
+            observer: StubObserver(snapshots: [first, second])
+        )
+        _ = try await engine.start(goal: "dark mode")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 100, y: 212))
+        guard case .advanced(let next, _) = result else { return XCTFail("expected advance, got \(result)") }
+        XCTAssertEqual(next.instruction, "Click Dark")
+        let presentation = await engine.currentPresentation()
+        XCTAssertEqual(presentation?.target?.stableID, "s2:25")
+        XCTAssertEqual(presentation?.target?.label, "Dark")
+    }
+
+    func testAMenuItemClickAdvancesWhenItsProofCloseWithTheMenu() async throws {
+        let item = AXElement(stableID: "s1:245", role: .menuItem, label: "Show Path Bar",
+                             frame: AXElementFrame(x: 10, y: 20, width: 90, height: 30), isActionable: true)
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "Click Show Path Bar", target: .axElement(stableID: "s1:245"),
+                          postcondition: .elementLabelEquals(stableID: "s1:245", label: "Hide Path Bar")),
+            ]),
+            observer: StubObserver(snapshots: [snapshot([item]), snapshot([button("s2:3", label: "Back")])])
+        )
+        _ = try await engine.start(goal: "show the path bar")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["Click Show Path Bar"])
+    }
+
+    func testAProofThatWasTrueBeforeTheClickDoesNotVerifyTheStep() async throws {
+        let view = AXElement(stableID: "menubar:View", role: .menu, label: "View",
+                             frame: AXElementFrame(x: 10, y: 20, width: 90, height: 30), isActionable: true)
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "Click View", target: .axElement(stableID: "menubar:View"),
+                          postcondition: .elementExists(stableID: "menubar:View")),
+            ]),
+            observer: StubObserver(snapshots: [snapshot([view])])
+        )
+        _ = try await engine.start(goal: "show the path bar")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["Click View"])
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+    }
+
+    func testAClickThatChangesTheScreenAdvancesWhenItsProofCannotBeSeen() async throws {
+        let item = AXElement(stableID: "menu:View/Show Path Bar", role: .menuItem, label: "Show Path Bar",
+                             frame: AXElementFrame(x: 10, y: 20, width: 90, height: 30), isActionable: true)
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "Click Show Path Bar", target: .axElement(stableID: "menu:View/Show Path Bar"),
+                          postcondition: .elementExists(stableID: "menu:View/Hide Path Bar")),
+            ]),
+            observer: StubObserver(snapshots: [snapshot([item]), snapshot([button("s2:3", label: "Back")])])
+        )
+        _ = try await engine.start(goal: "show the path bar")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["Click Show Path Bar"])
+    }
+
+    func testOpeningAMenuCountsAsTheClickTakingEffect() async throws {
+        let view = AXElement(stableID: "menubar:View", role: .menu, label: "View",
+                             frame: AXElementFrame(x: 10, y: 20, width: 90, height: 30), isActionable: true)
+        let row = button("s1:47", label: "draft-a.txt")
+        let item = AXElement(stableID: "menu:View/Show Path Bar", role: .menuItem, label: "Show Path Bar",
+                             frame: AXElementFrame(x: 10, y: 60, width: 200, height: 22), isActionable: true)
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "Click View", target: .axElement(stableID: "menubar:View"),
+                          postcondition: .elementAbsent(stableID: "s1:47")),
+            ]),
+            observer: StubObserver(snapshots: [snapshot([view, row]), snapshot([item, view, row])])
+        )
+        _ = try await engine.start(goal: "show the path bar")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["Click View"])
+    }
+
+    func testDoneAdvancesAStepWhoseProofNeverAppears() async throws {
+        let engine = GuideEngine(
+            planner: QueueGuidePlanner(steps: [
+                GuideStep(instruction: "open it", target: .axElement(stableID: "target"),
+                          postcondition: .elementExists(stableID: "never")),
+            ]),
+            observer: StubObserver(snapshots: [snapshot([button("target", label: "Open")])])
+        )
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.userActed()
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["open it"])
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
+    }
+
+    func testAClickOnAStepWithoutProofCountsAsTheUserDoingIt() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let observer = StubObserver(snapshots: [initial])
         let planner = QueueGuidePlanner(steps: [
@@ -275,7 +392,10 @@ final class GuideEngineTests: XCTestCase {
         _ = try await engine.start(goal: "open the file")
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        XCTAssertEqual(result, .explanationEnded)
+        let progress = await engine.progress
+        XCTAssertEqual(progress.userConfirmedInstructions, ["open it"])
+        XCTAssertTrue(progress.completedInstructions.isEmpty)
     }
 
     func testUnrelatedChangeWithoutPostconditionCannotVerifyStep() async throws {
@@ -287,7 +407,7 @@ final class GuideEngineTests: XCTestCase {
         )
         _ = try await engine.start(goal: "g")
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        XCTAssertEqual(result, .explanationEnded)
         let progress = await engine.progress
         XCTAssertTrue(progress.completedInstructions.isEmpty)
     }
@@ -351,15 +471,15 @@ final class GuideEngineTests: XCTestCase {
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
 
-        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
-        // The verify only needs target liveness — the element walk is dead
-        // cost on a step that can never self-verify.
+        XCTAssertEqual(result, .explanationEnded)
+        // The verify only needs target liveness; the next step then plans
+        // from one full read.
         let probes = await observer.probeReadCount()
         let elementReads = await observer.elementReadCount()
         let reads = await observer.readCount()
         XCTAssertEqual(probes, 1)
         XCTAssertEqual(elementReads, 0)
-        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(reads, 2)
     }
 
     func testProbeFailureBlocksPostconditionlessClick() async throws {
@@ -381,29 +501,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertTrue(reason.contains("couldn’t confirm"))
         let phase = await engine.phase
         XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
-    }
-
-    func testUserConfirmationAfterProbeStillPaysFullRead() async throws {
-        let initial = snapshot([button("target", label: "Open")])
-        let observer = StubObserver(snapshots: [initial])
-        let engine = GuideEngine(
-            planner: QueueGuidePlanner(steps: [
-                GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
-            ]),
-            observer: observer
-        )
-        _ = try await engine.start(goal: "g")
-        _ = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
-        let probes = await observer.probeReadCount()
-        XCTAssertEqual(probes, 1)
-
-        let result = await engine.userActed()
-
-        // Confirm needs the element tree — the next step plans from it, so
-        // the probe's identity-only payload can never stand in here.
-        XCTAssertEqual(result, .explanationEnded)
-        let elementReads = await observer.elementReadCount()
-        XCTAssertEqual(elementReads, 1)
     }
 
     func testClickCanAdvanceOnTypedPostconditionWithoutVisualChange() async throws {
@@ -475,12 +572,10 @@ final class GuideEngineTests: XCTestCase {
         let engine = GuideEngine(planner: planner, observer: observer)
         _ = try await engine.start(goal: "open the file")
 
-        let result = await engine.userActed()
-        XCTAssertEqual(result, .stillWaiting(stepIndex: 0))
+        _ = await engine.userActed()
         let progress = await engine.progress
         XCTAssertTrue(progress.completedInstructions.isEmpty)
-        let phase = await engine.phase
-        XCTAssertEqual(phase, .waitingForUser(stepIndex: 0))
+        XCTAssertEqual(progress.userConfirmedInstructions, ["open it"])
     }
 
     func testDifferentApplicationCannotSatisfyDeclaredPostcondition() async throws {
@@ -811,6 +906,29 @@ final class GuideEngineTests: XCTestCase {
         }
         XCTAssertEqual(step.instruction, "replanned")
         XCTAssertEqual(planner.nextStepCalls, 1)
+    }
+
+    func testAReplanAfterADeviationSeesAScreenshot() async throws {
+        func read(_ elements: [AXElement], shot: Data?) -> GuideObservation {
+            GuideObservation(snapshot: snapshot(elements), processID: 42, windowID: 7, connectionGeneration: 1, screenshotData: shot)
+        }
+        let open = button("target", label: "Open")
+        let done = button("done", label: "Done")
+        let observer = StubObserver(observations: [read([open], shot: Data([1])), read([done], shot: nil), read([done], shot: Data([2]))])
+        let planner = ScreenshotRecordingPlanner(
+            path: [
+                GuideStep(instruction: "open it", target: .axElement(stableID: "target"), postcondition: .elementExists(stableID: "done")),
+                GuideStep(instruction: "confirm", target: .axElement(stableID: "target")),
+            ],
+            next: GuideStep(instruction: "replanned", target: .axElement(stableID: "done"))
+        )
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "g")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
+        guard case .advanced(let step, _) = result else { return XCTFail("expected advance, got \(result)") }
+        XCTAssertEqual(step.instruction, "replanned")
+        XCTAssertEqual(planner.screenshots.value, [Data([2])])
     }
 
     /// Skipping invalidates the rest of the seeded plan — later steps were
@@ -1558,6 +1676,30 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertTrue(canGoBack)
     }
 
+}
+
+private final class ScreenshotRecordingPlanner: GuidePlanner, @unchecked Sendable {
+    let path: [GuideStep]
+    let next: GuideStep
+    let screenshots = Recorded()
+
+    final class Recorded: @unchecked Sendable {
+        var value: [Data?] = []
+    }
+
+    init(path: [GuideStep], next: GuideStep) {
+        self.path = path
+        self.next = next
+    }
+
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
+        screenshots.value.append(observation.screenshotData)
+        return .step(next)
+    }
+
+    func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
+        path
+    }
 }
 
 private struct ObservationPlanner: GuidePlanner {

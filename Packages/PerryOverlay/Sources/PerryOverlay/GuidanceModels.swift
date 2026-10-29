@@ -226,14 +226,14 @@ extension PerryGuidanceOverlay {
         caption: String? = nil,
         duration: TimeInterval = 6
     ) -> PerryGuidanceOverlay {
-        let radius: Double = 5
+        let radius: Double = 13
         let startAngle = -Double.pi * 0.75
         var points = [
-            CGPoint(x: center.x - 14, y: center.y - 22),
+            CGPoint(x: center.x - 34, y: center.y - 48),
             CGPoint(x: center.x + radius * cos(startAngle), y: center.y + radius * sin(startAngle)),
         ]
-        for i in 1...8 {
-            let theta = startAngle + Double(i) / 8 * 2 * .pi
+        for i in 1...16 {
+            let theta = startAngle + Double(i) / 16 * 2 * .pi
             points.append(CGPoint(x: center.x + radius * cos(theta), y: center.y + radius * sin(theta)))
         }
         return .scribble(points: points, accentHex: accentHex, lineWidth: 4.5, caption: caption, duration: duration)

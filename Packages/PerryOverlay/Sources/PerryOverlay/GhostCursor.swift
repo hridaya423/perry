@@ -34,7 +34,12 @@ struct GhostCursorLayer: View {
 
             if let caption = cursor.caption?.trimmingCharacters(in: .whitespacesAndNewlines),
                !caption.isEmpty {
-                PerryAnchoredCaption(caption: caption, anchor: position, screenFrame: screenFrame)
+                PerryAnchoredCaption(
+                    caption: caption,
+                    anchor: CGRect(x: position.x - 15, y: position.y - 15, width: 30, height: 30),
+                    avoiding: state.captionLayout(in: screenFrame).obstacles,
+                    screenFrame: screenFrame
+                )
             }
         }
         .animation(PerryOverlayTheme.Motion.travelFast, value: cursor.screenLocation)

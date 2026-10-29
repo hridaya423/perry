@@ -20,13 +20,9 @@ struct ControlGlowLayer: View {
                 .frame(width: max(1, localRect.width), height: max(1, localRect.height))
                 .position(x: localRect.midX, y: localRect.midY)
 
-                if let label = state.activeControlGlowLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !label.isEmpty {
-                    PerryAnchoredCaption(
-                        caption: label,
-                        anchor: CGPoint(x: localRect.midX, y: localRect.minY),
-                        screenFrame: screenFrame
-                    )
+                if let label = state.activeControlGlowLabel,
+                   let placed = state.captionLayout(in: screenFrame).stepLabel {
+                    PerryCaptionBubble(caption: label, position: CGPoint(x: placed.midX, y: placed.midY))
                 }
             }
             .transition(.opacity)
@@ -149,42 +145,15 @@ struct InkLayer: View {
         .allowsHitTesting(false)
     }
 
-    /// Caption next to a guidance mark (§5): CaptionPlacer picks a slot that
-    /// doesn't cover the marked element and stays inside the visible frame
-    /// (clear of menu bar / Dock / notch).
+    /// Caption next to a guidance mark (§5), clear of every mark and caption
+    /// and of the menu bar and Dock.
     @ViewBuilder
     private func guidanceCaption(_ caption: String, for overlay: PerryGuidanceOverlay, color: Color) -> some View {
-        let bubbleSize = estimatedCaptionBubbleSize(for: caption)
-        let targetBL = overlay.screenBounds
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? screenFrame.maxY
-        // AppKit bottom-left → CG top-left for the solver.
-        let anchorCG = CGRect(
-            x: targetBL.minX, y: primaryMaxY - targetBL.maxY,
-            width: targetBL.width, height: targetBL.height
-        )
-        let visibleBL = NSScreen.screens
-            .first(where: { $0.frame == screenFrame })?.visibleFrame ?? screenFrame
-        let screenCG = CGRect(
-            x: visibleBL.minX, y: primaryMaxY - visibleBL.maxY,
-            width: visibleBL.width, height: visibleBL.height
-        )
-        let placed = targetBL.isNull
-            ? CGRect(
-                x: captionAnchor(for: overlay).x - bubbleSize.width / 2,
-                y: captionAnchor(for: overlay).y - bubbleSize.height / 2,
-                width: bubbleSize.width, height: bubbleSize.height
-            )
-            : CaptionPlacer.place(
-                size: bubbleSize, anchor: anchorCG, in: screenCG
-            )
-        let centerBL = targetBL.isNull
-            ? captionAnchor(for: overlay)
-            : CGPoint(x: placed.midX, y: primaryMaxY - placed.midY)
-        let local = targetBL.isNull
-            ? centerBL
-            : PerryOverlaySpace.localPoint(centerBL, in: screenFrame)
-
-        PerryCaptionBubble(caption: caption, position: local)
+        if let placed = state.captionLayout(in: screenFrame).markCaptions[overlay.id] {
+            PerryCaptionBubble(caption: caption, position: CGPoint(x: placed.midX, y: placed.midY))
+        } else {
+            PerryCaptionBubble(caption: caption, position: pointer.position)
+        }
     }
 
     @ViewBuilder
@@ -217,12 +186,6 @@ struct InkLayer: View {
             .position(x: localRect.midX, y: localRect.midY)
             .allowsHitTesting(false)
         }
-    }
-
-    private func captionAnchor(for overlay: PerryGuidanceOverlay) -> CGPoint {
-        let bounds = overlay.screenBounds
-        guard !bounds.isNull else { return pointer.position }
-        return PerryOverlaySpace.localPoint(CGPoint(x: bounds.midX, y: bounds.maxY), in: screenFrame)
     }
 }
 

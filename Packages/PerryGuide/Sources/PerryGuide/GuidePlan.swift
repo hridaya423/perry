@@ -2,6 +2,47 @@ import Foundation
 import PerryCore
 import PerryOverlay
 
+extension AXSnapshot {
+    func counterpartID(of id: String, from earlier: AXSnapshot, relabeled: Bool = false) -> String {
+        guard element(withStableID: id) == nil, let original = earlier.element(withStableID: id) else { return id }
+        return elements.counterpart(of: original, relabeled: relabeled)?.stableID ?? "gone:\(id)"
+    }
+}
+
+extension GuideStep {
+    func rebound(from earlier: AXSnapshot, to later: AXSnapshot) -> GuideStep {
+        let target: Target
+        if case .axElement(let id) = self.target {
+            target = .axElement(stableID: later.counterpartID(of: id, from: earlier))
+        } else {
+            target = self.target
+        }
+        return GuideStep(
+            id: id, instruction: instruction, target: target, waitForUserAction: waitForUserAction,
+            postcondition: postcondition?.rebound(from: earlier, to: later), opensWindow: opensWindow
+        )
+    }
+}
+
+extension GuideStep.Postcondition {
+    var citesVanishedElement: Bool {
+        switch self {
+        case .elementExists(let id), .elementLabelEquals(let id, _): return id.hasPrefix("gone:")
+        case .elementAbsent, .windowTitleEquals: return false
+        }
+    }
+
+    func rebound(from earlier: AXSnapshot, to later: AXSnapshot) -> Self {
+        switch self {
+        case .elementExists(let id): return .elementExists(stableID: later.counterpartID(of: id, from: earlier))
+        case .elementAbsent(let id): return .elementAbsent(stableID: later.counterpartID(of: id, from: earlier))
+        case .elementLabelEquals(let id, let label):
+            return .elementLabelEquals(stableID: later.counterpartID(of: id, from: earlier, relabeled: true), label: label)
+        case .windowTitleEquals: return self
+        }
+    }
+}
+
 public struct GuideStep: Codable, Equatable, Sendable, Identifiable {
     public enum Target: Codable, Equatable, Sendable {
         case axElement(stableID: String)

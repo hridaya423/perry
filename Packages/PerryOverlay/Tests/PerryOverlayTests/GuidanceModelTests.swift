@@ -125,11 +125,11 @@ struct MarkGeometryTests {
         #expect(overlay.kind == PerryGuidanceOverlayKind.scribble)
         #expect(overlay.isRenderable)
         #expect(Set(cg).count > 2)
-        // The loop of the dot stays within ~6pt of the element center.
-        let dot = cg.dropFirst(2)
-        for p in dot {
-            #expect(hypot(p.x - 445, p.y - 315) < 7)
+        let loop = cg.dropFirst()
+        for p in loop {
+            #expect((10...16).contains(hypot(p.x - 445, p.y - 315)))
         }
+        #expect(hypot(cg[0].x - 445, cg[0].y - 315) > 50)
         // The leader approaches from below-left (AppKit: -x, -y).
         #expect(cg[0].x < 445 && cg[0].y < 315)
     }

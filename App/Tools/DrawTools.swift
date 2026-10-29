@@ -28,6 +28,27 @@ struct DrawTools {
 /// executors since their arguments differ.
 enum DrawVerb: String {
     case point, ring, arrow, underline, caption
+
+    /// Observed frames are AX-space (top-left origin); overlays draw in
+    /// AppKit space — same conversion TalkSession uses.
+    func overlay(axRect rect: CGRect, label: String?, duration: Double = 6) -> PerryGuidanceOverlay {
+        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
+        let appKitRect = AXCoordinateConverter.appKitRect(
+            axX: rect.origin.x, axY: rect.origin.y,
+            width: rect.width, height: rect.height,
+            primaryScreenMaxY: primaryMaxY
+        )
+        switch self {
+        case .point:
+            return .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
+        case .arrow:
+            return .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+        case .underline:
+            return .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+        case .ring, .caption:
+            return .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+        }
+    }
 }
 
 private struct DrawVerbExecutor: ToolExecutor {
@@ -75,27 +96,7 @@ private struct DrawVerbExecutor: ToolExecutor {
             return .text(call.id, "\(verb.rawValue): needs elementID or x/y", isError: true)
         }
 
-        // Observed frames are AX-space (top-left origin); overlays draw in
-        // AppKit space — same conversion TalkSession uses.
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let appKitRect = AXCoordinateConverter.appKitRect(
-            axX: rect.origin.x, axY: rect.origin.y,
-            width: rect.width, height: rect.height,
-            primaryScreenMaxY: primaryMaxY
-        )
-
-        let overlay: PerryGuidanceOverlay
-        switch verb {
-        case .point:
-            overlay = .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
-        case .arrow:
-            overlay = .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
-        case .underline:
-            overlay = .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
-        case .ring, .caption:
-            overlay = .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
-        }
-
+        let overlay = verb.overlay(axRect: rect, label: label, duration: duration)
         await MainActor.run {
             overlayState.visualGuidanceOverlays.append(overlay)
         }

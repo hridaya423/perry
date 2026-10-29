@@ -367,7 +367,6 @@ final class AppSubsystems {
             wake: { [weak app = app] in app?.wake(cue: false) },
             sessionIsIdle: { [weak app = app] in app?.isIdle ?? false },
             wakeListeningChanged: { [weak app = app] in app?.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
-            guideSpeechFinished: { [weak app = app] identity in app?.guideCoordinator.handleSpeechFinished(identity: identity) },
             executingTaskID: { [weak app = app] in app?.executingTaskID }
         )
     )

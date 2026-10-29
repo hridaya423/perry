@@ -462,6 +462,9 @@ final class ForegroundTaskController: ObservableObject {
 
         var answer = ""
         var stepIndex = 0
+        var actionCalls: [String: String] = [:]
+        var actionsDone = 0
+        var lastActionFailure: String?
         var usedGUI = false
         var terminal: AgentFinish?
         for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target, task: true) {
@@ -482,6 +485,10 @@ final class ForegroundTaskController: ObservableObject {
             case .toolCallStarted(let call):
                 usedGUI = usedGUI || Self.isGUITool(call.name)
                 let summary = Self.toolStepSummary(call)
+                overlayState.agentTaskBubbleText = summary
+                hooks.setStatus(summary)
+                guard !coordinator.toolIsReadOnly(named: call.name) else { break }
+                actionCalls[call.id] = summary
                 _ = transitionSession {
                     try sessionController.recordExecutionStep(
                         id: call.id,
@@ -492,19 +499,28 @@ final class ForegroundTaskController: ObservableObject {
                     )
                 }
                 stepIndex += 1
-                overlayState.agentTaskBubbleText = summary
-                hooks.setStatus(summary)
             case .toolCallFinished(let result):
-                if let first = result.content.compactMap({ part -> String? in
+                let first = result.content.compactMap({ part -> String? in
                     if case .text(let text) = part { return text.components(separatedBy: .newlines).first }
                     return nil
-                }).first {
-                    hooks.setStatus(first)
+                }).first
+                if let first { hooks.setStatus(first) }
+                if let summary = actionCalls[result.callID] {
+                    if result.isError {
+                        lastActionFailure = "\(summary) failed" + (first.map { ": \($0)" } ?? "")
+                    } else {
+                        actionsDone += 1
+                        lastActionFailure = nil
+                    }
                 }
             case .note(let note):
                 hooks.setStatus(note)
-            case .draw:
-                break
+            case .draw(let command):
+                if command.verb == .clear {
+                    overlayState.visualGuidanceOverlays = []
+                } else if let frame = command.frame, let verb = DrawVerb(rawValue: command.verb.rawValue) {
+                    overlayState.visualGuidanceOverlays.append(verb.overlay(axRect: frame, label: command.label))
+                }
             case .finished(let finish):
                 terminal = finish
             }
@@ -517,7 +533,10 @@ final class ForegroundTaskController: ObservableObject {
               current.taskID == taskUUID, !current.isFinalized else {
             return .blocked(reason: "the execution session changed")
         }
-        let outcome = await finalizeTask(with: Self.doOutcome(terminal ?? .interrupted, stepsRun: stepIndex))
+        let outcome = await finalizeTask(
+            with: Self.doOutcome(terminal ?? .interrupted, stepsRun: actionsDone),
+            headline: terminal == .completed ? Self.doHeadline(actionsDone: actionsDone, lastActionFailure: lastActionFailure, answer: answer) : nil
+        )
         if usedGUI, case .completed = outcome { hooks.guiTaskCompleted() }
         return outcome
     }
@@ -535,6 +554,15 @@ final class ForegroundTaskController: ObservableObject {
             ?? call.arguments["bundleID"]?.stringValue
             ?? call.arguments["elementID"]?.stringValue
         return label.map { "\(call.name) \($0)" } ?? call.name
+    }
+
+    /// "Done. I ran N steps" is only said when N actions went through and
+    /// the last one did not fail.
+    static func doHeadline(actionsDone: Int, lastActionFailure: String?, answer: String) -> String? {
+        if let lastActionFailure { return "I finished, but my last action failed: \(lastActionFailure)." }
+        guard actionsDone == 0 else { return nil }
+        let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reply.isEmpty ? "I didn’t change anything." : String(reply.prefix(240))
     }
 
     private static func doOutcome(_ finish: AgentFinish, stepsRun: Int) -> DoOutcome {

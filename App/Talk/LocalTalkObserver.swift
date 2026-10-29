@@ -59,6 +59,7 @@ struct LocalTalkObserver: GuideObserving {
             }
             async let shot = includeScreenshot ? Self.captureJPEG(windowID: window.windowID, bounds: window.bounds) : nil
             let elements = Self.elementIndex(pid: window.pid, bounds: window.bounds, anchor: anchor)
+                + MenuBarReader.elements(pid: window.pid)
             await store.set(window.hint)
             return GuideObservation(
                 snapshot: AXSnapshot(appBundleID: window.bundleID, windowTitle: window.title, elements: elements),
@@ -221,38 +222,38 @@ struct LocalTalkObserver: GuideObserving {
         return nil
     }
 
-    private static func axRawValue(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+    static func axRawValue(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
         return value
     }
 
-    private static func axValue(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
+    static func axValue(_ element: AXUIElement, _ attribute: String) -> AXUIElement? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
 
-    private static func axValues(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
+    static func axValues(_ element: AXUIElement, _ attribute: String) -> [AXUIElement] {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return [] }
         return value as? [AXUIElement] ?? []
     }
 
-    private static func axString(_ element: AXUIElement, _ attribute: String) -> String? {
+    static func axString(_ element: AXUIElement, _ attribute: String) -> String? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
         return value as? String
     }
 
-    private static func axCGPoint(_ value: Any?) -> CGPoint? {
+    static func axCGPoint(_ value: Any?) -> CGPoint? {
         guard let value, CFGetTypeID(value as CFTypeRef) == AXValueGetTypeID() else { return nil }
         var point = CGPoint.zero
         return AXValueGetValue(value as! AXValue, .cgPoint, &point) ? point : nil
     }
 
-    private static func axCGSize(_ value: Any?) -> CGSize? {
+    static func axCGSize(_ value: Any?) -> CGSize? {
         guard let value, CFGetTypeID(value as CFTypeRef) == AXValueGetTypeID() else { return nil }
         var size = CGSize.zero
         return AXValueGetValue(value as! AXValue, .cgSize, &size) ? size : nil

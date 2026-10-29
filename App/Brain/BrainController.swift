@@ -464,6 +464,10 @@ final class BrainController: ObservableObject {
             guard completed else {
                 throw ModelProviderError(kind: .malformed, provider: selected.id, message: "The Guide response ended before completion. Try again.")
             }
+            #if DEBUG
+            AgentTrace.record(.note("guide prompt: \(prompt)"))
+            AgentTrace.record(.note("guide answer: \(text)"))
+            #endif
             return text
         }, skillLibrary: AppSkillLibrary(storageDirectory: storageDirectory))
     }

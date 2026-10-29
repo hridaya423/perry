@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AgentTaskBubbleSizePreferenceKey: PreferenceKey {
@@ -35,34 +36,51 @@ func estimatedCaptionBubbleSize(for caption: String) -> CGSize {
     return CGSize(width: width, height: height)
 }
 
-/// Positions a bubble beside `anchor`, flipping it to the other side when
-/// the default side would leave `screenFrame` and clamping inside it.
-func anchoredBubblePosition(
-    anchor: CGPoint,
-    bubbleSize: CGSize,
-    screenFrame: CGRect,
-    horizontalOffset: CGFloat,
-    verticalOffset: CGFloat
-) -> CGPoint {
-    let halfWidth = bubbleSize.width / 2
-    let halfHeight = bubbleSize.height / 2
-    let minMargin: CGFloat = 8
+func captionRect(size: CGSize, beside anchor: CGRect, avoiding: [CGRect], screenFrame: CGRect) -> CGRect {
+    let visible = NSScreen.screens.first { $0.frame == screenFrame }?.visibleFrame ?? screenFrame
+    return CaptionPlacer.place(
+        size: size, anchor: anchor, avoiding: avoiding,
+        in: PerryOverlaySpace.localRect(visible, in: screenFrame)
+    )
+}
 
-    var x = anchor.x + horizontalOffset + halfWidth
-    let maxX = screenFrame.width - halfWidth - minMargin
-    let minX = halfWidth + minMargin
+struct CaptionLayout {
+    var stepLabel: CGRect?
+    var markCaptions: [UUID: CGRect] = [:]
+    var obstacles: [CGRect] = []
+}
 
-    if x > maxX {
-        x = anchor.x - horizontalOffset - halfWidth
+extension PerryCursorState {
+    func localMarkRects(in screenFrame: CGRect) -> [CGRect] {
+        (visualGuidanceOverlays.map(\.screenBounds) + [activeControlGlowRect].compactMap { $0 })
+            .filter { !$0.isNull && $0.intersects(screenFrame) }
+            .map { PerryOverlaySpace.localRect($0, in: screenFrame).insetBy(dx: -6, dy: -6) }
     }
-    x = min(max(x, minX), maxX)
 
-    var y = anchor.y + verticalOffset + halfHeight
-    let maxY = screenFrame.height - halfHeight - minMargin
-    let minY = halfHeight + minMargin
-    y = min(max(y, minY), maxY)
-
-    return CGPoint(x: x, y: y)
+    func captionLayout(in screenFrame: CGRect) -> CaptionLayout {
+        let marks = localMarkRects(in: screenFrame)
+        var layout = CaptionLayout()
+        var placed: [CGRect] = []
+        func place(_ caption: String?, beside screenRect: CGRect) -> CGRect? {
+            guard let caption = caption?.trimmingCharacters(in: .whitespacesAndNewlines), !caption.isEmpty,
+                  !screenRect.isNull, screenRect.intersects(screenFrame) else { return nil }
+            let rect = captionRect(
+                size: estimatedCaptionBubbleSize(for: caption),
+                beside: PerryOverlaySpace.localRect(screenRect, in: screenFrame),
+                avoiding: marks + placed, screenFrame: screenFrame
+            )
+            placed.append(rect)
+            return rect
+        }
+        if let glow = activeControlGlowRect {
+            layout.stepLabel = place(activeControlGlowLabel, beside: glow)
+        }
+        for overlay in visualGuidanceOverlays {
+            layout.markCaptions[overlay.id] = place(overlay.style.caption, beside: overlay.screenBounds)
+        }
+        layout.obstacles = marks + placed
+        return layout
+    }
 }
 
 /// The shared caption bubble: rounded surface, caption text, opacity
@@ -92,7 +110,7 @@ struct PerryCaptionBubble: View {
                 .fill(PerryOverlayTheme.Colors.captionSurface.opacity(normalizedOpacity))
                 .shadow(color: PerryOverlayTheme.Colors.shadow.opacity(normalizedOpacity), radius: 8, x: 0, y: 2)
         )
-        .frame(maxWidth: 340, alignment: .leading)
+        .frame(maxWidth: 340)
         .fixedSize(horizontal: false, vertical: true)
         .position(x: position.x, y: position.y)
         .transition(.opacity)
@@ -102,24 +120,20 @@ struct PerryCaptionBubble: View {
     }
 }
 
-/// A caption bubble anchored next to a point — a pointer, a ghost cursor,
-/// or a rect edge — flipped inside the screen when the default side clips.
+/// A caption bubble beside an anchor rect — a control, a ghost cursor —
+/// kept off the anchor and the marks it must not cover.
 struct PerryAnchoredCaption: View {
     let caption: String
-    let anchor: CGPoint
+    let anchor: CGRect
+    let avoiding: [CGRect]
     let screenFrame: CGRect
 
     var body: some View {
-        PerryCaptionBubble(
-            caption: caption,
-            position: anchoredBubblePosition(
-                anchor: anchor,
-                bubbleSize: estimatedCaptionBubbleSize(for: caption),
-                screenFrame: screenFrame,
-                horizontalOffset: 12,
-                verticalOffset: 20
-            )
+        let placed = captionRect(
+            size: estimatedCaptionBubbleSize(for: caption),
+            beside: anchor, avoiding: avoiding, screenFrame: screenFrame
         )
+        PerryCaptionBubble(caption: caption, position: CGPoint(x: placed.midX, y: placed.midY))
     }
 }
 
@@ -147,12 +161,11 @@ struct TaskBubbleLayer: View {
            state.voiceState != .listening,
            state.voiceState != .processing,
            let bubbleText {
-            let bubblePosition = anchoredBubblePosition(
-                anchor: anchor,
-                bubbleSize: bubbleSize,
-                screenFrame: screenFrame,
-                horizontalOffset: 12,
-                verticalOffset: 20
+            let placed = captionRect(
+                size: bubbleSize,
+                beside: CGRect(x: anchor.x, y: anchor.y, width: 20, height: 24),
+                avoiding: state.captionLayout(in: screenFrame).obstacles,
+                screenFrame: screenFrame
             )
 
             Text(bubbleText)
@@ -167,7 +180,7 @@ struct TaskBubbleLayer: View {
                         .fill(PerryOverlayTheme.Colors.captionSurface)
                         .shadow(color: PerryOverlayTheme.Colors.shadow, radius: 8, x: 0, y: 2)
                 )
-                .frame(maxWidth: 300, alignment: .leading)
+                .frame(maxWidth: 300)
                 .fixedSize(horizontal: false, vertical: true)
                 .overlay(
                     GeometryReader { geo in
@@ -175,7 +188,7 @@ struct TaskBubbleLayer: View {
                             .preference(key: AgentTaskBubbleSizePreferenceKey.self, value: geo.size)
                     }
                 )
-                .position(x: bubblePosition.x, y: bubblePosition.y)
+                .position(x: placed.midX, y: placed.midY)
                 .opacity(opacity)
                 .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: bubbleText)
                 .onPreferenceChange(AgentTaskBubbleSizePreferenceKey.self) { newSize in

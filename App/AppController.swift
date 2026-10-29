@@ -63,6 +63,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var homeController: HomeController { subsystems.homeController }
     var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoiceObservation: AnyCancellable?
+#if DEBUG
+    var overlayDump: AnyCancellable?
+#endif
     var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
     var routineOffer: RoutineOffer { subsystems.routineOffer }
     var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
@@ -312,6 +315,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if ProcessInfo.processInfo.arguments.contains("--perry-task-drill") {
             installTaskDrillTrigger()
         }
+        installOverlayDump()
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
         notchPresence.start()

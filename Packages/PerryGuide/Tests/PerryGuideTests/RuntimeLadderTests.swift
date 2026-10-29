@@ -136,6 +136,24 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         } catch GuidePlannerError.invalidTarget {}
     }
 
+    func testAMalformedReplyIsAskedForOnceMore() async throws {
+        let capture = PromptCapture()
+        let replies = ReplyQueue([
+            #"{"step":{"instruction":"x","target":"b1","post":{"label":"b1","equals":"="}}} Wait, corrected: {"step":{"instruction":"x","target":"b1"}}"#,
+            #"{"step":{"instruction":"x","target":"b1"}}"#,
+        ])
+        let planner = RuntimeGuidePlanner(complete: { prompt, _ in
+            await capture.record(prompt)
+            return await replies.next()
+        })
+        let decision = try await planner.nextStep(goal: "g", observation: observation(), context: .empty)
+        guard case .step(let step) = decision else { return XCTFail("expected step decision") }
+        XCTAssertEqual(step.target, .axElement(stableID: "b1"))
+        let prompts = await capture.prompts
+        XCTAssertEqual(prompts.count, 2)
+        XCTAssertTrue(prompts[1].contains("Your previous reply was rejected"))
+    }
+
     func testMalformedResponseSurfacesHonestly() async throws {
         let planner = planner(reply: { "not json at all" })
         do {
@@ -357,24 +375,18 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         XCTAssertEqual(titled.postcondition, .windowTitleEquals("Preferences"))
     }
 
-    /// absent/label postconditions reference the element being changed — an
-    /// id that is not in the live window can never verify, so it is rejected.
-    func testPostconditionRejectsUngroundedElementIDs() {
-        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
-            text: #"{"step":{"instruction":"click","target":"b1","post":{"absent":"nope"}}}"#,
-            observation: observation()
-        )) { error in
-            guard case GuidePlannerError.malformedResponse = error else {
-                return XCTFail("expected malformedResponse, got \(error)")
+    /// absent/label postconditions reference the element being changed; an
+    /// id that is not in the live window could never verify, so the proof is
+    /// dropped and the step stays.
+    func testPostconditionDropsUngroundedElementIDs() throws {
+        for text in [
+            #"{"step":{"instruction":"click","target":"b1","post":{"absent":"nope"}}}"#,
+            #"{"step":{"instruction":"click","target":"b1","post":{"label":"nope","equals":"X"}}}"#,
+        ] {
+            guard case .step(let step) = try RuntimeGuidePlanner.parseNextStep(text: text, observation: observation()) else {
+                return XCTFail("expected step decision")
             }
-        }
-        XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
-            text: #"{"step":{"instruction":"click","target":"b1","post":{"label":"nope","equals":"X"}}}"#,
-            observation: observation()
-        )) { error in
-            guard case GuidePlannerError.malformedResponse = error else {
-                return XCTFail("expected malformedResponse, got \(error)")
-            }
+            XCTAssertNil(step.postcondition)
         }
         XCTAssertThrowsError(try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"click","target":"b1","post":{"exists":123}}}"#,
@@ -384,6 +396,17 @@ final class RuntimeGuidePlannerTests: XCTestCase {
                 return XCTFail("expected malformedResponse, got \(error)")
             }
         }
+    }
+
+    func testAnIDCopiedWithItsListBracketsStillGrounds() throws {
+        guard case .step(let step) = try RuntimeGuidePlanner.parseNextStep(
+            text: #"{"step":{"instruction":"click","target":"[b1]","post":{"label":"[b1]","equals":"Saved"}}}"#,
+            observation: observation()
+        ) else {
+            return XCTFail("expected step decision")
+        }
+        XCTAssertEqual(step.target, .axElement(stableID: "b1"))
+        XCTAssertEqual(step.postcondition, .elementLabelEquals(stableID: "b1", label: "Saved"))
     }
 
     func testBlockedOutcomeReturnsBlockedDecision() throws {
@@ -432,4 +455,10 @@ private struct FixedObserver: GuideObserving {
     func observe() async throws -> GuideObservation {
         observation
     }
+}
+
+private actor ReplyQueue {
+    private var replies: [String]
+    init(_ replies: [String]) { self.replies = replies }
+    func next() -> String { replies.removeFirst() }
 }

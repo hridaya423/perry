@@ -132,19 +132,31 @@ public struct AXSnapshot: Codable, Equatable, Sendable {
 }
 
 public extension Array where Element == AXElement {
-    /// cua-driver element tokens are `s<read>:<index>`, and the read part
-    /// changes on every observation of the same window. A token from an
-    /// earlier read still names the element at the same index.
     func element(withStableID id: String) -> AXElement? {
-        if let exact = first(where: { $0.stableID == id }) { return exact }
-        guard let index = Self.readIndex(id) else { return nil }
-        return first { Self.readIndex($0.stableID) == index }
+        first { $0.stableID == id }
     }
 
-    private static func readIndex(_ token: String) -> Substring? {
-        guard token.first == "s", let colon = token.lastIndex(of: ":"),
-              token[token.index(after: token.startIndex)..<colon].allSatisfy(\.isNumber) else { return nil }
-        return token[token.index(after: colon)...]
+    /// The same control in this later read. Element ids are per read
+    /// (cua-driver tokens change on every observation), so identity comes
+    /// from what the element is: its role and label, and among look-alikes
+    /// the one nearest its old frame. `relabeled` also accepts a control of
+    /// the same role at the same frame whose label changed in place.
+    func counterpart(of element: AXElement, relabeled: Bool = false) -> AXElement? {
+        let twins = filter { $0.role == element.role && $0.rawRole == element.rawRole && $0.label == element.label }
+        if let nearest = twins.min(by: { element.frame.distance(to: $0.frame) < element.frame.distance(to: $1.frame) }) {
+            return nearest
+        }
+        guard relabeled else { return nil }
+        return first {
+            $0.role == element.role && $0.rawRole == element.rawRole && element.frame.distance(to: $0.frame) < 4
+        }
+    }
+}
+
+extension AXElementFrame {
+    func distance(to other: AXElementFrame) -> Double {
+        hypot(x + width / 2 - other.x - other.width / 2, y + height / 2 - other.y - other.height / 2)
+            + abs(width - other.width) + abs(height - other.height)
     }
 }
 
