@@ -1,6 +1,5 @@
 # Fallback manifest only — CuaCapabilityManifest generates the live ceiling
-# per spawn (and refreshes on new-app launch); this file exists so discovery
-# still succeeds if generation fails. Keep it minimal.
+# per spawn; this file exists so discovery still succeeds if generation fails.
 version: 3
 expires_after: 8h
 idle_timeout: 30m
@@ -9,7 +8,6 @@ allow:
   tools:
     - check_permissions
     - start_session
-    - get_session_state
     - end_session
     - list_windows
     - get_window_state
@@ -21,7 +19,8 @@ allow:
     - press_key
     - hotkey
     - drag
-    - verify_state
+    - set_value
+    - run_steps
 
 resources:
   apps:

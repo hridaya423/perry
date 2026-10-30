@@ -35,7 +35,7 @@ final class CuaCapabilityManifestTests: XCTestCase {
         XCTAssertTrue(yaml.contains("bundle_id: \"com.example.RunningOnly\""))
         XCTAssertFalse(yaml.contains("onepassword"), "blocked bundle IDs must not reach the manifest")
         XCTAssertFalse(yaml.contains("dev.perry.Perry"), "Perry must not be able to drive itself")
-        XCTAssertTrue(yaml.contains("- get_desktop_state"))
+        XCTAssertFalse(yaml.contains("- get_desktop_state"), "only tools the client calls are allowed")
         XCTAssertTrue(yaml.contains("- list_windows"))
         XCTAssertTrue(yaml.contains("- set_value"))
         XCTAssertTrue(yaml.contains("launch: true"))
@@ -95,79 +95,5 @@ final class CuaCapabilityManifestTests: XCTestCase {
             to: contents.appendingPathComponent("Info.plist"),
             atomically: true
         )
-    }
-}
-
-@MainActor
-final class CuaManifestRefresherTests: XCTestCase {
-    private final class Probe: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _scanned: Set<String> = []
-        private var _writes = 0
-        var scanned: Set<String> {
-            get { lock.withLock { _scanned } }
-            set { lock.withLock { _scanned = newValue } }
-        }
-        var writes: Int { lock.withLock { _writes } }
-        func noteWrite() { lock.withLock { _writes += 1 } }
-    }
-
-    private func makeRefresher(_ probe: Probe) -> CuaCapabilityManifest.Refresher {
-        CuaCapabilityManifest.Refresher(
-            directory: URL(fileURLWithPath: "/tmp"),
-            hostBundleID: "dev.perry.Perry",
-            notificationCenter: NotificationCenter(),
-            coveredBundleIDs: { probe.scanned },
-            materialize: { _, _ in
-                probe.noteWrite()
-                return nil
-            }
-        )
-    }
-
-    private func settle(_ refresher: CuaCapabilityManifest.Refresher) async {
-        while let pending = refresher.pending { await pending.value }
-    }
-
-    func testStartOnlyLearnsCoverage() async {
-        let probe = Probe()
-        probe.scanned = ["com.example.known"]
-        let refresher = makeRefresher(probe)
-
-        refresher.start()
-        await settle(refresher)
-        XCTAssertEqual(probe.writes, 0, "the worker spawn already wrote the manifest")
-
-        refresher.noteLaunch(of: "com.example.known")
-        await settle(refresher)
-        XCTAssertEqual(probe.writes, 0, "a covered launch must not rewrite the manifest")
-    }
-
-    func testUncoveredLaunchRewritesOnce() async {
-        let probe = Probe()
-        probe.scanned = ["com.example.known"]
-        let refresher = makeRefresher(probe)
-        refresher.start()
-        await settle(refresher)
-
-        probe.scanned.insert("com.example.new")  // running by the time the note arrives
-        refresher.noteLaunch(of: "com.example.new")
-        await settle(refresher)
-        XCTAssertEqual(probe.writes, 1)
-
-        refresher.noteLaunch(of: "com.example.new")
-        await settle(refresher)
-        XCTAssertEqual(probe.writes, 1, "the refreshed scan covers the new bundle")
-    }
-
-    func testLaunchDuringScanOnlyPassRewritesAfterIt() async {
-        let probe = Probe()
-        let refresher = makeRefresher(probe)
-        refresher.start()
-        probe.scanned = ["com.example.new"]
-        refresher.noteLaunch(of: "com.example.new")
-        refresher.noteLaunch(of: "com.example.other")
-        await settle(refresher)
-        XCTAssertEqual(probe.writes, 1, "queued launches coalesce into one rewrite")
     }
 }

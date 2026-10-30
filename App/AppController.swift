@@ -92,7 +92,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
-    private var manifestRefresher: CuaCapabilityManifest.Refresher?
 
     /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
     /// Production always does; the DEBUG harness init defaults to the typed
@@ -298,14 +297,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         voice.startInputListeners()
         modifierHoldMonitor.interceptHold = { [weak self] in self?.subsystems.shortcutCheck.intercept() ?? false }
         modifierHoldMonitor.start()
-        if let supportDirectory = AppController.supportDirectory {
-            let refresher = CuaCapabilityManifest.Refresher(
-                directory: supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true),
-                hostBundleID: Bundle.main.bundleIdentifier ?? "dev.perry.Perry"
-            )
-            refresher.start()
-            manifestRefresher = refresher
-        }
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
             installTalkDrillTrigger()
