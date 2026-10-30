@@ -44,7 +44,6 @@ final class RealtimeVoicePipeline {
     struct Operation: Equatable, Sendable {
         let sessionID: Int
         let utteranceGeneration: Int
-        var generation: Int { utteranceGeneration }
         let kind: OperationKind
         let responseRequest: RealtimeVoiceResponseRequest?
 
@@ -58,20 +57,6 @@ final class RealtimeVoicePipeline {
             self.utteranceGeneration = utteranceGeneration
             self.kind = kind
             self.responseRequest = responseRequest
-        }
-
-        init(
-            sessionID: Int = 0,
-            generation: Int,
-            kind: OperationKind,
-            responseRequest: RealtimeVoiceResponseRequest? = nil
-        ) {
-            self.init(
-                sessionID: sessionID,
-                utteranceGeneration: generation,
-                kind: kind,
-                responseRequest: responseRequest
-            )
         }
     }
 
@@ -94,7 +79,6 @@ final class RealtimeVoicePipeline {
 
     var pendingCount: Int { queue.count }
     var capacityLimit: Int { capacity }
-    var currentTag: RealtimeVoicePacketTag { activeTag }
     var hasQueuedResponseCancellation: Bool {
         queue.contains { $0.kind == .cancelResponse }
     }
@@ -102,14 +86,6 @@ final class RealtimeVoicePipeline {
     init(capacity: Int = 32, executor: @escaping Executor) {
         self.capacity = max(capacity, 1)
         self.executor = executor
-    }
-
-    func advance(to generation: Int) {
-        advance(sessionID: activeTag.sessionID, utteranceGeneration: generation)
-    }
-
-    func advance(sessionID: Int, generation: Int) {
-        advance(sessionID: sessionID, utteranceGeneration: generation)
     }
 
     func advance(sessionID: Int, utteranceGeneration: Int) {
@@ -125,18 +101,6 @@ final class RealtimeVoicePipeline {
         commitEnqueued = commitEnqueued.filter { $0 == nextTag }
         commitCompleted = commitCompleted.filter { $0 == nextTag }
         resolveSupersededCommits(before: nextTag)
-    }
-
-    func enqueueAudio(_ data: Data, generation: Int) -> EnqueueResult {
-        enqueueAudio(data, sessionID: activeTag.sessionID, utteranceGeneration: generation)
-    }
-
-    func enqueueAudio(
-        _ data: Data,
-        sessionID: Int,
-        generation: Int
-    ) -> EnqueueResult {
-        enqueueAudio(data, sessionID: sessionID, utteranceGeneration: generation)
     }
 
     func enqueueAudio(
@@ -155,28 +119,6 @@ final class RealtimeVoicePipeline {
         guard queue.count < capacity else { return .full }
         append(Operation(sessionID: sessionID, utteranceGeneration: utteranceGeneration, kind: .audio(data)))
         return .accepted
-    }
-
-    func enqueue(_ kind: OperationKind, generation: Int) -> EnqueueResult {
-        enqueue(
-            kind,
-            sessionID: activeTag.sessionID,
-            utteranceGeneration: generation
-        )
-    }
-
-    func enqueue(
-        _ kind: OperationKind,
-        sessionID: Int,
-        generation: Int,
-        responseRequest: RealtimeVoiceResponseRequest? = nil
-    ) -> EnqueueResult {
-        enqueue(
-            kind,
-            sessionID: sessionID,
-            utteranceGeneration: generation,
-            responseRequest: responseRequest
-        )
     }
 
     func enqueue(
@@ -206,14 +148,6 @@ final class RealtimeVoicePipeline {
             responseRequest: responseRequest
         ))
         return .accepted
-    }
-
-    func commit(generation: Int) async throws -> CommitResult {
-        try await commit(sessionID: activeTag.sessionID, utteranceGeneration: generation)
-    }
-
-    func commit(sessionID: Int, generation: Int) async throws -> CommitResult {
-        try await commit(sessionID: sessionID, utteranceGeneration: generation)
     }
 
     func commit(

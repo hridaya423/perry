@@ -69,9 +69,9 @@ final class VoiceController: NSObject, ObservableObject {
         RealtimeVoiceSession(
             configuration: configuration,
             apiKey: apiKey,
-            onPerformanceSample: { self?.recordPerformanceSample($0) },
-            onPerformanceMarker: { self?.recordPerformanceMarker($0) },
-            onTaskSnapshot: { self?.recordTaskSnapshot($0) },
+            onPerformanceSample: { sample in self?.recordPerformance { try await $0.append(sample) } },
+            onPerformanceMarker: { marker in self?.recordPerformance { try await $0.append(marker) } },
+            onTaskSnapshot: { snapshot in self?.recordPerformance { try await $0.append(snapshot) } },
             onEvent: onEvent
         )
     }
@@ -393,33 +393,11 @@ final class VoiceController: NSObject, ObservableObject {
         }
     }
 
-    private func recordPerformanceSample(_ sample: PerformanceSample) {
+    private func recordPerformance(_ write: @escaping (PerformanceSampleLog) async throws -> Void) {
         guard let performanceSampleLog else { return }
         Task { @MainActor [weak self] in
             do {
-                try await performanceSampleLog.append(sample)
-            } catch {
-                self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func recordPerformanceMarker(_ marker: PerformanceMarker) {
-        guard let performanceSampleLog else { return }
-        Task { @MainActor [weak self] in
-            do {
-                try await performanceSampleLog.append(marker)
-            } catch {
-                self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func recordTaskSnapshot(_ snapshot: RealtimeTaskSnapshot) {
-        guard let performanceSampleLog else { return }
-        Task { @MainActor [weak self] in
-            do {
-                try await performanceSampleLog.append(snapshot)
+                try await write(performanceSampleLog)
             } catch {
                 self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
             }

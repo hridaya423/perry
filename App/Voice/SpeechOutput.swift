@@ -176,10 +176,6 @@ extension VoiceController {
         try VoiceDictionaryStore(supportDirectory: supportDirectory()).remove(spoken: spoken)
     }
 
-    static func speakingVoiceDisplayName() -> String? {
-        speakingVoice?.name
-    }
-
     static func speechRate(for multiplier: Double) -> Float {
         let clamped = min(max(multiplier, 0.5), 1.5)
         return Float(0.42 + ((clamped - 0.5) / 1.0) * 0.24)

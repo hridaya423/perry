@@ -31,3 +31,17 @@ extension DictationController {
         return recognitionGate.advance()
     }
 }
+
+extension RealtimeVoicePipeline {
+    func advance(to generation: Int) {
+        advance(sessionID: 0, utteranceGeneration: generation)
+    }
+
+    func enqueueAudio(_ data: Data, generation: Int) -> EnqueueResult {
+        enqueueAudio(data, sessionID: 0, utteranceGeneration: generation)
+    }
+
+    func commit(generation: Int) async throws -> CommitResult {
+        try await commit(sessionID: 0, utteranceGeneration: generation)
+    }
+}

@@ -25,10 +25,10 @@ extension VoiceController {
         let frontmostBundleID = frontmostApplication?.bundleIdentifier
         let normalized: String
         do {
-            normalized = try VoiceTextNormalizer.normalize(
+            normalized = VoiceTextPolicy.normalize(
                 text,
                 frontmostBundleID: frontmostBundleID,
-                supportDirectory: supportDirectory()
+                dictionary: try voiceDictionaryEntries()
             )
         } catch {
             hooks.setStatus("I couldn’t read your word replacements.")
