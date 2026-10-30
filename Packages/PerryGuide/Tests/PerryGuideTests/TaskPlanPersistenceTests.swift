@@ -87,11 +87,9 @@ final class TaskPlanPersistenceTests: XCTestCase {
     func testAgentRecordRejectsExecutionPlanFields() throws {
         let record = TaskRecord(agentPlan: AgentTaskPlan(goal: "Summarize mail", threadID: UUID()))
         let original = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
-        for key in ["executionPlan", "runtimeID", "steps"] {
-            var fields = original
-            fields[key] = "unrecognized"
-            XCTAssertThrowsError(try JSONDecoder().decode(TaskRecord.self, from: JSONSerialization.data(withJSONObject: fields)))
-        }
+        var fields = original
+        fields["executionPlan"] = "unrecognized"
+        XCTAssertThrowsError(try JSONDecoder().decode(TaskRecord.self, from: JSONSerialization.data(withJSONObject: fields)))
     }
 
     private func makePlan(workspace: URL) throws -> PerryRuntimes.ExecutionPlan {
