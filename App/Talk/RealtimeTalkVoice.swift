@@ -43,7 +43,10 @@ final class RealtimeTalkVoice {
                 configuration: talkConfiguration,
                 apiKey: apiKey,
                 transport: makeTransport?(),
-                onEvent: { [weak input] event in input?.handle(event) }
+                onEvent: { [weak input, weak output] event in
+                    input?.handle(event)
+                    output?.handle(event)
+                }
             )
         }
         self.connectBudget = connectBudget
@@ -231,19 +234,53 @@ final class RealtimeTalkOutput: TalkSpeechOutput {
         self.voice = voice
     }
 
-    var isSpeaking: Bool {
-        isRealtimeActive() ? voice?.session.state == .responding : fallback.isSpeaking
-    }
+    private var queued: [String] = []
+    private var awaitingResponse = false
 
-    func speak(_ sentence: String) {
-        if isRealtimeActive() {
-            voice?.session.speakText(sentence)
-        } else {
-            fallback.speak(sentence)
+    var isSpeaking: Bool {
+        guard isRealtimeActive() else { return fallback.isSpeaking }
+        guard let session = voice?.session else { return false }
+        switch session.state {
+        case .responding: return true
+        case .listening, .connecting: return awaitingResponse || !queued.isEmpty
+        case .idle, .failed: return false
         }
     }
 
+    func speak(_ sentence: String) {
+        guard isRealtimeActive() else {
+            fallback.speak(sentence)
+            return
+        }
+        if awaitingResponse {
+            queued.append(sentence)
+        } else {
+            send(sentence)
+        }
+    }
+
+    func handle(_ event: RealtimeVoiceEvent) {
+        switch event {
+        case .responseFinished:
+            awaitingResponse = false
+            while !awaitingResponse, !queued.isEmpty {
+                send(queued.removeFirst())
+            }
+        case .responseInterrupted, .error:
+            awaitingResponse = false
+            queued.removeAll()
+        default:
+            break
+        }
+    }
+
+    private func send(_ sentence: String) {
+        awaitingResponse = voice?.session.speakText(sentence, interrupting: false) ?? false
+    }
+
     func shutUp() {
+        queued.removeAll()
+        awaitingResponse = false
         voice?.session.cancelCurrentResponse()
         fallback.shutUp()
     }

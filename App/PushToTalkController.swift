@@ -6,7 +6,12 @@ final class PushToTalkController {
     private let onRelease: () -> Void
     private(set) var gesture: Gesture
     private lazy var source = KeyEventSource { [weak self] event in
-        self?.handle(
+        guard let self else { return }
+        if event.kind == .flagsChanged, event.keyCode == 57, self.gesture == .doubleTap([.capsLock]) {
+            self.capsLockToggled(at: event.timestamp, flags: event.flags)
+            return
+        }
+        self.handle(
             keyCode: event.keyCode,
             timestamp: event.timestamp,
             flags: event.flags,
@@ -51,6 +56,11 @@ final class PushToTalkController {
     func stop() {
         source.stop()
         resetCaptureState()
+    }
+
+    func capsLockToggled(at timestamp: TimeInterval, flags: CGEventFlags) {
+        handle(keyCode: 57, timestamp: timestamp, flags: flags, isKeyDown: true, isKeyUp: false, tapDisabled: false)
+        handle(keyCode: 57, timestamp: timestamp, flags: flags, isKeyDown: false, isKeyUp: true, tapDisabled: false)
     }
 
     func handle(keyCode: Int64, timestamp: TimeInterval, flags: CGEventFlags, isKeyDown: Bool, isKeyUp: Bool, tapDisabled: Bool) {

@@ -1,3 +1,29 @@
+# Current: rough edges, ten confirmed fixes (2026-10-30)
+
+Owner asked for a UI/UX/functionality review, then "fix those" for the ten items confirmed in code. Branch `fix/rough-edges` from 4f0fbae.
+
+Fixed:
+1. Esc pressed in another app no longer dismisses Perry or cancels a pending approval (`NotchPresence.keyDown(_:inOtherApp:)`).
+2. Dismissing Perry stops speech (`AppController.dismiss` calls `voice.shutUp()`).
+3. Realtime Talk queues sentences until the previous response finishes instead of cancelling it (`RealtimeTalkOutput`, `speakText(_:interrupting:)` returns whether it was sent).
+4. Erase-all copy names the ~/PerryDemo folder and downloaded brains and voices (behaviour unchanged).
+5. A failed ChatGPT sign-in keeps onboarding on the setup step, where the error shows.
+6. Unclear speech on the name check no longer counts as yes.
+7. Guide: the "click the control yourself" fallback now waits for the user; any click on a verbal step counts as acting; explanation steps end 4 s after speech finishes, not 1.5 s after it starts; clicks on Perry's own panels no longer reach the guide click observer.
+8. Double-tap Caps Lock works from flagsChanged toggles (macOS sends no keyDown/keyUp for Caps Lock).
+9. History search by activity shows the matching days instead of re-filtering them to nothing.
+10. Permissions step "Type instead" is now "Not now".
+
+Evidence (mini, Xcode 27): PerryGuide 277 tests, 1 failure = known `testKeychainRoundTrip`. App: RealtimeTalkVoice, RealtimeVoiceSession, ShortcutRoles, VoiceInputLifecycle, CopyLint, OnboardingDirector, CompleteErasureCoordinator, RealtimeProvider all green. New tests: verbal-step click advances, Caps Lock toggles double-tap, realtime sentence queue drains on response.done. Updated `testFallbackPlannerAdmitsItCannotDeriveAnUnmatchedGoal` (it pinned the old non-waiting fallback).
+
+Full app suite (60 s per-test allowance, FirstGoalTests.testRenderTheGoalStates skipped because it hangs indefinitely in `AVAudioEngine.inputNode`): 889 passed, 0 assertion failures, 7 skipped. Six tests hit the time limit, and a sample of the guide takeover test shows the same wedged CoreAudio (`GuideVoiceCommands` → `DictationController.start` → `inputNode`). The known `unowned` teardown crash in ForegroundPlanningTests recurred.
+
+Not verified: a live drive of any of these (mini has no mic or notch); Caps Lock on real hardware (relies on one flagsChanged per press).
+
+Surprise: the local `Perry.xcodeproj` is stale (still references the deleted PerryCapture package). Syncing it to the mini broke resolution; regenerated there with `build/tools/xcodegen`.
+
+Remaining reviewer findings (unverified) are in this session's review; not yet fixed.
+
 # Current: architecture cleanup (2026-10-30)
 
 Owner: "clear out all the slop in this codebase... lean & nice." Brief: `docs/plans/2026-10-30-architecture-cleanup-brief.md`; per-area findings: `docs/plans/2026-10-30-cleanup-findings/`.

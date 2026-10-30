@@ -450,6 +450,15 @@ final class GuideSessionCoordinator {
 
     private func scheduleExplanationEnd() {
         schedule(.finish, after: .seconds(1.5)) { coordinator, guideID in
+            do {
+                while coordinator.output?.guideIsSpeaking() == true {
+                    try await Task.sleep(for: .milliseconds(200))
+                }
+                try await Task.sleep(for: .seconds(4))
+            } catch {
+                return
+            }
+            guard coordinator.activeGuideID == guideID else { return }
             coordinator.finishGuide(guideID: guideID, outcome: .stopped, summary: "I finished explaining. I didn’t check that the task is done.")
         }
     }

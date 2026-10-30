@@ -328,8 +328,7 @@ public struct AXGuidePlanner: GuidePlanner {
         if progress.presentedCount == 0 {
             return .step(GuideStep(
                 instruction: "I can't see a control in \"\(observation.snapshot.windowTitle)\" that matches \"\(goal)\". Click the control yourself, or describe the one you mean and I’ll watch for it.",
-                target: .verbalOnly,
-                waitForUserAction: false
+                target: .verbalOnly
             ))
         }
         return .blocked(reason: "Perry couldn’t find the control for the next step, so it stopped.")

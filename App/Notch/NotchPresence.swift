@@ -70,7 +70,7 @@ final class NotchPresence {
             return event
         } as Any)
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.keyDown(event)
+            self?.keyDown(event, inOtherApp: true)
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if ShortcutRecorder.recording { return event }
@@ -78,7 +78,7 @@ final class NotchPresence {
                 return nil
             }
             if event.keyCode != 53 { self?.engaged() }
-            self?.keyDown(event)
+            self?.keyDown(event, inOtherApp: false)
             return event
         } as Any)
         showRestingDotIfNeeded()
@@ -173,8 +173,12 @@ final class NotchPresence {
         _ = onEndPreview?()
     }
 
-    private func keyDown(_ event: NSEvent) {
+    private func keyDown(_ event: NSEvent, inOtherApp: Bool) {
         if event.keyCode == 53 {
+            if inOtherApp {
+                if surface == .resting { apply(intent.escape()) }
+                return
+            }
             if onDismissConversation?() == true { return }
             if surface != .resting {
                 home?.closeHome()

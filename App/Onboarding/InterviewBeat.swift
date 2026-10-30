@@ -68,11 +68,14 @@ struct InterviewBeat: View {
                 await model.say("Hi \(model.spokenName). Did I say your name right?")
                 guard model.listensAfterSpeaking, !typing, !Task.isCancelled else { return }
                 listener.start(onPartial: { _ in }, onDone: { text in
-                    if InterviewModel.heardYes(text) == false {
-                        typing = true
-                    } else {
+                    switch InterviewModel.heardYes(text) {
+                    case true?:
                         model.draft = ""
                         model.confirmPronunciation()
+                    case false?:
+                        typing = true
+                    case nil:
+                        break
                     }
                 })
             }

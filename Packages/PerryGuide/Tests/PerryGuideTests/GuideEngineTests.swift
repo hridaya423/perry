@@ -221,6 +221,24 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(phase, .presenting(stepIndex: 0))
     }
 
+    func testAnyClickOnAVerbalStepCountsAsTheUserActing() async throws {
+        let initial = snapshot([button("target", label: "Open")])
+        let observer = StubObserver(snapshots: [initial])
+        let planner = QueueGuidePlanner(steps: [
+            GuideStep(instruction: "click the control yourself", target: .verbalOnly),
+            GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
+        ])
+        let engine = GuideEngine(planner: planner, observer: observer)
+        _ = try await engine.start(goal: "open the file")
+
+        let result = await engine.acceptClick(at: CGPointShim(x: 400, y: 400))
+        guard case .advanced(let next, let index) = result else {
+            return XCTFail("expected advance, got \(result)")
+        }
+        XCTAssertEqual(index, 1)
+        XCTAssertEqual(next.instruction, "open it")
+    }
+
     func testClickOnADifferentVisibleControlDoesNotAdvance() async throws {
         let initial = snapshot([
             button("target", label: "Open"),
@@ -1166,7 +1184,7 @@ final class GuideEngineTests: XCTestCase {
             return XCTFail("expected step, got \(decision)")
         }
         XCTAssertEqual(step.target.isVerbal, true)
-        XCTAssertEqual(step.waitForUserAction, false)
+        XCTAssertEqual(step.waitForUserAction, true)
         XCTAssertTrue(step.instruction.contains("compose a symphony"))
     }
 

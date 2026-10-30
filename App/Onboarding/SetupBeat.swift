@@ -389,7 +389,8 @@ struct SetupBeat: View {
         hidePersonalDetails = brainPick == .cloud && hides
         if needsChatGPT {
             brain.signInWithChatGPT { connected in
-                if connected { brain.modelChoice = .chatGPT }
+                guard connected else { return }
+                brain.modelChoice = .chatGPT
                 director.skip()
             }
             return

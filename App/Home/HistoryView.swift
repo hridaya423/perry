@@ -17,6 +17,7 @@ struct HistoryView: View {
     @State private var showDeleteConfirmation = false
     @State private var undoableIDs = Set<UUID>()
     @State private var searchTask: Task<Void, Never>?
+    @State private var showsActivityMatches = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -112,7 +113,7 @@ struct HistoryView: View {
 
     private var filteredEntries: [TranscriptEntry] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return entries }
+        guard !needle.isEmpty, !showsActivityMatches else { return entries }
         return entries.filter { entry in
             [entry.request, entry.appBundleID ?? "", entry.summary, entry.steps.joined(separator: " ")]
                 .joined(separator: " ")
@@ -140,9 +141,11 @@ struct HistoryView: View {
                 let matchingDays = Set(activityMatches.map { Calendar.current.startOfDay(for: $0.timestamp) })
                 entries = allEntries.filter { matchingDays.contains(Calendar.current.startOfDay(for: $0.finishedAt)) }
                 message = "Showing items with matching activity."
+                showsActivityMatches = true
             } else {
                 entries = matches
                 message = nil
+                showsActivityMatches = false
             }
         }
     }

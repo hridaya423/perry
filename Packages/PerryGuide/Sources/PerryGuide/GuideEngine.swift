@@ -112,6 +112,9 @@ public actor GuideEngine {
               let index = currentStepIndex else {
             return .notPresenting
         }
+        if step.target.isVerbal {
+            return await verifyAndAdvance(step: step, baseline: actionBaseline, stepIndex: index)
+        }
         let outcome = clickMatcher.outcome(
             clickPoint: point,
             target: step.target,

@@ -18,7 +18,7 @@ final class ClickAdvanceObserver {
             monitors.append(global)
         }
         if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
-            self?.report(event)
+            if !(event.window is PerryPanel) { self?.report(event) }
             return event
         }) {
             monitors.append(local)

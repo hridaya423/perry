@@ -62,7 +62,7 @@ struct PrivacySettingsPage: View {
                 }
             }
             SettingsCard {
-                SettingsRow(title: "Erase all Perry data", detail: "Deletes tasks, history, memory, approvals, preferences, saved sign-ins and temporary files.") {
+                SettingsRow(title: "Erase all Perry data", detail: "Deletes tasks, history, memory, approvals, preferences, saved sign-ins, downloaded brains and voices, temporary files and the ~/PerryDemo folder.") {
                     Button("Erase all…", role: .destructive) {
                         NotificationCenter.default.post(name: .perryWipeDataRequested, object: nil)
                     }

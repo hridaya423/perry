@@ -303,6 +303,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         if sessionController.requestDismissal() == .stopExecution {
             sessionStatus = "Stopping safely…"
             subsystems.voice.cancelInput()
+            subsystems.voice.shutUp()
             intentCards.dismiss()
             Task { await self.subsystems.foreground.cancelActiveSupervisor() }
             hidePanel()
@@ -317,6 +318,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         subsystems.guideCoordinator.stopClickObservation()
         subsystems.spatial.stopMonitoring()
         subsystems.voice.cancelInput()
+        subsystems.voice.shutUp()
         intentCards.dismiss()
         Task { await self.subsystems.foreground.cancelActiveSupervisor() }
         clearSessionSurfaces()

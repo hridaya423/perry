@@ -448,19 +448,22 @@ final class RealtimeVoiceSession {
         }
     }
 
-    func speakText(_ text: String) {
+    @discardableResult
+    func speakText(_ text: String, interrupting: Bool = true) -> Bool {
         switch state {
         case .idle, .failed:
-            return
+            return false
         case .connecting, .listening, .responding:
             break
         }
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         scheduleMeteredHangUp()
-        let cancelResponse = state == .responding || responseTracker.authorizedRequestCount > 0
+        let cancelResponse = interrupting && (state == .responding || responseTracker.authorizedRequestCount > 0)
         let tag = currentTag
-        outputReservations.invalidate(tag: tag)
-        flushPlayer()
+        if interrupting {
+            outputReservations.invalidate(tag: tag)
+            flushPlayer()
+        }
         if cancelResponse {
             responseTracker.cancel(tag: tag)
             flushPlayer()
@@ -469,7 +472,7 @@ final class RealtimeVoiceSession {
         }
         let generation = inputGeneration
         let responseRequest = RealtimeVoiceResponseRequest(tag: tag)
-        guard responseTracker.authorize(responseRequest) else { return }
+        guard responseTracker.authorize(responseRequest) else { return false }
         if cancelResponse {
             _ = operationPipeline.enqueue(
                 .cancelResponse,
@@ -483,9 +486,11 @@ final class RealtimeVoiceSession {
             utteranceGeneration: generation,
             responseRequest: responseRequest
         )
-        if enqueueResult != .accepted {
+        guard enqueueResult == .accepted else {
             responseTracker.cancel(responseRequest)
+            return false
         }
+        return true
     }
 
     private func flushPlayer() {

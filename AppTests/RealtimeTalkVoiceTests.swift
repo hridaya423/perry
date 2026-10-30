@@ -125,6 +125,43 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         XCTAssertTrue(operations.contains(.sendText("Done.")))
     }
 
+    func testRealtimeOutputQueuesTheNextSentenceUntilTheFirstFinishes() async throws {
+        let finishGate = SendGate()
+        let transport = ResponseStreamFixture(
+            configuration: RealtimeVoiceConfiguration(endpoint: endpoint, model: "test"),
+            frames: [
+                #"{"type":"response.created","response":{"id":"first","metadata":{"\#(RealtimeVoiceResponseRequest.metadataKey)":"\#(responseRequestTokenPlaceholder)"}}}"#,
+                #"{"type":"response.done","response":{"id":"first","status":"completed"}}"#,
+            ],
+            acceptsText: true,
+            receiveGates: [1: finishGate]
+        )
+        let voice = makeVoice(transport: transport)
+        defer { voice.session.stop() }
+        voice.session.beginEmptyInputFixture()
+        voice.session.audioStartOverrideForTesting = {}
+
+        try await voice.input.start()
+        voice.output.speak("First sentence.")
+        voice.output.speak("Second sentence.")
+        let firstLanded = await transport.waitUntilRequestCount(1)
+        XCTAssertTrue(firstLanded)
+
+        let receiverTask = Task { await voice.session.receiveCurrentFixtureEvents() }
+        let finishBlocked = await finishGate.waitUntilBlocked()
+        XCTAssertTrue(finishBlocked)
+        let early = await transport.operationLog()
+        XCTAssertEqual(early, [.sendText("First sentence.")])
+        XCTAssertTrue(voice.output.isSpeaking)
+
+        await finishGate.open()
+        await receiverTask.value
+        let secondSent = await transport.waitUntilRequestCount(2)
+        XCTAssertTrue(secondSent)
+        let operations = await transport.operationLog()
+        XCTAssertEqual(operations, [.sendText("First sentence."), .sendText("Second sentence.")])
+    }
+
     func testInputFallsBackWhenSessionCannotListen() async throws {
         let gate = SendGate()
         let blocked = ConnectionFixture(gate: gate)

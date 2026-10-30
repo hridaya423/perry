@@ -164,7 +164,7 @@ private struct AccessBeat: View {
                         .controlSize(.large)
                         .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Type instead") { director.skip() }
+                    Button("Not now") { director.skip() }
                 }
             } trailing: {
                 EmptyView()

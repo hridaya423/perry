@@ -265,6 +265,16 @@ final class DictateAndTypeDetectionTests: XCTestCase {
         XCTAssertEqual(log.releases, 1)
     }
 
+    func testCapsLockToggleEventsWithoutKeyUpStillDoubleTap() {
+        let (controller, log) = makeController(.doubleTap([.capsLock]))
+        controller.capsLockToggled(at: 1.0, flags: .maskAlphaShift)
+        XCTAssertEqual(log.presses, 0)
+        controller.capsLockToggled(at: 1.2, flags: [])
+        XCTAssertEqual(log.presses, 1)
+        controller.capsLockToggled(at: 3.0, flags: .maskAlphaShift)
+        XCTAssertEqual(log.releases, 1)
+    }
+
     func testAnUnsupportedDoubleTapNeverPressesDictation() {
         let (controller, log) = makeController(.doubleTap([.control]))
         flags([.maskControl], on: controller, at: 1.0)
