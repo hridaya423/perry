@@ -1,6 +1,5 @@
 import Foundation
 
-/// The full annotated path, painted at once as numbered markers over the target window.
 public struct EverythingViewPlan: Equatable, Sendable {
     public struct Marker: Equatable, Sendable, Identifiable {
         public let id: Int
@@ -24,7 +23,6 @@ public struct EverythingViewPlan: Equatable, Sendable {
 }
 
 public enum EverythingViewBuilder {
-    /// Steps whose targets are missing or verbal are skipped rather than drawn in the wrong place.
     public static func build(steps: [GuideStep], snapshot: AXSnapshot) -> EverythingViewPlan? {
         var markers: [EverythingViewPlan.Marker] = []
         for (index, step) in steps.enumerated() {
@@ -43,7 +41,6 @@ public enum EverythingViewBuilder {
     }
 }
 
-/// Grammar for spoken and typed guide requests.
 public enum GuideIntentParser {
     public enum Intent: Equatable, Sendable {
         case guide(goal: String)

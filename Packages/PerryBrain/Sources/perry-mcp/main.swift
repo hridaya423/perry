@@ -39,7 +39,6 @@ let connected = withUnsafePointer(to: &addr) { ptr in
 }
 guard connected == 0 else { fail("connect failed — is Perry running? (\(errno))") }
 
-// Raw POSIX IO — FileHandle on a socket can raise uncatchable NSExceptions.
 func socketWrite(_ fd: Int32, _ string: String) {
     var bytes = Array(string.utf8)
     bytes.withUnsafeBufferPointer { ptr in

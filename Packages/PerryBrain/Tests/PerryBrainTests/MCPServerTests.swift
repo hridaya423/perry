@@ -30,7 +30,7 @@ final class MCPServerTests: XCTestCase {
     func testNotificationsGetNoResponse() async {
         let server = MCPServer(bridge: StubBridge(), version: "1.0")
         let r1 = await server.handle(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#)
-        let r2 = await server.handle(#"{"jsonrpc":"2.0","method":"ping"}"#) // no id → notification
+        let r2 = await server.handle(#"{"jsonrpc":"2.0","method":"ping"}"#)
         let r3 = await server.handle("not json")
         XCTAssertNil(r1)
         XCTAssertNil(r2)

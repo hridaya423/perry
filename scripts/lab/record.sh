@@ -1,5 +1,4 @@
 #!/bin/bash
-# record.sh <name> [seconds], screen-record to docs/evidence/recordings/.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

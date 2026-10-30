@@ -81,8 +81,6 @@ public class OverlayWindowManager {
     private var supervisorState: PerryCursorState?
     private var displayConfigurationObserver: NSObjectProtocol?
 
-    /// Optional sample sink — wired by the app to its env-gated performance
-    /// log. Arguments: metric id, unit, value.
     public var onSample: ((_ metricID: String, _ unit: String, _ value: Double) -> Void)? {
         didSet { OverlayPerfProbe.shared.isEnabled = onSample != nil }
     }
@@ -105,9 +103,6 @@ public class OverlayWindowManager {
         }
     }
 
-    /// Pays the one-time window + SwiftUI render cost at launch: every
-    /// screen's host is created and rendered once at alpha 0, so the first
-    /// invocation is a pure orderFront of an already-drawn surface.
     public func warmRenderPipeline(state: PerryCursorState) {
         for screen in NSScreen.screens {
             _ = host(for: screen, state: state)
@@ -152,19 +147,6 @@ public class OverlayWindowManager {
         emitStallSample()
     }
 
-    public func hideOverlay() {
-        let start = CFAbsoluteTimeGetCurrent()
-        supervisorState?.overlayVisible = false
-        for host in hosts.values {
-            host.window.orderOut(nil)
-        }
-        supervisorState = nil
-        emitFrameIntervalSamples()
-        emit("overlay.cleanup_ms", value: (CFAbsoluteTimeGetCurrent() - start) * 1000)
-    }
-
-    /// Fades out overlay windows over `duration` seconds, then orders them
-    /// out. Hosts stay alive for the next invocation.
     public func fadeOutAndHideOverlay(duration: TimeInterval = 0.24) {
         let start = CFAbsoluteTimeGetCurrent()
         supervisorState?.overlayVisible = false

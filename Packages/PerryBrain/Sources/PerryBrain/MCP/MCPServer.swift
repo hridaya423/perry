@@ -1,16 +1,11 @@
 import Foundation
 import PerryCore
 
-/// What the perry-mcp helper needs from the running app: the agent-surface
-/// tool list and call dispatch. The Unix-socket client implements this.
 public protocol MCPBridge: Sendable {
     func tools() async throws -> [ToolSpec]
     func call(name: String, arguments: JSONValue) async throws -> ToolResult
 }
 
-/// Minimal MCP (Model Context Protocol) server core: newline-delimited
-/// JSON-RPC over stdio. Pure string-in/string-out so it is fully testable;
-/// `Sources/perry-mcp/main.swift` wires stdin/stdout to it.
 public final class MCPServer: Sendable {
     public static let protocolVersion = "2024-11-05"
 
@@ -24,8 +19,6 @@ public final class MCPServer: Sendable {
         self.version = version
     }
 
-    /// Handles one JSON-RPC line. Returns the response line, or nil for
-    /// notifications and unparseable input (MCP drops both silently).
     public func handle(_ line: String) async -> String? {
         guard let data = line.data(using: .utf8),
               let request = try? JSONValue(parsing: data),

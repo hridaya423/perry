@@ -64,7 +64,6 @@ final class PerrySchedulerController {
 
     private var sessionIsUnlocked: Bool {
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
-        // kCGSSessionScreenIsLocked isn't exported to Swift
         return (session["CGSSessionScreenIsLocked"] as? Bool) != true
     }
 

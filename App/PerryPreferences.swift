@@ -42,8 +42,6 @@ extension Optional: AnyOptionalPreference {
     var isNil: Bool { self == nil }
 }
 
-/// The only place UserDefaults keys live — every `perry.*` preference read
-/// or write in the App target goes through here. scripts/ci.sh enforces it.
 enum PerryPreferences {
 
 

@@ -47,7 +47,7 @@ struct PerryErasurePaths: Sendable {
     }
 }
 
-struct PerryOwnedRootSweeper: @unchecked Sendable, PerryOwnedDataSweeper {
+struct PerryOwnedRootSweeper: @unchecked Sendable {
     private let roots: [URL]
     private let fileManager: FileManager
 

@@ -11,7 +11,6 @@ public struct RoutineSchedule: Codable, Sendable, Equatable {
     public var consecutiveFailures: Int = 0
     public var paused = false
     public var lastRun: Date?
-    public var missedRunPending = false
 
     public init(kind: Kind) { self.kind = kind }
 }
@@ -35,7 +34,6 @@ public struct Perry: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
-/// Two-word names that say the job ("Inbox Keeper"). Deterministic per job.
 public enum PerryNameGenerator {
     private static let keywordNames: [(keys: [String], name: String)] = [
         (["clean", "desktop", "tidy"], "Tidy Desk"),
@@ -62,7 +60,6 @@ public enum PerryNameGenerator {
     }
 }
 
-/// One JSON file per Perry under `directory`; atomic writes.
 public actor PerryStore {
     private let directory: URL
 
@@ -105,8 +102,6 @@ public actor PerryStore {
         try? FileManager.default.removeItem(at: memoryURL(for: id))
     }
 
-    /// Each Perry has its own inspectable memory file, `<id>.memory.md`,
-    /// separate from the global PROFILE.md/CONTEXT.md.
     public func memory(for id: UUID) -> String {
         (try? String(contentsOf: memoryURL(for: id), encoding: .utf8)) ?? ""
     }
@@ -142,31 +137,9 @@ private extension JSONEncoder {
     }
 }
 
-/// Pure scheduling decisions; the app-side scheduler (NSBackgroundActivityScheduler)
-/// calls these and owns the actual timer.
 public enum RoutineDecisions {
     public static let maxConsecutiveFailures = 3
 
-    /// Next scheduled instant after `now`, or nil when the routine is done.
-    public static func nextFire(_ s: RoutineSchedule, now: Date, cal: Calendar = .current) -> Date? {
-        guard !s.paused else { return nil }
-        switch s.kind {
-        case .daily(let hour, let minute):
-            var components = cal.dateComponents([.year, .month, .day], from: now)
-            components.hour = hour
-            components.minute = minute
-            components.second = 0
-            guard let todaySlot = cal.date(from: components) else { return nil }
-            return todaySlot > now ? todaySlot : cal.date(byAdding: .day, value: 1, to: todaySlot)
-        case .interval(let seconds):
-            return (s.lastRun ?? now).addingTimeInterval(seconds)
-        case .once(let date):
-            return s.lastRun == nil ? date : nil
-        }
-    }
-
-    /// Whether the routine should run right now. Missed daily/interval slots
-    /// run once on catch-up (missedRunPending or an overdue slot).
     public static func shouldRun(
         _ s: RoutineSchedule, now: Date, isAwake: Bool, hasNetwork: Bool, cal: Calendar = .current
     ) -> Bool {
@@ -174,17 +147,9 @@ public enum RoutineDecisions {
         return isDue(s, now: now, cal: cal)
     }
 
-    /// A due routine that could not run (asleep/offline) gets one catch-up flag.
-    public static func recordMissed(_ s: RoutineSchedule, now: Date, cal: Calendar = .current) -> RoutineSchedule {
-        var copy = s
-        if isDue(s, now: now, cal: cal) { copy.missedRunPending = true }
-        return copy
-    }
-
     public static func record(_ s: RoutineSchedule, succeeded: Bool, ranAt: Date) -> RoutineSchedule {
         var copy = s
         copy.lastRun = ranAt
-        copy.missedRunPending = false
         if succeeded {
             copy.consecutiveFailures = 0
         } else {
@@ -196,7 +161,6 @@ public enum RoutineDecisions {
 
     private static func isDue(_ s: RoutineSchedule, now: Date, cal: Calendar) -> Bool {
         guard !s.paused else { return false }
-        if s.missedRunPending { return true }
         switch s.kind {
         case .daily(let hour, let minute):
             var components = cal.dateComponents([.year, .month, .day], from: now)

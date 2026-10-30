@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-# Scripted `codex app-server` stand-in for PerryBrain tests. Speaks
-# newline-delimited JSON-RPC on stdio, driven by SCENARIO:
-#   a = signed out; account/login/start -> authUrl + login completed notify
-#   b = turn streams 3 deltas + token usage + turn/completed
-#   c = server issues item/tool/call, asserts client response, completes turn
-#   d = exits mid-turn after one delta
-#   e = waits for turn/interrupt after turn/start, then turn/completed interrupted
-#   stale-turn = a thread's second turn/start errors "unknown thread",
-#                simulating a thread the server has forgotten
-# Every received message is logged as JSONL to FAKE_LOG (if set).
 import json
 import os
 import signal
@@ -230,7 +220,6 @@ def main():
         if message is None:
             return
         if "id" in message and "result" in message or "id" in message and "error" in message:
-            # response to a server request (e.g. item/tool/call in scenario c)
             log(message)
             if message.get("id") == 9001 and SCENARIO == "c":
                 result = message.get("result", {})

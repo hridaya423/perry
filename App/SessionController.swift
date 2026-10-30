@@ -351,23 +351,11 @@ final class SessionController: ObservableObject {
         }
     }
 
-    func startGuide(_ guide: GuideSessionState) throws {
-        try startGuide(guide, attemptID: try invokingAttemptID())
-    }
-
     func startGuide(_ guide: GuideSessionState, attemptID: UUID) throws {
         guard case .invoking(let invocation) = state, invocation.id == attemptID else {
             throw IllegalSessionTransitionError(state: state, operation: "start guide")
         }
         state = .guiding(guide)
-    }
-
-    func startExecution(_ execution: ExecutionSessionState) throws {
-        try startExecution(execution, attemptID: try invokingAttemptID())
-    }
-
-    func startAsk(_ ask: AskSessionState) throws {
-        try startAsk(ask, attemptID: try invokingAttemptID())
     }
 
     func startAsk(_ ask: AskSessionState, attemptID: UUID) throws {
@@ -381,10 +369,6 @@ final class SessionController: ObservableObject {
         guard case .asking(var ask) = state else { return }
         update(&ask)
         state = .asking(ask)
-    }
-
-    func startTalk(_ talk: TalkSessionState) throws {
-        try startTalk(talk, attemptID: try invokingAttemptID())
     }
 
     func startTalk(_ talk: TalkSessionState, attemptID: UUID) throws {
@@ -410,13 +394,6 @@ final class SessionController: ObservableObject {
             throw IllegalSessionTransitionError(state: state, operation: "start execution")
         }
         state = .executing(execution)
-    }
-
-    private func invokingAttemptID() throws -> UUID {
-        guard case .invoking(let invocation) = state else {
-            throw IllegalSessionTransitionError(state: state, operation: "start invocation")
-        }
-        return invocation.id
     }
 
     func setExecutionPhase(_ phase: ExecutionPhase) throws {

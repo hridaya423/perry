@@ -1,7 +1,6 @@
 import Foundation
 import PerryCore
 
-/// Receding-horizon guide engine: after each verified user action it re-observes the live window and asks the planner for the next single step.
 public actor GuideEngine {
     public enum Phase: Equatable, Sendable {
         case idle
@@ -42,7 +41,6 @@ public actor GuideEngine {
         self.phase = .idle
     }
 
-    /// Observes, asks the planner for one step, and presents it. `maximumSteps` bounds the whole session.
     public func start(goal: String, maximumSteps: Int? = nil, context: GuideContext = .empty) async throws -> GuideStep? {
         reset(goal: goal, context: context, maximumSteps: maximumSteps)
         let observation = try await observer.observe()
@@ -56,7 +54,6 @@ public actor GuideEngine {
         return step
     }
 
-    /// Enters the loop at a marker chosen from the visible path; earlier steps count toward the bound and are never re-suggested.
     public func start(
         goal: String,
         observation: GuideObservation,
@@ -93,7 +90,6 @@ public actor GuideEngine {
         return GuidePresentation(step: step, target: target, snapshot: observation.snapshot)
     }
 
-    /// Re-observes to repoint the current step's target. `force` is for an explicit user request; the automatic repoint is one-shot.
     public func refreshPresentation(force: Bool = false) async throws -> GuidePresentation? {
         guard let step = currentStep, let baseline = presentationObservation else { return nil }
         guard !hasRepointed || force else { return currentPresentation() }
@@ -161,7 +157,6 @@ public actor GuideEngine {
         return await presentNext(observation: observation)
     }
 
-    /// Re-presents the previous step against a fresh observation; the current step is unpresented.
     public func back() async -> AdvanceResult {
         guard currentStepIndex != nil, presentedSteps.count >= 2 else {
             return .notPresenting
@@ -200,7 +195,6 @@ public actor GuideEngine {
         return .wentBack(toStep: previous, stepIndex: progress.presentedCount - 1)
     }
 
-    /// Continues after a `needsInput` pause with the user's answer.
     public func resume(withAnswer answer: String) async -> AdvanceResult {
         guard !goal.isEmpty else { return .notPresenting }
         switch phase {
@@ -410,8 +404,6 @@ public actor GuideEngine {
         phase = .presenting(stepIndex: progress.presentedCount - 1)
     }
 
-    // Connection generation is not compared: element tokens only resolve inside the observation that produced them,
-    // and comparing it would end every guide when the driver reconnects under an unmoved window.
     private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation, allowsNewWindow: Bool = false) throws {
         guard let processID = baseline.processID,
               let windowID = baseline.windowID,

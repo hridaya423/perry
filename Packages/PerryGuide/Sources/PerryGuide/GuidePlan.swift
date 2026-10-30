@@ -111,7 +111,6 @@ public struct GuideStep: Codable, Equatable, Sendable, Identifiable {
 
 public typealias GuidePostcondition = GuideStep.Postcondition
 
-/// One live read of the target window. Deliberately not Codable: screenshot bytes exist only in memory so pixels never reach history, memory, diagnostics, or test reports.
 public struct GuideObservation: Sendable {
     public let observationID: String
     public let snapshot: AXSnapshot
@@ -143,17 +142,13 @@ public struct GuideObservation: Sendable {
     }
 }
 
-/// Reads the target window's accessibility tree.
 public protocol GuideObserving: Sendable {
     func observe() async throws -> GuideObservation
 
-    /// Suspends until the observed UI signals a change or `within` elapses. True means a signal ended the wait.
     func awaitUIChange(within: Duration) async -> Bool
 
-    /// Reads the accessibility tree without capturing the screen.
     func observeElements() async throws -> GuideObservation
 
-    /// Confirms the target window is still the same window without reading its element tree. Must throw on a dead or swapped target.
     func probeTarget() async throws -> GuideObservation
 }
 
@@ -172,7 +167,6 @@ public extension GuideObserving {
     }
 }
 
-/// Bounded record of what the guide has presented; history is capped so a long session cannot grow model context without limit.
 public struct GuideProgress: Equatable, Sendable {
     public static let historyLimit = 8
 
@@ -237,7 +231,6 @@ public enum GuidePlannerError: Error, Equatable, Sendable, LocalizedError {
     }
 }
 
-/// Trust boundary for planner-produced steps: every step is checked against the live observation before the user sees it.
 public enum GuideTargetValidator {
     public static func requireUnprotected(_ observation: GuideObservation) throws {
         let window = WindowContext(
@@ -287,11 +280,9 @@ public enum GuideDecision: Equatable, Sendable {
     case needsInput(prompt: String, choices: [String])
 }
 
-/// Returns the next single step for the current observation, or a decision that the goal is complete or blocked.
 public protocol GuidePlanner: Sendable {
     func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision
 
-    /// The visible part of the path. Steps that cannot be grounded in `observation` are omitted.
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep]
 }
 
@@ -317,7 +308,6 @@ public struct GuideContext: Equatable, Sendable {
     public static let empty = GuideContext()
 }
 
-/// Offline planner that only points at controls visible right now, ranked by goal words.
 public struct AXGuidePlanner: GuidePlanner {
     public init() {}
 

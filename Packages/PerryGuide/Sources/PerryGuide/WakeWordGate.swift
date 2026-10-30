@@ -1,6 +1,5 @@
 import Foundation
 
-/// Wake word policy: off unless the user opts in.
 public struct WakeWordGate: Sendable {
     public static let defaultPhrase = "hey perry"
 
@@ -12,8 +11,6 @@ public struct WakeWordGate: Sendable {
         self.phrase = Self.normalized(phrase)
     }
 
-    /// Matches the leading portion of a transcript against the phrase
-    /// ("Hey Perry, rename the files"). Returns the remainder as command text.
     public func match(inTranscript transcript: String) -> String? {
         guard enabled else { return nil }
         let normalized = Self.normalized(transcript)

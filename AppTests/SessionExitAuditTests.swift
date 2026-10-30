@@ -3,10 +3,6 @@ import PerryBrain
 import PerryRuntimes
 @testable import Perry
 
-/// Phase 10 audit: "every state has a visible exit ≤10 s, no stuck states."
-/// The state machine is the contract — this enumerates every constructible
-/// `SessionState` and proves a lawful transition path reaches `.idle`,
-/// `.reporting`, or `.failed` (which dismiss in one call) in ≤5 steps.
 @MainActor
 final class SessionExitAuditTests: XCTestCase {
     private let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
@@ -20,8 +16,6 @@ final class SessionExitAuditTests: XCTestCase {
         }
     }
 
-    /// Walks the lawful transition graph to a terminal state, asserting the
-    /// whole exit takes ≤5 transitions — well inside the 10 s budget.
     private func assertExits(_ controller: SessionController, named name: String, line: UInt = #line) throws {
         for step in 0...6 {
             switch controller.state {

@@ -1,7 +1,5 @@
 import Foundation
 
-/// PROFILE.md (stable preferences) and CONTEXT.md (current project), local and
-/// inspectable, injected into Talk and agent prompts via `promptBlock()`.
 public struct MemoryFiles: Sendable {
     private let directory: URL
 
@@ -48,7 +46,6 @@ public struct MemoryFiles: Sendable {
         try writeProfile(lines.map { $0 + "\n" }.joined())
     }
 
-    /// One block for system prompts; empty sections are omitted.
     public func promptBlock() -> String {
         var sections: [String] = []
         let profile = profile().trimmingCharacters(in: .whitespacesAndNewlines)

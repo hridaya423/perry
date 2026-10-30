@@ -1,33 +1,4 @@
 #!/bin/bash
-# talk-drill.sh — exercise the real ⌃⌥ talk loop end to end and report the
-# hero latencies plus deixis outcomes.
-#
-# Per run: front the target app, resolve a real AX button's centre via
-# cua-driver, post a synthetic ⌃⌥ hold with the pointer resting on it, and
-# wait for the turn to reach answer.first_text (or a failure marker). Speech
-# comes from the app-side lab input: --perry-talk-script <text> (default —
-# deterministic, no Speech permission needed) or --perry-talk-audio <file>
-# when TALK_WAV=<path> is set (real SFSpeechURLRecognitionTask).
-#
-# The default target is DrillTarget — a compiled keypad fixture
-# (scripts/lab/drill-target.swift). Under Stage Manager any app that loses
-# focus collapses to an edge thumbnail and Calculator cannot reliably reopen
-# its window; the fixture exists so the drill never depends on that. Set
-# TALK_TARGET_APP to a real app name to use one instead.
-#
-#   RUNS=10 HOLD=1.6 scripts/lab/talk-drill.sh
-#   TALK_TARGET_APP=Calculator scripts/lab/talk-drill.sh
-#   scripts/lab/talk-drill.sh --assert          # enforce the Phase-1 gates
-#
-# Assert budgets (override per environment):
-#   ASSERT_FIRST_TEXT_P50 / _P95  ms, talk.keyup → answer.first_text
-#   ASSERT_CAPTURE_P50            ms, talk.keyup → capture.done
-#   ASSERT_BARGE_P50              ms, talk.bargein → bargein.silence
-#   ASSERT_DEIXIS_PCT             % of deixis outcomes bound to an element
-#   ASSERT_ANSWERED_PCT           % of holds that produced an answer
-#
-# Requires: Debug build at build/debug-p1, Screen Recording + Accessibility
-# for the app, and a working brain.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -56,8 +27,6 @@ if [ "$TARGET_APP" = "DrillTarget" ]; then
     "$TARGET_BIN" &
     sleep 1
     TARGET_PID="$(pgrep -x DrillTarget | head -1)"
-    # Unbundled binaries cannot front themselves under Stage Manager; an
-    # osascript `set frontmost` can.
     activate_target() {
         osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $TARGET_PID) to true" >/dev/null 2>&1
     }
@@ -81,10 +50,6 @@ if [ -n "${TALK_WAV:-}" ]; then
     LAB_ARGS=(--perry-talk-drill --perry-talk-audio "$TALK_WAV")
 fi
 
-# Launch the binary directly: `open` spawns under launchd, where the embedded
-# cua-driver attributes TCC to an ungranted Perry and every capture is refused.
-# A shell-launched Perry inherits this terminal's trusted context, which is
-# what the latency measurement is about. TCC-grant UX is a separate audit.
 for stale in $(pgrep -x Perry); do kill "$stale" 2>/dev/null || true; done
 sleep 0.5
 "$DRIVE" seed-lab-data
@@ -93,9 +58,6 @@ mkdir -p "$EVIDENCE_DIR"
 LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 APP_BUNDLE="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
 if [ -n "${TALK_WAV:-}" ]; then
-    # Apple Speech is charged to the responsible process; a shell-launched
-    # Perry makes the terminal responsible and TCC aborts it. LaunchServices
-    # makes Perry responsible for its own grants.
     open -n "$APP_BUNDLE" --env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --args "${LAB_ARGS[@]}"
 else
     PERRY_PERFORMANCE_EVENT_LOG="$LOG" "$APP_BUNDLE/Contents/MacOS/Perry" \
@@ -106,10 +68,6 @@ pgrep -x Perry >/dev/null || { echo "talk-drill: Perry did not launch" >&2; exit
 MARKERS="$LOG.markers.jsonl"
 echo "markers=$MARKERS"
 
-# Bring a target window forward *after* Perry launches so it is the frontmost
-# app the Talk capture observes. This must repeat per run — Perry captures
-# the frontmost app at hold time, and anything that activates another app
-# between runs silently retargets the observation.
 front_target
 
 pick_target() {
@@ -145,7 +103,6 @@ else
 fi
 
 wait_for() {
-    # wait_for <from-line> <regex> <timeout-s> → 0 when a new row matches
     local from=$1 re=$2 seconds=$3
     local limit=$((seconds * 4)) i=0
     while [ "$i" -lt "$limit" ]; do
@@ -168,8 +125,6 @@ for run in $(seq 1 "$RUNS"); do
     if wait_for "$from" 'answer\.first_text|talk\.input_failed|talk\.turn_failed|talk\.capture_failed' "$TIMEOUT"; then
         if tail -n "+$from" "$MARKERS" | grep -q 'answer.first_text'; then
             echo "run $run: answered"
-            # Let the turn finish before the next hold, or the next hold
-            # becomes a barge-in and cancels it.
             wait_for "$from" 'talk\.first_audio|talk\.turn_failed' "$TIMEOUT" || true
             sleep 3
         else
@@ -182,7 +137,6 @@ for run in $(seq 1 "$RUNS"); do
 done
 
 if [ "$BARGE" != "0" ]; then
-    # One barge-in: start a hold, wait for spoken output, press again.
     from=$(( $(marker_count) + 1 ))
     "$HOLD_BIN" "$CX" "$CY" "$HOLD" 2>/dev/null
     if wait_for "$from" 'talk\.first_audio' "$TIMEOUT"; then

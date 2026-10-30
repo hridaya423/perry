@@ -1,10 +1,6 @@
 import Foundation
 
-/// `perry.*` executors over `PerryStore`. `perry.settings.open` needs a UI
-/// handler injected by the app (Home's Settings pages).
 public enum PerryToolExecutors {
-    /// `openSettings` receives the requested Home settings page identifier,
-    /// or nil for the default page. When nil the tool reports unavailable.
     public static func make(
         store: PerryStore,
         openSettings: (@Sendable (String?) async -> Void)? = nil

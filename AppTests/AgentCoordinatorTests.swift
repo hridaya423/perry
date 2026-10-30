@@ -504,10 +504,6 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
     }
 
-    /// H5: the answer never waits on condensation. A long history answers
-    /// with the stale summary plus verbatim source turns; the condensation
-    /// runs as post-turn maintenance and still lands in the saved summary
-    /// before the run completes.
     func testLongConversationAnswersBeforeCondensingAndRetainsSources() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
@@ -524,13 +520,8 @@ final class AgentCoordinatorTests: XCTestCase {
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "When does the Orchid project ship?"))
         XCTAssertEqual(events.last, .finished(.completed))
-        // The event stream closes on .finished while the deferred condensation
-        // still runs inside the run task — join the task before asserting on
-        // provider/store state it owns.
         await coordinator.waitForCompletion(threadID: original.id)
         XCTAssertGreaterThan(provider.requests.count, 1)
-        // The first request is the answer — a condensation call ahead of it
-        // would put a model round-trip back on the first-token path.
         XCTAssertFalse(provider.requests.first?.system.contains("Condense earlier conversation") ?? true)
         XCTAssertTrue(provider.requests.first?.messages.contains { message in
             guard case .user(let parts) = message, case .text(let text) = parts.first else { return false }
@@ -547,9 +538,6 @@ final class AgentCoordinatorTests: XCTestCase {
         XCTAssertEqual(saved?.turns.first?.question, original.turns.first?.question)
     }
 
-    /// A condensation failure can no longer block the answer: the turn
-    /// completes and simply retains no summary, so the next turn retries the
-    /// fold instead of surfacing an error the user can't act on.
     func testFailedSummaryMaintenanceStillAnswersAndRetainsTurn() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
@@ -562,8 +550,6 @@ final class AgentCoordinatorTests: XCTestCase {
         )
         let events = await collect(coordinator.run(threadID: original.id, goal: "Continue safely"))
         XCTAssertEqual(events.last, .finished(.completed))
-        // Same race: .finished precedes the deferred maintenance write —
-        // join the run task before asserting on requests or the store.
         await coordinator.waitForCompletion(threadID: original.id)
         XCTAssertGreaterThan(provider.requests.count, 1)
         XCTAssertFalse(provider.requests.first?.system.contains("Condense earlier conversation") ?? true)

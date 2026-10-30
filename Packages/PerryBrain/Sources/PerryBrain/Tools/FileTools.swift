@@ -2,7 +2,6 @@ import Foundation
 import PerryCore
 
 public struct WorkspaceEntry: Sendable, Equatable {
-    /// Path relative to the workspace root.
     public var path: String
     public var isDirectory: Bool
     public var byteCount: Int64
@@ -22,9 +21,6 @@ public struct WorkspaceFileError: Error, Sendable, Equatable, LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// Root-confined file backend: resolves `..` and symlinks, refuses anything
-/// that lands outside the workspace root. Suitable as the app's default
-/// executor backend for un-journaled reads and quick writes.
 public struct LocalWorkspaceFiles: Sendable {
     public static let maximumWriteBytes = 8 * 1_024 * 1_024
     public static let maximumReadBytes = 8 * 1_024 * 1_024
@@ -193,9 +189,6 @@ public struct LocalWorkspaceFiles: Sendable {
         guard rel != ".trash", !rel.hasPrefix(".trash/") else {
             throw WorkspaceFileError("already in trash: \(path)")
         }
-        // Workspace-local .trash: FileManager.trashItem blocks on Finder/
-        // session UI (hangs on a locked display); a move is instant and
-        // restores through files.move.
         let trashDir = rootURL.appendingPathComponent(".trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trashDir, withIntermediateDirectories: true)
         let stamp = Int(Date().timeIntervalSince1970 * 1000)

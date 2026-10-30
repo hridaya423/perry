@@ -19,7 +19,6 @@ final class HomeHoverIntentTests: XCTestCase {
     func testLeaveBeforeDwellCloses() {
         _ = intent.entered(at: 0)
         XCTAssertEqual(intent.exited(at: 0.05), .none)
-        // Stale deadline fire is ignored.
         XCTAssertEqual(intent.deadlineReached(at: 0.19), .none)
     }
 
@@ -37,7 +36,6 @@ final class HomeHoverIntentTests: XCTestCase {
         _ = intent.deadlineReached(at: 0.19)
         _ = intent.exited(at: 0.5)
         XCTAssertEqual(intent.entered(at: 0.6), .none)
-        // Old tuck deadline passes with no action — peek stays open.
         XCTAssertEqual(intent.deadlineReached(at: 0.85), .none)
         XCTAssertEqual(intent.state, .peekOpen)
     }
@@ -46,18 +44,13 @@ final class HomeHoverIntentTests: XCTestCase {
         _ = intent.entered(at: 0)
         _ = intent.deadlineReached(at: 0.19)
         XCTAssertEqual(intent.escape(), .hidePeek)
-        // Moving within the zone does not reopen.
         XCTAssertEqual(intent.entered(at: 1.0), .none)
         XCTAssertEqual(intent.deadlineReached(at: 2.0), .none)
         _ = intent.exited(at: 3.0)
-        // Now a fresh entry dwells again.
         XCTAssertEqual(intent.entered(at: 3.1), .none)
         XCTAssertEqual(intent.deadlineReached(at: 3.29), .showPeek)
     }
 
-    /// Fuzzed pointer paths: random enter/exit/esc/deadline sequences
-    /// must never leave the machine with a pending deadline that cannot
-    /// resolve, and peek must always end hidden when the pointer is gone.
     func testFuzzedPointerPathsNeverStickOpen() {
         var rng = SplitMix64(seed: 0xC0FFEE)
         var inside = false
@@ -84,12 +77,10 @@ final class HomeHoverIntentTests: XCTestCase {
                 continue
             }
             intent = m
-            // Invariant: a visible peek implies an open or pending state.
             if peekVisible {
                 XCTAssertNotEqual(intent.state, .closed)
                 XCTAssertNotEqual(intent.state, .latched)
             }
-            // Pointer outside + all deadlines elapsed => nothing stuck.
             if !inside && intent.pendingDeadline == nil {
                 XCTAssertEqual(intent.state, .closed)
                 XCTAssertFalse(peekVisible)
@@ -98,7 +89,6 @@ final class HomeHoverIntentTests: XCTestCase {
     }
 }
 
-/// Deterministic RNG for the fuzz test (same SplitMix64 the ink code uses).
 @MainActor
 final class NotchPeekTests: XCTestCase {
     private func peekingController() async throws -> (AppController, () -> Void) {

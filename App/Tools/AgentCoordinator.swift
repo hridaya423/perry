@@ -229,7 +229,7 @@ final class AgentCoordinator: ObservableObject {
               let pending = thread.pendingTurn, pending.id == runID else { throw CancellationError() }
         var request = request
         request.system = await systemPrompt(for: thread, provider: provider, mode: .guide) + "\n\n" + request.system
-        request.messages = try await ConversationContext().prepare(
+        request.messages = try await ConversationContext.prepare(
             thread: thread, question: pending.question, runID: runID,
             store: threads, provider: provider, baseRequest: request
         )

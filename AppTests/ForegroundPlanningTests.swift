@@ -507,8 +507,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let controller = makeWakingController(directory: directory, session: session)
         installAgentRunner(on: controller, directory: directory)
 
-        // Hotkey wake leaves the session .invoking; a Do submission must
-        // adopt that invocation instead of dropping on a mismatched id.
         try session.wake()
         controller.subsystems.foreground.start(goal: "describe the screen")
 
@@ -587,8 +585,6 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         XCTAssertTrue(asked, "Ask session never started — state: \(controller.sessionState)")
 
-        // A dictated Do-intent while Ask is live only offers a task; nothing
-        // starts until the user confirms it.
         controller.debugDispatch(#"perry, do create file "evil.txt""#)
         try await Task.sleep(for: .milliseconds(300))
         guard case .asking(let ask) = controller.sessionState else {
@@ -623,9 +619,6 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         XCTAssertTrue(running, "run never reached .executing — state: \(controller.sessionState)")
 
-        // The Mac sleeping mid-run settles the supervisor at a boundary and
-        // hands control to the user; Continue replans against the post-sleep
-        // screen instead of trusting pre-sleep observations.
         NSWorkspace.shared.notificationCenter.post(
             name: NSWorkspace.willSleepNotification,
             object: nil
@@ -1095,8 +1088,6 @@ final class ForegroundPlanningTests: XCTestCase {
         let firstCalled = await waitUntil { await gate.calls >= 1 }
         XCTAssertTrue(firstCalled, "old attempt never streamed: \(controller.sessionState)")
         controller.dismiss()
-        // The old run's teardown is async — a start that races it bounces off
-        // `supervisorActive` or the in-flight start, so wait for both to clear.
         let tornDown = await waitUntil { !controller.subsystems.foreground.supervisorActive && !controller.subsystems.foreground.startIsInFlight }
         XCTAssertTrue(tornDown, "old attempt's supervisor did not clear: \(controller.sessionState)")
         controller.subsystems.foreground.start(goal: "replacement attempt")
@@ -1119,9 +1110,6 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         controller.dismiss()
         await gate.releaseSecond()
-        // A dismissed run lands in a stopped report (the same state the
-        // activity strip retires); idle is equally terminal if the
-        // session settled directly.
         let replacementCancelled = await waitUntil {
             if case .idle = controller.sessionState { return true }
             if case .reporting(let report) = controller.sessionState, report.outcome == .stopped { return true }
@@ -1447,9 +1435,6 @@ final class ForegroundPlanningTests: XCTestCase {
         return await condition()
     }
 
-    /// AppController with granted permission/CUA fixtures and an injectable
-    /// SessionController so tests can drive `wake()` (hotkey → `.invoking`)
-    /// before exercising the real submission/dispatch paths.
     private func makeWakingController(
         directory: URL,
         session: SessionController,
@@ -1490,8 +1475,6 @@ final class ForegroundPlanningTests: XCTestCase {
         }
     }
 
-    /// Routes `foreground`'s open-ended Do path through an AgentCoordinator
-    /// backed by `provider`, the same production route `AppSubsystems` wires.
     private func installAgentRunner(
         on controller: AppController,
         directory: URL,
@@ -1506,8 +1489,6 @@ final class ForegroundPlanningTests: XCTestCase {
     }
 }
 
-/// Fails its first stream so retry coverage can prove the replacement run is
-/// dispatched exactly once; the second attempt answers normally.
 private final class FailOnceProvider: ModelProvider, @unchecked Sendable {
     let id: ProviderID = "fixture.fail-once"
     let displayName = "Fixture"
@@ -1687,8 +1668,6 @@ private struct ForegroundAnswerProvider: ModelProvider {
     }
 }
 
-/// Records provider dispatches so tests can prove the agent-loop route was
-/// taken; answers immediately with a fixed text stream.
 private actor StartupStreamGate {
     private var callCount = 0
     private var firstReleased = false
@@ -1740,9 +1719,6 @@ private enum StaleStartupError: Error {
     case firstAttempt
 }
 
-/// The agent-path twin of the old typed-planner fixture: the first stream
-/// blocks until released and then fails late, exercising the attempt-staleness
-/// guard that keeps a cancelled attempt's error from clobbering its replacement.
 private final class StaleErrorProvider: ModelProvider, @unchecked Sendable {
     let id: ProviderID = "fixture.stale-error"
     let displayName = "Fixture"

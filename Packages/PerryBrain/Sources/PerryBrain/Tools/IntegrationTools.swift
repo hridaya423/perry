@@ -18,10 +18,7 @@ public struct IntegrationOperation: Sendable, Equatable {
 public struct IntegrationService: Sendable, Equatable {
     public var id: String
     public var name: String
-    /// False when the OAuth grant is missing or expired — reads should fail
-    /// with a reconnect message rather than guessing.
     public var connected: Bool
-    /// Remote writes stay off until the user enables them per service.
     public var writeEnabled: Bool
     public var operations: [IntegrationOperation]
 
@@ -34,8 +31,6 @@ public struct IntegrationService: Sendable, Equatable {
     }
 }
 
-/// What the app wires in over `RemoteIntegrations`. Reads/writes are split
-/// into separate tools so the trust tier is decided by the spec, not the call.
 public protocol IntegrationBackend: Sendable {
     func services() async throws -> [IntegrationService]
     func perform(service: String, operation: String, arguments: JSONValue) async throws -> JSONValue

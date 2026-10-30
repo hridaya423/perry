@@ -16,7 +16,6 @@ public enum ProfileExtraction {
     public static let intro = "Tell me about yourself."
     public static let introHint = "What do you do, and what do you want to learn first?"
 
-    /// Asked only when the introduction leaves the matching fact empty.
     public static let questions = [
         "What’s your work?",
         "Which apps do you use most?",

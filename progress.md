@@ -16,6 +16,32 @@ Not verified: the 7 audio-bound tests (rerun once coreaudiod on the mini is rest
 
 Left on purpose: the two realtime voice stacks (Talk's warm session vs steering's per-hold session need a session-lifetime redesign); RealtimeTaskLedger (perf tooling reads it); NotchStatusController stays AppKit; OAuth credential storage types stay separate (keychain migration); CopyLintTests still lists its paths; `HardwareAndKeysTests.testKeychainRoundTrip` still lives in PerryGuide though KeychainStore moved to PerryCore.
 
+Comment purge (owner: "remove ALL comments"): every comment removed from Swift, ObjC, shell, Python and YAML sources (693 Swift/ObjC lines, 148 shell, 17 Python, 2 YAML). Kept: shebangs, `// swift-tools-version` (SwiftPM reads it), xcconfig `#include?` directives, Python docstrings (two scripts print them as `--help`). The owner's uncommitted `AppTests/AnalyzerRecognitionTests.swift` was left untouched.
+
+Independent audit after the purge (fresh read-only agent): CLEAN, about 3–4% of production lines flagged. Fixed from it:
+- deleted dead members: `RoutineDecisions.nextFire` and `recordMissed` (plus the never-set `missedRunPending`), `SuggestionRules.quietNow`, `PerryPermissionSnapshot.allGranted`, `RuntimeRecord.canRun`, `MachineProfile.hardwareModel`, `OverlayWindowManager.hideOverlay`
+- deleted the one-conformer `PerryOwnedDataSweeper` protocol
+- moved the test-only `SessionController.start*` overloads without `attemptID` into `AppTests/TestSupport.swift`
+- made `ConversationContext` a static namespace
+- removed a no-op rethrow in `PerformanceSampleLog` and an unused capture in `AppSubsystems`
+- made a failed credential encode stop the save, where it used to store an empty string
+
+Left and flagged for the owner:
+- `LocalBenchmark`: the runner was planned on 2026-10-25 but never wired. Nothing writes `bench.json`, so the settings summary never shows. Wire it or delete it.
+- `importRoutine` and `reconcileWorkspaceAction`: these may be planned features.
+- Some credential and connector writes still swallow errors with `try?` (`CustomConnectors.save`, the OAuth refresh `persist`, and the key deletes). Surfacing them needs a decision on the UI.
+- `LaunchOverrides` is compiled into release.
+- `BrainController` (718 lines) and `TalkSession` (739) each still hold two jobs.
+- The erasure "collect errors" loop is repeated five times.
+- `ActivityLog` and `TranscriptStore` have near-copies of the same corrupt-file recovery.
+
+Evidence (mini):
+- Packages: all green, except the known `testKeychainRoundTrip` (locked keychain over ssh).
+- App suite: 887 passed, 7 skipped. 8 failures:
+  - 7 are the known 60-second timeouts.
+  - 1 is a crash: "read an unowned reference … already destroyed", during `ForegroundPlanningTests`.
+- The crash existed before this work. Baseline 517db16 crashed the same way in both runs of the whole `ForegroundPlanningTests` class. It is a test-teardown race: a test frees its `AppController` while async work still holds an `unowned` reference to it. In the app the controller lives as long as the process. Not fixed.
+
 Surprise: around 12:00 on 2026-10-30 something on the mini deleted the old `~/Honey/perry-*` snapshot folders, `build/tools`, all DerivedData and a scratch folder (free space 8.7 → 87 GB). No command in this session did it.
 
 # Current: crash root cause (2026-10-29)

@@ -55,11 +55,6 @@ protocol PerryDataEraser: Sendable {
     func erase() async throws
 }
 
-protocol PerryOwnedDataSweeper: Sendable {
-    func inventory() async throws -> [String]
-    func erase() async throws
-}
-
 struct PerryOwnedDataSweepFailure: Equatable, Sendable, LocalizedError {
     let operation: PerryErasureOperation
     let reason: String
@@ -193,11 +188,11 @@ actor CompleteErasureCoordinator {
     static let allCategories = Set(PerryErasureCategory.allCases)
 
     private let erasers: [PerryErasureCategory: any PerryDataEraser]
-    private let ownedDataSweeper: (any PerryOwnedDataSweeper)?
+    private let ownedDataSweeper: PerryOwnedRootSweeper?
 
     init(
         erasers: [any PerryDataEraser],
-        ownedDataSweeper: (any PerryOwnedDataSweeper)? = nil
+        ownedDataSweeper: PerryOwnedRootSweeper? = nil
     ) {
         var indexed: [PerryErasureCategory: any PerryDataEraser] = [:]
         for eraser in erasers {

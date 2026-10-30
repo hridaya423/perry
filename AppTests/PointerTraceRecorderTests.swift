@@ -37,10 +37,6 @@ final class PointerTraceRecorderTests: XCTestCase {
         XCTAssertEqual(recorder.samples.count, 3)
     }
 
-    /// Regression: Talk shows a full-screen click-through overlay before the
-    /// trace starts. If that window counted as "Perry UI", every sample would
-    /// be flagged overPerry and deixis could never bind. Only Perry windows
-    /// the user can actually interact with may flag a sample.
     func testClickThroughAndInvisibleWindowsDoNotCountAsPerry() {
         guard let screen = NSScreen.screens.first else { return }
         let clickThrough = NSWindow(
@@ -78,12 +74,10 @@ final class PointerTraceRecorderTests: XCTestCase {
         XCTAssertEqual(frames.first?.width, 200)
     }
 
-    /// Integration: drive the real overlay machinery and prove the windows it
-    /// orders can never leak into the deixis "over Perry" set.
     func testLiveOverlayWindowsAreNotCountedAsPerry() {
         let manager = OverlayWindowManager()
         manager.showOverlay(onScreens: NSScreen.screens, state: PerryCursorState())
-        defer { manager.hideOverlay() }
+        defer { manager.fadeOutAndHideOverlay(duration: 0) }
 
         let maxY = NSScreen.screens.first?.frame.maxY ?? 0
         let flagged = PointerTraceRecorder.perryWindowFramesInAXSpace()

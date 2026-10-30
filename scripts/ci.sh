@@ -1,7 +1,4 @@
 #!/bin/bash
-# ci.sh — the one command that must be green before a task is done:
-# XcodeGen (if needed) → Debug build → swift test for every local package
-# → the hosted PerryTests bundle. Exits non-zero on the first failure.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

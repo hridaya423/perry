@@ -98,7 +98,6 @@ final class AXAppChangeMonitor: @unchecked Sendable {
                 .takeUnretainedValue()
                 .noteSignal()
         }, &observer) == .success, let observer else { return false }
-        // AX posts reach observers on ancestor elements, so the application element covers the whole window tree.
         let app = AXUIElementCreateApplication(pid)
         for name in Self.notifications {
             AXObserverAddNotification(observer, app, name as CFString, refcon)

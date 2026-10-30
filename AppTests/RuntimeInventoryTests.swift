@@ -34,7 +34,7 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertNil(record.authentication)
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
-        XCTAssertFalse(record.canRun)
+        XCTAssertNotEqual(record.authentication?.isUsable, true)
     }
 
     func testConfiguredCredentialsAllowRunningWithoutClaimingReadiness() async throws {
@@ -43,7 +43,7 @@ final class RuntimeInventoryTests: XCTestCase {
         let record = try XCTUnwrap(setup.records.first)
 
         XCTAssertEqual(record.authentication, .configured)
-        XCTAssertTrue(record.canRun)
+        XCTAssertEqual(record.authentication?.isUsable, true)
         XCTAssertFalse(record.isReady)
     }
 
@@ -112,7 +112,7 @@ final class RuntimeInventoryTests: XCTestCase {
             fixture.failAt = stage
             let setup = try await fixture.inspector.inspect()
             let record = try XCTUnwrap(setup.records.first)
-            XCTAssertFalse(record.canRun)
+            XCTAssertNotEqual(record.authentication?.isUsable, true)
             XCTAssertFalse(record.status.contains("seeded-secret"))
             if stage == "verify" {
                 XCTAssertFalse(fixture.events.contains("authenticate"))
@@ -134,9 +134,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(definitions[0].signInArguments, ["login", "--device-auth"])
     }
 
-    /// In-app sign-in replaces the copy-a-Terminal-command flow: even when
-    /// the runtime reports it needs authentication, the setup record carries
-    /// no shell commands and marks itself as app-authenticating.
     func testInAppAuthenticatingRuntimeCarriesNoCopyCommands() async throws {
         let fixture = Fixture()
         fixture.authenticatesInApp = true
@@ -148,7 +145,7 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(record.authentication, .missing)
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
-        XCTAssertFalse(record.canRun)
+        XCTAssertNotEqual(record.authentication?.isUsable, true)
     }
 
     func testMissingPrivateCodexHomeRejectsCodexAndExplainsRecovery() async throws {
@@ -158,7 +155,7 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertEqual(status, .unverified(reason: "Codex’s private folder isn’t available"))
         let inspected = try await definition.inspect()
         let record = try XCTUnwrap(inspected)
-        XCTAssertFalse(record.canRun)
+        XCTAssertNotEqual(record.authentication?.isUsable, true)
         XCTAssertNil(record.signInCommand)
         XCTAssertTrue(record.status.contains("Check storage and folder permissions"))
     }

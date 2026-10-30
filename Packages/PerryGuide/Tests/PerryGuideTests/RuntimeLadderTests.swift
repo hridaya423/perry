@@ -326,8 +326,6 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         }
     }
 
-    /// The wire finally carries postconditions — without them click-advance
-    /// can only stall waiting for an explicit confirmation.
     func testPostconditionIsAcceptedAndDecoded() throws {
         guard case .step(let step) = try RuntimeGuidePlanner.parseNextStep(
             text: #"{"step":{"instruction":"click Open","target":"b1","post":{"exists":"b2"}}}"#,
@@ -354,9 +352,6 @@ final class RuntimeGuidePlannerTests: XCTestCase {
         XCTAssertEqual(titled.postcondition, .windowTitleEquals("Preferences"))
     }
 
-    /// absent/label postconditions reference the element being changed; an
-    /// id that is not in the live window could never verify, so the proof is
-    /// dropped and the step stays.
     func testPostconditionDropsUngroundedElementIDs() throws {
         for text in [
             #"{"step":{"instruction":"click","target":"b1","post":{"absent":"nope"}}}"#,

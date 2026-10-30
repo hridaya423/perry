@@ -240,8 +240,6 @@ final class CuaWorkerServiceTests: XCTestCase {
 
         assertFailure(await finish(task), equals: .operationDidNotStop)
 
-        // The retired worker's driver is dead, so its claims are pure wedge;
-        // a new worker must be admitted on the same resource.
         let reclaimed = try await service.withWorker(scope: .background, resources: resource) { _ in
             return true
         }

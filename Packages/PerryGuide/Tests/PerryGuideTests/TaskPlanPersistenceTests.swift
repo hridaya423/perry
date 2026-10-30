@@ -18,7 +18,6 @@ final class TaskPlanPersistenceTests: XCTestCase {
         guard case .executable(let persistedPlan) = record.plan else { return XCTFail("Executable plan changed representation") }
         XCTAssertEqual(try persistedPlan.canonicalData(), try plan.canonicalData())
         XCTAssertEqual(record.revision, queued.revision)
-        // A freshly queued typed record needs approval before it can run.
         XCTAssertFalse(record.canResumeWorkspaceTask)
         XCTAssertFalse(record.canStartAutomatically)
         XCTAssertNotNil(record.workspaceActionToApprove)
@@ -76,8 +75,6 @@ final class TaskPlanPersistenceTests: XCTestCase {
         XCTAssertEqual(persistedPlan.goal, "Reconcile the ledger")
         XCTAssertEqual(persistedPlan.threadID, threadID)
         XCTAssertEqual(record.revision, queued.revision)
-        // A queued agent record is safe to relaunch; nothing about it is a
-        // workspace step, so workspace predicates stay false.
         XCTAssertTrue(record.canResumeAgentTask)
         XCTAssertFalse(record.canResumeWorkspaceTask)
         XCTAssertNil(record.workspaceActionToApprove)

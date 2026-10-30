@@ -61,7 +61,6 @@ private struct CuaOwnedProcess {
         if let processGroup {
             return kill(-processGroup, 0) == -1 && errno == ESRCH
         }
-        // Foundation's isRunning lags while a zombie waits to be reaped, so reap it here.
         if !process.isRunning { return true }
         var status: Int32 = 0
         let waited = waitpid(process.processIdentifier, &status, WNOHANG)

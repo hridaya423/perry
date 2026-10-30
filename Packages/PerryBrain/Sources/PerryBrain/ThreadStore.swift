@@ -10,7 +10,6 @@ public struct PerryThread: Codable, Equatable, Sendable, Identifiable {
         public let answer: String
         public var outcome: Outcome?
         public var failureReason: String?
-        /// Human-readable labels of the elements Perry marked, for context.
         public let elementLabels: [String]
         public let at: Date
 
@@ -124,9 +123,6 @@ public enum ThreadStoreError: Error, LocalizedError {
     }
 }
 
-/// JSON-file-backed thread store: one `<uuid>.json` per thread under the
-/// given directory, atomic writes, newest-first listing. An actor so the
-/// in-memory cache and disk can never disagree about order or presence.
 public actor ThreadStore {
     public struct ReadIssue: Sendable, Equatable {
         public let file: URL
@@ -183,7 +179,6 @@ public actor ThreadStore {
         try text.write(to: directory.appendingPathComponent("welcome.draft"), atomically: true, encoding: .utf8)
     }
 
-    /// Newest-first by `updatedAt`.
     public func list() -> [PerryThread] {
         loadAll()
         return (cache ?? [:]).values.sorted { $0.updatedAt > $1.updatedAt }
@@ -344,7 +339,6 @@ public actor ThreadStore {
         cache?[id] = nil
     }
 
-    /// First line of the question, trimmed to a sidebar-friendly length.
     public static func derivedTitle(from question: String) -> String {
         let line = question
             .components(separatedBy: .newlines).first?

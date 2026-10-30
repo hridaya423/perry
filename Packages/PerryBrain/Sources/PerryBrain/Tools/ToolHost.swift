@@ -19,10 +19,6 @@ public struct ToolResult: Sendable, Equatable {
     }
 }
 
-/// What the approval surface decided. `.approvedTyped` means the surface
-/// itself collected the red-tier typed confirmation (the intent card enforces
-/// the phrase before its approve button enables); `.approvedOnce` is a plain
-/// yes without typing.
 public enum ToolApproval: Sendable, Equatable {
     case denied, approvedOnce, approvedTyped
 }
@@ -31,12 +27,8 @@ public struct ToolContext: Sendable {
     public let runID: UUID
     public var surface: ToolSurface
     public var threadID: String?
-    /// Set by the UI only after the user typed the confirmation phrase for this call.
     public var redConfirmed: Bool
-    /// App-injected approval for orange/red intent cards; nil means nobody is there to ask.
     public var approve: (@Sendable (ToolCall, ToolSpec) async -> ToolApproval)?
-    /// True when the turn runs without a user present (scheduled Perrys). The
-    /// loop fails answers that park the job on an unanswerable question.
     public var unattended: Bool
 
     public init(
@@ -81,8 +73,6 @@ public protocol ToolExecutor: Sendable {
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult
 }
 
-/// The only path by which a model can touch the world. Registry of executors,
-/// surface gating, schema validation, and tiered approval — in that order.
 public final class PerryToolHost: Sendable {
     private let executors: [String: any ToolExecutor]
     private let groups = OSAllocatedUnfairLock(initialState: [String: [String: any ToolExecutor]]())
@@ -166,8 +156,6 @@ public final class PerryToolHost: Sendable {
         }
     }
 
-    /// JSON-Schema subset validator. Returns a violation detail or nil.
-    /// Strict by default: unknown keys and missing required keys are violations.
     public static func validate(_ arguments: JSONValue, against schema: JSONValue) -> String? {
         guard let type = schema["type"]?.stringValue ?? (schema["properties"] != nil ? "object" : nil) else {
             return nil

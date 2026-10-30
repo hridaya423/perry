@@ -1,10 +1,6 @@
 import XCTest
 @testable import Perry
 
-/// Shared realtime-voice fixtures for session- and Talk-adapter tests.
-/// `ResponseStreamFixture` replays provider frames through the real decoder
-/// so event correlation matches wire behavior.
-
 actor SendGate {
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -151,8 +147,6 @@ actor ResponseStreamFixture: RealtimeVoiceTransport {
             XCTFail("Unexpected transcription commit")
             return
         }
-        // The shared decoder owns commit→item correlation, so a fixture
-        // commit must register the tag the way the wire commit does.
         try await decoder.prepareCommitFixture(tag: tag)
         operations.append(.commitInput(tag))
     }

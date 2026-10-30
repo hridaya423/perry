@@ -139,7 +139,6 @@ final class TypedWorkspaceFileRuntimeTests: XCTestCase {
         let runtime = WorkspaceFileRuntime(baseURL: directory)
         let verifier = WorkspaceFileVerifier(baseURL: directory)
 
-        // The workspace `.trash/` must be created lazily by the first trash.
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(".trash").path))
         let result = try await runtime.execute(approved)
         guard case .workspaceFile(let receipt) = result.evidence,

@@ -39,11 +39,6 @@ public struct RoutineStepBinding: Equatable, Sendable {
     }
 }
 
-/// Turns a reviewed routine back into a typed execution plan. Every target
-/// is re-resolved against a fresh observation — recorded coordinates are
-/// never replayed — and every step declares the observable postcondition the
-/// verifier will actually check: typed text must appear in the window, and
-/// clicks/keys must visibly change it against the pre-run screenshot.
 public enum RoutineReplay {
     public static func plan(
         routine: LearnedRoutine,

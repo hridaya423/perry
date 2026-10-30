@@ -71,7 +71,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        except Exception as exc:  # keep the wire honest: errors are JSON too
+        except Exception as exc:
             body = json.dumps({"error": str(exc)}).encode()
             self.send_response(500)
             self.send_header("Content-Type", "application/json")

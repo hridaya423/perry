@@ -131,7 +131,6 @@ public extension Array where Element == AXElement {
         first { $0.stableID == id }
     }
 
-    /// The same control in a later read: element ids change per read, so match by role and label, nearest old frame first.
     func counterpart(of element: AXElement, relabeled: Bool = false) -> AXElement? {
         let twins = filter { $0.role == element.role && $0.rawRole == element.rawRole && $0.label == element.label }
         if let nearest = twins.min(by: { element.frame.distance(to: $0.frame) < element.frame.distance(to: $1.frame) }) {
@@ -151,7 +150,6 @@ extension AXElementFrame {
     }
 }
 
-/// Accessibility geometry is global with a top-left origin; AppKit screens use bottom-left.
 public enum AXCoordinateConverter {
     public static func appKitRect(
         axX: Double,

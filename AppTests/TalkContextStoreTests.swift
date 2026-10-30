@@ -82,8 +82,6 @@ final class TalkContextStoreTests: XCTestCase {
     func testAcceptInputDropsMappedThreadThatNoLongerExists() throws {
         let home = HomeController()
         let first = home.acceptInput("what is this", contextKey: key)
-        // The thread exists in the map but was deleted from the model —
-        // a follow-up must not resurrect it.
         home.homeModel.threads.removeAll { $0.id == first.threadID }
         let next = home.acceptInput("and this", contextKey: key)
         XCTAssertNotEqual(first.threadID, next.threadID)

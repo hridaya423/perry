@@ -17,8 +17,6 @@ public struct TranscriptEntry: Codable, Equatable, Sendable, Identifiable {
     public let finishedAt: Date
     public let steps: [String]
     public let verified: Bool?
-    /// Display name of the runtime/provider route that produced the result,
-    /// e.g. "Perry local planner" or "the learned routine".
     public let providerRoute: String?
 
     public init(
@@ -152,13 +150,6 @@ public actor TranscriptStore {
         return true
     }
 
-    /// Deletes the selected entries: each touched day file is regenerated
-    /// from its surviving entries (or removed when none remain), then the
-    /// index is rewritten last. If a day-file write fails the index still
-    /// lists the entries, so the delete reports failure honestly and a
-    /// retry can finish the cleanup instead of leaving invisible residue.
-    /// Returns false when persistence fails — the in-memory list is only
-    /// mutated after all writes land.
     @discardableResult
     public func delete(_ ids: Set<UUID>) -> Bool {
         let doomed = entries.filter { ids.contains($0.id) }

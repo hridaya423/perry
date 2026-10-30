@@ -8,9 +8,6 @@ public struct CodexAppServerConfiguration: Sendable {
     public var processArguments: [String]?
     public var extraEnvironment: [String: String]
     public var clientName: String
-    /// When set, the server's stderr appends here instead of /dev/null;
-    /// the file is trimmed to a bounded tail on each spawn so it stays
-    /// diagnostic-sized.
     public var stderrLogURL: URL?
 
     public init(

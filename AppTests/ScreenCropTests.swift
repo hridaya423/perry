@@ -1,4 +1,3 @@
-
 import AppKit
 import XCTest
 @testable import Perry
@@ -13,7 +12,6 @@ final class ScreenCropTests: XCTestCase {
         let ctx = NSGraphicsContext(bitmapImageRep: rep)!
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = ctx
-        // Top-left quarter is red on a blue field so crop position is checkable.
         NSColor.blue.setFill()
         NSRect(x: 0, y: 0, width: width, height: height).fill()
         NSColor.red.setFill()
@@ -23,9 +21,6 @@ final class ScreenCropTests: XCTestCase {
     }
 
     func testCropScalesWindowPointsToCapturePixels() throws {
-        // A 2x capture of a 200x100pt window: a 100x50pt crop must cover the
-        // top-left quadrant in PIXELS (200x100 of the 400x200 image), not a
-        // 100x50px sliver.
         let png = try fixturePNG(width: 400, height: 200)
         let cropped = try XCTUnwrap(
             ScreenCrop.jpeg(png, rectInWindowPoints: CGRect(x: 0, y: 0, width: 100, height: 50),

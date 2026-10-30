@@ -48,7 +48,6 @@ final class HomePerryRowTests: XCTestCase {
         await home.joinAll()
 
         let thread = await store.thread(id: threadUUID)
-        // The row must not clobber the thread's identity or in-flight turn.
         XCTAssertEqual(thread?.title, "Original title")
         XCTAssertEqual(thread?.pendingTurn?.question, "earlier work")
         XCTAssertEqual(home.homeModel.sidebarSelection, .thread(threadUUID))

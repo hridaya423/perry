@@ -99,8 +99,6 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
     public var style: PerryGuidanceStyle
     public var duration: TimeInterval
     public var createdAt: Date
-    /// The app's controls around the mark, in screen points; its caption
-    /// avoids covering them when a free side exists.
     public var nearbyControls: [CGRect]?
 
     init(
@@ -140,8 +138,6 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
         return overlay
     }
 
-    /// A copy shifted by `delta` (AppKit bottom-left screen points). Used by
-    /// the reanchor poller to keep marks glued to a window the user moved.
     public func translated(by delta: CGPoint) -> PerryGuidanceOverlay {
         var copy = self
         copy.points = points.map {
@@ -208,9 +204,6 @@ extension PerryGuidanceOverlay {
         )
     }
 
-    /// `point`: a hand-inked dot on the element's center, reached by a short
-    /// leader stroke from below-left. Replaces the degenerate two-point
-    /// scribble, which rendered nothing.
     public static func pointMark(
         center: CGPoint,
         accentHex: String? = nil,
@@ -230,8 +223,6 @@ extension PerryGuidanceOverlay {
         return .scribble(points: points, accentHex: accentHex, lineWidth: 4.5, caption: caption, duration: duration)
     }
 
-    /// `arrow`: a shaft ending in a hand-inked head just below the element's
-    /// edge — the head, not a bare line end, carries the direction.
     public static func arrowMark(
         to rect: CGRect,
         accentHex: String? = nil,
@@ -251,8 +242,6 @@ extension PerryGuidanceOverlay {
         )
     }
 
-    /// `underline`: a short stroke just below the element's bottom edge —
-    /// AppKit space, so below is `minY -`, not `maxY +`.
     public static func underlineMark(
         below rect: CGRect,
         accentHex: String? = nil,
@@ -268,8 +257,6 @@ extension PerryGuidanceOverlay {
         )
     }
 
-    /// `ring` / `caption`: a hand-inked ellipse around the element, padded so
-    /// the ink never touches the control it circles.
     public static func ringMark(
         around rect: CGRect,
         padding: Double = 8,

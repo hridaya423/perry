@@ -23,13 +23,7 @@ public struct ElementIndex: Sendable, Equatable {
     }
 }
 
-/// Per-turn input for Talk: the compact element index, deixis bindings,
-/// memory, and the active app's skill. The rules live in PromptAssembler.
 public enum TalkPrompt {
-    /// Per-turn spatial payload: the observed element index, deixis bindings,
-    /// memory, and the active app's skill. This is turn input, not
-    /// instruction — providers with server-side threads can reuse a thread
-    /// while this changes underneath it.
     public static func context(
         index: ElementIndex,
         bindings: [DeixisBinding] = [],

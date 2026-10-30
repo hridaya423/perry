@@ -88,7 +88,6 @@ final class LearnedRoutineTests: XCTestCase {
             name: "Save flow"
         )
         try store.save(routine)
-        // Malformed file alongside a valid one is skipped, not fatal.
         let routinesDir = directory.appendingPathComponent("Routines", isDirectory: true)
         try Data("not json".utf8).write(to: routinesDir.appendingPathComponent("junk.json"))
         let loaded = store.all()
@@ -97,8 +96,6 @@ final class LearnedRoutineTests: XCTestCase {
         try store.remove(id: routine.id)
         XCTAssertTrue(store.all().isEmpty)
     }
-
-    // MARK: Replay
 
     private func makeObservation(elements: [AXElement], bundleID: String = "com.example.app") -> GuideObservation {
         GuideObservation(
@@ -180,15 +177,12 @@ final class LearnedRoutineTests: XCTestCase {
         let clickRoutine = try LearnedRoutine(name: "Click", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Click Save", target: saveTarget, action: .click)
         ])
-        // Wrong app.
         XCTAssertThrowsError(try RoutineReplay.plan(
             routine: clickRoutine, observation: makeObservation(elements: [], bundleID: "com.other.app"), taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .wrongApplication) }
-        // Target absent from the fresh tree.
         XCTAssertThrowsError(try RoutineReplay.plan(
             routine: clickRoutine, observation: makeObservation(elements: []), taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .targetNotFound(step: 0)) }
-        // Two indistinguishable matches refuse to guess.
         let duplicates = [
             makeElement(stableID: "one", role: .button, label: "Save"),
             makeElement(stableID: "two", role: .button, label: "Save")
@@ -196,7 +190,6 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertThrowsError(try RoutineReplay.plan(
             routine: clickRoutine, observation: makeObservation(elements: duplicates), taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .ambiguousTarget(step: 0)) }
-        // Missing parameter value.
         let parameterRoutine = try LearnedRoutine(name: "P", appBundleIDs: ["com.example.app"], steps: [
             RoutineStep(summary: "Type", target: fieldTarget, action: .typeText(.parameter(name: "q", prompt: "?")))
         ])
@@ -205,8 +198,6 @@ final class LearnedRoutineTests: XCTestCase {
             routine: parameterRoutine, observation: observation, taskID: TaskID("t")
         )) { XCTAssertEqual($0 as? RoutineReplayError, .missingParameter("q")) }
     }
-
-    // MARK: Document contract
 
     private func makeRoutine(name: String = "Doc") throws -> LearnedRoutine {
         try LearnedRoutine(name: name, appBundleIDs: ["com.example.app"], steps: [
@@ -222,7 +213,6 @@ final class LearnedRoutineTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("```json\n"))
         XCTAssertTrue(text.contains("# Doc"))
         XCTAssertTrue(text.contains("\"appBundleIDs\""))
-        // Body edits don't affect decode — metadata is authoritative.
         let edited = text + "\nUser notes here.\n"
         let decoded = try RoutineDocument.decode(Data(edited.utf8))
         XCTAssertEqual(decoded, routine)
@@ -306,7 +296,6 @@ final class LearnedRoutineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let routinesDir = directory.appendingPathComponent("Routines", isDirectory: true)
         try FileManager.default.createDirectory(at: routinesDir, withIntermediateDirectories: true)
-        // A legacy record used a single bundleID key.
         let legacy = """
         {"schemaVersion":1,"id":"\(UUID().uuidString)","name":"Old","bundleID":"com.example.app","steps":[{"summary":"Click Save","target":{"role":"button","label":"Save"},"action":{"click":{}}}],"createdAt":0}
         """
@@ -439,8 +428,6 @@ final class LearnedRoutineTests: XCTestCase {
         ])
         let observation = makeObservation(elements: [makeElement(stableID: "ax-save", role: .button, label: "Save")])
         let plan = try RoutineReplay.plan(routine: routine, observation: observation, taskID: TaskID("t"))
-        // The manual step is never dispatched — it surfaces as an askUser
-        // pause so the run stops and tells the user which part is theirs.
         XCTAssertEqual(plan.actions.count, 2)
         let manual = try XCTUnwrap(plan.actions.last)
         guard case .askUser(let prompt, _) = manual.operation else {

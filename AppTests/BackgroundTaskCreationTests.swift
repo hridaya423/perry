@@ -49,9 +49,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertTrue(controller.subsystems.backgroundTasks.canResume(record))
     }
 
-    /// The canonical workspace task: an executable plan enqueued against a
-    /// BackgroundWorkspaces slot approves, executes, reports, and notifies —
-    /// all without touching desktop permissions or captures.
     func testCanonicalFileTaskApprovesExecutesAndReportsWithoutDesktopCapture() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
@@ -108,9 +105,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertEqual(probe.notifications.filter { $0.kind == .completed }.map(\.taskID), [queued.id])
     }
 
-    /// Undo must run its typed inverse through the journaled path, refuse
-    /// re-entry while a pass is in flight, and stop honestly at a conflict
-    /// instead of re-dispatching or touching intervening state.
     func testUndoRunsOncePerRecordAndStopsAtConflict() async throws {
         let directory = try makeTemporaryDirectory()
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
@@ -125,9 +119,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
             goal: #"create file "undo-me.txt" with "revert me""#
         )
         controller.subsystems.backgroundTasks.approveWorkspace(queued)
-        // The record reaches terminal inside the runner before the
-        // report-write lands its status message — wait for the whole tail
-        // so the undo can't race it.
         let settled = await waitUntil {
             await controller.subsystems.backgroundTasks.reloadRecords()
             let terminal = await controller.subsystems.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
@@ -146,8 +137,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
 
         controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
         XCTAssertTrue(controller.subsystems.backgroundTasks.isUndoing(record.id))
-        // A second request while the pass is in flight must be refused —
-        // the inverses cannot dispatch twice.
         controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
 
         let undone = await waitUntil {
@@ -159,8 +148,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let trashEntries = try FileManager.default.contentsOfDirectory(atPath: trash.path)
         XCTAssertEqual(trashEntries.count, 1)
 
-        // A later Undo on the same record hits the conflict check and stops
-        // without touching anything — no silent second dispatch.
         controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
         let conflicted = await waitUntil {
             !controller.subsystems.backgroundTasks.isUndoing(record.id)
@@ -170,9 +157,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
-    /// An in-flight Undo is a live handle: worker-stop (erasure/termination)
-    /// must drain it rather than let inverses run against deleted workspaces,
-    /// and no new recovery may start once controls are closed.
     func testWorkerStopDrainsAnInFlightUndoAndRefusesNewRecovery() async throws {
         let directory = try makeTemporaryDirectory()
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
@@ -268,8 +252,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         }
     }
 
-    /// Fabricates a canonical workspace-file task the way the retired planner
-    /// produced it — direct enqueue keeps workspace-task coverage honest.
     private func enqueueFileTask(
         on controller: AppController,
         directory: URL,

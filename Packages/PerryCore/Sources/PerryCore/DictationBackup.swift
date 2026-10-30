@@ -1,8 +1,5 @@
 import Foundation
 
-/// Rolling local backup of final dictation transcripts: one JSONL file per
-/// day under `directory`, pruned after `retentionDays` (7). Erasable —
-/// dictation audio is never stored, only the inserted text.
 public struct DictationBackupStore: Sendable {
     public struct Entry: Codable, Sendable, Equatable {
         public var at: Date
@@ -27,7 +24,6 @@ public struct DictationBackupStore: Sendable {
         self.calendar = calendar
     }
 
-    /// Append a transcript to today's day-file. Empty text is not recorded.
     public func record(text: String, language: String? = nil, at: Date = Date()) throws {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -46,7 +42,6 @@ public struct DictationBackupStore: Sendable {
         try prune(now: at)
     }
 
-    /// All entries, oldest day first.
     public func entries() -> [Entry] {
         dayFiles().flatMap { url in
             ((try? String(contentsOf: url, encoding: .utf8)) ?? "")
@@ -55,7 +50,6 @@ public struct DictationBackupStore: Sendable {
         }
     }
 
-    /// Delete day-files older than the retention window.
     public func prune(now: Date = Date()) throws {
         let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: now) ?? now
         for file in dayFiles() where dayDate(for: file).map({ $0 < cutoff }) ?? false {

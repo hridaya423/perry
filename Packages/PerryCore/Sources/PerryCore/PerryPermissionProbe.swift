@@ -19,8 +19,6 @@ public enum PerryPermissionProbe {
         CGPreflightScreenCaptureAccess() ? .granted : .denied
     }
 
-    /// Push-to-talk's event tap needs Input Monitoring (listen-event) access;
-    /// without it the tap fails and the shortcut is dead in other apps.
     public static func checkInputMonitoring() -> Bool {
         CGPreflightListenEventAccess()
     }
@@ -34,7 +32,6 @@ public enum PerryPermissionProbe {
         }
     }
 
-    /// Prompts only when the OS allows a prompt (notDetermined); never nags.
     public static func requestMicrophone() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
@@ -56,11 +53,6 @@ public struct PerryPermissionSnapshot: Equatable, Sendable {
         self.screenRecording = screenRecording
         self.microphone = microphone
         self.inputMonitoring = inputMonitoring
-    }
-
-    /// True when every permission Guide and Do modes rely on is usable.
-    public var allGranted: Bool {
-        accessibility && screenRecording.isUsable && microphone.isUsable
     }
 
     public var requiredPermissionsGranted: Bool {

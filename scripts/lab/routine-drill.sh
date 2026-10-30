@@ -1,15 +1,4 @@
 #!/bin/bash
-# routine-drill.sh — live Watch & Learn → replay journey.
-#
-# Seeds a reviewed routine into an isolated debug storage directory, drives
-# the real UI path with the bundled cua-driver (Home → Routines → Run →
-# plan card → Run), then verifies the probe text actually landed in the
-# target app's text area and that Perry wrote an outcome receipt.
-#
-#   scripts/lab/routine-drill.sh
-#
-# Evidence lands in $DRILL_DIR (printed at the end): the seeded storage
-# (Routines/, activity log, journals), screenshots, and the journey log.
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -26,8 +15,6 @@ touch "$LOG"
 
 log() { echo "{\"t\":$(python3 -c 'import time;print(time.time())'),\"event\":\"$1\"}" >> "$LOG"; echo "  · $1"; }
 
-# 1. Seed the routine through the production encoder — never hand-write the
-#    document, so a schema change fails the seed, not the replay.
 MODS=Packages/PerryGuide/.build/out/Products/Debug
 [ -d "$MODS" ] || { echo "PerryGuide modules missing — run: swift test --package-path Packages/PerryGuide" >&2; exit 1; }
 if [ ! -x "$DRILL_DIR/seed-routine" ]; then
@@ -36,13 +23,11 @@ fi
 "$DRILL_DIR/seed-routine" "$STORAGE" com.apple.TextEdit "$PROBE" > "$DRILL_DIR/routine-id"
 log "routine.seeded"
 
-# 2. Target app: TextEdit on a blank document.
 printf '' > "$TARGET_DOC"
 open -a TextEdit "$TARGET_DOC"
 sleep 2
 log "target.opened"
 
-# 3. Launch Perry on the isolated storage.
 scripts/lab/perry-drive.sh launch --perry-debug-storage-directory "$STORAGE" > "$DRILL_DIR/launch.txt"
 PERRY_PID="$(sed -n 's/^pid=//p' "$DRILL_DIR/launch.txt")"
 PERF_LOG="$(sed -n 's/^perf_log=//p' "$DRILL_DIR/launch.txt")"
@@ -117,20 +102,17 @@ def wait_for(pred, timeout, poll=0.5, desc=""):
         time.sleep(poll)
     raise SystemExit(f"timeout waiting for {desc or 'condition'}")
 
-# 4. Open Home (global ⌃⌘Space monitor).
 cua("hotkey", {"keys": ["ctrl", "cmd", "space"], "scope": "desktop"})
 log("home.hotkey.sent")
 
-# 5. Find Perry's Home window.
 def home_window():
     for w in windows(perry_pid):
-        if w.get("width", 0) > 300:  # Home panel is a large surface
+        if w.get("width", 0) > 300:
             return w
     return None
 home = wait_for(home_window, 15, desc="Perry Home window")
 log("home.window", window_id=home["window_id"], title=home.get("title"))
 
-# 6. Click "Routines" in the sidebar, then the routine's Run button.
 def click_named(pid, win, needle, role_hint=None, desc=""):
     els, snap = window_elements(pid, win)
     el = find_element(els, needle, role_hint)
@@ -147,8 +129,6 @@ time.sleep(1.0)
 run_el = click_named(perry_pid, home["window_id"], "Run", "AXButton", "routine Run button")
 log("routine.run.clicked")
 
-# 7. Wait for the rehearsal + plan card ("About to Type the replay probe"),
-#    screenshot it, then click Run.
 def card_window():
     for w in windows(perry_pid):
         els, snap = window_elements(perry_pid, w["window_id"])
@@ -166,7 +146,6 @@ if not card:
 cw, els, snap = card
 log("plan.card.shown", window_id=cw["window_id"])
 
-# Rehearsal-marks + card screenshot for evidence.
 cua("get_desktop_state", {"out": os.path.join(drill_dir, "rehearsal.png")}, timeout=60)
 log("rehearsal.screenshot")
 
@@ -176,12 +155,10 @@ if not run_btn:
 click_element(perry_pid, cw["window_id"], snap, run_btn["index"])
 log("plan.run.clicked")
 
-# 8. Verify the probe text landed in TextEdit's text area.
 def textedit_window():
     for w in cua("list_windows", {"pid": 0}).get("structuredContent", {}).get("windows", []):
         if w.get("app_name") == "TextEdit" and "replay-target" in w.get("title", ""):
             return w
-    # any TextEdit window
     for w in cua("list_windows", {}).get("structuredContent", {}).get("windows", []):
         if w.get("app_name") == "TextEdit":
             return w
@@ -197,7 +174,6 @@ def probe_landed():
 landed = wait_for(probe_landed, 30, desc="probe text in TextEdit")
 log("probe.landed", stable_id=landed.get("stable_id"))
 
-# 9. Verify the durable outcome receipt exists in the isolated storage.
 time.sleep(3)
 receipts = []
 for base, _dirs, files in os.walk(os.path.join(drill_dir, "storage")):

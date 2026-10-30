@@ -10,7 +10,6 @@ public enum PerryOverlayTheme {
         )
         public static let ink = Color(white: 0.16)
         public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
-        /// Amber hold — the blocked morph. Distinct from failure red.
         public static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
         public static let labelForeground = Color.white
         public static let labelBackground = Color.black.opacity(0.72)
@@ -19,9 +18,6 @@ public enum PerryOverlayTheme {
         public static let shadow = Color.black.opacity(0.22)
     }
 
-    /// Motion budgets: feedback ≤150ms, entrances ≤300ms with a strong
-    /// ease-out, spatial travel uses the house spring. Reduced motion keeps
-    /// opacity/color feedback and removes travel and bounce.
     public enum Motion {
         public static let feedback = Animation.easeOut(duration: 0.14)
         public static let travel = Animation.spring(response: 0.2, dampingFraction: 0.6)
@@ -57,8 +53,6 @@ public extension Color {
     }
 }
 
-/// Canonical buddy states. Animation is never the only signal: each state has
-/// a static label and icon, and surfaces show text status alongside the pose.
 public enum PerryBuddyState: String, Equatable, Sendable {
     case idle
     case listening
@@ -127,8 +121,6 @@ public final class PerryCursorState: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: expiry)
     }
 
-    /// The user clicked at `point` (AppKit screen space): a mark on or just
-    /// around it has done its job.
     public func dismissMarks(at point: CGPoint) {
         let hit = visualGuidanceOverlays.filter { $0.screenBounds.insetBy(dx: -24, dy: -48).contains(point) }
         guard !hit.isEmpty else { return }
@@ -163,17 +155,10 @@ public struct PerryExternalCursor: Identifiable, Equatable {
     }
 }
 
-/// Lightweight frame-interval probe for the overlay's cursor-tracking tick.
-/// Only collects while the overlay reports samples (env-gated downstream);
-/// drained at hide so each "visual wave" yields its own interval stats.
 public final class OverlayPerfProbe {
     public static let shared = OverlayPerfProbe()
     public var isEnabled = false
-    /// Fires once when cursor-follow monitors prove dead (pointer moves but
-    /// no events arrive — Input Monitoring denied) and the view switches to
-    /// polling `NSEvent.mouseLocation`, which needs no grant.
     public var onCursorTrackingDegraded: (() -> Void)?
-    /// True while the view is on the permission-free polling path.
     public private(set) var cursorTrackingDegraded = false
     private var lastTick: CFAbsoluteTime = 0
     private var intervals: [Double] = []
@@ -215,22 +200,11 @@ public final class OverlayPerfProbe {
     }
 }
 
-/// The chrome contract every Perry window follows: excluded
-/// from screenshots and screen shares (`sharingType = .none`), visible on
-/// every space including fullscreen apps, stationary, and out of the
-/// ⌘⇥ window cycle. Interactive levels stack just under the system
-/// dragging-window ceiling so a drag over Perry chrome never loses it.
 public enum PerryWindowChrome {
     private static let interactiveCeiling = CGWindowLevelForKey(.draggingWindow)
 
-    /// The overlay cursor surface — above every app window, one step under
-    /// the ceiling so it never captures a drag.
     public static let cursorOverlay = NSWindow.Level(rawValue: Int(interactiveCeiling) - 1)
 
-    /// Applies the share-hiding and space behavior. Every Perry window
-    /// calls this; windows that also need a specific level set it after.
-    /// `PERRY_ALLOW_SCREEN_CAPTURE=1` opts back into capture for lab and
-    /// evidence runs — the product default is always hidden.
     public static func applyChrome(to window: NSWindow) {
         if ProcessInfo.processInfo.environment["PERRY_ALLOW_SCREEN_CAPTURE"] == nil {
             window.sharingType = .none

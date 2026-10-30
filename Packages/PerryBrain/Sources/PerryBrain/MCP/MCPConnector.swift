@@ -2,8 +2,6 @@ import Foundation
 import OSLog
 import PerryCore
 
-/// Line-oriented JSON-RPC transport for a user-added MCP server.
-/// `request` returns the server's `result` or throws its `error`.
 public protocol MCPTransport: Sendable {
     func request(method: String, params: JSONValue?) async throws -> JSONValue
     func notify(method: String, params: JSONValue?) async throws
@@ -24,7 +22,6 @@ public struct MCPTool: Sendable, Equatable {
     public var name: String
     public var description: String
     public var inputSchema: JSONValue
-    /// From the server's tool annotations; nil means unknown.
     public var readOnlyHint: Bool?
 
     public init(name: String, description: String, inputSchema: JSONValue, readOnlyHint: Bool? = nil) {
@@ -75,7 +72,6 @@ public actor MCPConnector {
         )
     }
 
-    /// All tools the server advertises, following `nextCursor` pagination.
     public func listTools() async throws -> [MCPTool] {
         try requireReady()
         var tools: [MCPTool] = []
@@ -97,7 +93,6 @@ public actor MCPConnector {
         return tools
     }
 
-    /// `tools/call`; returns content parts and the server's isError flag.
     public func callTool(name: String, arguments: JSONValue) async throws -> (content: [ModelContentPart], isError: Bool) {
         try requireReady()
         let result = try await transport.request(method: "tools/call", params: .object([
@@ -120,10 +115,6 @@ public actor MCPConnector {
         return (content, result["isError"]?.boolValue ?? false)
     }
 
-    /// Bridge every remote tool into a `ToolExecutor` named
-    /// `mcp.<prefix>.<tool>` on the `.agent` surface. `tierOverrides` is keyed
-    /// by the remote tool name; anything without a `readOnlyHint` defaults to
-    /// `.orange` (unknown effect gets human review).
     public func makeExecutors(
         prefix: String? = nil,
         tierOverrides: [String: TrustTier] = [:]
@@ -194,9 +185,6 @@ public struct URLSessionMCPHTTP: MCPHTTPPerforming {
     }
 }
 
-/// Streamable-HTTP MCP transport ("user adds a URL"): POST JSON-RPC to one
-/// endpoint; the response is either a single JSON message or an SSE stream
-/// ended by the message matching the request id. Honors `Mcp-Session-Id`.
 public actor HTTPMCPTransport: MCPTransport {
     private let endpoint: URL
     private let performer: any MCPHTTPPerforming
@@ -318,7 +306,7 @@ public actor HTTPMCPTransport: MCPTransport {
                 guard let event = parser.feed(line: line) else { continue }
                 guard let parsed = try? JSONValue(parsing: Data(event.data.utf8)) else { continue }
                 if wantsID == nil {
-                    return parsed // notification exchange: first message ends it
+                    return parsed
                 }
                 if parsed["id"]?.doubleValue.map(Int.init) == wantsID {
                     return parsed
@@ -328,7 +316,7 @@ public actor HTTPMCPTransport: MCPTransport {
             }
         }
         if !isSSE {
-            if jsonBody.isEmpty { return .object([:]) }  // 202-style empty body
+            if jsonBody.isEmpty { return .object([:]) }
             if let parsed = try? JSONValue(parsing: Data(jsonBody.utf8)) {
                 return parsed
             }
@@ -343,8 +331,6 @@ public actor HTTPMCPTransport: MCPTransport {
     }
 }
 
-/// NDJSON MCP transport over a child process's stdio. Requests are matched
-/// to responses by `id`; a process exit fails every pending call.
 public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {
     private let process: Process
     private let stdinPipe = Pipe()

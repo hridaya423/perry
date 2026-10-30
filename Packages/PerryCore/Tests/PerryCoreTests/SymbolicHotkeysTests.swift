@@ -5,7 +5,6 @@ final class SymbolicHotkeysTests: XCTestCase {
     private var plist: [String: Any] {
         [
             "AppleSymbolicHotKeys": [
-                // Spotlight "Show Finder search window" — ⌥⌘Space.
                 "61": [
                     "enabled": 1,
                     "value": [
@@ -13,7 +12,6 @@ final class SymbolicHotkeysTests: XCTestCase {
                         "parameters": [32, 49, 1572864],
                     ],
                 ],
-                // Disabled entries never conflict.
                 "64": [
                     "enabled": 0,
                     "value": [
@@ -21,7 +19,6 @@ final class SymbolicHotkeysTests: XCTestCase {
                         "parameters": [32, 49, 1572864],
                     ],
                 ],
-                // Malformed rows are skipped.
                 "200": ["enabled": 1],
             ],
         ]

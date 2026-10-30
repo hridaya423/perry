@@ -19,7 +19,6 @@ final class TalkCompletionTests: XCTestCase {
     private final class Output: TalkSpeechOutput, GuideSessionOutput, GuideSessionContext {
         private(set) var isSpeaking = false
         private var pending = 0
-        /// Holds playback open so tests can act while speech is still "playing".
         var speechHeld = false { didSet { if !speechHeld && pending == 0 { isSpeaking = false } } }
         var stopped = 0
         func speak(_ sentence: String) {
@@ -278,8 +277,6 @@ final class TalkCompletionTests: XCTestCase {
                 .init(threadID: id ?? UUID(), request: .init(text: text), saved: Task {})
             }, run: { input, _ in
                 (input.threadID, AsyncStream { continuation in
-                    // The coordinator decodes inline markup once: clean text
-                    // deltas plus .draw commands (Phase 2 item 6).
                     continuation.yield(.textDelta("Before Save. "))
                     continuation.yield(.draw(DrawCommand(verb: .ring, elementID: "e1", label: "Save")))
                     continuation.yield(.toolCallStarted(ToolCall(id: "refresh", name: "screen.observe", arguments: .object([:]))))

@@ -1234,13 +1234,9 @@ final class CuaDriverClientTests: XCTestCase {
             XCTFail("timed-out action failed with an unexpected error: \(error)")
         }
 
-        // The delayed click would hang a fresh driver too — clear the marker
-        // so the recovery request exercises a healthy driver.
         try FileManager.default.removeItem(
             at: directory.appendingPathComponent("delay-action")
         )
-        // Release the wedged fixture: it ignores SIGTERM, so termination only
-        // completes once its delay loop ends and it writes to the closed pipe.
         try Data([1]).write(to: directory.appendingPathComponent("release-action"))
         let recovered: StepResult
         do {
@@ -1513,8 +1509,6 @@ final class CuaDriverClientTests: XCTestCase {
             typedVerifier: AlwaysVerifiedTypedVerifier()
         )
         let (outcome, actionCount) = try await service.withWorker(scope: .foreground, resources: []) { worker in
-            // The plan must be bound to the window identity this session
-            // actually resolved — including its connection generation.
             let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
             let window = ExecutableAction.WindowIdentity(
                 bundleID: capture.target.bundleID,

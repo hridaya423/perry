@@ -44,8 +44,6 @@ final class WorkspaceUndoTests: XCTestCase {
         return url
     }
 
-    /// Runs the typed inverse plan through the shared write-ahead performer —
-    /// the same journaled path the Undo button drives.
     private func runInversePlan(receipts: [WorkspaceFileExecutionReceipt]) async throws {
         let plan = try engine.inversePlan(receipts: receipts, goal: "Undo the task")
         let journal = WorkspaceRunJournal(
@@ -58,8 +56,6 @@ final class WorkspaceUndoTests: XCTestCase {
             _ = try await journal.perform(action)
         }
     }
-
-    // MARK: - Rename
 
     func testRenameInverseRestoresOriginalName() async throws {
         let original = try write("a.txt")
@@ -83,7 +79,6 @@ final class WorkspaceUndoTests: XCTestCase {
         let moved = workspace.appendingPathComponent("b.txt")
         let (device, inode) = try identity(of: original)
         try FileManager.default.moveItem(at: original, to: moved)
-        // Intervening work: replace the renamed file with different content.
         try FileManager.default.removeItem(at: moved)
         _ = try write("b.txt", "user edits")
 
@@ -114,8 +109,6 @@ final class WorkspaceUndoTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: moved.path))
     }
 
-    // MARK: - Trash restore
-
     func testTrashInverseRestoresEntry() async throws {
         let file = try write("gone.txt")
         let (device, inode) = try identity(of: file)
@@ -143,8 +136,6 @@ final class WorkspaceUndoTests: XCTestCase {
         }
     }
 
-    // MARK: - Created file
-
     func testCreatedFileInverseMovesUnchangedFileToTrash() async throws {
         let file = try write("made.txt")
 
@@ -163,8 +154,6 @@ final class WorkspaceUndoTests: XCTestCase {
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("made.txt").path))
     }
-
-    // MARK: - Created directory
 
     func testCreatedDirectoryInverseRemovesEmptyDirectory() async throws {
         let dir = workspace.appendingPathComponent("newdir")
@@ -187,8 +176,6 @@ final class WorkspaceUndoTests: XCTestCase {
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path))
     }
-
-    // MARK: - Not undoable / unsafe paths
 
     func testUndoRemovesAFolderAndTheFileMadeInsideIt() async throws {
         let folder = workspace.appendingPathComponent("reports", isDirectory: true)

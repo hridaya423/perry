@@ -95,7 +95,6 @@ public struct CodexAccount: Sendable {
         return limits
     }
 
-    /// Subscribes before returning, so call this before `signIn()` to never miss completion.
     public func loginEvents() async throws -> AsyncStream<CodexLoginEvent> {
         let events = try await connection().events
         return AsyncStream { continuation in

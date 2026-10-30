@@ -1,13 +1,7 @@
 import SwiftUI
 
-/// Hand-inked stroke geometry: centripetal Catmull-Rom resampling, seeded
-/// jitter, and a variable-width filled outline. Pure math — deterministic for
-/// a given seed so tests and the debug gallery render the same ink twice.
 public enum InkStroke {
-    /// Default resample step in points. Dense enough that straight segments
-    /// read smooth at Retina scale and the outline can be a plain polyline.
     public static let defaultStep: CGFloat = 2.5
-    /// Perpendicular wobble amplitude in points — slight, not messy.
     public static let defaultJitter: CGFloat = 0.6
 
     struct SplitMix64 {
@@ -23,10 +17,6 @@ public enum InkStroke {
         mutating func unit() -> Double { Double(next() >> 11) / Double(1 << 53) }
     }
 
-    /// Resamples `points` along a centripetal Catmull-Rom spline at roughly
-    /// `step` spacing, then nudges interior samples perpendicular to the
-    /// local tangent by up to ±`jitter`. Endpoints stay exact so rings and
-    /// arrows land where the caller put them.
     public static func sampled(
         through points: [CGPoint],
         step: CGFloat = defaultStep,
@@ -94,8 +84,6 @@ public enum InkStroke {
         return lerp(b1, b2, t1, t2)
     }
 
-    /// Per-sample pressure profile: a mid-heavy taper with seeded undulation,
-    /// like a stroke that presses in through the middle and lifts at the ends.
     public static func widths(count: Int, baseWidth: CGFloat, seed: UInt64 = 0) -> [CGFloat] {
         guard count > 0, baseWidth > 0 else { return [] }
         var rng = SplitMix64(seed: seed ^ 0xA5A5A5A5)
@@ -108,9 +96,6 @@ public enum InkStroke {
         }
     }
 
-    /// A closed perimeter stroke around `rect`: two control points per edge
-    /// plus the corner, so Catmull-Rom softens corners into a hand-drawn
-    /// loop instead of a machine-perfect rectangle.
     public static func rectangle(in rect: CGRect) -> [CGPoint] {
         sampled(through: [
             CGPoint(x: rect.minX, y: rect.minY),
@@ -125,9 +110,6 @@ public enum InkStroke {
         ])
     }
 
-    /// A closed elliptical loop inscribed in `rect` — the ring mark's
-    /// hand-inked form. The join sits off-axis so it doesn't land on a
-    /// pole of the ellipse where the eye looks first.
     public static func ellipse(in rect: CGRect, controlPoints count: Int = 14, seed: UInt64 = 1) -> [CGPoint] {
         guard count > 2, rect.width > 0, rect.height > 0 else { return [] }
         let rx = rect.width / 2
@@ -141,8 +123,6 @@ public enum InkStroke {
         return sampled(through: control, seed: seed)
     }
 
-    /// Arc-length position along sampled center points — where the pen tip
-    /// sits at `progress` for draw-on.
     public static func point(on samples: [CGPoint], progress: CGFloat) -> CGPoint? {
         guard let first = samples.first else { return nil }
         guard samples.count > 1 else { return first }
@@ -165,9 +145,6 @@ public enum InkStroke {
     }
 }
 
-/// A variable-width ink stroke as a filled outline. `progress` draws the
-/// stroke on by exposing more of the sampled centerline; animate it with a
-/// 180–240 ms ease for the spec's draw-on, or pin to 1 under Reduce Motion.
 public struct InkStrokeShape: Shape {
     public var samples: [CGPoint]
     public var widths: [CGFloat]
@@ -218,19 +195,11 @@ public struct InkStrokeShape: Shape {
     }
 }
 
-/// Luminance-adaptive ink color: sample a small patch of the screen capture
-/// already held in memory for the turn (never a fresh capture) and pick the
-/// ink that reads on it — sage on dark, deep green on light.
 public enum InkColor {
-    /// Sage, the theme accent on dark backgrounds.
     public static let onDarkHex = String(PerryOverlayTheme.Colors.accentRGB, radix: 16, uppercase: true)
-    /// Deep green on light backgrounds.
     public static let onLightHex = "3C7765"
-    /// Rec. 601 midpoint where sage stops being legible.
     public static let threshold: Double = 0.45
 
-    /// Mean luma (0–1) of an RGBA/BGRA pixel patch (4 bytes per pixel).
-    /// Returns nil for empty or malformed data so callers keep a default.
     public static func luminance(of rgba: UnsafeBufferPointer<UInt8>) -> Double? {
         let pixelCount = rgba.count / 4
         guard pixelCount > 0 else { return nil }

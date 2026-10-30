@@ -19,7 +19,6 @@ final class AppSkillLibraryTests: XCTestCase {
     func testBundledSkillsCoverTheScorecardApps() {
         let library = AppSkillLibrary()
 
-        // Megaplan §6 scorecard apps; Sheets is web-only and rides the Chrome skill.
         let bundleIDs = [
             "com.blackmagic-design.DaVinciResolve",
             "com.figma.Desktop",

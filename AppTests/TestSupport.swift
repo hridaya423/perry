@@ -53,3 +53,25 @@ extension AppController {
         return AppController(sessionController: session ?? SessionController(), overrides: overrides)
     }
 }
+
+@MainActor
+extension SessionController {
+    private func invokingAttemptID() throws -> UUID {
+        guard case .invoking(let invocation) = state else {
+            throw IllegalSessionTransitionError(state: state, operation: "start invocation")
+        }
+        return invocation.id
+    }
+
+    func startGuide(_ guide: GuideSessionState) throws {
+        try startGuide(guide, attemptID: try invokingAttemptID())
+    }
+
+    func startExecution(_ execution: ExecutionSessionState) throws {
+        try startExecution(execution, attemptID: try invokingAttemptID())
+    }
+
+    func startAsk(_ ask: AskSessionState) throws {
+        try startAsk(ask, attemptID: try invokingAttemptID())
+    }
+}

@@ -54,7 +54,7 @@ final class PerryStoreTests: XCTestCase {
         try "not json".write(to: dir.appendingPathComponent("broken.json"), atomically: true, encoding: .utf8)
         let list = await store.list()
         XCTAssertEqual(list.count, 1)
-        XCTAssertEqual(list.first?.name, "Morning Scout") // "read"+"news" → scout
+        XCTAssertEqual(list.first?.name, "Morning Scout")
     }
 
     func testNameGeneratorDeterministic() {
@@ -86,16 +86,6 @@ final class RoutineDecisionsTests: XCTestCase {
         XCTAssertFalse(RoutineDecisions.shouldRun(s, now: day(10), isAwake: true, hasNetwork: false))
     }
 
-    func testMissedSlotCatchesUpOnce() {
-        var s = RoutineSchedule(kind: .daily(hour: 9, minute: 0))
-        s = RoutineDecisions.recordMissed(s, now: day(10))
-        XCTAssertTrue(s.missedRunPending)
-        XCTAssertTrue(RoutineDecisions.shouldRun(s, now: day(11), isAwake: true, hasNetwork: true))
-        s = RoutineDecisions.record(s, succeeded: true, ranAt: day(11))
-        XCTAssertFalse(s.missedRunPending)
-        XCTAssertFalse(RoutineDecisions.shouldRun(s, now: day(11), isAwake: true, hasNetwork: true))
-    }
-
     func testThreeFailuresPause() {
         var s = RoutineSchedule(kind: .interval(60))
         for _ in 0..<2 {
@@ -104,7 +94,6 @@ final class RoutineDecisionsTests: XCTestCase {
         XCTAssertFalse(s.paused)
         s = RoutineDecisions.record(s, succeeded: false, ranAt: Date())
         XCTAssertTrue(s.paused)
-        XCTAssertNil(RoutineDecisions.nextFire(s, now: Date()))
     }
 
     func testSuccessResetsFailures() {
@@ -135,13 +124,6 @@ final class RoutineDecisionsTests: XCTestCase {
 final class SuggestionRulesTests: XCTestCase {
     private func card(_ title: String, _ score: Double) -> SuggestionCard {
         SuggestionCard(title: title, body: "", score: score)
-    }
-
-    func testQuietNow() {
-        XCTAssertTrue(SuggestionRules.quietNow(isOnCall: true, isScreenSharing: false, focusActive: false))
-        XCTAssertTrue(SuggestionRules.quietNow(isOnCall: false, isScreenSharing: true, focusActive: false))
-        XCTAssertTrue(SuggestionRules.quietNow(isOnCall: false, isScreenSharing: false, focusActive: true))
-        XCTAssertFalse(SuggestionRules.quietNow(isOnCall: false, isScreenSharing: false, focusActive: false))
     }
 
     func testRankTrimsToThreeSorted() {

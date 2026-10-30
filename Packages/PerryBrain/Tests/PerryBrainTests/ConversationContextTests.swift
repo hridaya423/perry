@@ -36,7 +36,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: "Continue")
         let runID = try XCTUnwrap(thread.pendingTurn?.id)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("Condensed."), .done(.endTurn)], count: 20))
-        let prepared = try await ConversationContext().prepareDeferringSummary(
+        let prepared = try await ConversationContext.prepareDeferringSummary(
             thread: thread, question: "Continue", runID: runID, store: store, provider: provider, historyByteLimit: 2_048
         )
         XCTAssertTrue(provider.requests.isEmpty)
@@ -48,7 +48,7 @@ final class ConversationContextTests: XCTestCase {
         XCTAssertNotNil(after.contextSummary?.text)
         XCTAssertGreaterThan(after.contextSummary?.sourceTurnCount ?? 0, 0)
         let unused = ScriptedProvider(responses: [])
-        let repeated = try await ConversationContext().prepareDeferringSummary(
+        let repeated = try await ConversationContext.prepareDeferringSummary(
             thread: after, question: "Again", runID: runID, store: store, provider: unused, historyByteLimit: 2_048
         )
         XCTAssertNil(repeated.maintenance)
@@ -88,7 +88,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: "Continue")
         let runID = try XCTUnwrap(thread.pendingTurn?.id)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("Remember Cedar; the previous rename was interrupted."), .done(.endTurn)], count: 20))
-        let messages = try await ConversationContext().prepare(thread: thread, question: "Continue", runID: runID, store: store, provider: provider, historyByteLimit: 2_048)
+        let messages = try await ConversationContext.prepare(thread: thread, question: "Continue", runID: runID, store: store, provider: provider, historyByteLimit: 2_048)
         XCTAssertEqual(messages.last, .user([.text("Continue")]))
         XCTAssertTrue(provider.requests.allSatisfy { $0.tools.isEmpty })
         let savedThread = await ThreadStore(directory: root).thread(id: thread.id)
@@ -97,7 +97,7 @@ final class ConversationContextTests: XCTestCase {
         XCTAssertEqual(restored.turns.map(\.question), original.turns.map(\.question))
         XCTAssertEqual(restored.contextSummary?.sourceTurnCount, 7)
         let unused = ScriptedProvider(responses: [])
-        let repeated = try await ConversationContext().prepare(thread: restored, question: "Continue", runID: runID, store: store, provider: unused, historyByteLimit: 2_048)
+        let repeated = try await ConversationContext.prepare(thread: restored, question: "Continue", runID: runID, store: store, provider: unused, historyByteLimit: 2_048)
         XCTAssertEqual(repeated, messages)
         XCTAssertTrue(unused.requests.isEmpty)
     }
@@ -113,7 +113,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: question)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("The garden is quiet."), .done(.endTurn)], count: 40), capacity: 4096)
         let base = ModelRequest(messages: [.user([.text(question)])], maxOutputTokens: 256)
-        let messages = try await ConversationContext().prepare(
+        let messages = try await ConversationContext.prepare(
             thread: thread, question: question, runID: XCTUnwrap(thread.pendingTurn?.id), store: store,
             provider: provider, baseRequest: base
         )
@@ -143,7 +143,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: question)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("The export succeeded."), .done(.endTurn)], count: 20), capacity: 4096)
         let base = ModelRequest(messages: [.user([.text(question)])], maxOutputTokens: 256)
-        let messages = try await ConversationContext().prepare(
+        let messages = try await ConversationContext.prepare(
             thread: thread, question: question, runID: XCTUnwrap(thread.pendingTurn?.id), store: store,
             provider: provider, baseRequest: base
         )
@@ -171,7 +171,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: question)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("Updates exist."), .done(.endTurn)], count: 40), capacity: 4096)
         let base = ModelRequest(messages: [.user([.text(question)])], maxOutputTokens: 256)
-        let messages = try await ConversationContext().prepare(
+        let messages = try await ConversationContext.prepare(
             thread: thread, question: question, runID: XCTUnwrap(thread.pendingTurn?.id), store: store,
             provider: provider, baseRequest: base
         )
@@ -192,7 +192,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: question)
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("The garden is quiet."), .done(.endTurn)], count: 40), capacity: 4096)
         let base = ModelRequest(messages: [.user([.text(question)])], maxOutputTokens: 256)
-        let messages = try await ConversationContext().prepare(
+        let messages = try await ConversationContext.prepare(
             thread: thread, question: question, runID: XCTUnwrap(thread.pendingTurn?.id), store: store,
             provider: provider, baseRequest: base
         )
@@ -212,7 +212,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: "Continue")
         let provider = ScriptedProvider(responses: [[.textDelta("Unfinished"), .done(.maxTokens)]])
         do {
-            _ = try await ConversationContext().prepare(thread: thread, question: "Continue", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
+            _ = try await ConversationContext.prepare(thread: thread, question: "Continue", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
             XCTFail("Incomplete summaries must not be used")
         } catch ConversationContextError.incompleteSummary {}
         let saved = await store.thread(id: thread.id)
@@ -249,7 +249,7 @@ final class ConversationContextTests: XCTestCase {
         let provider = ScriptedProvider(responses: [])
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
-            return try await ConversationContext().prepare(thread: thread, question: "Continue", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
+            return try await ConversationContext.prepare(thread: thread, question: "Continue", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
         }
         do {
             _ = try await task.value
@@ -266,7 +266,7 @@ final class ConversationContextTests: XCTestCase {
         let thread = try await store.beginTurn(to: original.id, question: "Continue")
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("The last fact remains saved."), .done(.endTurn)], count: 30), capacity: 8192)
         let base = ModelRequest(system: String(repeating: "Instruction ", count: 100), messages: [.user([.text("Continue")])])
-        let messages = try await ConversationContext().prepare(
+        let messages = try await ConversationContext.prepare(
             thread: thread, question: "Continue", runID: XCTUnwrap(thread.pendingTurn?.id), store: store,
             provider: provider, baseRequest: base
         )
@@ -291,7 +291,7 @@ final class ConversationContextTests: XCTestCase {
         _ = try await store.upsert(original)
         let thread = try await store.beginTurn(to: original.id, question: "Which fact?")
         let provider = ScriptedProvider(responses: Array(repeating: [.textDelta("Cedar"), .done(.endTurn)], count: 20))
-        _ = try await ConversationContext().prepare(thread: thread, question: "Which fact?", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
+        _ = try await ConversationContext.prepare(thread: thread, question: "Which fact?", runID: XCTUnwrap(thread.pendingTurn?.id), store: store, provider: provider, historyByteLimit: 2_048)
         let inputs = provider.requests.flatMap(\.messages).compactMap { message -> String? in
             guard case .user(let parts) = message, case .text(let text) = parts.first else { return nil }
             return text

@@ -146,7 +146,6 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertEqual(visible.revision, queued.revision)
         XCTAssertEqual(visible.workspaceActionToApprove?.id, actions[0].id)
 
-        // Advance the task past the visible revision before the stale notification lands.
         let prepared = try await coordinator.approveWorkspaceAction(
             id: taskID, expectedRevision: queued.revision
         )
@@ -223,7 +222,6 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let reported = await waitUntil {
             let current = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
             let context = await controller.subsystems.backgroundTasks.debugMetadata(plan.taskID)
-            // A retained terminal row is the durable receipt — the task is done.
             return (current?.isTerminal ?? true) && context == nil && !controller.subsystems.backgroundTasks.isRunning(plan.taskID)
                 && controller.subsystems.backgroundTasks.awaitingApprovalCount == 0
         }
@@ -264,7 +262,6 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let reported = await waitUntil {
             let record = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
             let metadata = await controller.subsystems.backgroundTasks.debugMetadata(plan.taskID)
-            // Terminal retention keeps the cancelled run's receipts on record.
             return (record?.isTerminal ?? true) && metadata == nil && !controller.subsystems.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(reported)

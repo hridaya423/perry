@@ -1,8 +1,4 @@
 #!/bin/bash
-# idle-probe.sh [--pid PID] [--seconds N]
-# Samples Perry's CPU% (ps decaying average) and RSS once per second, writes a
-# CSV to docs/evidence/perf/, and enforces the plan budgets: avg CPU <= 0.5%,
-# max RSS <= 180 MB.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

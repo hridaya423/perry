@@ -1,5 +1,3 @@
-# Fallback manifest only — CuaCapabilityManifest generates the live ceiling
-# per spawn; this file exists so discovery still succeeds if generation fails.
 version: 3
 expires_after: 8h
 idle_timeout: 30m

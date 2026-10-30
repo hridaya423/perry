@@ -143,8 +143,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(VoiceController.bluetoothPrerollDelay(isBluetooth: false), 0)
     }
 
-    /// fn-hold: the modifiers alone commit after the grace window; a real key
-    /// inside the window means a chord (fn+arrow) and never presses.
     func testPushToTalkFunctionHoldGraceCommitsAndChordBusts() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
@@ -153,8 +151,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
             onRelease: { state.releases += 1 }
         )
 
-        // fn chord-bust: flagsChanged carries fn, an arrow keydown follows
-        // inside the grace window → no press, and the release drops nothing.
         controller.handle(keyCode: 63, timestamp: 1.0, flags: .maskSecondaryFn, isKeyDown: false, isKeyUp: false, tapDisabled: false)
         controller.handle(keyCode: 123, timestamp: 1.05, flags: .maskSecondaryFn, isKeyDown: true, isKeyUp: false, tapDisabled: false)
         controller.handle(keyCode: 63, timestamp: 1.2, flags: [], isKeyDown: false, isKeyUp: false, tapDisabled: false)
@@ -162,8 +158,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.presses, 0)
         XCTAssertEqual(state.releases, 0)
 
-        // Clean hold: flagsChanged with fn, no other key, grace elapses →
-        // press; flags clear → release.
         controller.handle(keyCode: 63, timestamp: 2.0, flags: .maskSecondaryFn, isKeyDown: false, isKeyUp: false, tapDisabled: false)
         try await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(state.presses, 1)
@@ -171,8 +165,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.releases, 1)
     }
 
-    /// ⌃⌥⌘-hold commits after the same grace, and ⇧ or fn in the mix means
-    /// it was a chord, not a hold.
     func testPushToTalkControlOptionCommandHoldPressesAndExtraModifiersBust() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(
@@ -182,7 +174,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         )
         let hold: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
 
-        // ⇧ inside the hold = a chord — must never press.
         controller.handle(keyCode: 0, timestamp: 1.0, flags: hold.union(.maskShift), isKeyDown: false, isKeyUp: false, tapDisabled: false)
         try await Task.sleep(nanoseconds: 300_000_000)
         XCTAssertEqual(state.presses, 0)
@@ -194,7 +185,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.releases, 1)
     }
 
-    /// stop() mid-hold releases exactly once and drops the pending grace task.
     func testPushToTalkModifierHoldStopReleasesOnce() async throws {
         let state = PushToTalkTestState()
         let controller = PushToTalkController(

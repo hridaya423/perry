@@ -35,7 +35,6 @@ final class InkAccentSamplerTests: XCTestCase {
     }
 
     func testMintOnDarkTealOnLight() throws {
-        // Window is 100×100 AX pts captured at 64×64 px; mark its center.
         let bounds = CGRect(x: 500, y: 300, width: 100, height: 100)
         let center = CGPoint(x: 550, y: 350)
         XCTAssertEqual(

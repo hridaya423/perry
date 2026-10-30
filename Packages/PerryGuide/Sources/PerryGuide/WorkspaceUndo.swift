@@ -15,11 +15,6 @@ public enum WorkspaceUndoError: Error, Equatable, Sendable, LocalizedError {
     }
 }
 
-/// Reverses completed workspace actions from their durable receipts. Every
-/// inverse is conflict-checked first: the identity recorded at execution time
-/// (device + inode, or byte count for created files) must still match, and the
-/// restore location must be free. Anything else stops the undo without
-/// touching the file system.
 public struct WorkspaceUndoEngine: Sendable {
     private let workspacePath: String
     private let trashPath: String
@@ -35,8 +30,6 @@ public struct WorkspaceUndoEngine: Sendable {
         trashPath = trashURL.resolvingSymlinksInPath().standardizedFileURL.path
     }
 
-    /// One-line description of the inverse, or nil when the effect cannot be
-    /// undone safely. Used to show the user exactly what Undo will do.
     public func inverseDescription(for receipt: WorkspaceFileExecutionReceipt) -> String? {
         switch receipt.effect {
         case .createdFile(let path, _):
@@ -54,11 +47,6 @@ public struct WorkspaceUndoEngine: Sendable {
         }
     }
 
-    /// The typed inverse plan for a run's completed receipts, last change
-    /// first. Every postcondition binds the identity observed right now, so
-    /// execution re-verifies it — and the same conflict checks the
-    /// synchronous path applies run here at build time, so a changed world
-    /// stops Undo before it touches anything.
     public func inversePlan(
         receipts: [WorkspaceFileExecutionReceipt],
         goal: String,

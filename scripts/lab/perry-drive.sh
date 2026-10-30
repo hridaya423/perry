@@ -1,10 +1,4 @@
 #!/bin/bash
-# perry-drive.sh, thin lab driver for the debug Perry.app.
-#   launch            open Perry with PERRY_PERFORMANCE_EVENT_LOG set; echoes the log path
-#   hotkey <combo>    send a chord like cmd+option+p (via cua-driver hotkey, desktop-scoped)
-#   windows           list Perry's windows (cua-driver list_windows)
-#   quit              cooperative quit, then cua-driver kill_app fallback
-#   seed-lab-data     copy the ChatGPT sign-in into $PERRY_DATA_DIRECTORY
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -31,15 +25,10 @@ case "$cmd" in
         fi
         LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
         "$0" seed-lab-data
-        # Adhoc+runtime Release builds cannot load adhoc frameworks (each "-"
-        # signature is its own team); strip the runtime flag for lab launches.
         if codesign -dv "$APP" 2>&1 | grep -q "adhoc,runtime"; then
             codesign --force --sign - "$APP/Contents/MacOS/Perry" >/dev/null 2>&1
             echo "perry-drive: re-signed adhoc without hardened runtime for lab launch" >&2
         fi
-        # Lab runs opt into screen capture — Perry chrome is share-hidden
-        # by default (PerryWindowChrome.applyChrome) and evidence tooling
-        # must be able to record it.
         ENVS=(--env "PERRY_PERFORMANCE_EVENT_LOG=$LOG" --env "PERRY_ALLOW_SCREEN_CAPTURE=1" --env "PERRY_DATA_DIRECTORY=${PERRY_DATA_DIRECTORY:-}")
         for name in PERRY_AGENT_TRACE PERRY_CLAUDE_CODE_MODEL PERRY_LAB_AUTO_APPROVE PERRY_GUIDE_DRILL_STATE PERRY_OVERLAY_DUMP; do
             [ -n "${!name:-}" ] && ENVS+=(--env "$name=${!name}")

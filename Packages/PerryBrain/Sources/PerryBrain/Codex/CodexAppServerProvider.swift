@@ -165,7 +165,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
             } else {
                 threadID = try await startThread(request, connection: connection)
             }
-            // The server can notify the instant it accepts the turn, so register first.
             lock.withLock { turns[threadID] = context }
             do {
                 try Task.checkCancellation()
@@ -188,7 +187,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
                 return
             } catch {
                 lock.withLock { turns[threadID] = nil }
-                // The server forgets threads on restart or eviction; retry once on a fresh thread.
                 guard reuse, mayRetry, !Task.isCancelled else { throw error }
                 mayRetry = false
                 conversation = nil
@@ -541,7 +539,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         }
     }
 
-    // The app-server decodes every attached image as PNG whatever the declared type.
     static func pngWireData(_ data: Data) -> Data {
         guard !data.starts(with: [0x89, 0x50, 0x4E, 0x47]),
               let source = CGImageSourceCreateWithData(data as CFData, nil),

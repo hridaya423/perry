@@ -1,9 +1,5 @@
 import CoreGraphics
 
-/// Caption placement solver: positions a caption rect next
-/// to its anchor while avoiding the target itself, the caret, other marks,
-/// the menu bar, and the Dock. Pure geometry in screen coordinates — works
-/// with multi-display negative origins because nothing assumes (0,0).
 public enum CaptionPlacer {
     public static let defaultMargin: CGFloat = 10
     public static let defaultGap: CGFloat = 8
@@ -40,12 +36,6 @@ public enum CaptionPlacer {
         rect.width * rect.height - overlapArea(rect, screen)
     }
 
-    /// Picks the slot with least total overlap against `avoiding` + the
-    /// anchor, breaking ties by overflow, then by preference order. The
-    /// winner is clamped into `screen` (minus `margin`) so a caption is
-    /// never half-off-screen even when every slot overlaps something.
-    /// `preferablyAvoiding` (the app's own controls) only chooses among the
-    /// four sides of the anchor; it never sends a caption to a screen corner.
     public static func place(
         size: CGSize,
         anchor: CGRect,

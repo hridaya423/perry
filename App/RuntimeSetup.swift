@@ -41,7 +41,6 @@ struct RuntimeSetupRecord: Identifiable, Equatable {
     let signOutCommand: RuntimeAuthenticationCommand?
     var authenticatesInApp = false
 
-    var canRun: Bool { authentication?.isUsable == true }
 }
 
 struct RuntimeSetupSnapshot: Equatable {

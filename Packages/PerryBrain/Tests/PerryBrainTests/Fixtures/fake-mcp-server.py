@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# Scripted MCP server stand-in for MCPConnector tests. Speaks
-# newline-delimited JSON-RPC on stdio. Responds to initialize, tools/list
-# (paginates once via nextCursor), tools/call (echoes name+arguments;
-# "fail_tool" returns isError), and ping.
 import json
 import sys
 
@@ -43,7 +39,7 @@ for line in sys.stdin:
     method = req.get("method", "")
     rid = req.get("id")
     if rid is None:
-        continue  # notification
+        continue
     if method == "initialize":
         send({"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": "2024-11-05",

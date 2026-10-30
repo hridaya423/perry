@@ -196,7 +196,7 @@ func checkConversationContext(provider: any ModelProvider) async throws -> Bool 
     let capacity = try await provider.contextWindow(for: .deep)
     print("context_check_capacity=\(capacity.map(String.init) ?? "unknown")")
     do {
-        request.messages = try await ConversationContext().prepare(thread: thread, question: question, runID: runID, store: store, provider: provider, baseRequest: request)
+        request.messages = try await ConversationContext.prepare(thread: thread, question: question, runID: runID, store: store, provider: provider, baseRequest: request)
     } catch {
         let saved = await store.thread(id: thread.id)
         print("context_check=failed error=\(error.localizedDescription)")

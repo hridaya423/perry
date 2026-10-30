@@ -1,9 +1,6 @@
 import Foundation
 import PerryCore
 
-/// Fabricates the canonical workspace-file `ExecutionPlan` — used by
-/// routine/task fixtures and any surface that still seeds a durable
-/// workspace task. Not a runtime: nothing plans through it.
 public struct WorkspaceFilePlanFabricator: Sendable {
     public let id = "local.task-planner"
 

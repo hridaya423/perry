@@ -1,7 +1,6 @@
 import Foundation
 import Security
 
-/// BYOK keys live in the Keychain, never in plists or defaults.
 public struct KeychainStore: Sendable {
     public enum KeychainError: Error, Equatable {
         case unhandled(OSStatus)

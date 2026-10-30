@@ -79,7 +79,6 @@ final class TalkSessionAskTests: XCTestCase {
         )
     }
 
-    /// A runner whose Nth turn streams the events `script(N)` returns.
     private func scriptedRunner(
         onRun: @escaping @MainActor () -> Void = {},
         _ script: @escaping @MainActor (Int) async -> [AgentLoopEvent]
@@ -106,9 +105,6 @@ final class TalkSessionAskTests: XCTestCase {
         )
     }
 
-    /// A Services literal from a two-arg accept plus the new-signature run —
-    /// TalkSession owns spatial/skill construction now, so `run` receives the
-    /// SpatialContext it built.
     private func scriptedServices(
         accept: @escaping @MainActor (String, UUID?) -> HomeController.AcceptedInput,
         run: @escaping @MainActor (HomeController.AcceptedInput, AgentCoordinator.SpatialContext?) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
@@ -581,7 +577,6 @@ final class TalkSessionAskTests: XCTestCase {
     }
 }
 
-/// Minimal awaitable gate for cancellation tests.
 private actor AsyncBarrier {
     private var released = false
     private var waiters: [CheckedContinuation<Void, Never>] = []

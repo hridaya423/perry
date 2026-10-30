@@ -8,10 +8,7 @@ public struct DrawCommand: Sendable, Equatable {
     public var verb: Verb
     public var elementID: String?
     public var label: String?
-    /// The element's frame in screen points (top-left origin), when the
-    /// emitter resolved the id against a later screen read.
     public var frame: CGRect?
-    /// Frames of the controls around the element, same space as `frame`.
     public var nearbyFrames: [CGRect] = []
 
     public init(verb: Verb, elementID: String? = nil, label: String? = nil, frame: CGRect? = nil) {

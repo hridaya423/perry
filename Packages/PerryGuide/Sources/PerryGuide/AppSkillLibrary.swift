@@ -21,7 +21,6 @@ public struct AppSkill: Equatable, Sendable, Identifiable {
     }
 }
 
-/// Bundled app skills plus user-written Markdown skills in local storage. User skills are untrusted prompt context, validated by name and size.
 public struct AppSkillLibrary: @unchecked Sendable {
     private struct BundledEntry {
         let body: String

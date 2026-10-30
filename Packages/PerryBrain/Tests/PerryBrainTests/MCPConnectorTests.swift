@@ -248,7 +248,7 @@ final class HTTPMCPTransportTests: XCTestCase {
         let performer = FakeHTTPPerformer()
         performer.responses = [
             (200, "application/json", jsonResponse(fakeInitializeResult(), id: 1), "sess-1"),
-            (202, "application/json", "", nil), // notifications/initialized
+            (202, "application/json", "", nil),
             (200, "application/json", jsonResponse(.object(["tools": .array([])]), id: 2), nil),
         ]
         let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
@@ -277,8 +277,8 @@ final class HTTPMCPTransportTests: XCTestCase {
         """
         performer.responses = [
             (200, "application/json", jsonResponse(fakeInitializeResult(), id: 1), nil),
-            (202, "application/json", "", nil), // notifications/initialized
-            (200, "text/event-stream", sse, nil), // tools/list (request id 2)
+            (202, "application/json", "", nil),
+            (200, "text/event-stream", sse, nil),
         ]
         let transport = try HTTPMCPTransport(endpoint: endpoint, performer: performer)
         let conn = MCPConnector(transport: transport, clientVersion: "test")

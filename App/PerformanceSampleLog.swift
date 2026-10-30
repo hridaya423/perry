@@ -10,8 +10,6 @@ enum PerfMark {
         write(name.description)
     }
 
-    /// Runtime-composed marker names skip the signposter, which requires a
-    /// static name.
     static func markDynamic(_ name: String) {
         write(name)
     }
@@ -206,13 +204,8 @@ actor PerformanceSampleLog {
             try handle.synchronize()
             try handle.close()
         } catch {
-            let operationError = error
-            do {
-                try handle.close()
-            } catch {
-                throw error
-            }
-            throw operationError
+            try handle.close()
+            throw error
         }
     }
 }

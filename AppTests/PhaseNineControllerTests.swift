@@ -146,7 +146,6 @@ final class SuggestionControllerTests: XCTestCase {
         await controller.joinAll()
 
         XCTAssertEqual(provider.requests.count, 1)
-        // Only read operations are advertised to the researcher.
         let prompt = provider.requests[0].lastUserText ?? ""
         XCTAssertTrue(prompt.contains("recent.mail"))
         XCTAssertFalse(prompt.contains("send.mail"))
@@ -156,7 +155,6 @@ final class SuggestionControllerTests: XCTestCase {
         XCTAssertEqual(controller.cards.first?.sourceServiceID, StubBackend.connectedService.id)
         XCTAssertTrue(published.contains { !$0.isEmpty })
 
-        // Persisted across launches.
         let reloaded = makeController(provider: provider, services: [])
         reloaded.reloadCards()
         XCTAssertEqual(reloaded.cards.count, 1)
@@ -177,7 +175,6 @@ final class SuggestionControllerTests: XCTestCase {
     }
 
     func testGatesSuppressGeneration() async throws {
-        // Disabled flag.
         var provider = PhaseNineProvider()
         var controller = makeController(provider: provider)
         controller.start(at: nineAM)
@@ -185,7 +182,6 @@ final class SuggestionControllerTests: XCTestCase {
         controller.stop()
         XCTAssertTrue(provider.requests.isEmpty)
 
-        // Before 6am.
         provider = PhaseNineProvider()
         controller = makeController(provider: provider)
         defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
@@ -195,7 +191,6 @@ final class SuggestionControllerTests: XCTestCase {
         controller.stop()
         XCTAssertTrue(provider.requests.isEmpty)
 
-        // Nothing connected.
         provider = PhaseNineProvider()
         controller = makeController(provider: provider, services: [])
         controller.start(at: nineAM)
@@ -205,7 +200,6 @@ final class SuggestionControllerTests: XCTestCase {
     }
 
     func testIgnoreStreakRaisesTheScoreBar() async throws {
-        // Two ignored days → minScore = 0.3 + 0.15*2 = 0.6; a 0.5 card drops.
         defaults.set(true, forKey: PerryPreferences.$suggestionsEnabled.key)
         defaults.set(2, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         let provider = PhaseNineProvider(text: """
@@ -224,7 +218,7 @@ final class SuggestionControllerTests: XCTestCase {
         let controller = makeController(provider: PhaseNineProvider(), services: [])
         defaults.set(3, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
         let card = SuggestionCard(title: "t", body: "b", score: 0.9)
-        controller.dismiss(card) // sanity: dismissing unknown id is a no-op
+        controller.dismiss(card)
         var acted: SuggestionCard?
         controller.act(on: card) { acted = $0 }
         XCTAssertEqual(acted, card)
@@ -243,8 +237,6 @@ final class SuggestionControllerTests: XCTestCase {
     }
 }
 
-// MARK: - Fixtures
-
 private extension ModelRequest {
     var lastUserText: String? {
         for message in messages.reversed() {
@@ -259,8 +251,6 @@ private extension ModelRequest {
     }
 }
 
-/// Records requests and plays back a scripted stream — either fixed text
-/// plus `.done`, or a throwing stream for failure paths.
 private final class PhaseNineProvider: ModelProvider, @unchecked Sendable {
     let id: ProviderID = "fixture.phase-nine"
     let displayName = "Fixture"

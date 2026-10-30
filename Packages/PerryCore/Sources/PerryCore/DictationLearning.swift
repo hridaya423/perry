@@ -1,7 +1,6 @@
 import Foundation
 
 public enum DictationWords {
-    /// Word tokens: alphanumerics plus in-word apostrophes ("they're" is one token).
     public static func tokens(_ text: String) -> [String] {
         var separators = CharacterSet.alphanumerics.inverted
         separators.remove(charactersIn: "'’")
@@ -20,8 +19,6 @@ public enum DictationWords {
     }
 }
 
-/// Learn-on-edit: when the user fixes a dictated word within `learnWindow`,
-/// the substitution pair is learned for the dictionary.
 public enum PersonalDictionaryLearner {
     public static let learnWindow: TimeInterval = 20
 

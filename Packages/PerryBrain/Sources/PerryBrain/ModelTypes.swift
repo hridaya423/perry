@@ -57,10 +57,8 @@ public struct ToolSpec: Sendable, Equatable {
     public let name: String
     public let description: String
     public let inputSchema: JSONValue
-    /// Minimum trust tier, claimed by the spec author. The model cannot lower it per-call.
     public let tier: TrustTier
     public let surfaces: Set<ToolSurface>
-    /// True when the tool cannot change anything (feeds MCP readOnlyHint).
     public let readOnly: Bool
     public let requiredCapabilities: ModelCapabilities
     public init(
@@ -99,8 +97,6 @@ public struct ModelRequest: Sendable {
     public var tools: [ToolSpec]
     public var tier: ModelTier
     public var maxOutputTokens: Int
-    /// Providers that keep server-side conversation state reuse it across
-    /// requests sharing a key. Nil means every request stands alone.
     public var conversationKey: String?
 
     public init(

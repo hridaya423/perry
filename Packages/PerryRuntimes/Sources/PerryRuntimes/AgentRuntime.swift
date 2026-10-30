@@ -11,10 +11,6 @@ public struct ActionExecutionResult: Sendable, Equatable {
     public let actionID: ActionID
     public let operation: ExecutableAction.Operation
     public let evidence: ActionExecutionEvidence?
-    /// True when the workspace receipt binds the shared write-ahead journal's
-    /// plan record instead of the caller's approved plan — the journal
-    /// already verified grant, digest, and postcondition, so the verifier
-    /// checks the action and filesystem state rather than plan identity.
     public let journaled: Bool
 
     public init(action: ExecutableAction, evidence: ActionExecutionEvidence? = nil, journaled: Bool = false) {

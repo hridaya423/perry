@@ -248,7 +248,6 @@ final class TypedExecutionPlanTests: XCTestCase {
     }
 
     func testPolicyFloorsRejectWeakApprovalOnRiskyOperations() throws {
-        // Irreversible operations may never run under a whole-plan grant.
         let riskyOperations: [ExecutableAction.Operation] = [
             .transform(workspace: workspace, command: .moveToTrash(path: "old.txt")),
             .integration(accountID: "account", command: .slackSendMessage(channelID: "C1", text: "hi")),
@@ -264,15 +263,12 @@ final class TypedExecutionPlanTests: XCTestCase {
                 operation: operation, postcondition: postcondition
             ), "\(operation.kind.rawValue) accepted plan-scoped approval below its floor")
         }
-        // askUser always needs an action-scoped grant — a .plan or .none
-        // requirement could not even build its approval.
         for scope in [ApprovalScope.none, .plan] {
             XCTAssertThrowsError(try ExecutableAction(
                 id: "question", summary: "Ask", approvalRequirement: scope,
                 operation: .askUser(prompt: "Continue?", choices: ["a"]), postcondition: .answered
             ))
         }
-        // Reversible operations may run under a plan grant; .action stays valid.
         let window = ExecutableAction.WindowIdentity(
             bundleID: "com.apple.TextEdit", processID: 1, windowID: 2, connectionGeneration: 3
         )

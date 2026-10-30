@@ -2,9 +2,6 @@ import PerryBrain
 import XCTest
 @testable import Perry
 
-/// §1.5: the Talk realtime adapters — transcription-only input over the
-/// committed buffer and verbatim output rendering, both driven through a
-/// real RealtimeVoiceSession against the frame fixture.
 @MainActor
 final class RealtimeTalkVoiceTests: XCTestCase {
     private let endpoint = URL(string: "wss://example.invalid")!
@@ -24,9 +21,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         )
     }
 
-    /// Transcription-only finish: the provider gets `input_audio_buffer.commit`
-    /// and nothing else — no response.create, no response events, and the
-    /// session stays `.listening` for the next hold.
     func testTranscribeOnlyCommitPublishesTranscriptWithoutResponse() async throws {
         let firstCommitGate = SendGate()
         let configuration = RealtimeVoiceConfiguration(endpoint: endpoint, model: "test")
@@ -70,8 +64,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         XCTAssertEqual(session.state, .listening)
     }
 
-    /// Full adapter path: hold → commit → final transcript reaches
-    /// `finalize()` with synthesized word timings spread over the hold.
     func testRealtimeInputFinalizesTranscriptFromCommittedAudio() async throws {
         let commitGate = SendGate()
         let transport = ResponseStreamFixture(
@@ -92,7 +84,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         try await voice.input.start()
         XCTAssertTrue(voice.input.isUsingRealtime)
 
-        // beginInput bumped the utterance generation to 2.
         let ingress = RealtimeVoiceAudioIngress(capacity: 1)
         voice.session.installAudioIngressFixtureForTesting(ingress)
         ingress.yield(RealtimeVoiceAudioPacket(data: Data([1, 0]), sessionID: 1, utteranceGeneration: 2))
@@ -115,7 +106,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         XCTAssertTrue(operations.contains(.commitInput(RealtimeVoicePacketTag(sessionID: 1, utteranceGeneration: 2))))
     }
 
-    /// Output routes through `speakText` while the turn is realtime-driven.
     func testRealtimeOutputSendsTextWhenRealtimeIsActive() async throws {
         let transport = ResponseStreamFixture(
             configuration: RealtimeVoiceConfiguration(endpoint: endpoint, model: "test"),
@@ -135,10 +125,8 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         XCTAssertTrue(operations.contains(.sendText("Done.")))
     }
 
-    /// A session that never reaches `.listening` falls back to the local
-    /// input for that hold — the hold still captures.
     func testInputFallsBackWhenSessionCannotListen() async throws {
-        let gate = SendGate() // never opened: connect() blocks forever
+        let gate = SendGate()
         let blocked = ConnectionFixture(gate: gate)
         let fallback = RecordingTalkInput()
         let voice = RealtimeTalkVoice(
@@ -158,8 +146,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
         await gate.open()
     }
 
-    /// A hold with no buffered audio settles empty without committing —
-    /// committing nothing would only fail the session on emptyInput.
     func testSilentHoldSettlesEmptyWithoutCommitting() async throws {
         let transport = ResponseStreamFixture(
             configuration: RealtimeVoiceConfiguration(endpoint: endpoint, model: "test"),
@@ -181,7 +167,6 @@ final class RealtimeTalkVoiceTests: XCTestCase {
     }
 }
 
-/// Minimal recording fallbacks for the adapter tests.
 @MainActor
 private final class RecordingTalkInput: TalkSpeechInput {
     private(set) var starts = 0

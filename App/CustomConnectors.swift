@@ -161,7 +161,7 @@ final class CustomConnectors: ObservableObject {
         }
         guard let index = connectors.firstIndex(where: { $0.id == connector.id }) else { return .failed("Removed while connecting.") }
         do {
-            try keychain.save(Self.encode(credential), account: connector.id.uuidString)
+            try keychain.save(try Self.encode(credential), account: connector.id.uuidString)
         } catch {
             return fail(connector.id, "I couldn’t save the sign-in to your Keychain.")
         }
@@ -247,15 +247,15 @@ final class CustomConnectors: ObservableObject {
             }
             let keychain = keychain
             let account = id.uuidString
-            let session = MCPOAuthSession(credential: credential, performer: http, persist: { try? keychain.save(Self.encode($0), account: account) })
+            let session = MCPOAuthSession(credential: credential, performer: http, persist: { try? keychain.save(try Self.encode($0), account: account) })
             return try HTTPMCPTransport(endpoint: url, auth: session, performer: http)
         case (.url(let url), _, _):
             return try HTTPMCPTransport(endpoint: url, performer: http)
         }
     }
 
-    private nonisolated static func encode(_ credential: MCPOAuthCredential) -> String {
-        String(decoding: (try? JSONEncoder().encode(credential)) ?? Data(), as: UTF8.self)
+    private nonisolated static func encode(_ credential: MCPOAuthCredential) throws -> String {
+        String(decoding: try JSONEncoder().encode(credential), as: UTF8.self)
     }
 
     private func serverExited(_ id: UUID) {

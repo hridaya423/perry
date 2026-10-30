@@ -1,9 +1,6 @@
 import Foundation
 import PerryRuntimes
 
-/// An open-ended background goal executed as an unattended agent turn on a
-/// dedicated conversation thread. Unlike `ExecutionPlan` there is no fixed
-/// action list: the agent decides tool calls at run time.
 public struct AgentTaskPlan: Sendable, Equatable {
     public let goal: String
     public let threadID: UUID

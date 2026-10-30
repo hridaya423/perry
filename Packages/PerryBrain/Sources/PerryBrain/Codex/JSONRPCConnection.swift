@@ -84,8 +84,6 @@ public actor JSONRPCConnection {
         }
     }
 
-    /// Lines are funneled through one stream and handled by a single task so responses and
-    /// notifications reach subscribers in wire order (per-line Tasks would reorder deltas).
     public func start() {
         guard !isReading else { return }
         isReading = true

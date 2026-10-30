@@ -1,20 +1,12 @@
 import Foundation
 import PerryCore
 
-/// One semantic resource an action claims for scheduling. The app maps these
-/// to its `BackgroundTaskResource` conflicts; the table is the only place that
-/// decides which resources an operation touches.
 public enum ResourceClaim: Hashable, Sendable {
     case workspace(URL)
     case application(bundleID: String)
     case integration(accountID: String)
 }
 
-/// The single source of truth for what an operation means for trust: its tier,
-/// the weakest approval it may ever run under, whether its effect can be
-/// undone, and the resources it claims. Executors, the supervisor, the parser,
-/// and the enqueue validator all read this table — nothing re-derives policy
-/// per call site.
 public struct ActionPolicy: Sendable, Equatable {
     public let trustTier: TrustTier
     public let minimumApproval: ApprovalScope
@@ -96,17 +88,10 @@ extension ExecutableAction.Operation {
     }
 }
 
-/// Pre-publication gate: a plan may only reach a queue or a supervisor when
-/// every action is supported by the surface that will execute it, claims the
-/// workspace it was bound to, stays inside timeout bounds, and names only
-/// configured integration accounts. Per-action shape (postcondition match,
-/// approval floor, unique IDs) is already enforced by `ExecutableAction.init`.
 public enum ExecutionPlanValidator {
     public struct Capabilities: Sendable {
         public var supportedOperations: Set<ExecutableAction.Operation.Kind>
-        /// The single workspace this surface may touch; nil rejects workspace claims.
         public var workspace: URL?
-        /// Configured integration account IDs this surface may write through.
         public var integrationAccounts: Set<String>
         public var maxActionTimeout: TimeInterval
 

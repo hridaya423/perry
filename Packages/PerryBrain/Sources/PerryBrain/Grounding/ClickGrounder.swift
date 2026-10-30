@@ -51,8 +51,6 @@ public struct ClickGrounder: Sendable {
         self.send = send
     }
 
-    /// Returns the target in window points (origin at the window's top left).
-    /// When `accepts` approves the first point, the check passes are skipped.
     public func locate(
         _ description: String, screenshot: Data, windowSize: CGSize,
         accepts: (@Sendable (CGPoint) -> Bool)? = nil
@@ -164,8 +162,6 @@ public struct ClickGrounder: Sendable {
         "AXDisclosureTriangle", "AXIncrementor", "AXSlider", "AXSegment", "AXCell", "AXRow",
     ]
 
-    /// The smallest control containing `point` (screen coordinates), when it
-    /// is a clickable role and covers under a quarter of the window.
     public static func snapTarget(_ point: CGPoint, elements: [ObservedElement], window: CGRect) -> ObservedElement? {
         let limit = window.width * window.height / 4
         return elements

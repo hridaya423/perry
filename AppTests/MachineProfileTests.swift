@@ -10,7 +10,6 @@ final class MachineProfileTests: XCTestCase {
         XCTAssertLessThanOrEqual(profile.workingSetBytes, profile.memoryBytes)
         XCTAssertGreaterThan(profile.chip.generation, 0)
         XCTAssertGreaterThan(profile.gpuCores ?? 0, 0)
-        XCTAssertNotNil(MachineProfile.hardwareModel())
     }
 
     func testCurrentProfileFeedsTheModelFit() {

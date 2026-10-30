@@ -100,8 +100,6 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.ends, 0)
     }
 
-    /// ⌃⌥← / ⌃⌥⌘V style chords: a key press during the hold means the user
-    /// wanted a shortcut, not a talk turn — cancel, never submit.
     func testKeyPressDuringHoldCancelsInsteadOfSubmitting() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
@@ -152,7 +150,6 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.cancels, 0)
     }
 
-    /// A cancelled hold must not commit later — the timer dies with the hold.
     func testCancelledHoldNeverCommits() async throws {
         let (monitor, log) = makeMonitor(commitDelay: 0.02)
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
@@ -178,40 +175,34 @@ final class ModifierHoldMonitorTests: XCTestCase {
         XCTAssertEqual(log.composers, 0)
     }
 
-    /// ⌃A ⌃E in a terminal: key presses inside a ⌃ press dirty it, so ⌃
-    /// chords during normal typing can never compose a double-tap.
     func testControlChordsNeverOpenComposer() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.00, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
-        monitor.handleKeyDown() // ⌃A
+        monitor.handleKeyDown()
         monitor.handle(timestamp: 1.05, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
         monitor.handle(timestamp: 1.15, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
-        monitor.handleKeyDown() // ⌃E
+        monitor.handleKeyDown()
         monitor.handle(timestamp: 1.20, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.composers, 0)
     }
 
-    /// Any typed key between the two taps breaks the double-tap.
     func testTypedKeyBetweenControlTapsBreaksDoubleTap() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.0, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
         monitor.handle(timestamp: 1.1, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
-        monitor.handleKeyDown() // regular typing between taps
+        monitor.handleKeyDown()
         monitor.handle(timestamp: 1.2, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.composers, 0)
     }
 
-    /// A long ⌃ press is a modifier hold, not a tap.
     func testLongControlPressDoesNotCountAsTap() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.0, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
-        monitor.handle(timestamp: 1.5, control: false, option: false, isFlagsChanged: true, tapDisabled: false) // held 500 ms
+        monitor.handle(timestamp: 1.5, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
         monitor.handle(timestamp: 1.6, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
         XCTAssertEqual(log.composers, 0)
     }
 
-    /// A disabled tap must discard the hold — submitting a turn on a dead
-    /// event stream could send a truncated utterance.
     func testTapDisabledDuringHoldCancels() {
         let (monitor, log) = makeMonitor()
         monitor.handle(timestamp: 1.0, control: true, option: true, isFlagsChanged: true, tapDisabled: false)

@@ -71,7 +71,7 @@ class PercentileTests(unittest.TestCase):
         self.assertEqual(REPORT.percentile([7.0], 95), 7.0)
 
     def test_interpolated(self):
-        values = [float(v) for v in range(10, 110, 10)]  # 10..100, n=10
+        values = [float(v) for v in range(10, 110, 10)]
         self.assertAlmostEqual(REPORT.percentile(values, 50), 55.0)
         self.assertAlmostEqual(REPORT.percentile(values, 95), 95.5)
         self.assertAlmostEqual(REPORT.percentile(values, 0), 10.0)

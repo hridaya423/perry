@@ -1,7 +1,6 @@
 import Foundation
 import PerryCore
 
-/// The confirmation card Perry floats over the exact target before a risky action.
 public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let title: String
@@ -35,7 +34,6 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
         self.createdAt = createdAt
     }
 
-    /// The phrase a red-tier answer must match: the exact displayed target, never a generic word.
     public var redPhrase: String {
         requiredPhrase ?? targetSummary
     }

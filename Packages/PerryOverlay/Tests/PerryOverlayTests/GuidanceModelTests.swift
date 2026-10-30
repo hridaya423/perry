@@ -15,10 +15,6 @@ struct PerryGuidanceOverlayTests {
             duration: 120
         )
 
-        // Platform drift vs upstream: since the macOS 26 SDK, CGRect
-        // standardization no longer moves the origin when width/height are
-        // negative, so (120, 90, -80x60) normalizes to (120, 90, 80x60),
-        // not the (40, 90, ...) older runtimes produced.
         #expect(overlay.rect == PerryGuidanceRect(x: 120, y: 90, width: 80, height: 60))
         #expect(overlay.style.lineWidth == 48)
         #expect(overlay.style.fillOpacity == 0.65)

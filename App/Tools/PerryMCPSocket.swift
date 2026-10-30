@@ -63,7 +63,6 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
                 close(fd)
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
-            // bind() honors the umask, so pin the socket to owner-only before anyone can race the token handshake.
             chmod(path, 0o600)
             guard fcntl(fd, F_SETFL, O_NONBLOCK) == 0 else {
                 close(fd)
@@ -233,7 +232,6 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
         var uid = uid_t(0)
         var gid = gid_t(0)
         guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else { return false }
-        // Ad-hoc debug builds carry no team identifier on either side; the uid check is the only gate there.
         guard let teamID = ourTeamIdentifier() else { return true }
         var pid = pid_t(0)
         var size = socklen_t(MemoryLayout<pid_t>.size)

@@ -14,8 +14,6 @@ public enum AgentLoopEvent: Sendable, Equatable {
     case finished(AgentFinish)
 }
 
-/// Provider-agnostic agent turn loop: stream → tool calls → host → results →
-/// repeat, with steer/pause/interrupt and budgets (60 calls, 20 min).
 public actor AgentLoop {
     public struct Budgets: Sendable {
         public var maxToolCalls: Int
@@ -44,8 +42,6 @@ public actor AgentLoop {
     }
 
     public func steer(_ text: String) { steerQueue.append(text) }
-    /// Yields at the next tool boundary and holds there until `resume()`
-    /// or `interrupt()` — the run's message history is preserved.
     public func pause() { pauseRequested = true }
     public func resume() { pauseRequested = false }
     public func interrupt() {
@@ -79,7 +75,7 @@ public actor AgentLoop {
         system: String, context: ToolContext, tier: ModelTier, currentParts: [ModelContentPart]
     ) async throws -> PreparedConversation {
         let base = request(system: system, messages: [.user(currentParts)], context: context, tier: tier)
-        return try await ConversationContext().prepareDeferringSummary(
+        return try await ConversationContext.prepareDeferringSummary(
             thread: thread, question: question, runID: runID, store: store, provider: provider, baseRequest: base
         )
     }

@@ -1,10 +1,6 @@
 import Foundation
 import PerryCore
 
-/// Agent runtime backed by a pinned, app-bundled OpenAI codex CLI.
-///
-/// Delegated coding tasks run `codex exec --json` under `workspace-write`
-/// (PRD §7 sandbox default) inside the routine-replay workspace boundary.
 public struct CodexRuntime: Sendable {
     public let id = "cli.codex"
 
@@ -85,8 +81,6 @@ public struct CodexRuntime: Sendable {
         }
     }
 
-    /// Typed-path delegated task: runs the prompt inside the workspace-write
-    /// sandbox. The workspace boundary comes from init, never from the prompt.
     public func runCodingTask(prompt: String) async throws -> String {
         guard workingDirectory != nil else {
             throw ExecutionError(message: "delegated execution requires an explicit workspace boundary")

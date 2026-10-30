@@ -1,14 +1,10 @@
 import Foundation
 
-/// A demonstrated workflow the user reviewed and saved. Steps re-resolve
-/// their targets against a fresh observation at replay — record-time
-/// coordinates are never the match anchor.
 public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
     public static let currentVersion = 1
     public static let maximumSteps = 50
     public static let maximumParameters = 20
     public static let maximumEncodedBytes = 64 * 1024
-    /// Declared bound for any run-time parameter value or stored literal.
     public static let parameterValueMaxLength = 512
 
     public let schemaVersion: Int
@@ -21,7 +17,6 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
     public var verifiedRuns: Int
     public let createdAt: Date
 
-    /// The single-application case — replay refuses anything outside this set.
     public var bundleID: String { appBundleIDs[0] }
 
     public init(
@@ -66,8 +61,6 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         }
     }
 
-    /// Parameter slots the routine asks the user to fill at run time, in step
-    /// order. Empty means the routine runs as recorded with nothing to prompt.
     public var requiredParameters: [(name: String, prompt: String)] {
         steps.compactMap { step in
             if case .typeText(.parameter(let name, let prompt)) = step.action { return (name, prompt) }
@@ -83,9 +76,6 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         case schemaVersion, id, name, appBundleIDs, bundleID, steps, revision, provenance, verifiedRuns, parameters, createdAt
     }
 
-    /// Decodes through the validating init — a stored or imported routine can
-    /// never bypass the step/parameter/name bounds. Legacy files carrying a
-    /// single `bundleID` still decode.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let bundleIDs = try container.decodeIfPresent([String].self, forKey: .appBundleIDs)
@@ -104,8 +94,6 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
         )
     }
 
-    /// `parameters` in the document is a descriptive mirror — the step slots
-    /// stay the single source of truth on decode.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
@@ -121,17 +109,12 @@ public struct LearnedRoutine: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// How far a routine has earned trust. `tested` can only be set by a verified
-/// local run — imports carrying it are downgraded to `reviewed`.
 public enum RoutineProvenance: String, Codable, Equatable, Sendable {
     case recorded
     case reviewed
     case tested
 }
 
-/// A declared run-time parameter: literal data substitution only, never
-/// interpolated shell or code. `kind` and `maxLength` bound what counts as a
-/// valid collected value.
 public struct RoutineParameter: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Equatable, Sendable {
         case text
@@ -166,8 +149,6 @@ public enum RoutineError: Error, Equatable {
     case unknownKeys
 }
 
-/// Where a step lands. Matching at replay compares role and label against a
-/// fresh observation; the recorded frame is never replayed.
 public struct RoutineTarget: Codable, Equatable, Sendable {
     public var role: String
     public var label: String?
@@ -184,9 +165,7 @@ public struct RoutineStep: Codable, Equatable, Sendable {
     public var summary: String
     public var target: RoutineTarget?
     public var action: RoutineAction
-    /// Steps a human must perform — review shows them, replay never runs them.
     public var requiresHuman: Bool
-    /// Plain-language outcome the step intends, when review established one.
     public var outcome: String?
 
     public init(summary: String, target: RoutineTarget? = nil, action: RoutineAction, requiresHuman: Bool = false, outcome: String? = nil) {
@@ -216,16 +195,11 @@ public enum RoutineAction: Codable, Equatable, Sendable {
     case wait(milliseconds: Int)
 }
 
-/// Typed content is either a fixed string or a parameter slot the user fills
-/// at run time. The recorder must never capture text aimed at secure fields;
-/// nothing sensitive is allowed to enter a routine.
 public enum RoutineText: Codable, Equatable, Sendable {
     case literal(String)
     case parameter(name: String, prompt: String)
 }
 
-/// What a bounded demonstration produced. The App-side recorder builds this
-/// from live input + AX events; inference stays pure and testable.
 public struct RecordedDemonstration: Equatable, Sendable {
     public var bundleID: String
     public var events: [RecordedEvent]
@@ -246,10 +220,6 @@ public enum RecordedEvent: Equatable, Sendable {
     case unrecognizedClick
 }
 
-/// Turns recorded events into candidate routine steps. The only compression:
-/// a click that focuses a field folds into the type step that follows it, and
-/// consecutive typed runs on one target merge — everything else is preserved
-/// verbatim so review shows what actually happened.
 public enum RoutineInference {
     public static func infer(demonstration: RecordedDemonstration, name: String) throws -> LearnedRoutine {
         guard !demonstration.events.isEmpty else { throw RoutineError.emptyDemonstration }
@@ -315,9 +285,6 @@ public enum RoutineInference {
     }
 }
 
-/// The routine document contract: a fenced ```json metadata block followed by
-/// editable Markdown. The metadata is authoritative — the body is for humans
-/// and is ignored on decode.
 public enum RoutineDocument {
     private static let allowedKeys: Set<String> = [
         "schemaVersion", "id", "revision", "name", "appBundleIDs", "bundleID",
@@ -367,9 +334,6 @@ public enum RoutineDocument {
     }
 }
 
-/// Local-first routine persistence: one `.md` document per routine under
-/// `Routines/` in app storage (legacy `.json` files still decode). Malformed
-/// or oversized files are skipped, never repaired silently.
 public struct RoutineStore: @unchecked Sendable {
     private let storageDirectory: URL?
 
@@ -408,9 +372,6 @@ public struct RoutineStore: @unchecked Sendable {
         try data.write(to: directory.appendingPathComponent("\(routine.id.uuidString).md"), options: .atomic)
     }
 
-    /// Import from a user-selected file: strict decode, then save under our
-    /// own generated filename. An imported `tested` provenance is not local
-    /// evidence — it downgrades to `reviewed`.
     public func importRoutine(from url: URL) throws -> LearnedRoutine {
         let data = try Data(contentsOf: url)
         guard data.count <= LearnedRoutine.maximumEncodedBytes else { throw RoutineError.routineTooLarge }
@@ -452,11 +413,6 @@ public struct RoutineStore: @unchecked Sendable {
     }
 }
 
-/// Provider wording pass over a locally-inferred draft. The provider sees only
-/// step structure — action kind, target role/label, app bundle ID — never typed
-/// values, screenshots, or tools, and may only rename the routine and rephrase
-/// step summaries. Anything outside the strict schema is discarded and the
-/// local draft stands.
 public enum RoutineSynthesis {
     public static let maximumResponseBytes = 8 * 1024
 

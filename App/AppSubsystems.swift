@@ -94,7 +94,7 @@ final class AppSubsystems {
 
 
     lazy var mcp = MCPSocketLifecycle(
-        makeSocket: { [unowned app = app] directory in
+        makeSocket: { directory in
             PerryMCPSocket(host: self.toolHost, directory: directory, workers: self.workers, workerLease: self.foregroundWorkerLease)
         },
         mayStart: { [unowned app = app] in app.maintenance.isIdle },

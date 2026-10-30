@@ -130,8 +130,6 @@ final class WorkspaceTaskRunnerTests: XCTestCase {
         XCTAssertEqual(entries.first?.outcome, .completed)
         XCTAssertEqual(entries.first?.verified, true)
         XCTAssertEqual(try String(contentsOf: output, encoding: .utf8), "report")
-        // The verified prefix stays on record as a terminal receipt row —
-        // it is the durable evidence Undo reads.
         let remaining = await relaunched.records()
         XCTAssertEqual(remaining.map(\.state), [.completed])
         XCTAssertEqual(remaining.first?.workspaceJournal?.completed.count, 1)

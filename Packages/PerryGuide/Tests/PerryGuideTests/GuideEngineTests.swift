@@ -51,9 +51,6 @@ private actor StubObserver: GuideObserving {
         return try await observe()
     }
 
-    /// Identity probes never consume the scripted observation sequence — they
-    /// stand in for a resolve-only check that returns the bound window's
-    /// identity without paying for the element tree.
     func probeTarget() async throws -> GuideObservation {
         if probeReads == failureAtProbe {
             probeReads += 1
@@ -63,9 +60,6 @@ private actor StubObserver: GuideObserving {
         return observations[min(index, observations.count - 1)]
     }
 
-    /// Scripted signals return in order; `holdSignals` suspends until `emit`
-    /// so tests can act while the engine is mid-wait. With neither, the wait
-    /// reports no signal immediately — no wall-clock cost.
     func awaitUIChange(within: Duration) async -> Bool {
         if !scriptedSignals.isEmpty { return scriptedSignals.removeFirst() }
         if !heldValues.isEmpty { return heldValues.removeFirst() }
@@ -86,8 +80,6 @@ private actor StubObserver: GuideObserving {
         }
     }
 
-    /// Suspends until the engine is inside `awaitUIChange` — lets a test land
-    /// a concurrent `stop()` at the exact suspension the reentrancy guard covers.
     func untilWaiting() async {
         if waitingForSignal { return }
         await withCheckedContinuation { waitingObserver = $0 }
@@ -110,8 +102,6 @@ private enum GuideReaderTestError: Error {
     case captureUnavailable
 }
 
-/// Records planner calls so tests can prove the engine consumes its seeded
-/// plan instead of paying a round-trip per step.
 private final class CountingPlanner: GuidePlanner, @unchecked Sendable {
     var path: [GuideStep]
     var decisions: [GuideDecision]
@@ -134,7 +124,6 @@ private final class CountingPlanner: GuidePlanner, @unchecked Sendable {
     }
 }
 
-/// Returns steps from a queue, one per planner call, ignoring the observation.
 private struct QueueGuidePlanner: GuidePlanner {
     let steps: [GuideStep?]
     private let position = PositionBox()
@@ -152,8 +141,6 @@ private struct QueueGuidePlanner: GuidePlanner {
     }
 
     func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
-        // The plan call consumes the queue — the seeded horizon replaces the
-        // per-step planner calls it predicts.
         defer { position.index = steps.count }
         return steps.compactMap { $0 }
     }
@@ -190,10 +177,6 @@ final class GuideEngineTests: XCTestCase {
         )
     }
 
-    // MARK: - Dynamic replanning (the Phase 4 gate)
-
-    /// Step two is not drawn from an upfront plan: the planner sees the
-    /// changed post-click observation and chooses from what is actually there.
     func testSecondStepIsPlannedFromTheChangedUI() async throws {
         let first = snapshot([button("open", label: "Open")])
         let changed = snapshot([button("insert", label: "Insert Row")])
@@ -221,7 +204,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(next.instruction, "insert a row")
     }
 
-    /// The wrong click is ignored: no snapshot read, no advance, same step.
     func testWrongClickDoesNotAdvance() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let observer = StubObserver(snapshots: [initial])
@@ -257,13 +239,9 @@ final class GuideEngineTests: XCTestCase {
         let engine = GuideEngine(planner: planner, observer: observer)
         _ = try await engine.start(goal: "open the file")
 
-        // The click lands inside a real control — just not the highlighted one.
-        // The nudge names it so the app can say "that's Other, we want Open".
         let result = await engine.acceptClick(at: CGPointShim(x: 245, y: 35))
         XCTAssertEqual(result, .ignoredClick(stepIndex: 0, hitLabel: "Other"))
     }
-
-    // MARK: - Verification
 
     func testAPlannedStepRingsItsOwnControlAfterTheReadsIndexesShift() async throws {
         func row(_ id: String, _ label: String, y: Double) -> AXElement {
@@ -439,8 +417,6 @@ final class GuideEngineTests: XCTestCase {
 
     func testCaptureFailureBlocksInsteadOfPretendingTheStepWasUnchanged() async throws {
         let initial = snapshot([button("target", label: "Open")])
-        // The postconditionless verify reads via the identity probe — that is
-        // the capture whose failure must fail closed.
         let observer = StubObserver(snapshots: [initial], failureAtProbe: 0)
         let planner = QueueGuidePlanner(steps: [
             GuideStep(instruction: "open it", target: .axElement(stableID: "target")),
@@ -472,8 +448,6 @@ final class GuideEngineTests: XCTestCase {
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
 
         XCTAssertEqual(result, .explanationEnded)
-        // The verify only needs target liveness; the next step then plans
-        // from one full read.
         let probes = await observer.probeReadCount()
         let elementReads = await observer.elementReadCount()
         let reads = await observer.readCount()
@@ -623,8 +597,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(progress.completedInstructions, [step.instruction])
     }
 
-    /// A signal between reads triggers the next verification read — the
-    /// engine advances as soon as the UI proves the step, not on a timer.
     func testSignalBetweenReadsDrivesReverification() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let mid = snapshot([button("target", label: "Open")])
@@ -640,16 +612,12 @@ final class GuideEngineTests: XCTestCase {
 
         let result = await engine.acceptClick(at: CGPointShim(x: 55, y: 35))
         XCTAssertEqual(result, .explanationEnded)
-        // start read, two verification reads (unsatisfied, then satisfied),
-        // then the full read the planner sees before the next step.
         let reads = await observer.readCount()
         let elementReads = await observer.elementReadCount()
         XCTAssertEqual(reads, 4)
         XCTAssertEqual(elementReads, 2)
     }
 
-    /// Without a signal there is no re-read: one verification read, then
-    /// stillWaiting — the quiet-UI case costs exactly one element read.
     func testNoSignalVerifiesOnceThenWaits() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let observer = StubObserver(snapshots: [initial, initial])
@@ -667,7 +635,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(elementReads, 1)
     }
 
-    /// A signal storm cannot spin reads forever — the cap bounds verification.
     func testSignalStormIsBounded() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let observer = StubObserver(
@@ -688,8 +655,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(elementReads, 4)
     }
 
-    /// stop() landing mid-verification must not be overwritten by the stale
-    /// read — the engine stays idle and the call reports notPresenting.
     func testStaleVerificationCannotAdvancePastStop() async throws {
         let initial = snapshot([button("target", label: "Open")])
         let done = snapshot([button("target", label: "Open"), button("done", label: "Done")])
@@ -713,8 +678,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(phase, .idle)
     }
 
-    /// Observers without the event hooks still verify on the fallback —
-    /// the default wait plus a full observe reproduces the legacy poll.
     func testDefaultObserverFallbackStillVerifies() async throws {
         struct FallbackObserver: GuideObserving {
             let first: GuideObservation
@@ -790,8 +753,6 @@ final class GuideEngineTests: XCTestCase {
         await assertBlockedWithoutProgress(result, engine: engine)
     }
 
-    /// A click that is expected to open a sheet or new window keeps the
-    /// session alive when the post-click windowID differs under the same pid.
     func testPredictedWindowChangeAdvances() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
@@ -810,8 +771,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(progress.completedInstructions, ["open it"])
     }
 
-    /// The flag only excuses a new window in the same app — a different pid is
-    /// still a different task context and blocks.
     func testOpensWindowDoesNotExcuseProcessChange() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
@@ -828,8 +787,6 @@ final class GuideEngineTests: XCTestCase {
         await assertBlockedWithoutProgress(result, engine: engine)
     }
 
-    /// An opensWindow step whose post-click read lost its window identity
-    /// cannot be trusted to be a same-app sheet — blocked, not advanced.
     func testOpensWindowStillRequiresWindowIdentity() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
@@ -845,11 +802,6 @@ final class GuideEngineTests: XCTestCase {
         await assertBlockedWithoutProgress(result, engine: engine)
     }
 
-    /// A window change must not ride along on a skip: the step that predicted
-    /// it was never performed, so a new windowID still blocks.
-    /// Steps already planned up front validate against the live window and
-    /// present without another planner call — the click→next-step cost drops
-    /// to one observation read.
     func testPlannedStepsAdvanceWithoutReplanning() async throws {
         let stepA = GuideStep(
             instruction: "open it",
@@ -878,8 +830,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(planner.nextStepCalls, 0)
     }
 
-    /// A planned step whose target vanished is a deviation: the rest of the
-    /// plan is stale, so the engine calls the planner once to replan.
     func testDeviationFromThePlanTriggersOneReplan() async throws {
         let stepA = GuideStep(
             instruction: "open it",
@@ -931,8 +881,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(planner.screenshots.value, [Data([2])])
     }
 
-    /// Skipping invalidates the rest of the seeded plan — later steps were
-    /// predicted on the skipped step happening.
     func testSkipDiscardsTheSeededPlan() async throws {
         let stepA = GuideStep(instruction: "open it", target: .axElement(stableID: "target"))
         let stepB = GuideStep(instruction: "confirm", target: .axElement(stableID: "done"))
@@ -971,10 +919,6 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
-    /// A driver respawn bumps the connection generation while reporting the
-    /// same pid + CGWindowID — the window never moved, so the guide survives
-    /// the reconnect. Element tokens stay safe because they only resolve
-    /// inside the observation that minted them.
     func testVerificationToleratesGenerationBumpOnSameWindow() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
@@ -989,8 +933,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(result, .explanationEnded)
     }
 
-    /// A respawned driver reporting a different windowID is a different
-    /// window — generation leniency never extends to identity.
     func testVerificationBlocksWhenRespawnedDriverReportsDifferentWindow() async throws {
         let engine = postconditionEngine(
             before: observation([button("target", label: "Open")]),
@@ -1118,8 +1060,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(presentation?.target?.frame.x, 10)
     }
 
-    // MARK: - Target validation
-
     func testInventedElementIDIsRejectedAtStart() async throws {
         let observer = StubObserver(snapshots: [snapshot([button("real")])])
         let planner = QueueGuidePlanner(steps: [
@@ -1135,8 +1075,6 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
-    /// A deviation triggers exactly one replan — and the replanned step is
-    /// held to the same grounding check. An invented target there blocks.
     func testInventedTargetOnReplanBlocksHonestly() async throws {
         let first = snapshot([button("a", label: "A")])
         let changed = snapshot([button("b", label: "B")])
@@ -1203,8 +1141,6 @@ final class GuideEngineTests: XCTestCase {
             XCTFail("expected protectedWindow")
         } catch GuidePlannerError.protectedWindow {}
     }
-
-    // MARK: - Offline planner honesty
 
     func testFallbackPlannerNamesAMatchingControl() async throws {
         let planner = AXGuidePlanner()
@@ -1392,8 +1328,6 @@ final class GuideEngineTests: XCTestCase {
         }
     }
 
-    // MARK: - Loop mechanics
-
     func testSkipReplansFromAFreshObservation() async throws {
         let first = snapshot([button("a", label: "A")])
         let later = snapshot([button("a", label: "A"), button("b", label: "B")])
@@ -1513,10 +1447,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(progress.completedInstructions.first, "step 12")
     }
 
-    // MARK: - needsInput continuation
-
-    /// A planner question during `start` pauses instead of finishing; the
-    /// user's answer reaches the next planner call as context, not a command.
     func testNeedsInputDuringStartPausesAndResumeFeedsAnswer() async throws {
         let planner = DecisionQueuePlanner(decisions: [
             .needsInput(prompt: "Which account?", choices: ["Work", "Personal"]),
@@ -1544,8 +1474,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(planner.recorded.contexts[1].inputAnswer, "Work")
     }
 
-    /// The answer is consumed once: a later unrelated question does not
-    /// inherit a stale answer.
     func testConsumedAnswerDoesNotLeakIntoUnrelatedQuestion() async throws {
         let planner = DecisionQueuePlanner(decisions: [
             .step(GuideStep(instruction: "open it", target: .axElement(stableID: "target"))),
@@ -1578,7 +1506,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertNil(planner.recorded.contexts[3].inputAnswer, "consumed answer must not leak into a new question")
     }
 
-    /// Resume is only meaningful when a session is waiting: no goal, no read.
     func testResumeWithoutSessionDoesNothing() async {
         let observer = StubObserver(snapshots: [snapshot([button("target")])])
         let engine = GuideEngine(planner: DecisionQueuePlanner(decisions: []), observer: observer)
@@ -1588,8 +1515,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(reads, 0)
     }
 
-    /// A step already on screen cannot be answered over — resume waits for
-    /// the paused states only.
     func testResumeWhilePresentingDoesNothing() async throws {
         let planner = DecisionQueuePlanner(decisions: [
             .step(GuideStep(instruction: "open it", target: .axElement(stableID: "target"))),
@@ -1604,10 +1529,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertEqual(reads, 1)
     }
 
-    // MARK: - Back navigation (§3.4)
-
-    /// Back re-presents the previous step after re-validating its target
-    /// against a fresh observation — no planner call, no stale mark.
     func testBackRePresentsPreviousStep() async throws {
         let before = snapshot([button("a", label: "First")])
         let after = snapshot([button("a", label: "First"), button("b", label: "Second")])
@@ -1646,8 +1567,6 @@ final class GuideEngineTests: XCTestCase {
         XCTAssertFalse(canGoBack)
     }
 
-    /// Back to a target that no longer exists is blocked, and the session
-    /// stays on the current step — never a silent jump to a stale mark.
     func testBackToVanishedTargetBlocksWithoutLosingCurrentStep() async throws {
         let before = snapshot([button("a", label: "First")])
         let after = snapshot([button("a", label: "First"), button("b", label: "Second")])

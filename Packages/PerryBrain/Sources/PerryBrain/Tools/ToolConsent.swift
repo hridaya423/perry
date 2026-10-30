@@ -1,14 +1,9 @@
 import Foundation
 
-/// Per-thread computer-use consent ("Allow once / Always for this Perry /
-/// Not now"). `once` and `notNow` are answered by the caller and never
-/// stored; `always` grants are persisted per thread (each Perry owns a
-/// thread) so a remembered choice survives restarts.
 public actor ToolConsentStore {
     private var grants: [String: Set<String>]
     private let fileURL: URL?
 
-    /// `directory` nil = in-memory only (tests, previews).
     public init(directory: URL?) {
         if let directory {
             fileURL = directory.appendingPathComponent("tool-consent.json")
@@ -21,7 +16,6 @@ public actor ToolConsentStore {
         }
     }
 
-    /// An always-grant for this tool on this thread means "don't ask again".
     public func isGranted(tool: String, threadID: String) -> Bool {
         grants[threadID]?.contains(tool) ?? false
     }
@@ -31,7 +25,6 @@ public actor ToolConsentStore {
         try persist()
     }
 
-    /// Forget every remembered grant for a thread (or one tool on it).
     public func revoke(threadID: String, tool: String? = nil) throws {
         if let tool {
             grants[threadID]?.remove(tool)
@@ -42,9 +35,6 @@ public actor ToolConsentStore {
         try persist()
     }
 
-    /// Wrap an approval prompt: remembered grants auto-approve (orange and
-    /// below — red always asks; the card collects the typed phrase),
-    /// everything else falls through to the intent card.
     public func approving(
         threadID: String?,
         ask: @escaping @Sendable (ToolCall, ToolSpec) async -> ToolApproval
