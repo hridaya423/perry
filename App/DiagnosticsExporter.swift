@@ -3,8 +3,6 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Save-panel exports for support data: the activity log on its own, or the
-/// redacted diagnostics bundle. Gathers, asks, writes, reports.
 @MainActor
 struct DiagnosticsExporter {
     let activityLog: ActivityLog
@@ -60,20 +58,20 @@ struct DiagnosticsExporter {
 
 extension AppController {
     func showHistory() {
-        homeController.openHome(selection: .history)
+        subsystems.homeController.openHome(selection: .history)
     }
 
     func exportActivityLog() {
         DiagnosticsExporter(
-            activityLog: activityLog, transcripts: transcriptStore,
-            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+            activityLog: subsystems.activityLog, transcripts: subsystems.transcriptStore,
+            memory: subsystems.memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
         ).exportActivityLog()
     }
 
     func exportDiagnostics() {
         DiagnosticsExporter(
-            activityLog: activityLog, transcripts: transcriptStore,
-            memory: memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
+            activityLog: subsystems.activityLog, transcripts: subsystems.transcriptStore,
+            memory: subsystems.memoryStore, setStatus: { [weak self] in self?.sessionStatus = $0 }
         ).exportDiagnostics()
     }
 }

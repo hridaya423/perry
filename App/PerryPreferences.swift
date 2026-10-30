@@ -46,7 +46,6 @@ extension Optional: AnyOptionalPreference {
 /// or write in the App target goes through here. scripts/ci.sh enforces it.
 enum PerryPreferences {
 
-    // MARK: Shell & onboarding
 
     @Preference("perry.settings.tab") static var settingsTab = "general"
     @Preference("perry.onboarding.completed") static var onboardingCompleted = false
@@ -57,12 +56,10 @@ enum PerryPreferences {
     @Preference("perry.notchStatus.enabled") static var notchStatusEnabled = true
     @Preference("perry.notch.hoverPeek") static var notchHoverPeek = true
     @Preference("perry.sounds.enabled") static var soundsEnabled = true
-    @Preference("perry.home.frame") static var homeFrame: String? = nil
     @Preference("perry.lastSeenVersion") static var lastSeenVersion: String? = nil
 
     @Preference("perry.routine.offered") static var routineOffered = false
 
-    // MARK: Invocation
 
     @Preference("perry.wakeWord.enabled") static var wakeWordEnabled = false
     @Preference("perry.gesture.type") static var typeGesture = Gesture.defaultType
@@ -108,7 +105,6 @@ enum PerryPreferences {
         return gesture
     }
 
-    // MARK: Brain & providers
 
     @Preference("perry.brain.modelChoice") static var modelChoice = "chatGPT"
     @Preference("perry.brain.profiles") static var modelProfiles: Data? = nil
@@ -123,7 +119,6 @@ enum PerryPreferences {
     @Preference("perry.local.cloudFallback") static var localCloudFallback = "ask"
     @Preference("perry.local.model") static var localModel: String? = nil
 
-    // MARK: Voice & dictation
 
     @Preference("perry.speech.outputEnabled") static var speechOutputEnabled = true
     @Preference("perry.speech.rate") static var speechRate = 1.0
@@ -142,7 +137,6 @@ enum PerryPreferences {
     @Preference("perry.realtimeVoice.instructions") static var realtimeVoiceInstructions = "You are Perry, a concise and helpful desktop voice assistant. Speak naturally and keep replies short unless the user asks for detail."
     @Preference("perry.realtimeVoice.protocol") static var realtimeVoiceProtocol = "automatic"
 
-    // MARK: Workspace & tasks
 
     @Preference("perry.workspace.root") static var workspaceRoot: String? = nil
     @Preference("perry.suggestions.enabled") static var suggestionsEnabled = false
@@ -150,17 +144,14 @@ enum PerryPreferences {
     @Preference("perry.suggestions.ignoredDays") static var suggestionsIgnoredDays = 0
     @Preference("perry.suggestions.pending") static var suggestionsPending: Data? = nil
 
-    // MARK: Connected apps
 
     static let remoteWritesKeyPrefix = "perry.remote.writes."
     static func remoteWritesKey(for id: String) -> String { remoteWritesKeyPrefix + id }
     static let oauthStateKeyPrefix = "perry.oauth."
 
-    // MARK: Overlay
 
     @Preference(PerryBundleConfig.userVoiceResponseCaptionOpacityDefaultsKey) static var voiceResponseCaptionOpacity = PerryBundleConfig.defaultVoiceResponseCaptionOpacity
 
-    // MARK: Erasure
 
     static let allKeysPrefix = "perry."
 }

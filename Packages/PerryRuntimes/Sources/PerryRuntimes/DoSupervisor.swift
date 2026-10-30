@@ -29,14 +29,6 @@ public struct ConfirmationRequest: Sendable {
     }
 }
 
-public enum PlanDecision: Sendable {
-    case run
-    case stepThrough
-    case replay
-    case edit
-    case cancel
-}
-
 public protocol Confirmer: Sendable {
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool
 }

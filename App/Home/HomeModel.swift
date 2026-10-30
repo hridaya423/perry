@@ -47,7 +47,6 @@ final class HomeModel: ObservableObject {
         var activityLog: ActivityLog?
         var undoableEntryIDs: (@MainActor () async -> Set<UUID>)?
         var backgroundTasks: BackgroundTaskController?
-        var runtimes: RuntimeCatalog?
         var fileRoots: [URL] = []
     }
 

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PerryBrain
+import PerryCore
 import PerryGuide
 import PerryRuntimes
 

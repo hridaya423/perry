@@ -20,15 +20,15 @@ final class BackgroundTaskCreationTests: XCTestCase {
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = makeController(directory: directory, probe: BackgroundCreationProbe())
         let model = HomeModel()
-        model.deps.backgroundTasks = controller.backgroundTasks
+        model.deps.backgroundTasks = controller.subsystems.backgroundTasks
         var changes = 0
         let observation = model.objectWillChange.sink { changes += 1 }
         defer { observation.cancel() }
 
-        _ = try await controller.backgroundTaskCoordinator.enqueue(
+        _ = try await controller.subsystems.backgroundTaskCoordinator.enqueue(
             agentPlan: AgentTaskPlan(goal: "tidy the downloads folder", threadID: UUID()), taskID: TaskID()
         )
-        await controller.backgroundTasks.reloadRecords()
+        await controller.subsystems.backgroundTasks.reloadRecords()
 
         XCTAssertGreaterThan(changes, 0)
     }
@@ -40,13 +40,13 @@ final class BackgroundTaskCreationTests: XCTestCase {
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = makeController(directory: directory, probe: BackgroundCreationProbe())
 
-        _ = try await controller.backgroundTaskCoordinator.enqueue(
+        _ = try await controller.subsystems.backgroundTaskCoordinator.enqueue(
             agentPlan: AgentTaskPlan(goal: "tidy the downloads folder", threadID: UUID()), taskID: TaskID()
         )
-        await controller.backgroundTasks.reloadRecords()
+        await controller.subsystems.backgroundTasks.reloadRecords()
 
-        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
-        XCTAssertTrue(controller.backgroundTasks.canResume(record))
+        let record = try XCTUnwrap(controller.subsystems.backgroundTasks.records.first)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.canResume(record))
     }
 
     /// The canonical workspace task: an executable plan enqueued against a
@@ -71,8 +71,8 @@ final class BackgroundTaskCreationTests: XCTestCase {
             goal: goal, workspace: workspace, taskID: taskID
         )
         let plan = try XCTUnwrap(proposed)
-        let queued = try await controller.backgroundTaskCoordinator.enqueue(executablePlan: plan)
-        await controller.backgroundTasks.reloadRecords()
+        let queued = try await controller.subsystems.backgroundTaskCoordinator.enqueue(executablePlan: plan)
+        await controller.subsystems.backgroundTasks.reloadRecords()
 
         guard case .executable(let storedPlan) = queued.plan else {
             return XCTFail("expected canonical executable plan")
@@ -88,11 +88,11 @@ final class BackgroundTaskCreationTests: XCTestCase {
         }
         XCTAssertEqual(actionWorkspace.standardizedFileURL.path, workspace.standardizedFileURL.path)
 
-        controller.backgroundTasks.approveWorkspace(queued)
+        controller.subsystems.backgroundTasks.approveWorkspace(queued)
         let fileCompleted = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
+            await controller.subsystems.backgroundTasks.reloadRecords()
             let history = await TranscriptStore(directory: directory).snapshot()
-            return await controller.backgroundTasks.debugRecord(queued.id).map(\.isTerminal) ?? true
+            return await controller.subsystems.backgroundTasks.debugRecord(queued.id).map(\.isTerminal) ?? true
                 && FileManager.default.fileExists(atPath: fileURL.path)
                 && history.count == 1
                 && probe.notifications.contains(where: { $0.kind == .completed && $0.taskID == queued.id })
@@ -113,59 +113,58 @@ final class BackgroundTaskCreationTests: XCTestCase {
     /// instead of re-dispatching or touching intervening state.
     func testUndoRunsOncePerRecordAndStopsAtConflict() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
         let controller = makeController(directory: directory, probe: probe)
-        controller.backgroundTasks.debugTrashURL = trash
+        controller.subsystems.backgroundTasks.trashURL = trash
 
         let queued = try await enqueueFileTask(
             on: controller,
             directory: directory,
             goal: #"create file "undo-me.txt" with "revert me""#
         )
-        controller.backgroundTasks.approveWorkspace(queued)
+        controller.subsystems.backgroundTasks.approveWorkspace(queued)
         // The record reaches terminal inside the runner before the
         // report-write lands its status message — wait for the whole tail
         // so the undo can't race it.
         let settled = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
-            let terminal = await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
-            return terminal && controller.backgroundTasks.message(for: queued.id) != nil
-                && !controller.backgroundTasks.isRunning(queued.id)
+            await controller.subsystems.backgroundTasks.reloadRecords()
+            let terminal = await controller.subsystems.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+            return terminal && controller.subsystems.backgroundTasks.message(for: queued.id) != nil
+                && !controller.subsystems.backgroundTasks.isRunning(queued.id)
         }
         XCTAssertTrue(settled)
-        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
+        let record = try XCTUnwrap(controller.subsystems.backgroundTasks.records.first)
         guard case .executable(let plan) = record.plan,
               case .transform(let workspace, _)? = plan.actions.first?.operation else {
             return XCTFail("expected a workspace file plan")
         }
         let fileURL = workspace.appendingPathComponent("undo-me.txt")
         XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-        XCTAssertFalse(controller.backgroundTasks.undoableDescriptions(for: record).isEmpty)
+        XCTAssertFalse(controller.subsystems.backgroundTasks.undoableDescriptions(for: record).isEmpty)
 
-        controller.backgroundTasks.undoWorkspaceChanges(record)
-        XCTAssertTrue(controller.backgroundTasks.isUndoing(record.id))
+        controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.isUndoing(record.id))
         // A second request while the pass is in flight must be refused —
         // the inverses cannot dispatch twice.
-        controller.backgroundTasks.undoWorkspaceChanges(record)
+        controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
 
         let undone = await waitUntil {
-            !controller.backgroundTasks.isUndoing(record.id)
+            !controller.subsystems.backgroundTasks.isUndoing(record.id)
                 && !FileManager.default.fileExists(atPath: fileURL.path)
         }
         XCTAssertTrue(undone)
-        XCTAssertEqual(controller.backgroundTasks.message(for: record.id), "Undid 1 change.")
+        XCTAssertEqual(controller.subsystems.backgroundTasks.message(for: record.id), "Undid 1 change.")
         let trashEntries = try FileManager.default.contentsOfDirectory(atPath: trash.path)
         XCTAssertEqual(trashEntries.count, 1)
 
         // A later Undo on the same record hits the conflict check and stops
         // without touching anything — no silent second dispatch.
-        controller.backgroundTasks.undoWorkspaceChanges(record)
+        controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
         let conflicted = await waitUntil {
-            !controller.backgroundTasks.isUndoing(record.id)
-                && (controller.backgroundTasks.message(for: record.id) ?? "").hasPrefix("Nothing was undone")
+            !controller.subsystems.backgroundTasks.isUndoing(record.id)
+                && (controller.subsystems.backgroundTasks.message(for: record.id) ?? "").hasPrefix("Nothing was undone")
         }
         XCTAssertTrue(conflicted)
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
@@ -176,27 +175,26 @@ final class BackgroundTaskCreationTests: XCTestCase {
     /// and no new recovery may start once controls are closed.
     func testWorkerStopDrainsAnInFlightUndoAndRefusesNewRecovery() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let trash = directory.appendingPathComponent("Trash", isDirectory: true)
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
         let controller = makeController(directory: directory, probe: probe)
-        controller.backgroundTasks.debugTrashURL = trash
+        controller.subsystems.backgroundTasks.trashURL = trash
 
         let queued = try await enqueueFileTask(
             on: controller,
             directory: directory,
             goal: #"create file "drain-me.txt" with "revert me""#
         )
-        controller.backgroundTasks.approveWorkspace(queued)
+        controller.subsystems.backgroundTasks.approveWorkspace(queued)
         let settled = await waitUntil {
-            await controller.backgroundTasks.reloadRecords()
-            let terminal = await controller.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
-            return terminal && controller.backgroundTasks.message(for: queued.id) != nil
-                && !controller.backgroundTasks.isRunning(queued.id)
+            await controller.subsystems.backgroundTasks.reloadRecords()
+            let terminal = await controller.subsystems.backgroundTasks.debugRecord(queued.id)?.isTerminal ?? false
+            return terminal && controller.subsystems.backgroundTasks.message(for: queued.id) != nil
+                && !controller.subsystems.backgroundTasks.isRunning(queued.id)
         }
         XCTAssertTrue(settled)
-        let record = try XCTUnwrap(controller.backgroundTasks.records.first)
+        let record = try XCTUnwrap(controller.subsystems.backgroundTasks.records.first)
         guard case .executable(let plan) = record.plan,
               case .transform(let workspace, _)? = plan.actions.first?.operation else {
             return XCTFail("expected a workspace file plan")
@@ -204,26 +202,25 @@ final class BackgroundTaskCreationTests: XCTestCase {
         let fileURL = workspace.appendingPathComponent("drain-me.txt")
         XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
 
-        controller.backgroundTasks.undoWorkspaceChanges(record)
-        XCTAssertTrue(controller.backgroundTasks.isUndoing(record.id))
+        controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.isUndoing(record.id))
 
-        try await controller.backgroundTasks.pauseAllOwnedForWorkerStop()
-        XCTAssertFalse(controller.backgroundTasks.isUndoing(record.id))
+        try await controller.subsystems.backgroundTasks.pauseAllOwnedForWorkerStop()
+        XCTAssertFalse(controller.subsystems.backgroundTasks.isUndoing(record.id))
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        XCTAssertEqual(controller.backgroundTasks.message(for: record.id), "Undid 1 change.")
+        XCTAssertEqual(controller.subsystems.backgroundTasks.message(for: record.id), "Undid 1 change.")
 
-        controller.backgroundTasks.undoWorkspaceChanges(record)
-        XCTAssertFalse(controller.backgroundTasks.isUndoing(record.id))
+        controller.subsystems.backgroundTasks.undoWorkspaceChanges(record)
+        XCTAssertFalse(controller.subsystems.backgroundTasks.isUndoing(record.id))
     }
 
     func testMetadataWriteFailureRollsBackTheQueuedPlan() async throws {
         let directory = try makeTemporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
         let contextPath = directory.appendingPathComponent("background-task-context.json")
         try FileManager.default.createDirectory(at: contextPath, withIntermediateDirectories: false)
         let probe = BackgroundCreationProbe()
         let controller = makeController(directory: directory, probe: probe)
-        controller.backgroundTasks.queue(goal: "summarize my downloads folder")
+        controller.subsystems.backgroundTasks.queue(goal: "summarize my downloads folder")
 
         let failed = await waitUntil { controller.sessionStatus.hasPrefix("Couldn’t queue the background task:") }
         XCTAssertTrue(failed)
@@ -243,13 +240,6 @@ final class BackgroundTaskCreationTests: XCTestCase {
         XCTAssertEqual(probe.captureCalls, 0)
     }
 
-    private func makeTemporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("perry-background-creation-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
     private func makeController(
         directory: URL,
         probe: BackgroundCreationProbe
@@ -258,10 +248,9 @@ final class BackgroundTaskCreationTests: XCTestCase {
             readDirectProvider: { nil },
             commandLineProviders: []
         )
-        return AppController(
-            debugStorageDirectory: directory,
-            runtimeInventoryLoader: { try await inspector.inspect() },
-            permissionSnapshotLoader: {
+        return AppController.testing(directory: directory) {
+            $0.runtimeSetupLoader = { try await inspector.inspect() }
+            $0.permissionSnapshotLoader = {
                 probe.incrementPermission()
                 XCTFail("background task tests must not request desktop permissions")
                 return PerryPermissionSnapshot(
@@ -269,14 +258,14 @@ final class BackgroundTaskCreationTests: XCTestCase {
                     screenRecording: .granted,
                     microphone: .granted
                 )
-            },
-            screenContextLoader: { _, _ in
+            }
+            $0.screenContextLoader = { _, _ in
                 probe.incrementCapture()
                 XCTFail("background task tests must not capture the desktop")
                 return (ScreenContext.empty, nil)
-            },
-            notifier: probe
-        )
+            }
+            $0.notifier = probe
+        }
     }
 
     /// Fabricates a canonical workspace-file task the way the retired planner
@@ -295,8 +284,8 @@ final class BackgroundTaskCreationTests: XCTestCase {
             goal: goal, workspace: workspace, taskID: taskID
         )
         let plan = try XCTUnwrap(proposed)
-        let queued = try await controller.backgroundTaskCoordinator.enqueue(executablePlan: plan)
-        await controller.backgroundTasks.reloadRecords()
+        let queued = try await controller.subsystems.backgroundTaskCoordinator.enqueue(executablePlan: plan)
+        await controller.subsystems.backgroundTasks.reloadRecords()
         XCTAssertNotNil(queued.workspaceActionToApprove)
         return queued
     }

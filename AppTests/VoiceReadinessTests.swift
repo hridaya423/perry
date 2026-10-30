@@ -8,18 +8,13 @@ final class VoiceReadinessTests: XCTestCase {
     private var statuses: [String] = []
     private var overlayState: PerryCursorState!
     private var controller: VoiceController!
-    private var previousPreferences: [String: Any] = [:]
     private let preferenceKeys = [PerryPreferences.$speechOutputEnabled.key, PerryPreferences.$realtimeVoiceEndpoint.key, PerryPreferences.$realtimeVoiceModel.key]
 
     override func setUp() {
         super.setUp()
         overlayState = PerryCursorState()
-        previousPreferences = preferenceKeys.reduce(into: [:]) { values, key in
-            values[key] = UserDefaults.standard.object(forKey: key)
-        }
+        restoreDefaultsAfterTest(preferenceKeys)
         UserDefaults.standard.set(false, forKey: PerryPreferences.$speechOutputEnabled.key)
-        UserDefaults.standard.removeObject(forKey: PerryPreferences.$realtimeVoiceEndpoint.key)
-        UserDefaults.standard.removeObject(forKey: PerryPreferences.$realtimeVoiceModel.key)
         controller = VoiceController(
             overlayState: overlayState,
             workers: CuaWorkerService(),
@@ -35,14 +30,6 @@ final class VoiceReadinessTests: XCTestCase {
         controller?.cancelInput()
         controller = nil
         overlayState = nil
-        for key in preferenceKeys {
-            if let value = previousPreferences[key] {
-                UserDefaults.standard.set(value, forKey: key)
-            } else {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
-        }
-        previousPreferences = [:]
         super.tearDown()
     }
 

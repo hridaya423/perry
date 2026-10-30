@@ -10,11 +10,11 @@ final class SettingsControlsTests: XCTestCase {
     override func setUp() async throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        controller = AppController(debugStorageDirectory: directory)
+        controller = AppController.testing(directory: directory)
     }
 
     override func tearDown() async throws {
-        controller.notchPresence.stop()
+        controller.subsystems.notchPresence.stop()
         controller = nil
         try? FileManager.default.removeItem(at: directory)
     }
@@ -24,7 +24,7 @@ final class SettingsControlsTests: XCTestCase {
         let older = MemoryRecord(category: .preference, summary: "sorts by name", createdAt: Date(timeIntervalSince1970: 1))
         let newer = MemoryRecord(category: .appWorkflow, summary: "exports as PDF", createdAt: Date(timeIntervalSince1970: 2))
         let gone = MemoryRecord(category: .pastSession, summary: "planned the trip", createdAt: Date(timeIntervalSince1970: 3))
-        for record in [older, newer, gone] { await controller.memoryStore.remember(record) }
+        for record in [older, newer, gone] { await controller.subsystems.memoryStore.remember(record) }
         let forgotten = await controller.forgetMemory(gone.id)
         XCTAssertTrue(forgotten)
         let remaining = await controller.memories()
@@ -33,7 +33,7 @@ final class SettingsControlsTests: XCTestCase {
 
     func testErasingWhatPerryKnowsRemovesNotesAndProfileOnly() async throws {
         await controller.setMemoryEnabled(true)
-        await controller.memoryStore.remember(MemoryRecord(category: .preference, summary: "sorts by name"))
+        await controller.subsystems.memoryStore.remember(MemoryRecord(category: .preference, summary: "sorts by name"))
         let memory = directory.appendingPathComponent("memory", isDirectory: true)
         try FileManager.default.createDirectory(at: memory, withIntermediateDirectories: true)
         try "Name: Sam".write(to: memory.appendingPathComponent("PROFILE.md"), atomically: true, encoding: .utf8)

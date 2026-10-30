@@ -61,11 +61,6 @@ public struct CodexAppServerConfiguration: Sendable {
 }
 
 public actor CodexAppServerProcess {
-    public enum Failure: Error, Equatable {
-        case initializeTimeout
-        case initializeFailed(String)
-    }
-
     private let configuration: CodexAppServerConfiguration
     private let environment: [String: String]
     private var process: Process?

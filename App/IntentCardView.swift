@@ -17,10 +17,9 @@ extension TrustTier {
 
 struct IntentCardView: View {
     let card: IntentCard
-    var allowsStepThrough: Bool = false
     var alwaysAllowLabel: String?
     var onAlwaysAllow: (() -> Void)?
-    let onAnswer: (PlanDecision) -> Void
+    let onAnswer: (Bool) -> Void
 
     @State private var typedConfirmation: String = ""
     @State private var showsFullDetail = false
@@ -97,38 +96,13 @@ struct IntentCardView: View {
             }
 
             HStack(spacing: 8) {
-                if allowsStepThrough {
-                    HStack(spacing: 14) {
-                        Button("Edit goal") { onAnswer(.edit) }
-                            .keyboardShortcut("e", modifiers: .command)
-                            .accessibilityHint("Send the goal back so you can change it")
-                        Button("Preview again") { onAnswer(.replay) }
-                            .keyboardShortcut("r", modifiers: .command)
-                            .accessibilityHint("Look at the screen again and show the preview")
-                    }
-                    .buttonStyle(.pressable)
-                    .font(PerryTheme.Scale.body)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                }
                 Spacer()
-                Button("Deny") { onAnswer(.cancel) }
+                Button("Deny") { onAnswer(false) }
                     .keyboardShortcut(.cancelAction)
-                if allowsStepThrough {
-                    Button("Step through") {
-                        guard isTypedConfirmationValid else {
-                            NSSound.beep()
-                            return
-                        }
-                        onAnswer(.stepThrough)
-                    }
-                    .keyboardShortcut("s", modifiers: .command)
-                    .disabled(!isTypedConfirmationValid)
-                    .accessibilityHint("Run the plan one step at a time, and confirm each step")
-                }
                 if let alwaysAllowLabel, let onAlwaysAllow, card.tier < .red {
                     Button(alwaysAllowLabel) {
                         onAlwaysAllow()
-                        onAnswer(.run)
+                        onAnswer(true)
                     }
                     .accessibilityHint("Approve this and every later request like it in this conversation")
                 }
@@ -137,7 +111,7 @@ struct IntentCardView: View {
                         NSSound.beep()
                         return
                     }
-                    onAnswer(.run)
+                    onAnswer(true)
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(InkButtonStyle())

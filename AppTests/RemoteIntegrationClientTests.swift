@@ -1,7 +1,6 @@
 import Foundation
 import XCTest
 import PerryCore
-import PerryGuide
 import PerryRuntimes
 @testable import Perry
 

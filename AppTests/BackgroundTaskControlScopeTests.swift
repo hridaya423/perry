@@ -109,7 +109,7 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
     }
 
     func testDrainingControlCompletesCancellationHistoryBeforeStoreWipe() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         let gate = TestContinuationGate()
         let scope = BackgroundTaskControlScope()
         addTeardownBlock {
@@ -193,7 +193,7 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
     }
 
     func testDrainingControlSerializesInFlightWorkspacePauseAcrossReload() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         let gate = TestContinuationGate()
         let scope = BackgroundTaskControlScope()
         let coordinator = TaskCoordinator(storageDirectory: directory)
@@ -282,13 +282,6 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
             actions: [action],
             requestedScopes: [.workspaceWrite]
         )
-    }
-
-    private func temporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PerryBackgroundControlScope-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 }
 

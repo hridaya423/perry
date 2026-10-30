@@ -24,7 +24,7 @@ struct CompactConversationView: View {
 
     init(controller: AppController) {
         self.controller = controller
-        self.model = controller.homeController.homeModel
+        self.model = controller.subsystems.homeController.homeModel
         self.expansion = controller.sessionPanel.expansion
         _metrics = State(initialValue: NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchGeometry.screenUnderPointer()))
     }
@@ -81,7 +81,7 @@ struct CompactConversationView: View {
         .environment(\.notchMood, mood)
         .environment(\.notchCameraInset, cameraInset)
         .environment(\.perryCharacterPaused, !expansion.contentShown)
-        .onReceive(controller.overlayState.$voiceState.combineLatest(controller.overlayState.$buddyState)
+        .onReceive(controller.subsystems.overlayState.$voiceState.combineLatest(controller.subsystems.overlayState.$buddyState)
             .map(PerryMood.init).removeDuplicates()) { mood = $0 }
         .onAppear { updateCameraInset() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in updateCameraInset() }

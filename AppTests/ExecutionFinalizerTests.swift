@@ -8,7 +8,7 @@ final class ExecutionFinalizerTests: XCTestCase {
     private let finishedAt = Date(timeIntervalSince1970: 1_800_000_100)
 
     func testFinalizationPersistsCompletionAndEmitsSideEffects() async throws {
-        let directory = try makeDirectory()
+        let directory = try makeTemporaryDirectory()
         let transcriptStore = TranscriptStore(directory: directory)
         let memoryStore = MemoryStore(
             storageDirectory: directory,
@@ -37,7 +37,7 @@ final class ExecutionFinalizerTests: XCTestCase {
     }
 
     func testTranscriptFailureStopsDownstreamSuccessSideEffects() async throws {
-        let directory = try makeDirectory()
+        let directory = try makeTemporaryDirectory()
         let transcriptsDirectory = directory.appendingPathComponent("Transcripts", isDirectory: true)
         try FileManager.default.createDirectory(at: transcriptsDirectory, withIntermediateDirectories: true)
         try Data("{ corrupt".utf8).write(to: transcriptsDirectory.appendingPathComponent("index.json"))
@@ -190,16 +190,6 @@ final class ExecutionFinalizerTests: XCTestCase {
             ],
             totalSteps: 2
         )
-    }
-
-    private func makeDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("perry-execution-finalizer-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock {
-            try TestTempDirectory.remove(directory)
-        }
-        return directory
     }
 }
 

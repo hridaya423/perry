@@ -41,8 +41,6 @@ final class MicCapture {
         isRunning = false
     }
 
-    /// AVAudioEngine raises an Objective-C exception, not a Swift error, when the tap's
-    /// format no longer matches the input hardware (after a device or Bluetooth profile change).
     nonisolated static func installTap(on input: AVAudioNode, format: AVAudioFormat?, block: @escaping AVAudioNodeTapBlock) -> Bool {
         PerryCatchException { input.installTap(onBus: 0, bufferSize: 1024, format: format, block: block) } == nil
     }

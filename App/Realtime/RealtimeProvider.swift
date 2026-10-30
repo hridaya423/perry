@@ -1,5 +1,5 @@
 import Foundation
-import PerryGuide
+import PerryCore
 
 enum RealtimeProviderID: String, CaseIterable, Sendable {
     case openAI

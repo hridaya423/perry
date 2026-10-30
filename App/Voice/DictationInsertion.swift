@@ -142,7 +142,7 @@ extension VoiceController {
     private func recordDictationBackup(_ text: String, language: String?) {
         guard let support = supportDirectory() else { return }
         try? DictationBackupStore(
-            directory: support.appendingPathComponent("dictation-backup", isDirectory: true)
+            directory: support.appendingPathComponent(DictationBackupStore.directoryName, isDirectory: true)
         ).record(text: text, language: language)
     }
 

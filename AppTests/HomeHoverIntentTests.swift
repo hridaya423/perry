@@ -104,7 +104,7 @@ final class NotchPeekTests: XCTestCase {
     private func peekingController() async throws -> (AppController, () -> Void) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         presentation.showsInteraction = true
@@ -114,7 +114,7 @@ final class NotchPeekTests: XCTestCase {
         return (controller, {
             for entry in presentation.entries { presentation.remove(entry.id) }
             controller.collapseNotch()
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         })
     }
@@ -123,7 +123,7 @@ final class NotchPeekTests: XCTestCase {
         let (controller, cleanup) = try await peekingController()
         defer { cleanup() }
         NotchPresentation.shared.present(id: UUID(), priority: .activity, content: Text("Working"), reveal: false)
-        XCTAssertEqual(controller.notchPresence.onEndPreview?(), true)
+        XCTAssertEqual(controller.subsystems.notchPresence.onEndPreview?(), true)
         XCTAssertFalse(controller.sessionPanel.isVisible)
     }
 
@@ -131,7 +131,7 @@ final class NotchPeekTests: XCTestCase {
         let (controller, cleanup) = try await peekingController()
         defer { cleanup() }
         controller.showPanel(activate: false)
-        XCTAssertEqual(controller.notchPresence.onEndPreview?(), false)
+        XCTAssertEqual(controller.subsystems.notchPresence.onEndPreview?(), false)
         XCTAssertTrue(controller.sessionPanel.isVisible)
     }
 
@@ -139,7 +139,7 @@ final class NotchPeekTests: XCTestCase {
         let (controller, cleanup) = try await peekingController()
         defer { cleanup() }
         NotchPresentation.shared.present(id: UUID(), priority: .approval, content: Text("Approve?"))
-        XCTAssertEqual(controller.notchPresence.onEndPreview?(), false)
+        XCTAssertEqual(controller.subsystems.notchPresence.onEndPreview?(), false)
         XCTAssertTrue(controller.sessionPanel.isVisible)
     }
 
@@ -175,13 +175,13 @@ final class NotchPeekTests: XCTestCase {
     func testHoverOutDoesNotCancelAVoiceTurn() async throws {
         let (controller, cleanup) = try await peekingController()
         defer {
-            controller.talkSession.cancelClick()
+            controller.subsystems.talkSession.cancelClick()
             cleanup()
         }
-        controller.talkSession.startClick()
-        XCTAssertEqual(controller.talkSession.clickState, .requestingPermission)
-        XCTAssertEqual(controller.notchPresence.onEndPreview?(), true)
-        XCTAssertEqual(controller.talkSession.clickState, .requestingPermission)
+        controller.subsystems.talkSession.startClick()
+        XCTAssertEqual(controller.subsystems.talkSession.clickState, .requestingPermission)
+        XCTAssertEqual(controller.subsystems.notchPresence.onEndPreview?(), true)
+        XCTAssertEqual(controller.subsystems.talkSession.clickState, .requestingPermission)
     }
 }
 

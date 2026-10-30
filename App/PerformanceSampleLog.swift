@@ -154,7 +154,6 @@ actor PerformanceSampleLog {
         encoder.outputFormatting = [.sortedKeys]
     }
 
-    /// One writer per process so every caller appends to the same files without interleaving.
     static let shared = Result { try configured() }
 
     static func configured(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> PerformanceSampleLog? {

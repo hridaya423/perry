@@ -7,7 +7,7 @@ final class StatusMenuTests: XCTestCase {
     private func makeController() throws -> (AppController, URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return (AppController(debugStorageDirectory: directory), directory)
+        return (AppController.testing(directory: directory), directory)
     }
 
     private func visibleTitles(_ menu: NSMenu) -> [String] {
@@ -19,7 +19,7 @@ final class StatusMenuTests: XCTestCase {
     func testReleaseMenuTitlesInOrderWithNothingConditional() throws {
         let (controller, directory) = try makeController()
         defer {
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let menu = controller.buildMenu()
@@ -38,7 +38,7 @@ final class StatusMenuTests: XCTestCase {
     func testBackgroundTasksItemAppearsOnlyWhenCountIsPositive() throws {
         let (controller, directory) = try makeController()
         defer {
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let menu = controller.buildMenu()
@@ -51,7 +51,7 @@ final class StatusMenuTests: XCTestCase {
     func testSettingsAndQuitKeepTheirShortcuts() throws {
         let (controller, directory) = try makeController()
         defer {
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let menu = controller.buildMenu()

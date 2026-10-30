@@ -49,7 +49,7 @@ extension GuideSessionCoordinator {
             finishGuide(guideID: guide.id, outcome: .failed, summary: "I can’t see anything to point at yet.")
             return
         }
-        guard transitionSession({ try sessionController.replaceGuidePlan(steps: steps.map { ($0.id, $0.instruction, !$0.target.isVerbal) }) }) else { return }
+        guard sessionController.transition({ try sessionController.replaceGuidePlan(steps: steps.map { ($0.id, $0.instruction, !$0.target.isVerbal) }) }) else { return }
         everythingGuideSession = EverythingGuideSession(
             id: guide.id,
             viewPlan: viewPlan,

@@ -17,7 +17,7 @@ struct ShortcutsSettingsPage: View {
                 }
                 .settingsRowPadding()
                 .onChange(of: wakeWordEnabled) { _, value in
-                    controller.voice.updateWakeWordEnabled(value)
+                    controller.subsystems.voice.updateWakeWordEnabled(value)
                 }
             }
         }
@@ -50,9 +50,9 @@ struct ShortcutRecorders: View {
                 .settingsRowPadding()
                 if role == .talk {
                     SettingsDivider()
-                    ShortcutCheckRow(check: controller.shortcutCheck, gesture: captures[.talk]?.saved ?? .defaultTalk) {
-                        controller.shortcutCheck.begin(captureMode: controller.modifierHoldMonitor.captureMode)
-                        if controller.shortcutCheck.result == .needsInputMonitoring {
+                    ShortcutCheckRow(check: controller.subsystems.shortcutCheck, gesture: captures[.talk]?.saved ?? .defaultTalk) {
+                        controller.subsystems.shortcutCheck.begin(captureMode: controller.subsystems.modifierHoldMonitor.captureMode)
+                        if controller.subsystems.shortcutCheck.result == .needsInputMonitoring {
                             Task { await PermissionGuideCoordinator.guide(.inputMonitoring) }
                         }
                     }
@@ -71,7 +71,7 @@ struct ShortcutRecorders: View {
         Binding(
             get: { captures[role] ?? role.capture(gestures: ShortcutRole.current, hotkeys: hotkeys) },
             set: {
-                if $0.state == .recording { controller.shortcutCheck.cancel() }
+                if $0.state == .recording { controller.subsystems.shortcutCheck.cancel() }
                 captures[role] = $0
             }
         )
@@ -88,7 +88,7 @@ struct ShortcutRecorders: View {
             }
         case .dictate:
             role.saved = gesture
-            controller.voice.updatePushToTalkGesture(gesture)
+            controller.subsystems.voice.updatePushToTalkGesture(gesture)
         case .talk, .type:
             role.saved = gesture
         }

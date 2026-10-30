@@ -6,7 +6,6 @@ import PerryRuntimes
 
 struct BackgroundTasksView: View {
     @ObservedObject var backgroundTasks: BackgroundTaskController
-    let runtimes: RuntimeCatalog
     var askPerry: (() -> Void)?
     @State private var hasLoaded = false
 
@@ -66,7 +65,7 @@ struct BackgroundTasksView: View {
                                 .accessibilityIdentifier("background-task-storage-error")
                             }
                             ForEach(backgroundTasks.records) { record in
-                                BackgroundTaskRow(record: record, backgroundTasks: backgroundTasks, runtimes: runtimes)
+                                BackgroundTaskRow(record: record, backgroundTasks: backgroundTasks)
                                 if record.id != backgroundTasks.records.last?.id {
                                     Divider()
                                 }
@@ -95,7 +94,6 @@ struct BackgroundTasksView: View {
 private struct BackgroundTaskRow: View {
     let record: TaskRecord
     @ObservedObject var backgroundTasks: BackgroundTaskController
-    let runtimes: RuntimeCatalog
     @State private var showDeleteConfirmation = false
     @State private var showUndoConfirmation = false
     @State private var approvalPresentationID = UUID()

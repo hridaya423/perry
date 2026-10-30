@@ -400,7 +400,7 @@ enum PerryLiveErasureErasers {
             targets: paths.supportDirectory.map {
                 [
                     PerryFileEraser.Target(identifier: "Transcripts", url: $0.appendingPathComponent("Transcripts", isDirectory: true)),
-                    PerryFileEraser.Target(identifier: "DictationBackup", url: $0.appendingPathComponent("dictation-backup", isDirectory: true)),
+                    PerryFileEraser.Target(identifier: "DictationBackup", url: $0.appendingPathComponent(DictationBackupStore.directoryName, isDirectory: true)),
                 ]
             } ?? []
         )
@@ -527,8 +527,6 @@ enum PerryLiveErasureErasers {
         return combined(category: .preferences, erasers: erasers)
     }
 
-    /// Learned routines, their provenance, and any draft material — the whole
-    /// Routines directory is Perry-owned and goes on selective erasure too.
     private static func routinesEraser(paths: PerryErasurePaths) -> any PerryDataEraser {
         let directory = paths.supportDirectory?.appendingPathComponent("Routines", isDirectory: true)
         return PerryClosureEraser(

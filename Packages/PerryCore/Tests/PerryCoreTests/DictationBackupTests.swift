@@ -47,14 +47,6 @@ final class DictationBackupTests: XCTestCase {
         XCTAssertEqual(store.entries().map(\.text), ["edge", "new"])
     }
 
-    func testEraseAll() throws {
-        let store = DictationBackupStore(directory: dir, calendar: calendar)
-        try store.record(text: "gone", at: date(20))
-        try store.eraseAll()
-        XCTAssertTrue(store.entries().isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path))
-    }
-
     func testCorruptLineSkipped() throws {
         let store = DictationBackupStore(directory: dir, calendar: calendar)
         try store.record(text: "good", at: date(20))

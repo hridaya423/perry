@@ -39,8 +39,6 @@ struct RuntimeSetupRecord: Identifiable, Equatable {
     let authentication: RuntimeAuthenticationStatus?
     let signInCommand: RuntimeAuthenticationCommand?
     let signOutCommand: RuntimeAuthenticationCommand?
-    /// The account for this runtime lives inside the app (Conversation
-    /// model → ChatGPT sign-in) — there is no copy-a-Terminal-command flow.
     var authenticatesInApp = false
 
     var canRun: Bool { authentication?.isUsable == true }
@@ -75,5 +73,35 @@ struct RuntimeAuthenticationCommand: Equatable {
 
     private static func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+}
+
+enum SetupState: Equatable {
+    case ready(detail: String)
+    case needsSignIn
+    case notInstalled
+    case unchecked
+}
+
+extension RuntimeSetupSnapshot {
+    func setupStates(chatGPTEmail: String?, acpInstalled: Bool) -> [BrainController.ModelChoice: SetupState] {
+        [
+            .chatGPT: state(of: "cli.codex", readyDetail: chatGPTEmail ?? "Signed in with ChatGPT"),
+            .claudeCode: state(of: "cli.claude-code", readyDetail: "Signed in with Claude Code"),
+            .acp: acpInstalled ? .ready(detail: "Installed") : .notInstalled,
+            .direct: .unchecked,
+            .local: .unchecked,
+        ]
+    }
+
+    private func state(of id: String, readyDetail: String) -> SetupState {
+        guard !records.isEmpty else { return .unchecked }
+        guard let record = records.first(where: { $0.id == id }) else { return .notInstalled }
+        switch record.authentication {
+        case nil: return .notInstalled
+        case .authenticated?: return .ready(detail: readyDetail)
+        case .missing?, .invalid?: return .needsSignIn
+        case .notRequired?, .configured?, .unknown?: return .unchecked
+        }
     }
 }

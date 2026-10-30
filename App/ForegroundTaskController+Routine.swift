@@ -78,13 +78,8 @@ extension ForegroundTaskController {
         )
         guard presentRunStart(execution, attemptID: attemptID, bubble: "Preparing \(routine.name)…") else { return .notStarted }
         hooks.setStatus("Getting ready with \(sandboxLabel).")
-#if DEBUG
-        let confirmer = debugConfirmer ?? hooks.makeConfirmer()
-        let typedVerifier = debugTypedVerifier ?? CompositeActionVerifier(workspace: workspaceURL, worker: worker)
-#else
-        let confirmer = hooks.makeConfirmer()
-        let typedVerifier: any TypedActionVerifier = CompositeActionVerifier(workspace: workspaceURL, worker: worker)
-#endif
+        let confirmer = confirmerOverride ?? hooks.makeConfirmer()
+        let typedVerifier = typedVerifierOverride ?? CompositeActionVerifier(workspace: workspaceURL, worker: worker)
         let taskID = execution.taskID
         let supervisor = DoSupervisor(
             activityLog: activityLog,
@@ -148,17 +143,13 @@ extension ForegroundTaskController {
         bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> RoutineStepBinding?
     ) -> TypedActionRouter {
         let codexRuntimeHome = RuntimeCatalog.codexRuntimeHome
-#if DEBUG
-        let debugAskUser = self.debugAskUser
-#endif
+        let askUserOverride = self.askUserOverride
         return TypedActionRouter(
             worker: worker,
             workspace: workspace,
             remoteIntegrations: remoteIntegrationExecutor,
             askUser: { prompt, choices in
-#if DEBUG
-                if let debugAskUser { return try await debugAskUser(prompt, choices) }
-#endif
+                if let askUserOverride { return try await askUserOverride(prompt, choices) }
                 try await Self.presentAskUser(prompt: prompt, choices: choices)
             },
             runCodingTask: { runtimeID, workspaceURL, prompt in
@@ -204,20 +195,20 @@ extension ForegroundTaskController {
               !execution.isFinalized else { return }
         switch event {
         case .planned(let steps):
-            guard transitionSession({ try sessionController.setPlannedStepCount(steps) }) else { return }
+            guard sessionController.transition({ try sessionController.setPlannedStepCount(steps) }) else { return }
         case .started:
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
             hooks.setStatus("Working…")
         case .paused:
-            guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
             hooks.setStatus("Paused before the next step.")
         case .resumed:
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
         case .steered(let instruction):
             guard execution.lifecycle == .running || execution.lifecycle == .paused else { return }
             hooks.setStatus("Steering: \(instruction)")
         case .confirmationRequested(let request):
-            guard transitionSession({
+            guard sessionController.transition({
                 try sessionController.awaitApproval(
                     request.id,
                     actionSummary: request.actionSummary,
@@ -227,16 +218,16 @@ extension ForegroundTaskController {
             overlayState.buddyState = .awaitingApproval
             hooks.setStatus("Waiting for your OK.")
         case .confirmationAccepted(let approvalID):
-            guard transitionSession({ try sessionController.acceptApproval(approvalID) }) else { return }
+            guard sessionController.transition({ try sessionController.acceptApproval(approvalID) }) else { return }
             overlayState.buddyState = .acting
             hooks.setStatus("Continuing the approved task.")
         case .completed:
-            guard transitionSession({ try sessionController.setExecutionPhase(.verifying) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.verifying) }) else { return }
         case .stopped(let reason):
-            guard transitionSession({ try sessionController.setExecutionPhase(.stopping) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.stopping) }) else { return }
             hooks.setStatus(reason)
         case .failed(let stepSummary, _):
-            guard transitionSession({ try sessionController.setExecutionPhase(.stopping) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.stopping) }) else { return }
             hooks.setStatus("I stopped at \(stepSummary).")
         }
     }
@@ -248,7 +239,7 @@ extension ForegroundTaskController {
         switch event {
         case .actionStarted(let index, let action, let tier):
             trace.lastStartedStep = RoutineReplay.stepIndex(of: action)
-            guard transitionSession({
+            guard sessionController.transition({
                 try sessionController.recordExecutionStep(
                     id: action.id.rawValue,
                     summary: action.summary,
@@ -262,7 +253,7 @@ extension ForegroundTaskController {
         case .verification(let action, let status):
             switch status {
             case .verified(let evidence):
-                guard transitionSession({
+                guard sessionController.transition({
                     try sessionController.recordVerification(
                         stepID: action.id.rawValue,
                         verified: true,
@@ -270,7 +261,7 @@ extension ForegroundTaskController {
                     )
                 }) else { return }
             case .unverified(let reason):
-                guard transitionSession({
+                guard sessionController.transition({
                     try sessionController.recordVerification(
                         stepID: action.id.rawValue,
                         verified: false,
@@ -278,7 +269,7 @@ extension ForegroundTaskController {
                     )
                 }) else { return }
             case .notRequired:
-                guard transitionSession({
+                guard sessionController.transition({
                     try sessionController.recordVerificationNote(
                         stepID: action.id.rawValue,
                         note: "No read-back required"

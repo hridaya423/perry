@@ -35,8 +35,8 @@ final class ForegroundTaskController: ObservableObject {
     let hooks: Hooks
     private let executionFinalizer: ExecutionFinalizer
 
-    var agentCoordinator: AgentCoordinator?
-    var workerLease: ForegroundWorkerLease?
+    var agentCoordinator: AgentCoordinator
+    let workerLease: ForegroundWorkerLease
     var activeRun: (any RunHandle)?
     private var handoffToHuman = false
     private var handoffGoal: String?
@@ -47,12 +47,10 @@ final class ForegroundTaskController: ObservableObject {
     let activityStripState = AgentActivityStripState()
     let activityStripID = UUID()
 
-#if DEBUG
-    private var debugFinalizationBarrier: FinalizationBarrier?
-    var debugConfirmer: (any Confirmer)?
-    var debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
-    var debugTypedVerifier: (any TypedActionVerifier)?
-#endif
+    private let finalizationBarrier: FinalizationBarrier?
+    let confirmerOverride: (any Confirmer)?
+    let askUserOverride: (@Sendable (String, [String]) async throws -> Void)?
+    let typedVerifierOverride: (any TypedActionVerifier)?
 
     var supervisorActive: Bool { activeRun != nil }
 
@@ -68,7 +66,13 @@ final class ForegroundTaskController: ObservableObject {
         executionFinalizer: ExecutionFinalizer,
         overlayState: PerryCursorState,
         workspaceCoordinator: TaskCoordinator?,
-        hooks: Hooks
+        hooks: Hooks,
+        agentCoordinator: AgentCoordinator,
+        workerLease: ForegroundWorkerLease,
+        finalizationBarrier: FinalizationBarrier? = nil,
+        confirmer: (any Confirmer)? = nil,
+        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
+        typedVerifier: (any TypedActionVerifier)? = nil
     ) {
         self.sessionController = sessionController
         self.workers = workers
@@ -80,43 +84,13 @@ final class ForegroundTaskController: ObservableObject {
         self.overlayState = overlayState
         self.workspaceCoordinator = workspaceCoordinator
         self.hooks = hooks
+        self.agentCoordinator = agentCoordinator
+        self.workerLease = workerLease
+        self.finalizationBarrier = finalizationBarrier
+        confirmerOverride = confirmer
+        askUserOverride = askUser
+        typedVerifierOverride = typedVerifier
     }
-
-#if DEBUG
-    convenience init(
-        sessionController: SessionController,
-        workers: CuaWorkerService,
-        probe: EnvironmentProbe,
-        voice: VoiceController,
-        remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
-        activityLog: ActivityLog,
-        executionFinalizer: ExecutionFinalizer,
-        overlayState: PerryCursorState,
-        hooks: Hooks,
-        finalizationBarrier: FinalizationBarrier?,
-        confirmer: (any Confirmer)?,
-        askUser: (@Sendable (String, [String]) async throws -> Void)?,
-        typedVerifier: (any TypedActionVerifier)?,
-        workspaceCoordinator: TaskCoordinator? = nil
-    ) {
-        self.init(
-            sessionController: sessionController,
-            workers: workers,
-            probe: probe,
-            voice: voice,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            activityLog: activityLog,
-            executionFinalizer: executionFinalizer,
-            overlayState: overlayState,
-            workspaceCoordinator: workspaceCoordinator,
-            hooks: hooks
-        )
-        self.debugFinalizationBarrier = finalizationBarrier
-        self.debugConfirmer = confirmer
-        self.debugAskUser = askUser
-        self.debugTypedVerifier = typedVerifier
-    }
-#endif
 
     func handleSessionState(_ state: SessionState) {
         switch state {
@@ -131,17 +105,6 @@ final class ForegroundTaskController: ObservableObject {
             observedForegroundTaskID = nil
         }
         activityStripState.apply(sessionState: state)
-    }
-
-    @discardableResult
-    func transitionSession(_ operation: () throws -> Void) -> Bool {
-        do {
-            try operation()
-            return true
-        } catch {
-            hooks.setStatus("I stopped because something changed unexpectedly. Try again.")
-            return false
-        }
     }
 
     func cancelInvocationIfCurrent(_ attemptID: UUID) {
@@ -275,7 +238,7 @@ final class ForegroundTaskController: ObservableObject {
 
     func presentRunStart(_ execution: ExecutionSessionState, attemptID: UUID, bubble: String) -> Bool {
         guard sessionController.beginInvokingIfNeeded(attemptID: attemptID),
-              transitionSession({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
+              sessionController.transition({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
             return false
         }
         hooks.setTranscriptPreview(execution.goal)
@@ -313,11 +276,6 @@ final class ForegroundTaskController: ObservableObject {
                 title: $0.title.isEmpty ? "Frontmost window" : $0.title
             )
         } ?? probe.targetWindow(for: captured.context)
-        guard let coordinator = agentCoordinator else {
-            hooks.setStatus("I can’t run tasks right now. Restart Perry.")
-            voice.speak("I can’t run tasks right now. Restart Perry.")
-            return nil
-        }
         return try await executeAgentRun(
             goal: goal,
             attemptID: attemptID,
@@ -325,8 +283,7 @@ final class ForegroundTaskController: ObservableObject {
             target: captured.target?.hint ?? targetHint,
             conversationID: threadID,
             worker: worker,
-            workspace: workspace,
-            coordinator: coordinator
+            workspace: workspace
         )
     }
 
@@ -337,9 +294,9 @@ final class ForegroundTaskController: ObservableObject {
         target: CuaTargetHint?,
         conversationID: UUID?,
         worker: CuaWorkerHandle,
-        workspace: URL,
-        coordinator: AgentCoordinator
+        workspace: URL
     ) async throws -> DoOutcome? {
+        let coordinator = agentCoordinator
         let taskUUID = UUID()
         let execution = ExecutionSessionState(
             taskID: taskUUID,
@@ -351,16 +308,16 @@ final class ForegroundTaskController: ObservableObject {
             lifecycle: .starting
         )
         guard presentRunStart(execution, attemptID: attemptID, bubble: "Working on \(goal)…"),
-              transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
+              sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return nil }
         hooks.setStatus("Working…")
 
         let threadID = conversationID ?? UUID()
         activeRun = AgentRunHandle(coordinator: coordinator, threadID: threadID)
         let runID = UUID()
-        workerLease?.set(worker, for: runID)
+        workerLease.set(worker, for: runID)
         defer {
             activeRun = nil
-            workerLease?.set(nil, for: runID)
+            workerLease.set(nil, for: runID)
         }
 
         var answer = ""
@@ -385,7 +342,7 @@ final class ForegroundTaskController: ObservableObject {
                 hooks.setStatus(summary)
                 guard !coordinator.toolIsReadOnly(named: call.name) else { break }
                 actionCalls[call.id] = summary
-                transitionSession {
+                sessionController.transition {
                     try sessionController.recordExecutionStep(
                         id: call.id,
                         summary: summary,
@@ -467,7 +424,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     func pause() {
-        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard let activeRun, sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         hooks.setStatus("Pausing before the next step.")
         activeRun.pause()
     }
@@ -477,14 +434,14 @@ final class ForegroundTaskController: ObservableObject {
             continueFromHuman()
             return
         }
-        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+        guard let activeRun, sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
         hooks.setStatus("Resuming the task.")
         activeRun.resume()
     }
 
     func takeOver() {
         guard let activeRun, !handoffToHuman else { return }
-        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         if case .executing(let execution) = sessionController.state {
             handoffGoal = execution.goal
         }
@@ -501,7 +458,7 @@ final class ForegroundTaskController: ObservableObject {
         handoffGoal = nil
         activityStripState.handedToHuman = false
         if activeRun.continuesInPlace {
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
             hooks.setStatus("Continuing. I’ll check what you did.")
             activeRun.resume()
             activeRun.steer("The user took over and did the current step themselves. Verify the result on screen, then continue the goal.")
@@ -545,7 +502,7 @@ final class ForegroundTaskController: ObservableObject {
             hooks.setStatus("Steering: \(trimmed)")
             return
         }
-        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         handoffGoal = "\(execution.goal) — user steered: \(trimmed)"
         handoffToHuman = true
         hooks.setStatus("Replanning with your instruction…")
@@ -564,7 +521,7 @@ final class ForegroundTaskController: ObservableObject {
         }
         let attemptID = UUID()
         var goal: String?
-        guard transitionSession({ goal = try sessionController.retry(attemptID: attemptID) }),
+        guard sessionController.transition({ goal = try sessionController.retry(attemptID: attemptID) }),
               let goal else { return }
         foregroundActivityGeneration = UUID()
         startGoal(goal, attemptID: attemptID, threadID: nil, targetHint: nil)
@@ -589,11 +546,9 @@ final class ForegroundTaskController: ObservableObject {
             return .failed(stepSummary: "finalization", reason: "the session no longer accepts finalization")
         }
         let taskID = execution.taskID
-#if DEBUG
-        if let debugFinalizationBarrier {
-            await debugFinalizationBarrier()
+        if let finalizationBarrier {
+            await finalizationBarrier()
         }
-#endif
         let committedExecution: ExecutionSessionState
         let finalizationOutcome: DoOutcome
         do {
@@ -627,13 +582,13 @@ final class ForegroundTaskController: ObservableObject {
         overlayState.buddyState = completion.outcome == .failed || !finalization.historySaved ? .blocked : .success
         hooks.setStatus(summary)
         if completion.outcome == .failed || !finalization.historySaved {
-            transitionSession {
+            sessionController.transition {
                 try sessionController.fail(
                     SessionFailure(taskID: execution.taskID, goal: execution.goal, message: summary)
                 )
             }
         } else {
-            transitionSession {
+            sessionController.transition {
                 try sessionController.report(summary: summary, outcome: finalizationOutcome.isCompleted ? .completed : .stopped)
             }
         }
@@ -661,7 +616,7 @@ final class ForegroundTaskController: ObservableObject {
             }
             self.activityStripState.isExpanded = false
             NotchPresentation.shared.remove(self.activityStripID)
-            self.transitionSession { try self.sessionController.completeDismissal() }
+            self.sessionController.transition { try self.sessionController.completeDismissal() }
         }
     }
 

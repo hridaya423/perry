@@ -54,7 +54,7 @@ final class NotchPresentationTests: XCTestCase {
         presenter.dismiss()
         presenter.dismiss()
         let decision = await asking.value
-        guard case .cancel = decision else { return XCTFail("Approval must cancel") }
+        XCTAssertFalse(decision, "Approval must cancel")
         XCTAssertNil(presentation.current)
     }
 
@@ -66,7 +66,7 @@ final class NotchPresentationTests: XCTestCase {
         for _ in 0..<200 where presentation.current == nil { await Task.yield() }
         let second = Task { await presenter.present(card: card) }
         let firstDecision = await first.value
-        guard case .cancel = firstDecision else { return XCTFail("The first card must be cancelled") }
+        XCTAssertFalse(firstDecision, "The first card must be cancelled")
         XCTAssertEqual(presentation.entries.count, 1)
         presenter.dismiss()
         _ = await second.value

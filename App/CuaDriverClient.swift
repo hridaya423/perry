@@ -108,8 +108,6 @@ private enum CuaConfigurationSource {
 
 actor CuaDriverClient {
     private static let requestTimeout = Duration.seconds(15)
-    // A healthy read answers in ~1.5s and a wedged driver never answers, so reads give up
-    // well before the mutation deadline and the caller retries on a respawned driver.
     private static let readTimeout = Duration.seconds(6)
     private static let foregroundOnlyBundleIDs: Set<String> = ["com.apple.finder"]
 
@@ -281,21 +279,6 @@ actor CuaDriverClient {
         )
         sessionTargets[sessionID] = current
         return current
-    }
-
-    func endSession(_ sessionID: String) async {
-        guard let generation = startedSessions[sessionID] else { return }
-        var arguments = DriverArguments()
-        arguments.session = sessionID
-        _ = try? await callTool("end_session", arguments, generation: generation)
-        guard startedSessions[sessionID] == generation else { return }
-        startedSessions[sessionID] = nil
-        if sessionStates[sessionID]?.generation == generation {
-            sessionStates[sessionID] = nil
-        }
-        if sessionTargets[sessionID]?.connectionGeneration == generation {
-            sessionTargets[sessionID] = nil
-        }
     }
 
     func shutdown() async {
@@ -905,14 +888,14 @@ actor CuaDriverClient {
 
 extension AppController {
     func reloadCuaDriverConfiguration() {
-        guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
+        guard isIdle, !subsystems.foreground.supervisorActive, !subsystems.backgroundTasks.hasRunningTasks, !subsystems.foreground.startIsInFlight else {
             sessionStatus = "Finish your running tasks before changing screen control."
             return
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await workers.reloadConfiguration()
+                try await subsystems.workers.reloadConfiguration()
                 sessionStatus = "Screen control updated."
             } catch {
                 sessionStatus = "I couldn’t update screen control. Try again."

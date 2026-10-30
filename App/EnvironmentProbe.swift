@@ -14,13 +14,12 @@ final class EnvironmentProbe {
     private let storageDirectory: () -> URL?
     private var invocationTarget: CuaTargetHint?
 
-#if DEBUG
     typealias PermissionSnapshotLoader = @MainActor () async -> PerryPermissionSnapshot
     typealias CuaHealthLoader = @MainActor () async -> CuaDriverHealth
     typealias ScreenContextLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async -> (context: ScreenContext, target: CuaWindowTarget?)
-    private let debugPermissionSnapshotLoader: PermissionSnapshotLoader?
-    private let debugCuaHealthLoader: CuaHealthLoader?
-    private let debugScreenContextLoader: ScreenContextLoader?
+    private let permissionSnapshotLoader: PermissionSnapshotLoader?
+    private let cuaHealthLoader: CuaHealthLoader?
+    private let screenContextLoader: ScreenContextLoader?
 
     init(
         workers: CuaWorkerService,
@@ -39,43 +38,22 @@ final class EnvironmentProbe {
         self.remoteIntegrationPermissions = remoteIntegrationPermissions
         self.spatialSelection = spatialSelection
         self.storageDirectory = storageDirectory
-        self.debugPermissionSnapshotLoader = permissionSnapshotLoader
-        self.debugCuaHealthLoader = cuaHealthLoader
-        self.debugScreenContextLoader = screenContextLoader
+        self.permissionSnapshotLoader = permissionSnapshotLoader
+        self.cuaHealthLoader = cuaHealthLoader
+        self.screenContextLoader = screenContextLoader
     }
-#else
-    init(
-        workers: CuaWorkerService,
-        memoryStore: MemoryStore,
-        oauthCoordinator: OAuthCoordinator,
-        remoteIntegrationPermissions: RemoteIntegrationPermissionStore,
-        spatialSelection: @escaping () -> SpatialSelection?,
-        storageDirectory: @escaping () -> URL?
-    ) {
-        self.workers = workers
-        self.memoryStore = memoryStore
-        self.oauthCoordinator = oauthCoordinator
-        self.remoteIntegrationPermissions = remoteIntegrationPermissions
-        self.spatialSelection = spatialSelection
-        self.storageDirectory = storageDirectory
-    }
-#endif
 
     func permissionSnapshot() async -> PerryPermissionSnapshot {
-#if DEBUG
-        if let debugPermissionSnapshotLoader {
-            return await debugPermissionSnapshotLoader()
+        if let permissionSnapshotLoader {
+            return await permissionSnapshotLoader()
         }
-#endif
         return await PerryPermissionSnapshot.probe()
     }
 
     func cuaHealth() async -> CuaDriverHealth {
-#if DEBUG
-        if let debugCuaHealthLoader {
-            return await debugCuaHealthLoader()
+        if let cuaHealthLoader {
+            return await cuaHealthLoader()
         }
-#endif
         return await workers.health()
     }
 
@@ -89,11 +67,9 @@ final class EnvironmentProbe {
         targetHint: CuaTargetHint? = nil
     ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
         let resolvedHint = targetHint ?? currentTargetHint()
-#if DEBUG
-        if let debugScreenContextLoader {
-            return await debugScreenContextLoader(worker, resolvedHint)
+        if let screenContextLoader {
+            return await screenContextLoader(worker, resolvedHint)
         }
-#endif
         let initialBundleID = resolvedHint.bundleID
         let initialTitle = resolvedHint.windowTitle
         let integrationContext = await remoteIntegrationPromptContext()
@@ -143,11 +119,9 @@ final class EnvironmentProbe {
         targetHint: CuaTargetHint? = nil
     ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
         let resolvedHint = targetHint ?? currentTargetHint()
-#if DEBUG
-        if let debugScreenContextLoader {
-            return await debugScreenContextLoader(worker, resolvedHint)
+        if let screenContextLoader {
+            return await screenContextLoader(worker, resolvedHint)
         }
-#endif
         guard let target = try? await worker.probeTarget(resolvedHint) else {
             return (ScreenContext(frontAppBundleID: resolvedHint.bundleID, frontWindowTitle: resolvedHint.windowTitle), nil)
         }

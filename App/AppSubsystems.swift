@@ -1,8 +1,3 @@
-// AppSubsystems owns Perry's lazy composition graph: every subsystem is built
-// here, once, on first access. AppController keeps one-line forwards so existing
-// call sites (and the *Host protocol conformances it satisfies) see the same
-// names. `app` is unowned — the controller outlives the container it holds.
-
 import AppKit
 import Combine
 import Foundation
@@ -59,14 +54,11 @@ final class AppSubsystems {
         return local
     }()
 
-    /// The shared Perry registry — agent tools, the scheduler, and Home's
-    /// sidebar all read the same directory.
     lazy var perryStore: PerryStore? = self.storageDirectory.map {
         PerryStore(directory: $0.appendingPathComponent("perrys", isDirectory: true))
     }
 
 
-    /// The integration tool backend, shared with the morning researcher.
     lazy var integrationBackend = AppIntegrationBackend(
         client: self.integrationClient,
         oauth: self.oauthCoordinator,
@@ -74,31 +66,28 @@ final class AppSubsystems {
     )
 
 
-    /// Phase 9: morning suggestion researcher over connected apps.
     lazy var suggestionController: SuggestionController = {
         let controller = SuggestionController(
             coordinator: self.agentCoordinator,
             backend: self.integrationBackend,
-            isBusy: { [weak app = app] in app?.foreground.supervisorActive ?? false }
+            isBusy: { [unowned self] in self.foreground.supervisorActive }
         )
-        controller.onSuggestionsChanged = { [weak app = app] cards in
-            app?.homeController.updateSuggestions(cards)
+        controller.onSuggestionsChanged = { [unowned self] cards in
+            self.homeController.updateSuggestions(cards)
         }
         return controller
     }()
 
 
-    /// Phase 9: fires scheduled Perrys into the agent loop and publishes the
-    /// Perry list for Home's sidebar.
     lazy var perryScheduler: PerrySchedulerController? = {
         guard let perryStore else { return nil }
         let scheduler = PerrySchedulerController(
             store: perryStore,
             coordinator: self.agentCoordinator,
-            isBusy: { [weak app = app] in app?.foreground.supervisorActive ?? false }
+            isBusy: { [unowned self] in self.foreground.supervisorActive }
         )
-        scheduler.onPerrysChanged = { [weak app = app] perrys in
-            app?.homeController.updatePerrys(perrys)
+        scheduler.onPerrysChanged = { [unowned self] perrys in
+            self.homeController.updatePerrys(perrys)
         }
         return scheduler
     }()
@@ -119,8 +108,8 @@ final class AppSubsystems {
 
     lazy var overlayManager: OverlayWindowManager = {
         let manager = OverlayWindowManager()
-        manager.onSample = { [weak app = app] metricID, unit, value in
-            guard let log = app?.overlaySampleLog else { return }
+        manager.onSample = { [unowned self] metricID, unit, value in
+            guard let log = self.overlaySampleLog else { return }
             Task {
                 try? await log.append(
                     PerformanceSample(
@@ -144,17 +133,13 @@ final class AppSubsystems {
     lazy var spatial = SpatialSelectionController(
         overlayState: self.overlayState,
         workers: self.workers,
-        targetHint: { [unowned app = app] in await self.probe.currentTargetHint() },
-        speak: { [unowned app = app] in self.voice.deliverVoiceReply($0) },
+        targetHint: { [unowned self] in await self.probe.currentTargetHint() },
+        speak: { [unowned self] in self.voice.deliverVoiceReply($0) },
         setStatus: { [unowned app = app] in app.sessionStatus = $0 }
     )
 
     var storageDirectory: URL? {
-#if DEBUG
-        return app.debugSeams.storageDirectory ?? AppController.supportDirectory
-#else
-        return AppController.supportDirectory
-#endif
+        app.overrides.storageDirectory ?? AppController.supportDirectory
     }
 
     lazy var activityLog = ActivityLog(storageDirectory: self.storageDirectory)
@@ -163,7 +148,6 @@ final class AppSubsystems {
 
     lazy var transcriptStore = TranscriptStore(directory: self.storageDirectory)
 
-#if DEBUG
     lazy var guideCoordinator = GuideSessionCoordinator(
         sessionController: app.sessionController,
         workers: self.workers,
@@ -171,40 +155,18 @@ final class AppSubsystems {
         memoryStore: self.memoryStore,
         output: app.guideBridge,
         context: app.guideBridge,
-        fullGuideCaptureLoader: app.debugSeams.fullGuideCaptureLoader,
-        fullGuideContinuationBarrier: app.debugSeams.fullGuideContinuationBarrier,
+        fullGuideCaptureLoader: app.overrides.fullGuideCaptureLoader,
+        fullGuideContinuationBarrier: app.overrides.fullGuideContinuationBarrier,
         guidePlannerProvider: { [weak app = app] guide in
             guard let app else { return nil }
-            return app.debugSeams.guidePlanner ?? app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
-                guard let app else { throw CancellationError() }
-                return try await app.agentCoordinator.prepareGuideRequest(
+            return app.overrides.guidePlanner ?? self.brain.makeGuidePlanner(storageDirectory: self.storageDirectory) { [unowned self] provider, request in
+                try await self.agentCoordinator.prepareGuideRequest(
                     threadID: guide.threadID, runID: guide.id, provider: provider, request: request
                 )
             }
         },
         executionOwner: self.agentCoordinator
     )
-#else
-    lazy var guideCoordinator = GuideSessionCoordinator(
-        sessionController: app.sessionController,
-        workers: self.workers,
-        transcriptStore: self.transcriptStore,
-        memoryStore: self.memoryStore,
-        output: app.guideBridge,
-        context: app.guideBridge,
-        guidePlannerProvider: { [weak app = app] guide in
-            guard let app else { return nil }
-            return app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
-                guard let app else { throw CancellationError() }
-                return try await app.agentCoordinator.prepareGuideRequest(
-                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
-                )
-            }
-        },
-        executionOwner: self.agentCoordinator
-    )
-
-#endif
 
     lazy var talkCapture = TalkObservationCapture(
         workers: self.workers,
@@ -214,28 +176,24 @@ final class AppSubsystems {
 
     lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: self.storageDirectory)
 
-    /// Shared Talk speech input: its DictationController carries the
-    /// engine + recognizer built once, so hold-to-talk re-arms them
-    /// instead of rebuilding audio infrastructure per key-down.
     lazy var talkSpeechInput: SFSpeechInput = {
         let input = SFSpeechInput()
-        input.preferences = { [weak app] in (try? app?.voice.currentDictationPreferences()) ?? .default }
+        input.preferences = { [unowned self] in (try? self.voice.currentDictationPreferences()) ?? .default }
         return input
     }()
 
-    /// BYOK realtime Talk voice (§1.5), built once when configured and
-    /// reused per hold. Re-checked per makeInput so a Settings change can
-    /// engage it without relaunch; a failed session rebuilds inside.
     private var realtimeTalkVoiceInstance: RealtimeTalkVoice?
     func realtimeTalkVoice() -> RealtimeTalkVoice? {
         if let realtimeTalkVoiceInstance { return realtimeTalkVoiceInstance }
         guard let built = RealtimeTalkVoice.configured(
             fallbackInput: talkSpeechInput,
-            fallbackOutput: SharedTalkOutput(voice: voice)
+            fallbackOutput: talkOutput
         ) else { return nil }
         realtimeTalkVoiceInstance = built
         return built
     }
+
+    lazy var talkOutput = SharedTalkOutput(voice: self.voice)
 
     lazy var talkSession: TalkSession = {
         let session = TalkSession(
@@ -254,41 +212,37 @@ final class AppSubsystems {
                 },
                 output: TalkSpeechOutputRouter(
                     realtime: { self.realtimeTalkVoice()?.output },
-                    fallback: SharedTalkOutput(voice: self.voice)
+                    fallback: self.talkOutput
                 ),
-                capture: { [weak app = app] in
-                    guard let app else { throw CancellationError() }
-                    return try await app.talkCapture.capture()
-                },
-                acceptInput: { [unowned app = app] in self.homeController.acceptInput($0, threadID: $1, contextKey: $2) },
+                capture: { [unowned self] in try await self.talkCapture.capture() },
+                acceptInput: { [unowned self] in self.homeController.acceptInput($0, threadID: $1, contextKey: $2) },
                 targetHint: { [unowned app = app] in app.guideBridge.guideTargetHint() },
-                run: { [unowned app = app] input, spatial in
+                run: { [unowned self] input, spatial in
                     self.homeController.runSpokenTurn(input, spatial: spatial, coordinator: self.agentCoordinator)
                 },
-                waitForConversation: { [weak app = app] threadID in
-                    await app?.agentCoordinator.waitForCompletion(threadID: threadID)
+                waitForConversation: { [unowned self] threadID in
+                    await self.agentCoordinator.waitForCompletion(threadID: threadID)
                 },
-                guide: { [weak app = app] input, spatial, full in
-                    guard let app else { return }
+                guide: { [unowned self] input, spatial, full in
                     let id = input.threadID
-                    app.homeController.homeModel.sidebarSelection = .thread(id)
-                    app.homeController.homeModel.conversationTargets[id] = spatial.target
-                    app.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
+                    self.homeController.homeModel.sidebarSelection = .thread(id)
+                    self.homeController.homeModel.conversationTargets[id] = spatial.target
+                    self.guideCoordinator.startGuiding(goal: input.request.text, threadID: id, targetHint: spatial.target, full: full, waitingInput: input.request)
                 },
-                warm: { [weak app = app] in
-                    guard let app, let decision = try? await self.brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
+                warm: { [unowned self] in
+                    guard let decision = try? await self.brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)), !Task.isCancelled else { return }
                     await decision.provider.warm()
                 },
-                skill: { [weak app = app] observation in
-                    app?.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
+                skill: { [unowned self] observation in
+                    self.talkSkillLibrary.promptContext(for: observation.snapshot.appBundleID)
                 },
-                makeClickInput: { [weak app = app] onTranscript, onPartial, onLevel, onFailure in
+                makeClickInput: { [unowned self] onTranscript, onPartial, onLevel, onFailure in
                     let input = DictationController(onTranscript: onTranscript, onPartial: onPartial, onLevel: onLevel, onFailure: onFailure)
-                    input.configure((try? app?.voice.currentDictationPreferences()) ?? .default)
+                    input.configure((try? self.voice.currentDictationPreferences()) ?? .default)
                     return input
                 },
                 stop: { [unowned self] threadID in self.agentCoordinator.stop(threadID: threadID) },
-                clickOutput: SharedTalkOutput(voice: self.voice)
+                clickOutput: self.talkOutput
             )
         )
         app.conversationVoiceObservation = session.$clickState.removeDuplicates().dropFirst()
@@ -302,50 +256,50 @@ final class AppSubsystems {
     lazy var modifierHoldMonitor = ModifierHoldMonitor(
         onHoldStart: { [weak app = app] in
             guard let app, !app.maintenance.isUnderMaintenance else { return }
-            if app.talkSession.clickState == .listening {
-                app.talkSession.sendNow()
+            if self.talkSession.clickState == .listening {
+                self.talkSession.sendNow()
                 return
             }
-            app.talkSession.cancelClick()
-            app.probe.pinInvocationTarget()
+            self.talkSession.cancelClick()
+            self.probe.pinInvocationTarget()
             if app.isTaskActive {
                 app.modifierHoldIsSteering = true
-                app.voice.beginDictation(steering: true)
+                self.voice.beginDictation(steering: true)
                 return
             }
             app.talkSessionStarted = true
-            app.talkSession.keyDown()
+            self.talkSession.keyDown()
         },
         onHoldCommit: { [weak app = app] in
             guard app?.modifierHoldIsSteering == false else { return }
-            app?.talkSession.holdCommitted()
+            self.talkSession.holdCommitted()
         },
         onHoldEnd: { [weak app = app] in
             guard let app else { return }
             if app.modifierHoldIsSteering {
                 app.modifierHoldIsSteering = false
-                app.voice.finishDictation()
+                self.voice.finishDictation()
             } else {
-                app.talkSession.keyUp()
+                self.talkSession.keyUp()
             }
         },
         onHoldCancel: { [weak app = app] in
             guard let app else { return }
             if app.modifierHoldIsSteering {
                 app.modifierHoldIsSteering = false
-                app.voice.cancelInput()
+                self.voice.cancelInput()
             } else {
-                app.talkSession.holdCancelled()
+                self.talkSession.holdCancelled()
             }
         },
         onHoldTap: { [weak app = app] in
             guard let app else { return }
             if app.modifierHoldIsSteering {
                 app.modifierHoldIsSteering = false
-                app.voice.cancelInput()
-            } else if app.talkSession.phase == .listening {
-                app.talkSession.holdCancelled()
-                app.talkSession.startClick()
+                self.voice.cancelInput()
+            } else if self.talkSession.phase == .listening {
+                self.talkSession.holdCancelled()
+                self.talkSession.startClick()
             }
         },
         onComposer: { [weak app = app] in app?.toggleSession() }
@@ -355,14 +309,14 @@ final class AppSubsystems {
         overlayState: self.overlayState,
         workers: self.workers,
         notifier: app.notifier,
-        supportDirectory: { [weak app = app] in app?.storageDirectory },
+        supportDirectory: { [unowned self] in self.storageDirectory },
         hooks: VoiceController.Hooks(
             setStatus: { [weak app = app] status in app?.sessionStatus = status },
             setTranscriptPreview: { [weak app = app] text in app?.transcriptPreview = text },
             dispatch: { [weak app = app] text, taskScope in app?.commandRouter.route(commandText: text, voiceTaskScope: taskScope) },
             wake: { [weak app = app] in app?.wake(cue: false) },
             sessionIsIdle: { [weak app = app] in app?.isIdle ?? false },
-            wakeListeningChanged: { [weak app = app] in app?.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
+            wakeListeningChanged: { [unowned self] in self.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
             executingTaskID: { [weak app = app] in app?.executingTaskID }
         )
     )
@@ -386,44 +340,22 @@ final class AppSubsystems {
         transcriptStore: self.transcriptStore,
         memoryStore: self.memoryStore,
         notifier: app.notifier,
-        beforeTranscriptAppend: app.debugFinalizationPersistenceBarrier
+        beforeTranscriptAppend: app.overrides.finalizationPersistenceBarrier
     )
 
-    lazy var runtimes: RuntimeCatalog = {
-#if DEBUG
-        return RuntimeCatalog(
-            setStatus: { [weak app = app] status in app?.sessionStatus = status },
-            inventoryLoader: app.debugSeams.runtimeInventoryLoader
-        )
-#else
-        return RuntimeCatalog(setStatus: { [weak app = app] status in app?.sessionStatus = status })
-#endif
-    }()
+    lazy var runtimes = RuntimeCatalog(setupLoader: app.overrides.runtimeSetupLoader)
 
-    lazy var probe: EnvironmentProbe = {
-#if DEBUG
-        return EnvironmentProbe(
-            workers: self.workers,
-            memoryStore: self.memoryStore,
-            oauthCoordinator: self.oauthCoordinator,
-            remoteIntegrationPermissions: self.remoteIntegrationPermissions,
-            spatialSelection: { [weak app = app] in app?.spatial.selection },
-            storageDirectory: { [weak app = app] in app?.storageDirectory },
-            permissionSnapshotLoader: app.debugSeams.permissionSnapshotLoader,
-            cuaHealthLoader: app.debugSeams.cuaHealthLoader,
-            screenContextLoader: app.debugSeams.screenContextLoader
-        )
-#else
-        return EnvironmentProbe(
-            workers: self.workers,
-            memoryStore: self.memoryStore,
-            oauthCoordinator: self.oauthCoordinator,
-            remoteIntegrationPermissions: self.remoteIntegrationPermissions,
-            spatialSelection: { [weak app = app] in app?.spatial.selection },
-            storageDirectory: { [weak app = app] in app?.storageDirectory }
-        )
-#endif
-    }()
+    lazy var probe = EnvironmentProbe(
+        workers: self.workers,
+        memoryStore: self.memoryStore,
+        oauthCoordinator: self.oauthCoordinator,
+        remoteIntegrationPermissions: self.remoteIntegrationPermissions,
+        spatialSelection: { [unowned self] in self.spatial.selection },
+        storageDirectory: { [unowned self] in self.storageDirectory },
+        permissionSnapshotLoader: app.overrides.permissionSnapshotLoader,
+        cuaHealthLoader: app.overrides.cuaHealthLoader,
+        screenContextLoader: app.overrides.screenContextLoader
+    )
 
     lazy var foreground: ForegroundTaskController = {
         let hooks = ForegroundTaskController.Hooks(
@@ -433,31 +365,13 @@ final class AppSubsystems {
             requestOnboarding: { [weak app = app] in app?.runOnboarding(force: true) },
             hidePanel: { [weak app = app] in app?.hidePanel() },
             dismissIntentCard: { [weak app = app] in app?.intentCards.dismiss() },
-            stopSpatialMonitoring: { [weak app = app] in app?.spatial.stopMonitoring() },
-            stopGuideObservation: { [weak app = app] in app?.guideCoordinator.stopClickObservation() },
+            stopSpatialMonitoring: { [unowned self] in self.spatial.stopMonitoring() },
+            stopGuideObservation: { [unowned self] in self.guideCoordinator.stopClickObservation() },
             makeConfirmer: { [weak app = app] in app?.makeConfirmer() ?? InteractiveConfirmer(controller: nil) },
-            routineVerified: { [weak app = app] id in app?.routineLibrary.recordVerifiedRun(id) },
-            guiTaskCompleted: { [weak app = app] in app?.routineOffer.taskFinished(usedGUI: true) }
+            routineVerified: { [unowned self] id in self.routineLibrary.recordVerifiedRun(id) },
+            guiTaskCompleted: { [unowned self] in self.routineOffer.taskFinished(usedGUI: true) }
         )
-#if DEBUG
-        let controller = ForegroundTaskController(
-            sessionController: app.sessionController,
-            workers: self.workers,
-            probe: self.probe,
-            voice: self.voice,
-            remoteIntegrationExecutor: self.remoteIntegrationExecutor,
-            activityLog: self.activityLog,
-            executionFinalizer: self.executionFinalizer,
-            overlayState: self.overlayState,
-            hooks: hooks,
-            finalizationBarrier: app.debugSeams.finalizationBarrier,
-            confirmer: app.debugSeams.confirmer,
-            askUser: app.debugSeams.askUser,
-            typedVerifier: app.debugSeams.typedVerifier,
-            workspaceCoordinator: self.backgroundTaskCoordinator
-        )
-#else
-        let controller = ForegroundTaskController(
+        return ForegroundTaskController(
             sessionController: app.sessionController,
             workers: self.workers,
             probe: self.probe,
@@ -467,17 +381,17 @@ final class AppSubsystems {
             executionFinalizer: self.executionFinalizer,
             overlayState: self.overlayState,
             workspaceCoordinator: self.backgroundTaskCoordinator,
-            hooks: hooks
+            hooks: hooks,
+            agentCoordinator: self.agentCoordinator,
+            workerLease: self.foregroundWorkerLease,
+            finalizationBarrier: app.overrides.finalizationBarrier,
+            confirmer: app.overrides.confirmer,
+            askUser: app.overrides.askUser,
+            typedVerifier: app.overrides.typedVerifier
         )
-#endif
-        // Open-ended Do goals route through the agent loop; its tools run on
-        // the session's claimed worker, not a competing background one.
-        controller.agentCoordinator = agentCoordinator
-        controller.workerLease = self.foregroundWorkerLease
-        return controller
     }()
 
-    lazy var backgroundTaskCoordinator = TaskCoordinator(storageDirectory: self.storageDirectory)
+    lazy var backgroundTaskCoordinator = app.overrides.taskCoordinator ?? TaskCoordinator(storageDirectory: self.storageDirectory)
 
     lazy var backgroundTaskRunner = ResumableTaskRunner(
         coordinator: self.backgroundTaskCoordinator,
@@ -502,16 +416,16 @@ final class AppSubsystems {
         let memory = self.memoryStore
         self.homeController.homeModel.onForgetMemory = { record in Task { _ = await memory.forget(record.id) } }
         return ConversationLearner(
-            complete: { [unowned app = app] in try await app.brain.completeOnDevice($0) },
+            complete: { [unowned self] in try await self.brain.completeOnDevice($0) },
             threads: self.homeThreadStore, memory: memory,
-            remembered: { [weak app = app] id, records in app?.homeController.homeModel.remembered[id, default: []] += records },
-            titled: { [weak app = app] in Task { await app?.homeController.refreshThreads() } }
+            remembered: { [unowned self] id, records in self.homeController.homeModel.remembered[id, default: []] += records },
+            titled: { [unowned self] in Task { await self.homeController.refreshThreads() } }
         )
     }()
 
     lazy var agentCoordinator = AgentCoordinator(
         provider: { [unowned app = app] requirement in
-            try await app.brain.route(requirement).provider
+            try await self.brain.route(requirement).provider
         },
         host: self.toolHost, threads: self.homeThreadStore, consent: self.toolConsent,
         perrys: self.perryStore,
@@ -566,7 +480,7 @@ final class AppSubsystems {
     lazy var homeController: HomeController = {
         let controller = HomeController()
         controller.threadStore = self.homeThreadStore
-        controller.captureTarget = { [weak app = app] in app?.probe.presentationTarget() }
+        controller.captureTarget = { [unowned self] in self.probe.presentationTarget() }
         controller.answerProvider = { [weak app = app] input, target, onPartial in
             guard let app else { return .failed("Perry is shutting down.") }
             let threadID = input.threadID
@@ -586,33 +500,33 @@ final class AppSubsystems {
                 case .textDelta(let delta):
                     text += delta
                     onPartial(text)
-                    chunker.feed(delta).forEach(app.voice.enqueueSpeech)
-                case .draw(let command): app.overlayState.apply(command)
+                    chunker.feed(delta).forEach(self.voice.enqueueSpeech)
+                case .draw(let command): self.overlayState.apply(command)
                 case .finished(let outcome): finish = outcome
                 default: break
                 }
             }
             if finish == .completed {
-                if let rest = chunker.finish() { app.voice.enqueueSpeech(rest) }
+                if let rest = chunker.finish() { self.voice.enqueueSpeech(rest) }
                 app.onboarding.noteTalkTurnCompleted()
             }
             return finish
         }
-        controller.onStop = { [weak app = app] id in app?.agentCoordinator.stop(threadID: id) }
+        controller.onStop = { [unowned self] id in self.agentCoordinator.stop(threadID: id) }
         controller.onOpenConversation = { [weak app = app] in app?.showPanel() }
         app.agentRunningObservation = controller.bindWorkingThreads(self.agentCoordinator.$runningThreads)
-        controller.perryListProvider = { [weak app = app] in
-            await app?.perryStore?.list() ?? []
+        controller.perryListProvider = { [unowned self] in
+            await self.perryStore?.list() ?? []
         }
         controller.suggestionController = self.suggestionController
-        controller.routineListProvider = { [weak app = app] in
-            app?.routineLibrary.routines() ?? []
+        controller.routineListProvider = { [unowned self] in
+            self.routineLibrary.routines()
         }
-        controller.onRoutineRun = { [weak app = app] routine in
-            app?.routineLibrary.run(routine)
+        controller.onRoutineRun = { [unowned self] routine in
+            self.routineLibrary.run(routine)
         }
-        controller.onRoutineRemove = { [weak app = app] routine in
-            app?.routineLibrary.remove(routine)
+        controller.onRoutineRemove = { [unowned self] routine in
+            self.routineLibrary.remove(routine)
         }
         controller.configure(deps: HomeModel.Deps(
             controller: app,
@@ -628,7 +542,6 @@ final class AppSubsystems {
                 })
             },
             backgroundTasks: self.backgroundTasks,
-            runtimes: self.runtimes,
             fileRoots: (self.storageDirectory.map { [$0.appendingPathComponent("workspace", isDirectory: true)] } ?? [])
         ))
         return controller
@@ -639,26 +552,25 @@ final class AppSubsystems {
         workers: self.workers,
         context: app.guideBridge,
         setStatus: { [weak app = app] status in app?.sessionStatus = status },
-        speak: { [weak app = app] text in app?.voice.speak(text) },
-        runRoutine: { [weak app = app] routine, parameters in app?.foreground.startRoutine(routine, parameters: parameters) },
+        speak: { [unowned self] text in self.voice.speak(text) },
+        runRoutine: { [unowned self] routine, parameters in self.foreground.startRoutine(routine, parameters: parameters) },
         onRecordingChanged: { [weak app = app] recording in
-            app?.notchStatus.update(
+            self.notchStatus.update(
                 isRecording: recording,
                 backgroundCount: app?.lastBackgroundCount ?? 0,
                 awaitingApproval: app?.lastAwaitingApprovalCount ?? 0
             )
         },
         showRing: { [weak self] frame in self?.showRecognizedControlRing(frame) },
-        providerCompleter: { [weak app = app] in
-            guard let brain = app?.brain else { return nil }
-            return { prompt in try await self.brain.completeText(prompt) }
+        providerCompleter: { [unowned self] in
+            { prompt in try await self.brain.completeText(prompt) }
         }
     )
 
     private let routineOfferID = UUID()
 
     lazy var routineOffer = RoutineOffer(
-        isOnboarding: { [weak app = app] in app?.homeController.homeModel.onboarding != nil },
+        isOnboarding: { [unowned self] in self.homeController.homeModel.onboarding != nil },
         present: { [weak self] in self?.presentRoutineOffer() }
     )
 
@@ -700,14 +612,13 @@ final class AppSubsystems {
                 app?.statusMenu.setBackgroundTaskCount(total)
                 app?.lastBackgroundCount = active
                 app?.lastAwaitingApprovalCount = awaiting
-                app?.notchStatus.update(
-                    isRecording: app?.routineLibrary.isRecording ?? false,
+                self.notchStatus.update(
+                    isRecording: self.routineLibrary.isRecording,
                     backgroundCount: active,
                     awaitingApproval: awaiting
                 )
             }
         )
-#if DEBUG
         return BackgroundTaskController(
             workers: self.workers,
             coordinator: self.backgroundTaskCoordinator,
@@ -716,22 +627,9 @@ final class AppSubsystems {
             transcriptStore: self.transcriptStore,
             notifier: app.notifier,
             agentCoordinator: self.agentCoordinator,
-            storageDirectory: { [weak app = app] in app?.debugSeams.storageDirectory },
+            storageDirectory: { [weak app = app] in app?.overrides.storageDirectory },
             hooks: hooks
         )
-#else
-        return BackgroundTaskController(
-            workers: self.workers,
-            coordinator: self.backgroundTaskCoordinator,
-            runner: self.backgroundTaskRunner,
-            contextStore: self.backgroundTaskContextStore,
-            transcriptStore: self.transcriptStore,
-            notifier: app.notifier,
-            agentCoordinator: self.agentCoordinator,
-            storageDirectory: { nil },
-            hooks: hooks
-        )
-#endif
     }()
 
     lazy var erasurePaths = PerryErasurePaths(supportDirectory: self.storageDirectory)

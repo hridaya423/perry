@@ -1,9 +1,5 @@
 import AppKit
 
-/// Quit and erase are Perry's two "own the whole app" operations: both close
-/// admission everywhere, run an ordered stop-and-join checklist, then hand
-/// control back — or out. The ordering is the behavior, so it lives in one
-/// place here rather than scattered across AppController's lifecycle methods.
 @MainActor
 final class MaintenanceCoordinator {
     private enum Operation { case termination, erasure }
@@ -14,9 +10,7 @@ final class MaintenanceCoordinator {
     private(set) var isErasureInProgress = false
     private var pendingConfirmation: NotchConfirmation?
 
-    /// Nothing held and no quit underway — safe to accept new work.
     var isIdle: Bool { owner == nil && !terminationPrepared }
-    /// A quit or erase currently owns the app.
     var isUnderMaintenance: Bool { owner != nil }
 
 #if DEBUG
@@ -44,13 +38,13 @@ final class MaintenanceCoordinator {
             sender.reply(toApplicationShouldTerminate: false)
             return .terminateLater
         }
-        host?.backgroundTasks.closeControls()
-        host?.guideCoordinator.prepareForTermination()
+        host?.subsystems.backgroundTasks.closeControls()
+        host?.subsystems.guideCoordinator.prepareForTermination()
         Task { @MainActor [self] in
             var showRecovery = false
             defer {
                 self.release(.termination)
-                if showRecovery { self.host?.homeController.openHome() }
+                if showRecovery { self.host?.subsystems.homeController.openHome() }
             }
             guard let host else {
                 sender.reply(toApplicationShouldTerminate: false)
@@ -58,11 +52,11 @@ final class MaintenanceCoordinator {
             }
             do {
                 try await self.prepareForTermination()
-                try await host.workers.shutdown()
-                await host.mcp.stop()
+                try await host.subsystems.workers.shutdown()
+                await host.subsystems.mcp.stop()
                 await self.joinAfterWorkerShutdown()
                 guard await self.confirmQuitDiscardingUnsavedRequests() else {
-                    host.backgroundTasks.reopenControls()
+                    host.subsystems.backgroundTasks.reopenControls()
                     host.sessionStatus = "Perry stayed open. Recover your requests before quitting."
                     showRecovery = true
                     sender.reply(toApplicationShouldTerminate: false)
@@ -71,7 +65,7 @@ final class MaintenanceCoordinator {
                 self.terminationPrepared = true
                 sender.reply(toApplicationShouldTerminate: true)
             } catch {
-                host.backgroundTasks.reopenControls()
+                host.subsystems.backgroundTasks.reopenControls()
                 host.sessionStatus = "I couldn’t stop my work safely."
                 sender.reply(toApplicationShouldTerminate: false)
             }
@@ -99,13 +93,12 @@ final class MaintenanceCoordinator {
                 host?.sessionStatus = conflictMessage()
                 return
             }
-            host?.backgroundTasks.closeControls()
-            host?.guideCoordinator.stopClickObservation()
+            host?.subsystems.backgroundTasks.closeControls()
+            host?.subsystems.guideCoordinator.stopClickObservation()
             await performCompleteErasure(operation: .erasure)
         }
     }
 
-    /// Collapsing the notch answers an open quit or erase question with No.
     func cancelConfirmation() {
         pendingConfirmation?.cancel()
     }
@@ -113,11 +106,11 @@ final class MaintenanceCoordinator {
     private func acquire(_ operation: Operation) -> Bool {
         guard owner == nil, let host else { return false }
         owner = operation
-        host.mcp.suspend()
-        host.agentCoordinator.closeAdmission()
-        host.brain.closeAdmission()
-        host.homeController.closeAdmission()
-        host.notchPresence.suspend()
+        host.subsystems.mcp.suspend()
+        host.subsystems.agentCoordinator.closeAdmission()
+        host.subsystems.brain.closeAdmission()
+        host.subsystems.homeController.closeAdmission()
+        host.subsystems.notchPresence.suspend()
         host.hidePanel()
         return true
     }
@@ -126,12 +119,12 @@ final class MaintenanceCoordinator {
         guard owner == operation else { return }
         owner = nil
         guard !terminationPrepared, let host else { return }
-        host.agentCoordinator.reopenAdmission()
-        host.brain.reopenAdmission()
-        host.homeController.reopenAdmission()
-        host.notchPresence.resume()
-        host.mcp.resume()
-        host.customConnectors.connectAll()
+        host.subsystems.agentCoordinator.reopenAdmission()
+        host.subsystems.brain.reopenAdmission()
+        host.subsystems.homeController.reopenAdmission()
+        host.subsystems.notchPresence.resume()
+        host.subsystems.mcp.resume()
+        host.subsystems.customConnectors.connectAll()
     }
 
     private func conflictMessage() -> String {
@@ -170,14 +163,14 @@ final class MaintenanceCoordinator {
               owner == operation,
               !isErasureInProgress else { return }
         isErasureInProgress = true
-        host?.backgroundTasks.closeControls()
-        host?.guideCoordinator.stopClickObservation()
+        host?.subsystems.backgroundTasks.closeControls()
+        host?.subsystems.guideCoordinator.stopClickObservation()
         defer {
             isErasureInProgress = false
-            host?.backgroundTasks.reopenControls()
+            host?.subsystems.backgroundTasks.reopenControls()
             release(operation)
         }
-        host?.oauthCoordinator.cancelAuthorization()
+        host?.subsystems.oauthCoordinator.cancelAuthorization()
         guard let host else { return }
         do {
 #if DEBUG
@@ -186,15 +179,15 @@ final class MaintenanceCoordinator {
             }
 #endif
             try await pauseOwnedBackgroundTasksForWorkerStop()
-            let report = try await host.workers.withWorkersStopped { @MainActor [self] in
+            let report = try await host.subsystems.workers.withWorkersStopped { @MainActor [self] in
                 await self.stopWorkForErasure()
-                let report = await host.completeErasure.erase()
-                host.brain.reloadPreferences()
-                await host.homeController.reloadAfterErasure()
-                host.suggestionController.reloadCards()
+                let report = await host.subsystems.completeErasure.erase()
+                host.subsystems.brain.reloadPreferences()
+                await host.subsystems.homeController.reloadAfterErasure()
+                host.subsystems.suggestionController.reloadCards()
                 return report
             }
-            host.voice.speak(report.summary)
+            host.subsystems.voice.speak(report.summary)
         } catch {
             host.sessionStatus = "I couldn’t stop my work before erasing data."
         }
@@ -202,79 +195,79 @@ final class MaintenanceCoordinator {
 
     private func pauseOwnedBackgroundTasksForWorkerStop() async throws {
         guard let host else { return }
-        try await host.backgroundTasks.pauseAllOwnedForWorkerStop()
-        await host.foreground.cancelActiveSupervisor()
+        try await host.subsystems.backgroundTasks.pauseAllOwnedForWorkerStop()
+        await host.subsystems.foreground.cancelActiveSupervisor()
     }
 
     private func prepareForTermination() async throws {
         guard let host else { return }
-        host.backgroundTasks.closeControls()
-        await host.brain.stopSetup()
-        host.talkSession.cancelAsk()
-        host.talkSession.cancel()
-        await host.talkSession.joinInputSaves()
-        host.notchStatus.hide()
-        host.notchPresence.stop()
-        host.perryScheduler?.stop()
-        host.suggestionController.stop()
-        host.customConnectors.disconnectAll()
-        host.routineLibrary.stop()
-        host.guideCoordinator.stopClickObservation()
+        host.subsystems.backgroundTasks.closeControls()
+        await host.subsystems.brain.stopSetup()
+        host.subsystems.talkSession.cancelAsk()
+        host.subsystems.talkSession.cancel()
+        await host.subsystems.talkSession.joinInputSaves()
+        host.subsystems.notchStatus.hide()
+        host.subsystems.notchPresence.stop()
+        host.subsystems.perryScheduler?.stop()
+        host.subsystems.suggestionController.stop()
+        host.subsystems.customConnectors.disconnectAll()
+        host.subsystems.routineLibrary.stop()
+        host.subsystems.guideCoordinator.stopClickObservation()
         try await pauseOwnedBackgroundTasksForWorkerStop()
-        host.voice.cancelInput()
-        host.foreground.cancelStartTask()
-        host.guideCoordinator.prepareForTermination()
-        host.spatial.cancelDescription()
+        host.subsystems.voice.cancelInput()
+        host.subsystems.foreground.cancelStartTask()
+        host.subsystems.guideCoordinator.prepareForTermination()
+        host.subsystems.spatial.cancelDescription()
     }
 
     private func joinAfterWorkerShutdown() async {
         guard let host else { return }
-        await host.guideCoordinator.joinAfterWorkerShutdown()
-        await host.agentCoordinator.joinAll()
-        await host.perryScheduler?.joinAll()
-        await host.suggestionController.joinAll()
-        await host.homeController.joinAll()
-        await host.voice.joinInputWork()
-        await host.spatial.joinDescription()
-        await host.foreground.joinStartTask()
-        await host.backgroundTasks.joinAll()
+        await host.subsystems.guideCoordinator.joinAfterWorkerShutdown()
+        await host.subsystems.agentCoordinator.joinAll()
+        await host.subsystems.perryScheduler?.joinAll()
+        await host.subsystems.suggestionController.joinAll()
+        await host.subsystems.homeController.joinAll()
+        await host.subsystems.voice.joinInputWork()
+        await host.subsystems.spatial.joinDescription()
+        await host.subsystems.foreground.joinStartTask()
+        await host.subsystems.backgroundTasks.joinAll()
     }
 
     private func stopWorkForErasure() async {
         guard let host else { return }
-        await host.mcp.discard()
-        await host.brain.stopSetup()
-        host.talkSession.resetConversation()
-        host.talkSession.cancelAsk()
-        host.talkSession.cancel()
-        await host.talkSession.joinInputSaves()
-        host.notchStatus.hide()
-        host.notchPresence.stop()
-        host.perryScheduler?.stop()
-        host.suggestionController.stop()
-        host.customConnectors.forgetAll()
-        host.routineLibrary.stop()
-        await host.guideCoordinator.stopForErasure()
-        await host.agentCoordinator.joinAll()
-        await host.perryScheduler?.joinAll()
-        await host.suggestionController.joinAll()
-        await host.homeController.joinAll()
-        host.spatial.stopMonitoring()
-        host.foreground.cancelStartTask()
-        await host.foreground.cancelActiveSupervisor()
-        host.backgroundTasks.cancelAllOwned()
-        await host.voice.joinInputWork()
-        host.spatial.cancelDescription()
-        await host.spatial.joinDescription()
-        await host.foreground.joinStartTask()
-        await host.backgroundTasks.joinAll()
-        host.backgroundTasks.resetTasks()
+        await host.subsystems.mcp.discard()
+        await host.subsystems.brain.stopSetup()
+        host.subsystems.talkSession.resetConversation()
+        host.subsystems.talkSession.cancelAsk()
+        host.subsystems.talkSession.cancel()
+        await host.subsystems.talkSession.joinInputSaves()
+        host.subsystems.notchStatus.hide()
+        host.subsystems.notchPresence.stop()
+        host.subsystems.perryScheduler?.stop()
+        host.subsystems.suggestionController.stop()
+        host.subsystems.customConnectors.forgetAll()
+        host.subsystems.routineLibrary.stop()
+        await host.subsystems.guideCoordinator.stopForErasure()
+        await host.subsystems.agentCoordinator.joinAll()
+        await host.subsystems.perryScheduler?.joinAll()
+        await host.subsystems.suggestionController.joinAll()
+        await host.subsystems.homeController.joinAll()
+        host.subsystems.spatial.stopMonitoring()
+        host.subsystems.foreground.cancelStartTask()
+        await host.subsystems.foreground.cancelActiveSupervisor()
+        host.subsystems.backgroundTasks.cancelAllOwned()
+        await host.subsystems.voice.joinInputWork()
+        host.subsystems.spatial.cancelDescription()
+        await host.subsystems.spatial.joinDescription()
+        await host.subsystems.foreground.joinStartTask()
+        await host.subsystems.backgroundTasks.joinAll()
+        host.subsystems.backgroundTasks.resetTasks()
     }
 }
 
 extension AppController {
     var hasUnsavedHomeRequests: Bool {
-        !homeController.homeModel.unsavedInputs.isEmpty
+        !subsystems.homeController.homeModel.unsavedInputs.isEmpty
     }
 
 }

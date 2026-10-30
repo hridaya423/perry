@@ -1,6 +1,6 @@
 import AppKit
 import PerryBrain
-import PerryGuide
+import PerryCore
 
 @MainActor
 final class VoiceKeyCapture: ObservableObject {

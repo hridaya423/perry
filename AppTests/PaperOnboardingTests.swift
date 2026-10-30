@@ -33,17 +33,17 @@ final class PaperOnboardingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let controller = AppController(debugStorageDirectory: directory)
-        let model = controller.homeController.homeModel
+        let controller = AppController.testing(directory: directory)
+        let model = controller.subsystems.homeController.homeModel
         var submissions = 0
         model.onStartConversation = { _ in submissions += 1 }
-        defer { controller.collapseNotch(); controller.notchPresence.stop() }
+        defer { controller.collapseNotch(); controller.subsystems.notchPresence.stop() }
         controller.presentPrompt(prefill: "Help me revise this request before running it.")
         let frame = NSRect(x: 0, y: 0, width: 480, height: 380)
         let window = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)
-        defer { window.close(); controller.talkSession.cancelClick() }
+        defer { window.close(); controller.subsystems.talkSession.cancelClick() }
         let host = NSHostingView(rootView: CompactConversationView(controller: controller)
             .transaction { $0.disablesAnimations = true })
         window.contentView = host
@@ -51,7 +51,7 @@ final class PaperOnboardingTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(model.newConversationDraft, "Help me revise this request before running it.")
         XCTAssertEqual(model.composerMode, .ask)
-        XCTAssertEqual(controller.talkSession.clickState, .idle)
+        XCTAssertEqual(controller.subsystems.talkSession.clickState, .idle)
         XCTAssertEqual(submissions, 0)
         host.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
@@ -66,7 +66,7 @@ final class PaperOnboardingTests: XCTestCase {
             controller.presentPrompt(prefill: prompt, mode: .task)
             XCTAssertEqual(model.newConversationDraft, prompt)
             XCTAssertEqual(model.composerMode, .task)
-            XCTAssertEqual(controller.talkSession.clickState, .idle)
+            XCTAssertEqual(controller.subsystems.talkSession.clickState, .idle)
             XCTAssertEqual(submissions, 0)
         }
         host.layoutSubtreeIfNeeded()

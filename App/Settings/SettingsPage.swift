@@ -348,33 +348,33 @@ extension AppController {
     }
 
     func setNotchEyes(_ enabled: Bool) {
-        notchStatus.setEnabled(enabled)
+        subsystems.notchStatus.setEnabled(enabled)
         if enabled {
-            notchStatus.update(
-                isRecording: routineLibrary.isRecording,
+            subsystems.notchStatus.update(
+                isRecording: subsystems.routineLibrary.isRecording,
                 backgroundCount: lastBackgroundCount,
                 awaitingApproval: lastAwaitingApprovalCount
             )
         }
-        notchPresence.screenLayoutChanged()
+        subsystems.notchPresence.screenLayoutChanged()
     }
 
     var memoryFiles: MemoryFiles? {
-        storageDirectory.map { MemoryFiles(directory: $0.appendingPathComponent("memory", isDirectory: true)) }
+        subsystems.storageDirectory.map { MemoryFiles(directory: $0.appendingPathComponent("memory", isDirectory: true)) }
     }
 
     func memories() async -> [MemoryRecord] {
-        await memoryStore.snapshot().sorted { $0.createdAt > $1.createdAt }
+        await subsystems.memoryStore.snapshot().sorted { $0.createdAt > $1.createdAt }
     }
 
     func forgetMemory(_ id: UUID) async -> Bool {
         guard !maintenance.isErasureInProgress else { return false }
-        return await memoryStore.forget(id)
+        return await subsystems.memoryStore.forget(id)
     }
 
     func eraseMemory() async -> Bool {
-        guard !maintenance.isErasureInProgress, await memoryStore.wipe() else { return false }
-        guard let memory = storageDirectory?.appendingPathComponent("memory", isDirectory: true) else { return true }
+        guard !maintenance.isErasureInProgress, await subsystems.memoryStore.wipe() else { return false }
+        guard let memory = subsystems.storageDirectory?.appendingPathComponent("memory", isDirectory: true) else { return true }
         for name in ["PROFILE.md", "CONTEXT.md"] {
             try? FileManager.default.removeItem(at: memory.appendingPathComponent(name))
         }
@@ -382,23 +382,23 @@ extension AppController {
     }
 
     func currentMemoryConfiguration() async -> MemoryConfiguration {
-        await memoryStore.currentConfiguration()
+        await subsystems.memoryStore.currentConfiguration()
     }
 
     func setMemoryEnabled(_ enabled: Bool) async {
         guard !maintenance.isErasureInProgress else { return }
-        let current = await memoryStore.currentConfiguration()
-        await memoryStore.setConfiguration(
+        let current = await subsystems.memoryStore.currentConfiguration()
+        await subsystems.memoryStore.setConfiguration(
             MemoryConfiguration(enabled: enabled, categoryToggles: current.categoryToggles)
         )
     }
 
     func setMemoryCategoryEnabled(_ category: MemoryRecord.Category, enabled: Bool) async {
         guard !maintenance.isErasureInProgress else { return }
-        let current = await memoryStore.currentConfiguration()
+        let current = await subsystems.memoryStore.currentConfiguration()
         var toggles = current.categoryToggles
         toggles[category] = enabled
-        await memoryStore.setConfiguration(
+        await subsystems.memoryStore.setConfiguration(
             MemoryConfiguration(enabled: current.enabled, categoryToggles: toggles)
         )
     }

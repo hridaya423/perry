@@ -62,9 +62,6 @@ struct DiagnosticsReporter {
         Dictionary(grouping: values, by: { $0 }).mapValues(\.count)
     }
 
-    /// Last ~32 KiB of the app-server stderr log with credentials and the
-    /// user's home path masked. Whole lines only; binary/non-UTF8 tails are
-    /// dropped rather than mangled into the export.
     private static func redactedLogTail(at url: URL, byteLimit: Int = 32 * 1024) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }

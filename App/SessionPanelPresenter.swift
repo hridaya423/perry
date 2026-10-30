@@ -128,11 +128,11 @@ final class SessionPanelPresenter {
 
 extension AppController {
     func presentPrompt(prefill: String, mode: HomeModel.ComposerMode = .ask) {
-        let model = homeController.homeModel
+        let model = subsystems.homeController.homeModel
         model.sidebarSelection = nil
         model.updateNewDraft(prefill)
         model.composerMode = mode
-        talkSession.cancelClick()
+        subsystems.talkSession.cancelClick()
         showPanel()
     }
 
@@ -146,14 +146,14 @@ extension AppController {
 
     func showPanel(activate: Bool, peek: Bool = false) {
         sessionPanel.expansion.peeking = peek
-        probe.pinInvocationTargetIfNeeded()
-        homeController.prepareConversation(target: probe.presentationTarget())
-        notchPresence.setConversationVisible(true)
-        notchStatus.setConversationVisible(true)
+        subsystems.probe.pinInvocationTargetIfNeeded()
+        subsystems.homeController.prepareConversation(target: subsystems.probe.presentationTarget())
+        subsystems.notchPresence.setConversationVisible(true)
+        subsystems.notchStatus.setConversationVisible(true)
         if !sessionPanel.isVisible { sessionPanel.screen = NotchGeometry.screenUnderPointer() }
         let layout = notchLayout()
         sessionPanel.show(window: layout.window, visible: layout.visible, activate: activate)
-        overlayState.panelScreenFrame = sessionPanel.frame
+        subsystems.overlayState.panelScreenFrame = sessionPanel.frame
     }
 
     private func notchLayout() -> (window: NSRect, visible: NSRect) {
@@ -161,7 +161,7 @@ extension AppController {
         let presentation = NotchPresentation.shared
         let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchGeometry(screen: screen).centerX)
         let expansion = sessionPanel.expansion
-        let showsPeek = expansion.peeking && homeController.homeModel.onboarding == nil
+        let showsPeek = expansion.peeking && subsystems.homeController.homeModel.onboarding == nil
         let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion, showsPeek: showsPeek), cameraInset: NotchGeometry(screen: screen).cameraInset, screen: screen.frame.size)
         presentation.frame = NotchLayout.visibleFrame(size, in: window)
         return (window, presentation.frame)
@@ -179,13 +179,13 @@ extension AppController {
         case .requestingPermission:
             break
         case .listening, .thinking, .speaking, .failed:
-            guard homeController.homeModel.onboarding == nil, !presentation.contains(Self.voiceEntryID) else { break }
+            guard subsystems.homeController.homeModel.onboarding == nil, !presentation.contains(Self.voiceEntryID) else { break }
             voiceOpenedNotch = !sessionPanel.isVisible
             presentation.present(
                 id: Self.voiceEntryID,
                 priority: .voice,
-                content: NotchListeningView(voice: talkSession),
-                onDismiss: { [weak self] in self?.talkSession.cancelClick() }
+                content: NotchListeningView(voice: subsystems.talkSession),
+                onDismiss: { [weak self] in self?.subsystems.talkSession.cancelClick() }
             )
             if !sessionPanel.isVisible { showPanel(activate: false) }
             sessionPanel.focusWithoutActivating()
@@ -196,26 +196,26 @@ extension AppController {
             break
         case .listening:
             if SpeechEngineChoice.current == .kokoro, KokoroVoice.isInstalled { KokoroHelper.shared.warm() }
-            overlayState.buddyState = .listening
-            overlayState.voiceState = .listening
-            overlayState.taskBubbleText = nil
+            subsystems.overlayState.buddyState = .listening
+            subsystems.overlayState.voiceState = .listening
+            subsystems.overlayState.taskBubbleText = nil
         case .thinking:
-            overlayState.buddyState = .thinking
-            overlayState.voiceState = .processing
-            overlayState.taskBubbleText = "Working on your request"
+            subsystems.overlayState.buddyState = .thinking
+            subsystems.overlayState.voiceState = .processing
+            subsystems.overlayState.taskBubbleText = "Working on your request"
         case .speaking:
-            overlayState.buddyState = .idle
-            overlayState.voiceState = .responding
-            overlayState.taskBubbleText = "Speaking"
+            subsystems.overlayState.buddyState = .idle
+            subsystems.overlayState.voiceState = .responding
+            subsystems.overlayState.taskBubbleText = "Speaking"
         case .idle:
-            overlayState.voiceState = .idle
-            overlayState.buddyState = talkSession.answer.isEmpty ? .idle : .success
-            overlayState.taskBubbleText = talkSession.answer.isEmpty ? nil : "Answer ready"
-            overlayState.expireTaskBubble(after: 2.5)
+            subsystems.overlayState.voiceState = .idle
+            subsystems.overlayState.buddyState = subsystems.talkSession.answer.isEmpty ? .idle : .success
+            subsystems.overlayState.taskBubbleText = subsystems.talkSession.answer.isEmpty ? nil : "Answer ready"
+            subsystems.overlayState.expireTaskBubble(after: 2.5)
         case .failed:
-            overlayState.buddyState = .blocked
-            overlayState.voiceState = .idle
-            overlayState.taskBubbleText = nil
+            subsystems.overlayState.buddyState = .blocked
+            subsystems.overlayState.voiceState = .idle
+            subsystems.overlayState.taskBubbleText = nil
             showPanel(activate: false)
         }
     }
@@ -225,7 +225,7 @@ extension AppController {
             guard let self, self.sessionPanel.isVisible else { return }
             let layout = self.notchLayout()
             self.sessionPanel.place(window: layout.window, visible: layout.visible)
-            self.overlayState.panelScreenFrame = self.sessionPanel.frame
+            self.subsystems.overlayState.panelScreenFrame = self.sessionPanel.frame
         }
     }
 
@@ -248,18 +248,18 @@ extension AppController {
             let layout = notchLayout()
             sessionPanel.place(window: layout.window, visible: layout.visible)
         }
-        overlayState.panelScreenFrame = sessionPanel.frame
-        notchPresence.screenLayoutChanged()
-        notchStatus.repositionIfVisible()
+        subsystems.overlayState.panelScreenFrame = sessionPanel.frame
+        subsystems.notchPresence.screenLayoutChanged()
+        subsystems.notchStatus.repositionIfVisible()
     }
 
     func warmSessionSurfaces() {
         sessionPanel.warm()
-        overlayManager.warmRenderPipeline(state: overlayState)
+        subsystems.overlayManager.warmRenderPipeline(state: subsystems.overlayState)
     }
 
     func hidePanel() {
-        talkSession.cancelClick()
+        subsystems.talkSession.cancelClick()
         hideSurfaces()
     }
 
@@ -268,15 +268,15 @@ extension AppController {
     }
 
     private func hideSurfaces() {
-        overlayState.panelScreenFrame = nil
+        subsystems.overlayState.panelScreenFrame = nil
         sessionPanel.hide { [weak self] in
             self?.sessionPanel.expansion.peekThread = nil
-            self?.notchPresence.setConversationVisible(false)
-            self?.notchStatus.setConversationVisible(false)
+            self?.subsystems.notchPresence.setConversationVisible(false)
+            self?.subsystems.notchStatus.setConversationVisible(false)
         }
     }
 
     func showBackgroundTasks() {
-        homeController.openHome(selection: .tasks)
+        subsystems.homeController.openHome(selection: .tasks)
     }
 }

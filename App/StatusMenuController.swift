@@ -39,7 +39,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        recordMenuItem?.title = host?.routineLibrary.isRecording == true ? "Stop recording" : "Record a routine…"
+        recordMenuItem?.title = host?.subsystems.routineLibrary.isRecording == true ? "Stop recording" : "Record a routine…"
         updateMenuItem?.isHidden = host?.updateNoticeController.availability != .available
     }
 
@@ -51,7 +51,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         backgroundTasksItem.isHidden = backgroundTaskCount == 0
         backgroundTasksMenuItem = backgroundTasksItem
         menu.addItem(backgroundTasksItem)
-        let recordItem = ActionItem("Record a routine…") { [weak host] in host?.routineLibrary.toggleRecording() }
+        let recordItem = ActionItem("Record a routine…") { [weak host] in host?.subsystems.routineLibrary.toggleRecording() }
         recordMenuItem = recordItem
         menu.addItem(recordItem)
         menu.addItem(.separator())
@@ -73,7 +73,7 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
         let developer = NSMenuItem(title: "Developer", action: nil, keyEquivalent: "")
         let developerMenu = NSMenu()
         developerMenu.addItem(ActionItem("Brain smoke test") { [weak host] in
-            host?.brain.smokeTest { status in host?.sessionStatus = status }
+            host?.subsystems.brain.smokeTest { status in host?.sessionStatus = status }
         })
         let drills = NSMenuItem(title: "Failure drills", action: nil, keyEquivalent: "")
         let drillMenu = NSMenu()
@@ -96,10 +96,10 @@ final class StatusMenuController: NSObject, NSMenuDelegate {
 }
 
 extension AppController {
-    func showSettings() { homeController.openHome(selection: .settings) }
+    func showSettings() { subsystems.homeController.openHome(selection: .settings) }
 
     func startDemonstrationRecording() {
-        guard !routineLibrary.isRecording else { return }
-        routineLibrary.toggleRecording()
+        guard !subsystems.routineLibrary.isRecording else { return }
+        subsystems.routineLibrary.toggleRecording()
     }
 }

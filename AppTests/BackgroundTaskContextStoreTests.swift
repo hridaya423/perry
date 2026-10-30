@@ -5,8 +5,7 @@ import PerryRuntimes
 
 final class BackgroundTaskContextStoreTests: XCTestCase {
     func testPersistsVersionedEnvelopeAndReloads() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let id = TaskID()
         let metadata = BackgroundTaskMetadata(
             targetAppBundleID: "com.apple.finder",
@@ -26,8 +25,7 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
     }
 
     func testMigratesLegacyDictionaryWithoutLosingValues() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let id = TaskID()
         let metadata = BackgroundTaskMetadata(targetWindowTitle: "Downloads")
         let fileURL = directory.appendingPathComponent("background-task-context.json")
@@ -42,8 +40,7 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
     }
 
     func testCorruptFileIsQuarantinedBeforeNewStateIsWritten() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let fileURL = directory.appendingPathComponent("background-task-context.json")
         let corrupt = Data("not-json".utf8)
         try corrupt.write(to: fileURL)
@@ -58,8 +55,7 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
     }
 
     func testUnsupportedVersionIsQuarantined() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let fileURL = directory.appendingPathComponent("background-task-context.json")
         try Data(#"{"schemaVersion":99,"values":{}}"#.utf8).write(to: fileURL)
 
@@ -73,8 +69,7 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
     }
 
     func testRestoresValidBackupAfterPrimaryFileIsCorrupted() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let id = TaskID()
         let metadata = BackgroundTaskMetadata(targetWindowTitle: "Downloads")
         let fileURL = directory.appendingPathComponent("background-task-context.json")
@@ -100,8 +95,7 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
     }
 
     func testQuarantinesInvalidPrimaryAndBackupWithoutOverwritingEither() async throws {
-        let directory = try temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let directory = try makeTemporaryDirectory()
         let fileURL = directory.appendingPathComponent("background-task-context.json")
         let backupURL = fileURL.appendingPathExtension("backup")
         let primaryData = Data("damaged-primary".utf8)
@@ -120,11 +114,5 @@ final class BackgroundTaskContextStoreTests: XCTestCase {
         XCTAssertEqual(quarantined.count, 2)
         let preserved = try Set(quarantined.map { try Data(contentsOf: $0) })
         XCTAssertEqual(preserved, Set([primaryData, backupData]))
-    }
-
-    private func temporaryDirectory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
     }
 }

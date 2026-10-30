@@ -19,31 +19,10 @@ public enum PerryPermissionProbe {
         CGPreflightScreenCaptureAccess() ? .granted : .denied
     }
 
-    /// Shows the system prompt when the OS allows one and registers Perry in
-    /// the Screen Recording list either way; returns the current grant state.
-    @discardableResult
-    public static func requestScreenRecording() -> Bool {
-        CGRequestScreenCaptureAccess()
-    }
-
-    /// Shows the Accessibility prompt when the OS allows one; returns the
-    /// current grant state.
-    @discardableResult
-    public static func requestAccessibility() -> Bool {
-        AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary)
-    }
-
     /// Push-to-talk's event tap needs Input Monitoring (listen-event) access;
     /// without it the tap fails and the shortcut is dead in other apps.
     public static func checkInputMonitoring() -> Bool {
         CGPreflightListenEventAccess()
-    }
-
-    /// Shows the system prompt when the OS allows one; returns the current
-    /// grant state.
-    @discardableResult
-    public static func requestInputMonitoring() -> Bool {
-        CGRequestListenEventAccess()
     }
 
     public static func checkMicrophone() -> PerryPermissionStatus {

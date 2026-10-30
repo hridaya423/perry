@@ -51,10 +51,6 @@ public struct TaskCheckpoint: Codable, Equatable, Sendable {
     public var isAwaitingApproval: Bool {
         suspendedStepID != nil
     }
-
-    public var suspendedActionID: String? {
-        suspendedStepID
-    }
 }
 
 public enum TaskRecoveryDisposition: String, Codable, Equatable, Sendable {

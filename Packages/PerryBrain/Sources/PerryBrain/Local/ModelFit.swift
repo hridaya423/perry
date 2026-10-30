@@ -103,7 +103,6 @@ public struct ModelRung: Equatable, Sendable {
     public static let qwen36_35B_UDQ6K = ModelRung(name: "Qwen3.6-35B-A3B", quant: "UD-Q6_K", downloadGB: 30.2, activeGB: 32.3)
     public static let qwen36_35B_Q80 = ModelRung(name: "Qwen3.6-35B-A3B", quant: "Q8_0", downloadGB: 37.8, activeGB: 39.9)
     public static let qwen38_27B_UDIQ4XS = ModelRung(name: "Qwen3.8-27B", quant: "UD-IQ4_XS", downloadGB: 15.2, activeGB: 18.1)
-    public static let qwen38_27B_UDQ4KXL = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q4_K_XL", downloadGB: 18.5, activeGB: 21.4)
     public static let qwen38_27B_UDQ5KXL = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q5_K_XL", downloadGB: 21.8, activeGB: 24.7)
     public static let qwen38_27B_UDQ6K = ModelRung(name: "Qwen3.8-27B", quant: "UD-Q6_K", downloadGB: 22.9, activeGB: 25.8)
     public static let qwen38_27B_Q80 = ModelRung(name: "Qwen3.8-27B", quant: "Q8_0", downloadGB: 30.0, activeGB: 32.9)

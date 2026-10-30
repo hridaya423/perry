@@ -3,11 +3,6 @@ import PerryCore
 
 /// The confirmation card Perry floats over the exact target before a risky action.
 public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
-    public enum Choice: String, Codable, Sendable {
-        case approve
-        case stop
-    }
-
     public let id: UUID
     public let title: String
     public let detail: String?

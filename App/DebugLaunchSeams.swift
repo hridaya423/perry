@@ -7,32 +7,9 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
-typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
-typealias FinalizationPersistenceBarrier = @Sendable () async -> Void
-
-/// Fixture seams the DEBUG harness init and `--perry-debug-*` launch
-/// arguments inject into the composition root — each replaces a production
-/// collaborator so fixtures stay deterministic. One bag so AppController
-/// doesn't carry a dozen properties that exist only for tests.
-struct DebugLaunchSeams {
-    var storageDirectory: URL?
-    var runtimeInventoryLoader: RuntimeCatalog.InventoryLoader?
-    var permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader?
-    var cuaHealthLoader: EnvironmentProbe.CuaHealthLoader?
-    var screenContextLoader: EnvironmentProbe.ScreenContextLoader?
-    var fullGuideCaptureLoader: FullGuideCaptureLoader?
-    var fullGuideContinuationBarrier: FullGuideContinuationBarrier?
-    var guidePlanner: (any GuidePlanner)?
-    var finalizationBarrier: FinalizationBarrier?
-    var typedVerifier: (any TypedActionVerifier)?
-    var confirmer: (any Confirmer)?
-    var askUser: (@Sendable (String, [String]) async throws -> Void)?
-
-    /// `--perry-debug-*` launch arguments → seams. Parsed once in the
-    /// production init; the harness init takes seams explicitly.
-    static func launch(arguments: [String]) -> DebugLaunchSeams {
-        var seams = DebugLaunchSeams()
+extension LaunchOverrides {
+    static func launch(arguments: [String]) -> LaunchOverrides {
+        var overrides = LaunchOverrides()
         if PerryDebugLaunchSurface(arguments: arguments) == .backgroundTasksStorageError,
            let index = arguments.firstIndex(of: "--perry-debug-storage-directory"),
            arguments.indices.contains(index + 1),
@@ -41,21 +18,16 @@ struct DebugLaunchSeams {
             var isDirectory = ObjCBool(false)
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
                isDirectory.boolValue {
-                seams.storageDirectory = URL(fileURLWithPath: path, isDirectory: true)
+                overrides.storageDirectory = URL(fileURLWithPath: path, isDirectory: true)
             }
         }
-        // `--perry-guide-drill` swaps the model planner for the offline
-        // AXGuidePlanner — the lab's Preview click→next-mark drill stays
-        // deterministic and needs no provider key.
         if arguments.contains("--perry-guide-drill") {
-            seams.guidePlanner = AXGuidePlanner()
+            overrides.guidePlanner = AXGuidePlanner()
         }
-        return seams
+        return overrides
     }
 }
-#endif
 
-#if DEBUG
 extension AppController {
     func debugSetMaintenanceFixture(
         skipEraseConfirmation: Bool,
@@ -72,24 +44,20 @@ extension AppController {
         maintenance.isUnderMaintenance
     }
 
-    /// Test seam for the dictated-command path — identical to what
-    /// VoiceController's dispatch hook delivers after wake word/dictation.
     func debugDispatch(_ text: String, voiceTaskScope: UUID? = nil) {
         commandRouter.route(commandText: text, voiceTaskScope: voiceTaskScope)
     }
 
-    /// Seeds the History fixture and opens History for the capture lane.
     func debugShowHistoryFixture() {
         Task { @MainActor in
             for entry in PerryDebugLaunchSurface.historyEntries() {
-                await transcriptStore.append(entry)
+                await subsystems.transcriptStore.append(entry)
             }
             showHistory()
             NSApp.activate(ignoringOtherApps: true)
         }
     }
 
-    /// Applies a deterministic `DebugStateFixture` — see DebugStateFixtures.swift.
     func applyDebugStateFixture(_ fixture: DebugStateFixture) {
         switch fixture {
         case .permissionDenied:
@@ -108,11 +76,10 @@ extension AppController {
         }
     }
 
-    /// True when an early-return debug surface consumed the launch path.
     func debugHandleEarlyLaunchSurface() -> Bool {
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == .backgroundTasksStorageError {
-            guard debugSeams.storageDirectory != nil else { return true }
+            guard overrides.storageDirectory != nil else { return true }
             DispatchQueue.main.async { [weak self] in
                 self?.showDebugBackgroundTasksStorageError()
             }
@@ -121,8 +88,6 @@ extension AppController {
         return false
     }
 
-    /// Presents the --perry-debug-* surface the launch arguments asked for
-    /// (or runs onboarding when none did), then applies any state fixture.
     func applyDebugLaunchSurface() {
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == nil {
@@ -144,12 +109,12 @@ extension AppController {
         } else if debugSurface == .activity {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.foreground.debugShowActivityFixture()
+                self.subsystems.foreground.debugShowActivityFixture()
             }
         } else if debugSurface == .guideControls {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.guideCoordinator.debugShowGuideControlsFixture()
+                self.subsystems.guideCoordinator.debugShowGuideControlsFixture()
             }
         } else if debugSurface == .history {
             DispatchQueue.main.async { [weak self] in
@@ -157,11 +122,11 @@ extension AppController {
             }
         } else if debugSurface == .intentCard {
             DispatchQueue.main.async {
-                Task { @MainActor in _ = await IntentCardPresenter.shared.present(card: PerryDebugLaunchSurface.intentCardFixture, allowsStepThrough: true) }
+                Task { @MainActor in _ = await IntentCardPresenter.shared.present(card: PerryDebugLaunchSurface.intentCardFixture) }
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
+                self?.subsystems.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
             }
         } else if debugSurface == .backgroundTasksStorageError {
             DispatchQueue.main.async { [weak self] in
@@ -178,24 +143,24 @@ extension AppController {
     func runFailureDrill(_ drill: FailureDrill) {
         switch drill {
         case .routeFlip:
-            voice.speak("The audio route drill is speaking now.")
+            subsystems.voice.speak("The audio route drill is speaking now.")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.voice.debugSimulateAudioRouteChange("simulated AirPods")
+                self?.subsystems.voice.debugSimulateAudioRouteChange("simulated AirPods")
             }
         case .microphoneWedge:
-            voice.debugSimulateDictationFailure()
+            subsystems.voice.debugSimulateDictationFailure()
         case .mutedOutput:
             let message = "This reply is from the muted-output recovery drill."
-            voice.speak(message)
+            subsystems.voice.speak(message)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.voice.copyReplyToClipboard(
+                self?.subsystems.voice.copyReplyToClipboard(
                     message,
                     status: "Muted-output drill passed; the reply is on your clipboard."
                 )
             }
         case .runtimeMissing:
             runOnboarding(force: true)
-            voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
+            subsystems.voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
         }
     }
 
@@ -209,19 +174,16 @@ extension AppController {
             let now = ProcessInfo.processInfo.systemUptime
             switch note.userInfo?["phase"] as? String {
             case "down":
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control, .option], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control, .option], isFlagsChanged: true, tapDisabled: false)
             case "up":
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [], isFlagsChanged: true, tapDisabled: false)
             default:
                 break
             }
         }
     }
-    /// Phase-3 lab seam: `app.perry.guide-drill` notifications carrying a
-    /// `goal` string start a real guide session on the frontmost app —
-    /// scripts/lab/guide-drill.sh drives Preview through it end to end.
     func installGuideDrillTrigger() {
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill"),
@@ -231,7 +193,7 @@ extension AppController {
             guard let self,
                   let goal = note.userInfo?["goal"] as? String,
                   !goal.isEmpty else { return }
-            _ = self.guideCoordinator.startGuiding(goal: goal)
+            _ = self.subsystems.guideCoordinator.startGuiding(goal: goal)
         }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill-click"),
@@ -242,7 +204,7 @@ extension AppController {
                   let x = (note.userInfo?["x"] as? NSNumber)?.doubleValue,
                   let y = (note.userInfo?["y"] as? NSNumber)?.doubleValue else { return }
             guard note.userInfo?["real"] as? Bool == true else {
-                self.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
+                self.subsystems.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
                 return
             }
             let point = CGPoint(x: x, y: y)
@@ -256,25 +218,21 @@ extension AppController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.guideCoordinator.dismissIfActive()
+            self?.subsystems.guideCoordinator.dismissIfActive()
         }
-        // A postcondition-less step parks at .stillWaiting after a real hit —
-        // the shipped UX resolves that with the controls' Done button, which
-        // routes to advanceGuide()/engine.userActed(). The drill drives the
-        // identical path.
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill-done"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.guideCoordinator.advanceGuide()
+            self?.subsystems.guideCoordinator.advanceGuide()
         }
     }
 
     func installOverlayDump() {
         guard let path = ProcessInfo.processInfo.environment["PERRY_OVERLAY_DUMP"] else { return }
         FileManager.default.createFile(atPath: path, contents: nil)
-        overlayDump = overlayState.$visualGuidanceOverlays.sink { overlays in
+        overlayDump = subsystems.overlayState.$visualGuidanceOverlays.sink { overlays in
             let row: [String: Any] = [
                 "at": Date().timeIntervalSince1970,
                 "overlays": overlays.compactMap { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode($0))) },
@@ -299,7 +257,7 @@ extension AppController {
     }
 
     func showDebugBackgroundTasksStorageError() {
-        homeController.openHome(selection: .tasks)
+        subsystems.homeController.openHome(selection: .tasks)
     }
 }
 #endif
