@@ -7,7 +7,7 @@ protocol RunHandle: AnyObject {
     func pause()
     func resume()
     func steer(_ instruction: String)
-    func stop() async
+    @discardableResult func stop() -> Task<Void, Never>
 }
 
 @MainActor
@@ -24,7 +24,10 @@ final class AgentRunHandle: RunHandle {
     func pause() { coordinator.pause(threadID: threadID) }
     func resume() { coordinator.resume(threadID: threadID) }
     func steer(_ instruction: String) { coordinator.steer(instruction, threadID: threadID) }
-    func stop() async { coordinator.stop(threadID: threadID) }
+    func stop() -> Task<Void, Never> {
+        coordinator.stop(threadID: threadID)
+        return Task {}
+    }
 }
 
 @MainActor
@@ -39,5 +42,5 @@ final class SupervisorRunHandle: RunHandle {
     func pause() { Task { await supervisor.pause() } }
     func resume() { Task { await supervisor.resume() } }
     func steer(_ instruction: String) { Task { await supervisor.steer(instruction) } }
-    func stop() async { await supervisor.cancel() }
+    func stop() -> Task<Void, Never> { Task { await supervisor.cancel() } }
 }

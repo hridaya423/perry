@@ -510,7 +510,7 @@ final class ForegroundTaskController: ObservableObject {
         hooks.setStatus("Planning the rest from the current screen.")
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await activeRun.stop()
+            await activeRun.stop().value
             for _ in 0..<100 where self.activeRun != nil {
                 try? await Task.sleep(for: .milliseconds(50))
             }
@@ -526,11 +526,11 @@ final class ForegroundTaskController: ObservableObject {
         guard let activeRun, sessionController.requestStop() == .stopExecution else { return }
         hooks.setStatus("Stopping safely…")
         hooks.dismissIntentCard()
-        Task { await activeRun.stop() }
+        activeRun.stop()
     }
 
     func cancelActiveSupervisor() async {
-        await activeRun?.stop()
+        await activeRun?.stop().value
     }
 
     func steer(_ instruction: String) {
