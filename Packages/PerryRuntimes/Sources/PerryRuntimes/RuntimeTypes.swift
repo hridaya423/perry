@@ -131,7 +131,6 @@ public enum TypedDoEvent: Sendable {
 }
 
 public enum DoEvent: Sendable {
-    case starting(deadline: Date?)
     case planned(steps: Int)
     case started
     case paused

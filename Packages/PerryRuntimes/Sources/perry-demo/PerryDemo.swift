@@ -16,8 +16,6 @@ struct PerryDemo {
         await runWorkspaceDemo()
     }
 
-    /// Fabricated typed plan → DoSupervisor → workspace file execution:
-    /// the same execution pipeline routine replay drives, without a planner.
     private static func runWorkspaceDemo() async {
         let workDirectory = makeWorkspace(named: "workspace")
         defer { try? FileManager.default.removeItem(at: workDirectory) }
@@ -31,7 +29,6 @@ struct PerryDemo {
             workspace: workDirectory,
             taskID: taskID
         )
-        // A multi-action plan exercises the supervisor's ordered execution.
         let extra = (2...3).compactMap { index -> ExecutableAction? in
             try? ExecutableAction(
                 id: ActionID(UUID().uuidString),

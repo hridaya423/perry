@@ -48,7 +48,6 @@ final class ForegroundTaskController: ObservableObject {
 
     private lazy var routines = RoutineRunner(
         sessionController: sessionController,
-        workers: workers,
         probe: probe,
         remoteIntegrationExecutor: remoteIntegrationExecutor,
         activityLog: activityLog,
