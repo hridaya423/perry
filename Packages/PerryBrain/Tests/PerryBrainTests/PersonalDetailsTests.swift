@@ -60,8 +60,8 @@ final class PersonalDetailsTests: XCTestCase {
             .toolCall(ToolCall(id: "1", name: "mail.send", arguments: .object(["to": .string("⟨EMAIL_1⟩")]))),
             .done(.endTurn)
         ]])
-        let provider = RedactingProvider.wrap(base, vaults: RedactionVaults(knownNames: { ["Hridya"] }))
-        XCTAssertFalse(provider is any ToolExecutingModelProvider)
+        let provider = RedactingProvider(base: base, vaults: RedactionVaults(knownNames: { ["Hridya"] }))
+        XCTAssertFalse(provider.executesTools)
         var text = ""
         var calls: [ToolCall] = []
         let request = ModelRequest(system: "The user is Hridya.", messages: [.user([.text("Email sam@example.com for me")])])
@@ -79,7 +79,8 @@ final class PersonalDetailsTests: XCTestCase {
 }
 
 final class RedactingToolProviderTests: XCTestCase {
-    private final class Native: ToolExecutingModelProvider, @unchecked Sendable {
+    private final class Native: ModelProvider, @unchecked Sendable {
+        let executesTools = true
         let id: ProviderID = "native"
         let displayName = "Native"
         let capabilities: ModelCapabilities = [.tools]
@@ -101,8 +102,7 @@ final class RedactingToolProviderTests: XCTestCase {
 
     func testToolsRunOnRealValuesAndResultsLeaveRedacted() async throws {
         let native = Native()
-        let provider = RedactingProvider.wrap(native, vaults: RedactionVaults(knownNames: { [] }))
-        let tooling = try XCTUnwrap(provider as? any ToolExecutingModelProvider)
+        let tooling = RedactingProvider(base: native, vaults: RedactionVaults(knownNames: { [] }))
         var executed: ToolCall?
         let request = ModelRequest(messages: [.user([.text("Can you find the number for Priya Patel?")])], conversationKey: "thread-1")
         for try await _ in tooling.stream(request, executeTool: { call in

@@ -515,7 +515,8 @@ final class AgentLoopTests: XCTestCase {
     }
 }
 
-private struct UnexpectedNativeCallProvider: ToolExecutingModelProvider {
+private struct UnexpectedNativeCallProvider: ModelProvider {
+    let executesTools = true
     let id: ProviderID = "native-test"
     let displayName = "Native test"
     let capabilities: ModelCapabilities = [.streaming]

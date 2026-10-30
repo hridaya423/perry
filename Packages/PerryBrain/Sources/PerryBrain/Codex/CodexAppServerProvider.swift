@@ -18,7 +18,9 @@ public struct ToolCallResult: Sendable {
 
 public typealias ToolCallHandler = @Sendable (ToolCall) async -> ToolCallResult
 
-public final class CodexAppServerProvider: ToolExecutingModelProvider, @unchecked Sendable {
+public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
+    public var executesTools: Bool { true }
+
     public let id: ProviderID = .codex
     public let displayName = "ChatGPT (Codex)"
     public let capabilities: ModelCapabilities

@@ -49,7 +49,8 @@ private struct HangingProvider: ModelProvider {
     func warm() async {}
 }
 
-private struct ScriptableToolProvider: ToolExecutingModelProvider {
+private struct ScriptableToolProvider: ModelProvider {
+    let executesTools = true
     let id: ProviderID
     let displayName = "Scriptable tools"
     let capabilities: ModelCapabilities
@@ -205,7 +206,7 @@ final class ProviderRouterTests: XCTestCase {
             ScriptableToolProvider(id: .openAI, capabilities: [.vision, .tools, .streaming]),
         ])
         let decision = try await router.route(RouteRequirement(capabilities: [.vision, .tools], tier: .fast))
-        XCTAssertTrue(decision.provider is any ToolExecutingModelProvider)
+        XCTAssertTrue(decision.provider.executesTools)
     }
 
     func testNoQualifyingProviderThrows() async throws {

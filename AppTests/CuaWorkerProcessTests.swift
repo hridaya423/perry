@@ -859,7 +859,8 @@ private actor WorkerCaptures {
     }
 }
 
-private struct ObserveThenClickProvider: ToolExecutingModelProvider {
+private struct ObserveThenClickProvider: ModelProvider {
+    let executesTools = true
     var pauseBeforeClick = false
     var explicitTarget = true
     let id = ProviderID.codex

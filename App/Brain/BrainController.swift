@@ -645,8 +645,9 @@ final class BrainController: ObservableObject {
         return result
     }
 
-    private func localProvider(_ model: LocalModel, capabilities: ModelCapabilities) -> OpenAIChatCompatibleProvider {
-        OpenAIChatCompatibleProvider(
+    private func localProvider(_ model: LocalModel, capabilities: ModelCapabilities) -> HTTPModelProvider {
+        HTTPModelProvider(
+            wire: .openAIChat,
             id: model.id, displayName: "\(model.name) (on this Mac)", baseURL: model.baseURL,
             models: BrainModelDefaults(fast: model.name, deep: model.name),
             capabilities: capabilities, transport: transport,

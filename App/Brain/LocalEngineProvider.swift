@@ -37,9 +37,10 @@ struct LocalEngineProvider: ModelProvider {
         LocalEngine.contextTokens
     }
 
-    private func server() async throws -> OpenAIChatCompatibleProvider {
+    private func server() async throws -> HTTPModelProvider {
         let live = try await endpoint()
-        return OpenAIChatCompatibleProvider(
+        return HTTPModelProvider(
+            wire: .openAIChat,
             id: id, displayName: displayName, baseURL: live.baseURL.deletingLastPathComponent(),
             apiKeyProvider: { live.apiKey }, models: BrainModelDefaults(fast: "local", deep: "local"),
             capabilities: capabilities

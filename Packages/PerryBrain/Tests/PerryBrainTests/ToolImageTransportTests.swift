@@ -16,7 +16,7 @@ final class ToolImageTransportTests: XCTestCase {
     }
 
     func testAnthropicRetainsImageInsideMatchingToolResult() throws {
-        let provider = AnthropicMessagesProvider(apiKeyProvider: { "test" })
+        let provider = HTTPModelProvider.preset("anthropic")
         let body = try JSONValue(parsing: XCTUnwrap(provider.makeRequest(request).httpBody))
         let messages = try XCTUnwrap(body["messages"]?.arrayValue)
         let results = messages.flatMap { $0["content"]?.arrayValue ?? [] }
@@ -28,7 +28,7 @@ final class ToolImageTransportTests: XCTestCase {
     }
 
     func testResponsesRetainsImageInsideMatchingToolOutput() throws {
-        let provider = OpenAIResponsesProvider(apiKeyProvider: { "test" })
+        let provider = HTTPModelProvider.preset("openai")
         let body = try JSONValue(parsing: XCTUnwrap(provider.makeRequest(request).httpBody))
         let input = try XCTUnwrap(body["input"]?.arrayValue)
         let result = try XCTUnwrap(input.first { $0["type"] == .string("function_call_output") })
@@ -39,7 +39,7 @@ final class ToolImageTransportTests: XCTestCase {
     }
 
     func testChatPlacesToolImagesAfterAllParallelResults() throws {
-        let provider = OpenAIChatCompatibleProvider(id: "test", displayName: "Test", baseURL: URL(string: "https://fixture.invalid")!, models: BrainModelCatalog.openRouter)
+        let provider = HTTPModelProvider(wire: .openAIChat, id: "test", displayName: "Test", baseURL: URL(string: "https://fixture.invalid")!, models: BrainModelCatalog.openRouter)
         let body = try JSONValue(parsing: XCTUnwrap(provider.makeRequest(request).httpBody))
         let messages = try XCTUnwrap(body["messages"]?.arrayValue)
         XCTAssertEqual(messages.compactMap { $0["role"]?.stringValue }, ["assistant", "tool", "tool", "user", "user"])
@@ -52,7 +52,7 @@ final class ToolImageTransportTests: XCTestCase {
     }
 
     func testGeminiPreservesToolResponsesAndImageInOneUserTurn() throws {
-        let provider = GeminiProvider(apiKeyProvider: { "test" })
+        let provider = HTTPModelProvider.preset("gemini")
         let body = try JSONValue(parsing: XCTUnwrap(provider.makeRequest(request).httpBody))
         let contents = try XCTUnwrap(body["contents"]?.arrayValue)
         XCTAssertEqual(contents.compactMap { $0["role"]?.stringValue }, ["model", "user"])

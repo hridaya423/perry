@@ -7,9 +7,7 @@ public struct ModelCapabilities: OptionSet, Sendable, Hashable {
     public static let vision = Self(rawValue: 1 << 0)
     public static let tools = Self(rawValue: 1 << 1)
     public static let streaming = Self(rawValue: 1 << 2)
-    public static let realtimeAudio = Self(rawValue: 1 << 3)
     public static let local = Self(rawValue: 1 << 4)
-    public static let longContext = Self(rawValue: 1 << 5)
 }
 
 public enum ModelTier: String, Sendable, Codable {
@@ -154,19 +152,21 @@ public protocol ModelProvider: Sendable {
     var id: ProviderID { get }
     var displayName: String { get }
     var capabilities: ModelCapabilities { get }
+    var executesTools: Bool { get }
     func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error>
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error>
     func warm() async
     func contextWindow(for tier: ModelTier) async throws -> Int?
 }
 
 public typealias ToolExecutionHandler = @Sendable (ToolCall) async throws -> ToolResult
 
-public protocol ToolExecutingModelProvider: ModelProvider {
-    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error>
-}
-
 extension ModelProvider {
+    public var executesTools: Bool { false }
     public func contextWindow(for tier: ModelTier) async throws -> Int? { nil }
+    public func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
+        stream(request)
+    }
 }
 
 enum ModelContextError: LocalizedError {

@@ -1,6 +1,8 @@
 import Foundation
 
-public final class ClaudeCodeProvider: ToolExecutingModelProvider, @unchecked Sendable {
+public final class ClaudeCodeProvider: ModelProvider, @unchecked Sendable {
+    public var executesTools: Bool { true }
+
     public let id: ProviderID = .claudeCode
     public let displayName = "Claude Code"
     public let capabilities: ModelCapabilities = [.vision, .tools, .streaming]

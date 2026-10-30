@@ -6,7 +6,8 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
     func testVersionedCustomBaseURLsDoNotRepeatTheVersionPath() async throws {
         for base in ["https://models.example.invalid", "https://models.example.invalid/v1", "https://models.example.invalid/v1/"] {
             let transport = try FixtureLineStreaming(fixture: "chat-text")
-            let provider = OpenAIChatCompatibleProvider(
+            let provider = HTTPModelProvider(
+                wire: .openAIChat,
                 id: "custom", displayName: "Custom", baseURL: URL(string: base)!,
                 models: BrainModelDefaults(fast: "test-model", deep: "test-model"), transport: transport
             )
@@ -15,8 +16,9 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
         }
     }
 
-    private func provider(_ transport: FixtureLineStreaming) -> OpenAIChatCompatibleProvider {
-        OpenAIChatCompatibleProvider(
+    private func provider(_ transport: FixtureLineStreaming) -> HTTPModelProvider {
+        HTTPModelProvider(
+            wire: .openAIChat,
             id: .openRouter,
             displayName: "OpenRouter",
             baseURL: URL(string: "https://openrouter.ai/api")!,
@@ -42,7 +44,8 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
     }
 
     func testContextCapacityIsReadThroughTheSelectedProvider() async throws {
-        let provider: any ModelProvider = OpenAIChatCompatibleProvider(
+        let provider: any ModelProvider = HTTPModelProvider(
+            wire: .openAIChat,
             id: "local.test", displayName: "Local", baseURL: URL(string: "http://127.0.0.1:11434")!,
             models: BrainModelDefaults(fast: "model:7b", deep: "model:7b"),
             contextWindow: { tier in tier == .fast ? 4096 : 8192 }
@@ -51,7 +54,8 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
         let deep = try await provider.contextWindow(for: .deep)
         XCTAssertEqual(fast, 4096)
         XCTAssertEqual(deep, 8192)
-        let unknown: any ModelProvider = OpenAIChatCompatibleProvider(
+        let unknown: any ModelProvider = HTTPModelProvider(
+            wire: .openAIChat,
             id: "custom", displayName: "Custom", baseURL: URL(string: "https://models.example.invalid")!,
             models: BrainModelDefaults(fast: "model", deep: "model")
         )
@@ -140,7 +144,8 @@ final class OpenAIChatCompatibleProviderTests: XCTestCase {
     }
 
     func testLocalHostMarkedLocal() {
-        let local = OpenAIChatCompatibleProvider(
+        let local = HTTPModelProvider(
+            wire: .openAIChat,
             id: "local.ollama", displayName: "Ollama",
             baseURL: URL(string: "http://127.0.0.1:11434")!,
             models: BrainModelDefaults(fast: "m", deep: "m")

@@ -142,13 +142,8 @@ public actor AgentLoop {
                 let capacity = try await provider.contextWindow(for: tier)
                 try Task.checkCancellation()
                 let request = try ModelRequest(system: system, messages: Self.trimmingStaleObservations(messages), tools: tools, tier: tier, conversationKey: context.threadID).reservingOutput(in: capacity)
-                let stream: AsyncThrowingStream<ModelEvent, Error>
-                if let native = provider as? any ToolExecutingModelProvider {
-                    stream = native.stream(request) { call in
-                        try await self.executeTool(call, context: context, allowedTools: allowedTools, deadline: deadline, sink: sink)
-                    }
-                } else {
-                    stream = provider.stream(request)
+                let stream = provider.stream(request) { call in
+                    try await self.executeTool(call, context: context, allowedTools: allowedTools, deadline: deadline, sink: sink)
                 }
                 for try await event in stream {
                     if Task.isCancelled { finish(.interrupted); return }
@@ -157,7 +152,7 @@ public actor AgentLoop {
                         text += delta
                         sink.yield(.textDelta(separated(delta)))
                     case .toolCall(let call):
-                        if !(provider is any ToolExecutingModelProvider) { calls.append(call) }
+                        if !provider.executesTools { calls.append(call) }
                     case .done(.cancelled): finish(.interrupted); return
                     case .done(.maxTokens): finish(.failed("The answer reached the model’s output limit.")); return
                     case .done(let reason): stopReason = reason

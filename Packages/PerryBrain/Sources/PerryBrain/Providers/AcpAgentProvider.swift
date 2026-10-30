@@ -46,7 +46,9 @@ public struct AcpAgent: Sendable, Equatable, Codable, Identifiable {
     }
 }
 
-public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Sendable {
+public final class AcpAgentProvider: ModelProvider, @unchecked Sendable {
+    public var executesTools: Bool { true }
+
     public let id: ProviderID
     public let displayName: String
     public let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
