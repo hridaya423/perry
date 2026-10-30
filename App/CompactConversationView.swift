@@ -73,7 +73,7 @@ struct CompactConversationView: View {
         }
         .opacity(reduceMotion && !expansion.open ? 0 : 1)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(reduceMotion ? NotchMotion.reducedResize : NotchMotion.resize, value: size)
+        .animation(reduceMotion ? PerryTheme.Motion.reducedResize : PerryTheme.Motion.resize, value: size)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
         .preferredColorScheme(.dark)

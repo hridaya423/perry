@@ -144,7 +144,7 @@ struct PermissionHelperView: View {
         .background(PerryTheme.Colors.crown, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(PerryTheme.Colors.veil(0.1), lineWidth: 1)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .environment(\.colorScheme, .dark)

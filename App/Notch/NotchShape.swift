@@ -46,7 +46,7 @@ extension NotchShape {
                     .frame(height: crown + 80)
             }
             .clipShape(self)
-            .overlay(stroke(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.16)],
+            .overlay(stroke(LinearGradient(colors: [PerryTheme.Colors.veil(0), PerryTheme.Colors.veil(0.16)],
                                            startPoint: .top, endPoint: .bottom), lineWidth: 1))
             .shadow(color: .black.opacity(lifted ? 0.35 : 0), radius: 2, y: 1)
             .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: 18, y: 8)

@@ -177,7 +177,7 @@ struct SettingsSidebar: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
-                    .fill(Color.white.opacity(selected ? 0.1 : 0))
+                    .fill(PerryTheme.Colors.veil(selected ? 0.1 : 0))
             )
             .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
         }
@@ -224,7 +224,7 @@ struct SettingsCard<Content: View>: View {
             .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+                    .strokeBorder(PerryTheme.Colors.veil(0.05), lineWidth: 1)
             )
             if let footer {
                 Text(footer)
@@ -332,7 +332,7 @@ extension View {
 
 extension View {
     func settingNote() -> some View {
-        font(PerryTheme.Typography.note)
+        font(PerryTheme.Scale.secondary)
             .foregroundStyle(PerryTheme.Colors.textSecondary)
     }
 }

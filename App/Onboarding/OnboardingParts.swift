@@ -93,7 +93,7 @@ struct OnboardingLinkStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .font(.system(size: 13, weight: .medium))
+                .font(PerryTheme.Scale.chip)
                 .foregroundStyle(hovering ? PerryTheme.Colors.text : PerryTheme.Colors.textSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -139,7 +139,7 @@ struct OnboardingRow<Leading: View, Trailing: View>: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(PerryTheme.Colors.text)
                 Text(detail)
-                    .font(.system(size: 12))
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .lineLimit(1)
             }
@@ -162,11 +162,11 @@ struct RowButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .medium))
+            .font(PerryTheme.Scale.chip)
             .foregroundStyle(prominent ? PerryTheme.Colors.onPrimaryAction : PerryTheme.Colors.text)
             .padding(.horizontal, 14)
             .frame(height: 28)
-            .background(prominent ? PerryTheme.Colors.primaryAction : Color.white.opacity(0.08), in: Capsule())
+            .background(prominent ? PerryTheme.Colors.primaryAction : PerryTheme.Colors.veil(0.08), in: Capsule())
             .controlFeedback(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
@@ -182,7 +182,7 @@ struct GrantedMark: View {
         } icon: {
             StatusMark(.ok)
         }
-        .font(.system(size: 13, weight: .medium))
+        .font(PerryTheme.Scale.chip)
         .foregroundStyle(PerryTheme.Colors.success)
     }
 }

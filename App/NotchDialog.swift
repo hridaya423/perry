@@ -99,7 +99,7 @@ struct NotchDialogView: View {
                 .accessibilityAddTraits(.isHeader)
             if let message, !message.isEmpty {
                 Text(message)
-                    .font(PerryTheme.Typography.settingsStatus.weight(.medium))
+                    .font(PerryTheme.Scale.secondary.weight(.medium))
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

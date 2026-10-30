@@ -52,15 +52,15 @@ struct IntegrationRow: View {
                 BrandMark(id: definition.id, name: definition.displayName)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(definition.displayName)
-                        .font(PerryTheme.Typography.panelBody.weight(.semibold))
+                        .font(PerryTheme.Scale.body.weight(.semibold))
                     Text(definition.connectionHint)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 Spacer(minLength: 8)
                 if connected {
                     StatusLabel("Connected", .ok)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.success)
                     Menu {
                         Button("Test connection") { testConnection() }
@@ -99,7 +99,7 @@ struct IntegrationRow: View {
             if !connected && hasBundledClient {
                 Button(settingUp ? "Cancel own setup" : "Use your own setup") { settingUp.toggle() }
                     .buttonStyle(.pressable)
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .underline()
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .accessibilityLabel(settingUp ? "Cancel own setup for \(definition.displayName)" : "Use your own setup for \(definition.displayName)")
@@ -107,12 +107,12 @@ struct IntegrationRow: View {
             if !connected && settingUp {
                 VStack(alignment: .leading, spacing: 12) {
                     Text((hasBundledClient ? "Sign in with your own setup for \(definition.displayName) instead of Perry’s. " : "\(definition.displayName) needs your own sign-in setup. ") + definition.redirectInstructions)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if definition.showsCallbackURL {
                         Text(OAuthConfiguration.defaultRedirectURI.absoluteString)
-                            .font(PerryTheme.Typography.monoSmall)
+                            .font(PerryTheme.Scale.monoSmall)
                             .textSelection(.enabled)
                     }
                     TextField("OAuth client ID", text: $clientID)
@@ -129,7 +129,7 @@ struct IntegrationRow: View {
                         .controlSize(.small)
                         .disabled(!canConnect || operationState.isWorking)
                         Text(definition.writesEnabledByDefault ? "Read and write access." : "Read-only until you allow writes.")
-                            .font(PerryTheme.Typography.note)
+                            .font(PerryTheme.Scale.secondary)
                             .foregroundStyle(PerryTheme.Colors.textSecondary)
                     }
                 }
@@ -141,11 +141,11 @@ struct IntegrationRow: View {
                     set: { value in setWrites(value) }
                 ))
                 .toggleStyle(InkSwitchStyle())
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
             }
             if connected {
                 Text(definition.writesEnabledByDefault ? "Perry can read and make changes." : "Read-only to start. Perry asks before it makes changes.")
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
             if let message = operationState.message {
@@ -153,7 +153,7 @@ struct IntegrationRow: View {
                     operationStatusIcon
                     Text(message)
                 }
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(operationStatusColor)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(operationState.accessibilityLabel ?? message)

@@ -120,7 +120,7 @@ struct ChipStyle: ButtonStyle {
             .foregroundStyle(PerryTheme.Colors.textSecondary)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(Capsule().fill(Color.white.opacity(configuration.isPressed ? 0.1 : 0.05)))
+            .background(Capsule().fill(PerryTheme.Colors.veil(configuration.isPressed ? 0.1 : 0.05)))
             .overlay(Capsule().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
             .clipShape(Capsule())
             .controlFeedback(Capsule())

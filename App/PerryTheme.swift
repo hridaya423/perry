@@ -16,12 +16,12 @@ enum PerryTheme {
         static let primaryAction = color(light: 0x202420, dark: 0xF5F2EA)
         static let onPrimaryAction = color(light: 0xFFFEFA, dark: 0x0C0D0E)
         static let crown = Color.black
+        static func veil(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
         static let eye = color(light: 0xF4F1E8, dark: 0xF4F1E8)
-        static let accent = color(light: 0x3C7765, dark: 0x9CCBB6)
+        static let accent = color(light: 0x3C7765, dark: PerryOverlayTheme.Colors.accentRGB)
         static let onAccent = color(light: 0xFFFEFA, dark: 0x0C0D0E)
-        static let success = color(light: 0x3C7765, dark: 0x9CCBB6)
+        static let success = accent
         static let caution = color(light: 0xA05A00, dark: 0xFF9F0A)
-        static let warning = caution
         static let danger = color(light: 0xD70015, dark: 0xFF6B63)
 
         private static func color(light: Int, dark: Int) -> Color {
@@ -39,21 +39,6 @@ enum PerryTheme {
         }
     }
 
-    enum Typography {
-        static let panelTitle = Font.system(.headline, weight: .semibold)
-        static let panelBody = Font.body
-        static let panelSubtitle = Font.subheadline
-        static let panelMetadata = Font.system(size: 12, weight: .medium)
-        static let panelClose = Font.system(size: 12, weight: .semibold)
-        static let panelIcon = Font.callout.weight(.semibold)
-        static let action = Font.callout.weight(.medium)
-        static let settingsStatus = Font.callout
-        static let note = Font.system(size: 12)
-        static let mono = Font.system(size: 12, design: .monospaced)
-        static let monoSmall = Font.system(size: 11, design: .monospaced)
-        static let value = Font.callout.monospacedDigit()
-    }
-
     enum Scale {
         static let display = Font.system(size: 26, weight: .semibold, design: .serif)
         static let heading = Font.system(size: 20, weight: .semibold, design: .serif)
@@ -68,6 +53,9 @@ enum PerryTheme {
         static let code = Font.system(size: 12, design: .monospaced)
         static let meta = Font.system(size: 11, weight: .medium).monospacedDigit()
         static let section = Font.system(size: 11, weight: .semibold)
+        static let close = Font.system(size: 12, weight: .semibold)
+        static let monoSmall = Font.system(size: 11, design: .monospaced)
+        static let value = Font.callout.monospacedDigit()
     }
 
     enum Icon {
@@ -79,7 +67,6 @@ enum PerryTheme {
     }
 
     enum Spacing {
-        static let label = CGFloat(1)
         static let tight = CGFloat(2)
         static let control = CGFloat(6)
         static let inline = CGFloat(8)
@@ -98,10 +85,7 @@ enum PerryTheme {
         static let panelWidth = CGFloat(480)
         static let panelHeight = CGFloat(380)
         static let onboardingContentWidth = CGFloat(560)
-        static let iconButton = CGFloat(32)
         static let statusDot = CGFloat(7)
-        static let progressWidth = CGFloat(70)
-        static let protocolPickerWidth = CGFloat(190)
         static let speechRateValueWidth = CGFloat(40)
         static let realtimeRateValueWidth = CGFloat(48)
         static let captionOpacityValueWidth = CGFloat(44)
@@ -116,5 +100,12 @@ enum PerryTheme {
         static let exit = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.18)
         static let progress = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.32)
         static let draw = Animation.timingCurve(0.65, 0, 0.35, 1, duration: 0.9)
+        static let open = Animation.spring(response: 0.36, dampingFraction: 0.78)
+        static let close = Animation.spring(response: 0.30, dampingFraction: 0.95)
+        static let resize = Animation.spring(response: 0.32, dampingFraction: 0.90)
+        static let contentIn = Animation.easeOut(duration: 0.16).delay(0.04)
+        static let contentOut = Animation.easeOut(duration: 0.10)
+        static let reduced = Animation.easeInOut(duration: 0.15)
+        static let reducedResize = Animation.easeInOut(duration: 0.18)
     }
 }

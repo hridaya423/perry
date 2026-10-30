@@ -132,7 +132,7 @@ struct GuideControlsView: View {
                             .font(.callout.weight(.semibold))
                             .monospacedDigit()
                             .frame(width: 32, height: 32)
-                            .background(Color.white.opacity(0.06), in: Circle())
+                            .background(PerryTheme.Colors.veil(0.06), in: Circle())
                             .overlay(Circle().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
                     }
                     .buttonStyle(.pressable)

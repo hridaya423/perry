@@ -402,7 +402,7 @@ struct NotchWorkspaceView: View {
     private func selectionPill(_ selected: Bool) -> some View {
         if selected {
             RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
-                .fill(Color.white.opacity(0.1))
+                .fill(PerryTheme.Colors.veil(0.1))
                 .matchedGeometryEffect(id: "railSelection", in: railNamespace)
         }
     }
@@ -609,7 +609,7 @@ struct RailRowStyle: ButtonStyle {
             configuration.label
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.white.opacity(configuration.isPressed ? 0.1 : hovering ? 0.05 : 0))
+                        .fill(PerryTheme.Colors.veil(configuration.isPressed ? 0.1 : hovering ? 0.05 : 0))
                 )
                 .overlay {
                     if isFocused { RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).strokeBorder(PerryTheme.Colors.accent, lineWidth: 2) }

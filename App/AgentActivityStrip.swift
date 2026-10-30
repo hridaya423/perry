@@ -203,7 +203,7 @@ struct AgentActivityStripView: View {
                             if let verification = step.verification {
                                 Text(verification)
                                     .font(PerryTheme.Scale.chip)
-                                    .foregroundStyle(verification.hasPrefix("Checked") ? PerryTheme.Colors.success : PerryTheme.Colors.warning)
+                                    .foregroundStyle(verification.hasPrefix("Checked") ? PerryTheme.Colors.success : PerryTheme.Colors.caution)
                             }
                         }
                     }
@@ -351,7 +351,7 @@ struct AgentActivityStripView: View {
     private func color(for tier: TrustTier?) -> Color {
         switch tier {
         case .yellow: return PerryTheme.Colors.caution
-        case .orange: return PerryTheme.Colors.warning
+        case .orange: return PerryTheme.Colors.caution
         case .red: return PerryTheme.Colors.danger
         default: return PerryTheme.Colors.accent
         }

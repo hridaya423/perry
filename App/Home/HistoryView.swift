@@ -195,7 +195,7 @@ struct HistoryRow: View {
                         if let verified = entry.verified {
                             StatusLabel(verified ? "Checked" : "Needs checking", verified ? .ok : .attention, tint: emphasized ? selectionText : nil)
                                 .font(PerryTheme.Scale.meta)
-                                .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
+                                .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.caution))
                         }
                     }
                 }

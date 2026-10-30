@@ -45,7 +45,7 @@ struct VoiceSettingsPage: View {
                         .frame(width: 180)
                         .onChange(of: speechRate) { _, _ in save() }
                     Text("\(speechRate, specifier: "%.1f")×")
-                        .font(PerryTheme.Typography.value)
+                        .font(PerryTheme.Scale.value)
                         .frame(width: PerryTheme.Sizing.speechRateValueWidth, alignment: .trailing)
                 }
             }
@@ -55,7 +55,7 @@ struct VoiceSettingsPage: View {
                     InkSlider(value: $captionOpacity, range: 0.55...1.0, step: 0.05, label: "Caption opacity")
                         .frame(width: 180)
                     Text("\(captionOpacity * 100, specifier: "%.0f")%")
-                        .font(PerryTheme.Typography.value)
+                        .font(PerryTheme.Scale.value)
                         .frame(width: PerryTheme.Sizing.captionOpacityValueWidth, alignment: .trailing)
                 }
             }

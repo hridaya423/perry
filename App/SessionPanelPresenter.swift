@@ -54,8 +54,8 @@ final class SessionPanelPresenter {
             }
             return
         }
-        withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.open) { expansion.open = true }
-        withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.contentIn) { expansion.contentShown = true }
+        withAnimation(reduceMotion ? PerryTheme.Motion.reduced : PerryTheme.Motion.open) { expansion.open = true }
+        withAnimation(reduceMotion ? PerryTheme.Motion.reduced : PerryTheme.Motion.contentIn) { expansion.contentShown = true }
     }
 
     func place(window: NSRect, visible: NSRect) {
@@ -86,11 +86,11 @@ final class SessionPanelPresenter {
             completion()
         } else {
             let expansion = expansion
-            withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.contentOut) {
+            withAnimation(reduceMotion ? PerryTheme.Motion.reduced : PerryTheme.Motion.contentOut) {
                 expansion.contentShown = false
             } completion: { [reduceMotion] in
                 guard !expansion.contentShown else { return }
-                withAnimation(reduceMotion ? NotchMotion.reduced : NotchMotion.close) {
+                withAnimation(reduceMotion ? PerryTheme.Motion.reduced : PerryTheme.Motion.close) {
                     expansion.open = false
                 } completion: { [weak panel] in
                     DispatchQueue.main.async {

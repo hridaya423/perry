@@ -83,14 +83,14 @@ struct IntentCardView: View {
 
             if card.tier >= .red {
                 Text("Type “\(card.redPhrase)” to confirm. Voice can’t approve this.")
-                    .font(PerryTheme.Typography.settingsStatus)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Text(card.redPhrase)
-                    .font(PerryTheme.Typography.mono)
+                    .font(PerryTheme.Scale.code)
                     .foregroundStyle(PerryTheme.Colors.danger)
                 TextField("Type the phrase", text: $typedConfirmation)
                     .textFieldStyle(.roundedBorder)
-                    .font(PerryTheme.Typography.settingsStatus)
+                    .font(PerryTheme.Scale.secondary)
                     .focused($confirmationFocused)
                     .accessibilityLabel("Confirmation phrase")
                     .accessibilityHint("Type the phrase shown to approve this action")
@@ -166,10 +166,10 @@ struct IntentCardView: View {
     private func labeledRow(_ label: String, value: String, valueColor: Color = PerryTheme.Colors.textSecondary) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
-                .font(PerryTheme.Typography.settingsStatus.weight(.semibold))
+                .font(PerryTheme.Scale.secondary.weight(.semibold))
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             Text(value)
-                .font(PerryTheme.Typography.settingsStatus)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(valueColor)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -186,7 +186,7 @@ struct IntentCardView: View {
 
     private var colorForTier: Color {
         switch card.tier {
-        case .orange: return PerryTheme.Colors.warning
+        case .orange: return PerryTheme.Colors.caution
         case .red: return PerryTheme.Colors.danger
         case .yellow: return PerryTheme.Colors.caution
         case .green: return PerryTheme.Colors.success

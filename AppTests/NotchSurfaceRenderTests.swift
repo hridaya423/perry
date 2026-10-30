@@ -597,12 +597,12 @@ final class NotchSurfaceRenderTests: XCTestCase {
                 try await Task.sleep(for: .milliseconds(16))
             }
         }
-        withAnimation(NotchMotion.open) { expansion.open = true }
-        withAnimation(NotchMotion.contentIn) { expansion.contentShown = true }
+        withAnimation(PerryTheme.Motion.open) { expansion.open = true }
+        withAnimation(PerryTheme.Motion.contentIn) { expansion.contentShown = true }
         try await capture(for: 0.7)
         print("notch.motion.close.from=\(index)")
-        withAnimation(NotchMotion.contentOut) { expansion.contentShown = false } completion: {
-            withAnimation(NotchMotion.close) { expansion.open = false }
+        withAnimation(PerryTheme.Motion.contentOut) { expansion.contentShown = false } completion: {
+            withAnimation(PerryTheme.Motion.close) { expansion.open = false }
         }
         try await capture(for: 0.7)
         print("notch.motion.frames=\(index)")

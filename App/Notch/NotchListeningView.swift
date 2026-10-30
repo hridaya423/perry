@@ -15,7 +15,7 @@ struct NotchListeningView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(headline)
                             .font(PerryTheme.Scale.title)
-                            .foregroundStyle(voice.clickState == .failed ? PerryTheme.Colors.warning : PerryTheme.Colors.text)
+                            .foregroundStyle(voice.clickState == .failed ? PerryTheme.Colors.caution : PerryTheme.Colors.text)
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
                         if let detail {

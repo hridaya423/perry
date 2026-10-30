@@ -148,7 +148,7 @@ private struct LevelBars: View {
         HStack(spacing: 3) {
             ForEach(0..<count, id: \.self) { index in
                 Capsule()
-                    .fill(Double(index) < level * Double(count) ? PerryTheme.Colors.accent : Color.white.opacity(0.14))
+                    .fill(Double(index) < level * Double(count) ? PerryTheme.Colors.accent : PerryTheme.Colors.veil(0.14))
                     .frame(width: 4, height: 14)
             }
         }

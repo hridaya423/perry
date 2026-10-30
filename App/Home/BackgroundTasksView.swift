@@ -134,7 +134,7 @@ private struct BackgroundTaskRow: View {
                    record.plan.actionSummaries.indices.contains(record.checkpoint.nextStepIndex) {
                     Text("Needs your OK: \(record.plan.actionSummaries[record.checkpoint.nextStepIndex])")
                         .font(PerryTheme.Scale.meta)
-                        .foregroundStyle(PerryTheme.Colors.warning)
+                        .foregroundStyle(PerryTheme.Colors.caution)
                 }
                 if recoveryNotice == nil, let message = backgroundTasks.message(for: record.id) {
                     Text(message)

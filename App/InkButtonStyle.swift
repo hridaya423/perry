@@ -40,7 +40,7 @@ struct InkButtonStyle: ButtonStyle {
                     }
                 }
                 .overlay {
-                    Capsule().fill(Color.white.opacity(hovering && isEnabled && !configuration.isPressed ? 0.06 : 0))
+                    Capsule().fill(PerryTheme.Colors.veil(hovering && isEnabled && !configuration.isPressed ? 0.06 : 0))
                 }
                 .clipShape(Capsule())
                 .contentShape(Capsule())
@@ -68,10 +68,10 @@ struct InkButtonStyle: ButtonStyle {
         }
 
         private var background: Color {
-            if !isEnabled && tier == .primary { return Color.white.opacity(0.08) }
+            if !isEnabled && tier == .primary { return PerryTheme.Colors.veil(0.08) }
             return switch tier {
             case .primary: PerryTheme.Colors.primaryAction
-            case .secondary: Color.white.opacity(0.06)
+            case .secondary: PerryTheme.Colors.veil(0.06)
             case .destructive: PerryTheme.Colors.danger
             }
         }
@@ -87,7 +87,7 @@ struct ControlFeedback<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay { shape.fill(Color.white.opacity(hovering && isEnabled ? hover : 0)) }
+            .overlay { shape.fill(PerryTheme.Colors.veil(hovering && isEnabled ? hover : 0)) }
             .overlay { if isFocused { shape.strokeBorder(PerryTheme.Colors.accent, lineWidth: 2) } }
             .contentShape(shape)
             .onHover { hovering = $0 }
@@ -132,7 +132,7 @@ struct InkChoiceStyle: ButtonStyle {
             .frame(minHeight: 40)
             .background(
                 RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
-                    .fill(Color.white.opacity(configuration.isPressed ? 0.12 : hovering ? 0.09 : 0.05))
+                    .fill(PerryTheme.Colors.veil(configuration.isPressed ? 0.12 : hovering ? 0.09 : 0.05))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous)
@@ -169,7 +169,7 @@ struct InkSwitchStyle: ToggleStyle {
 
     private func track(_ isOn: Bool) -> some View {
         Capsule()
-            .fill(isOn ? PerryTheme.Colors.accent : Color.white.opacity(0.14))
+            .fill(isOn ? PerryTheme.Colors.accent : PerryTheme.Colors.veil(0.14))
             .frame(width: 32, height: 18)
             .overlay(alignment: isOn ? .trailing : .leading) {
                 Circle()
@@ -198,7 +198,7 @@ struct InkSlider: View {
             let knob = CGFloat(16)
             let travel = max(proxy.size.width - knob, 1)
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.14)).frame(height: 4)
+                Capsule().fill(PerryTheme.Colors.veil(0.14)).frame(height: 4)
                 Capsule().fill(PerryTheme.Colors.accent).frame(width: knob / 2 + travel * fraction, height: 4)
                 Circle()
                     .fill(.white)

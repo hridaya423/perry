@@ -227,7 +227,7 @@ public struct InkStrokeShape: Shape {
 /// ink that reads on it — sage on dark, deep green on light (§5).
 public enum InkColor {
     /// Sage, the theme accent on dark backgrounds.
-    public static let onDarkHex = "9CCBB6"
+    public static let onDarkHex = String(PerryOverlayTheme.Colors.accentRGB, radix: 16, uppercase: true)
     /// Deep green on light backgrounds.
     public static let onLightHex = "3C7765"
     /// Rec. 601 midpoint where sage stops being legible.

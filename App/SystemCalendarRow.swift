@@ -18,16 +18,16 @@ struct SystemCalendarRow: View {
                 BrandMark(id: "apple-calendar", name: "Calendar")
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Calendar")
-                        .font(PerryTheme.Typography.panelBody.weight(.semibold))
+                        .font(PerryTheme.Scale.body.weight(.semibold))
                     Text("Read the events on this Mac.")
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                 }
                 Spacer(minLength: 8)
                 switch state {
                 case .granted:
                     StatusLabel("Connected", .ok)
-                        .font(PerryTheme.Typography.note)
+                        .font(PerryTheme.Scale.secondary)
                         .foregroundStyle(PerryTheme.Colors.success)
                 case .notAsked:
                     Button("Connect", action: connect)
@@ -44,12 +44,12 @@ struct SystemCalendarRow: View {
             }
             if state == .denied {
                 Text("Calendar access is off for Perry. Turn it on under Privacy & Security > Calendars.")
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
             if let failure {
                 Text(failure)
-                    .font(PerryTheme.Typography.note)
+                    .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.danger)
             }
         }

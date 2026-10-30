@@ -121,7 +121,7 @@ private struct AppBundleRowContent: View {
         .background(PerryTheme.Colors.chip, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(PerryTheme.Colors.veil(0.08), lineWidth: 1)
         )
     }
 }
