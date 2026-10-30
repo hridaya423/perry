@@ -18,7 +18,6 @@ enum PrivacyPane: String, CaseIterable {
     var url: URL { URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?\(anchor)")! }
     var legacyURL: URL { URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")! }
 
-    var supportsDrag: Bool { self != .microphone }
     var relaunchLikelyAfterGrant: Bool { self == .screenRecording || self == .inputMonitoring }
 
     func displayName(osMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion) -> String {

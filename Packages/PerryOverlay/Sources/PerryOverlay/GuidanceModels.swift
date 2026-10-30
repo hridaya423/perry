@@ -140,17 +140,6 @@ public struct PerryGuidanceOverlay: Identifiable, Codable, Equatable, Sendable {
         return overlay
     }
 
-    var isRenderable: Bool {
-        switch kind {
-        case .scribble:
-            return points.count >= 2
-        case .rectangle, .ellipse:
-            guard let rect else { return false }
-            let normalized = rect.normalized
-            return normalized.width > 1 && normalized.height > 1
-        }
-    }
-
     /// A copy shifted by `delta` (AppKit bottom-left screen points). Used by
     /// the reanchor poller to keep marks glued to a window the user moved.
     public func translated(by delta: CGPoint) -> PerryGuidanceOverlay {

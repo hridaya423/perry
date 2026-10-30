@@ -229,7 +229,6 @@ final class OnboardingDirectorTests: XCTestCase {
         await director.grant(.accessibility)
         await director.grant(.microphone)
         XCTAssertEqual(asked, [.accessibility, .microphone])
-        XCTAssertFalse(OnboardingDirector.accessPanes.contains(.screenRecording))
         director.stop()
     }
 

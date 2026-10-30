@@ -23,8 +23,7 @@ final class PrivacyPaneTests: XCTestCase {
         XCTAssertEqual(PrivacyPane.inputMonitoring.displayName(osMajor: 27), "Input Monitoring")
     }
 
-    func testOnlyListsThatTakeADraggedAppSupportDragAndOnlyCapturePanesNeedARelaunch() {
-        XCTAssertEqual(PrivacyPane.allCases.filter(\.supportsDrag), [.accessibility, .screenRecording, .inputMonitoring])
+    func testOnlyCapturePanesNeedARelaunch() {
         XCTAssertEqual(PrivacyPane.allCases.filter(\.relaunchLikelyAfterGrant), [.screenRecording, .inputMonitoring])
     }
 }

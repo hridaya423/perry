@@ -17,7 +17,6 @@ final class SessionPanelPresenter {
     let expansion = NotchExpansion()
     var frame: CGRect? { isVisible ? visibleFrame : nil }
     var isVisible: Bool { panel?.isVisible == true && expansion.contentShown }
-    var isKey: Bool { panel?.isKeyWindow == true }
     var screen: NSScreen?
     var keyboardInitiated = false
     private var visibleFrame: CGRect?

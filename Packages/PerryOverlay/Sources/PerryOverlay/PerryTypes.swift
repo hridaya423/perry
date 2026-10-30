@@ -14,7 +14,6 @@ public enum PerryOverlayTheme {
         public static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
         public static let labelForeground = Color.white
         public static let labelBackground = Color.black.opacity(0.72)
-        public static let eyeHighlight = Color.white
         public static let captionSurface = Color.white
         public static let captionText = Color.black
         public static let shadow = Color.black.opacity(0.22)
@@ -25,7 +24,6 @@ public enum PerryOverlayTheme {
     /// opacity/color feedback and removes travel and bounce.
     public enum Motion {
         public static let feedback = Animation.easeOut(duration: 0.14)
-        public static let entrance = Animation.easeOut(duration: 0.24)
         public static let travel = Animation.spring(response: 0.2, dampingFraction: 0.6)
         public static let travelFast = Animation.spring(response: 0.16, dampingFraction: 0.72)
         public static let ambientPulse = Animation.easeInOut(duration: 0.82)
@@ -84,19 +82,6 @@ public enum PerryBuddyState: String, Equatable, Sendable {
         case .awaitingApproval: return "Waiting for approval"
         case .success: return "Done"
         case .blocked: return "Blocked"
-        }
-    }
-
-    public var symbolName: String {
-        switch self {
-        case .idle: return "face.smiling"
-        case .listening: return "ear"
-        case .thinking: return "ellipsis.bubble"
-        case .guiding: return "hand.point.up.left"
-        case .acting: return "figure.run"
-        case .awaitingApproval: return "hand.raised"
-        case .success: return "checkmark.circle"
-        case .blocked: return "exclamationmark.triangle"
         }
     }
 }
@@ -167,11 +152,6 @@ public final class PerryCursorState: ObservableObject {
                 visualGuidanceOverlays.removeAll { $0.id == id }
             }
         }
-    }
-
-    public func clearDetectedElementLocation() {
-        detectedElementScreenLocation = nil
-        detectedElementDisplayFrame = nil
     }
 }
 

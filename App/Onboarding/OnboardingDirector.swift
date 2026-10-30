@@ -21,7 +21,6 @@ final class OnboardingDirector: ObservableObject {
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
     }
 
-    static let accessPanes: [PrivacyPane] = [.accessibility, .microphone]
 
     @Published private(set) var beat: Beat?
     @Published private(set) var direction = Direction.forward
