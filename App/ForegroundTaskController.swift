@@ -64,7 +64,7 @@ final class ForegroundTaskController: ObservableObject {
                     && self.transitionSession({ try self.sessionController.startExecution(execution, attemptID: attemptID) })
             },
             showActivityStrip: { [weak self] in
-                self?.activityStripWindow?.setExpanded(false, animate: false)
+                self?.activityStripState.isExpanded = false
                 self?.showActivityStrip()
             },
             speak: { [weak self] in self?.voice.speak($0) }
@@ -88,7 +88,7 @@ final class ForegroundTaskController: ObservableObject {
     private var observedForegroundTaskID: UUID?
 
     private let activityStripState = AgentActivityStripState()
-    private var activityStripWindow: AgentActivityStripWindow?
+    private let activityStripID = UUID()
 
 #if DEBUG
     private var debugFinalizationBarrier: FinalizationBarrier?
@@ -440,7 +440,7 @@ final class ForegroundTaskController: ObservableObject {
             return nil
         }
         hooks.setTranscriptPreview(goal)
-        activityStripWindow?.setExpanded(false, animate: false)
+        activityStripState.isExpanded = false
         hooks.stopSpatialMonitoring()
         hooks.stopGuideObservation()
         hooks.hidePanel()
@@ -573,7 +573,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     private func showActivityStrip() {
-        activityStripWindow = activityStripWindow ?? AgentActivityStripWindow(
+        NotchPresentation.shared.present(id: activityStripID, priority: .activity, content: AgentActivityStripView(
             state: activityStripState,
             onPause: { [weak self] in self?.pause() },
             onResume: { [weak self] in self?.resume() },
@@ -581,8 +581,7 @@ final class ForegroundTaskController: ObservableObject {
             onRetry: { [weak self] in self?.retry() },
             onSteer: { [weak self] instruction in self?.steer(instruction) },
             onTakeOver: { [weak self] in self?.takeOver() }
-        )
-        activityStripWindow?.show()
+        ), reveal: activityStripState.isExpanded)
     }
 
     // MARK: Controls
@@ -840,8 +839,8 @@ final class ForegroundTaskController: ObservableObject {
             default:
                 return
             }
-            self.activityStripWindow?.setExpanded(false, animate: false)
-            self.activityStripWindow?.orderOut(nil)
+            self.activityStripState.isExpanded = false
+            NotchPresentation.shared.remove(self.activityStripID)
             _ = self.transitionSession { try self.sessionController.completeDismissal() }
         }
     }
@@ -858,7 +857,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     func debugInvokeActivityStop() {
-        activityStripWindow?.debugInvokeStop()
+        if NotchPresentation.shared.contains(activityStripID) { cancel() }
     }
 
     func debugRun(goal: String) async throws -> DoOutcome? {
@@ -918,7 +917,7 @@ final class ForegroundTaskController: ObservableObject {
                 verification: nil
             )
         ]
-        activityStripWindow = AgentActivityStripWindow(
+        NotchPresentation.shared.present(id: activityStripID, priority: .activity, content: AgentActivityStripView(
             state: activityStripState,
             onPause: { [weak self] in
                 guard let self, self.activityStripState.phase == .working else { return }
@@ -946,9 +945,9 @@ final class ForegroundTaskController: ObservableObject {
             onSteer: { [weak self] instruction in
                 guard let self, self.activityStripState.steeringIsAvailable else { return }
                 self.activityStripState.detail = "Steering: \(instruction)"
-            }
-        )
-        activityStripWindow?.show()
+            },
+            onTakeOver: {}
+        ), reveal: activityStripState.isExpanded)
     }
 #endif
 }

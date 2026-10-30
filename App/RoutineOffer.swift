@@ -57,21 +57,3 @@ struct RoutineOfferView: View {
         .foregroundStyle(PerryTheme.Colors.text)
     }
 }
-
-@MainActor
-final class RoutineOfferWindow {
-    private let id = UUID()
-    private let content: RoutineOfferView
-    private let presentation: NotchPresentation
-
-    init(onShowMe: @escaping () -> Void, onNotNow: @escaping () -> Void, presentation: NotchPresentation? = nil) {
-        self.presentation = presentation ?? .shared
-        content = RoutineOfferView(onShowMe: onShowMe, onNotNow: onNotNow)
-    }
-
-    func show() {
-        presentation.present(id: id, priority: .routine, content: content)
-    }
-
-    func close() { presentation.remove(id) }
-}

@@ -189,30 +189,3 @@ struct RoutineReviewView: View {
         }
     }
 }
-
-@MainActor
-final class RoutineReviewWindow {
-    private let id = UUID()
-    private let content: RoutineReviewView
-    private let presentation: NotchPresentation
-
-    init(
-        state: RoutineReviewState,
-        onStopRecording: @escaping () -> Void,
-        onDiscard: @escaping () -> Void,
-        onSave: @escaping () -> Void,
-        onSaveAndTry: @escaping () -> Void,
-        onRun: @escaping () -> Void,
-        presentation: NotchPresentation? = nil
-    ) {
-        self.presentation = presentation ?? .shared
-        content = RoutineReviewView(state: state, onStopRecording: onStopRecording,
-                                    onDiscard: onDiscard, onSave: onSave, onSaveAndTry: onSaveAndTry, onRun: onRun)
-    }
-
-    func show() {
-        presentation.present(id: id, priority: .routine, content: content)
-    }
-
-    func close() { presentation.remove(id) }
-}

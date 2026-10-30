@@ -95,10 +95,10 @@ final class InteractivePanelTests: XCTestCase {
         let presentation = NotchPresentation()
         let state = RoutineReviewState()
         state.presentReview(steps: [RoutineStep(summary: "Open a note", action: .click)])
-        let review = RoutineReviewWindow(state: state, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}, presentation: presentation)
-        review.show()
+        let id = UUID()
+        presentation.present(id: id, priority: .routine, content: RoutineReviewView(state: state, onStopRecording: {}, onDiscard: {}, onSave: {}, onSaveAndTry: {}, onRun: {}))
         XCTAssertEqual(presentation.current?.priority, .routine)
-        review.close()
+        presentation.remove(id)
         XCTAssertNil(presentation.current)
     }
 
@@ -120,16 +120,16 @@ final class InteractivePanelTests: XCTestCase {
     func testActivityRemainsAvailableWhileAnApprovalIsPresented() {
         let presentation = NotchPresentation()
         let state = AgentActivityStripState()
-        let activity = AgentActivityStripWindow(state: state, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, presentation: presentation)
-        activity.show()
-        let activityID = presentation.current?.id
+        let activityID = UUID()
+        let strip = AgentActivityStripView(state: state, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {})
+        presentation.present(id: activityID, priority: .activity, content: strip, reveal: state.isExpanded)
         let approvalID = UUID()
         presentation.present(id: approvalID, priority: .approval, content: Text("Approve"))
-        activity.show()
+        presentation.present(id: activityID, priority: .activity, content: strip, reveal: state.isExpanded)
         XCTAssertEqual(presentation.current?.id, approvalID)
         presentation.remove(approvalID)
         XCTAssertEqual(presentation.current?.id, activityID)
-        activity.orderOut(nil)
+        presentation.remove(activityID)
         XCTAssertNil(presentation.current)
     }
 

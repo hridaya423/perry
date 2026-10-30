@@ -661,7 +661,7 @@ final class AppSubsystems {
         }
     )
 
-    private var routineOfferWindow: RoutineOfferWindow?
+    private let routineOfferID = UUID()
 
     lazy var routineOffer = RoutineOffer(
         isOnboarding: { [weak app = app] in app?.homeController.homeModel.onboarding != nil },
@@ -669,20 +669,17 @@ final class AppSubsystems {
     )
 
     private func presentRoutineOffer() {
-        let window = RoutineOfferWindow(
+        NotchPresentation.shared.present(id: routineOfferID, priority: .routine, content: RoutineOfferView(
             onShowMe: { [weak self] in
                 self?.closeRoutineOffer()
                 Task { await self?.routineLibrary.beginRecording() }
             },
             onNotNow: { [weak self] in self?.closeRoutineOffer() }
-        )
-        routineOfferWindow = window
-        window.show()
+        ))
     }
 
     private func closeRoutineOffer() {
-        routineOfferWindow?.close()
-        routineOfferWindow = nil
+        NotchPresentation.shared.remove(routineOfferID)
     }
 
     private func showRecognizedControlRing(_ frame: AXElementFrame) {
