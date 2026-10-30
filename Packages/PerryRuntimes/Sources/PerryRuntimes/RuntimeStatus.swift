@@ -3,9 +3,7 @@ import Foundation
 public enum RuntimeInstallationSource: String, Codable, CaseIterable, Equatable, Sendable {
     case bundled
     case officialCLI
-    case directAPI
     case local
-    case customEndpoint
 }
 
 public struct RuntimeInstallationIdentity: Equatable, Sendable {
@@ -87,5 +85,3 @@ public enum RuntimeAuthenticationStatus: Equatable, Sendable {
         }
     }
 }
-
-public typealias RuntimeAuthentication = RuntimeAuthenticationStatus

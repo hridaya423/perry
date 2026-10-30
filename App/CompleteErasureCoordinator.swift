@@ -12,11 +12,6 @@ enum PerryErasureCategory: String, CaseIterable, Codable, Equatable, Hashable, S
     case temporaryMedia
     case caches
     case cuaArtifacts
-
-    static var keychain: Self { .providerKeychain }
-    static var oauth: Self { .oauthState }
-    static var tempMedia: Self { .temporaryMedia }
-    static var cua: Self { .cuaArtifacts }
 }
 
 struct PerryErasureItem: Codable, Equatable, Hashable, Identifiable, Sendable {
@@ -119,7 +114,6 @@ struct PerryErasureInventory: Equatable, Sendable {
     }
 
     var isEmpty: Bool { items.isEmpty }
-    var isReliable: Bool { failures.isEmpty }
     var hasResidualItems: Bool { !items.isEmpty }
 
     func items(in category: PerryErasureCategory) -> [PerryErasureItem] {

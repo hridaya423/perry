@@ -283,21 +283,6 @@ actor CuaDriverClient {
         return current
     }
 
-    func endSession(_ sessionID: String) async {
-        guard let generation = startedSessions[sessionID] else { return }
-        var arguments = DriverArguments()
-        arguments.session = sessionID
-        _ = try? await callTool("end_session", arguments, generation: generation)
-        guard startedSessions[sessionID] == generation else { return }
-        startedSessions[sessionID] = nil
-        if sessionStates[sessionID]?.generation == generation {
-            sessionStates[sessionID] = nil
-        }
-        if sessionTargets[sessionID]?.connectionGeneration == generation {
-            sessionTargets[sessionID] = nil
-        }
-    }
-
     func shutdown() async {
         forgetSessions()
         sessionTargets.removeAll()

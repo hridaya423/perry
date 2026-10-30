@@ -54,7 +54,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         home: { [unowned self] in subsystems.homeController },
         showNotch: { [unowned self] in showPanel() }
     )
-    var persistenceTasks: [UUID: Task<Void, Never>] = [:]
 #if DEBUG
     var debugUnsavedQuitDecision: (() -> Bool)? {
         get { maintenance.debugUnsavedQuitDecision }
@@ -92,11 +91,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return execution.taskID
     }
     var sessionState: SessionState { sessionController.state }
-    var taskProgress: Double? {
-        guard case .executing(let execution) = sessionState else { return nil }
-        return execution.progress
-    }
-
     var isIdle: Bool {
         if case .idle = sessionState { return true }
         return false
@@ -359,21 +353,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         subsystems.foreground.takeOver()
     }
 
-    /// Onboarding's post-demo offer: starts a Watch & Learn recording once
-
     func showWhatsNew() {
         subsystems.homeController.openHome(selection: .whatsNew)
-    }
-
-    func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {
-        guard !maintenance.isErasureInProgress else { return }
-        let id = UUID()
-        persistenceTasks[id] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.persistenceTasks[id] = nil }
-            guard !Task.isCancelled, !self.maintenance.isErasureInProgress else { return }
-            await operation()
-        }
     }
 
     // MARK: Onboarding

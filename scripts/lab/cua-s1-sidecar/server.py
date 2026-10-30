@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """cua-s1 sidecar — Phase 9 experiment (scripts/lab/cua-s1-sidecar/).
 
-Serves POST /choose on loopback for Perry's ElementChooser. This scaffold
+Serves POST /choose on loopback. This scaffold
 defines the wire contract and the benchmark harness hook; the scoring
 backend is pluggable:
 
