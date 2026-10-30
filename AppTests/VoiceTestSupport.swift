@@ -22,3 +22,12 @@ extension ModifierHoldMonitor {
         handle(timestamp: timestamp, modifiers: modifiers, isFlagsChanged: isFlagsChanged, tapDisabled: tapDisabled)
     }
 }
+
+extension DictationController {
+    func beginRecognitionFixture() throws -> Int {
+        cancel()
+        languageMode = .fixed(identifier: "en-US")
+        session = SystemRecognitionSession(recognizer: nil, request: try Self.makeOnDeviceRequest(supported: true, customWords: []), onEvent: { _ in })
+        return recognitionGate.advance()
+    }
+}

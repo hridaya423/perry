@@ -3,25 +3,6 @@ import XCTest
 @testable import Perry
 
 final class DictationControllerTests: XCTestCase {
-    func testATapAVAudioEngineRefusesComesBackAsFalseInsteadOfAnException() {
-        let engine = AVAudioEngine()
-        let mixer = engine.mainMixerNode
-        XCTAssertTrue(DictationController.installTap(on: mixer, format: nil) { _, _ in })
-        XCTAssertFalse(DictationController.installTap(on: mixer, format: nil) { _, _ in })
-        mixer.removeTap(onBus: 0)
-    }
-
-    func testLevelIsTheRootMeanSquareOfTheBuffer() throws {
-        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024))
-        buffer.frameLength = 1024
-        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
-        for index in 0..<1024 { samples[index] = index.isMultiple(of: 2) ? 0.5 : -0.5 }
-        XCTAssertEqual(DictationController.rms(buffer), 0.5, accuracy: 1e-6)
-        buffer.frameLength = 0
-        XCTAssertEqual(DictationController.rms(buffer), 0)
-    }
-
     func testCancelledFinalizationCannotDeliverIntoReplacementInvocation() throws {
         var invocation = VoiceInvocationGate()
         var transcripts: [String] = []
@@ -49,11 +30,9 @@ final class DictationControllerTests: XCTestCase {
     func testErrorAfterReleaseDoesNotSelectMicrophoneOrDispatchLateFinal() throws {
         var transcripts: [String] = []
         var failures = 0
-        var microphoneSelections = 0
         let controller = DictationController(
             onTranscript: { transcripts.append($0) },
-            onFailure: { _ in failures += 1 },
-            selectFallbackInput: { _ in microphoneSelections += 1; return false }
+            onFailure: { _ in failures += 1 }
         )
         let generation = try controller.beginRecognitionFixture()
         controller.finish()
@@ -61,7 +40,6 @@ final class DictationControllerTests: XCTestCase {
         controller.handleRecognition(.failure(DictationController.DictationError.unavailable), generation: generation)
         controller.handleRecognition(.transcript("run the task", isFinal: true, words: []), generation: generation)
 
-        XCTAssertEqual(microphoneSelections, 0)
         XCTAssertEqual(failures, 1)
         XCTAssertTrue(transcripts.isEmpty)
         XCTAssertFalse(controller.isRunning)
@@ -72,8 +50,7 @@ final class DictationControllerTests: XCTestCase {
         var failures = 0
         let controller = DictationController(
             onTranscript: { transcripts.append($0) },
-            onFailure: { _ in failures += 1 },
-            selectFallbackInput: { _ in XCTFail("Unexpected microphone recovery"); return false }
+            onFailure: { _ in failures += 1 }
         )
         let generation = try controller.beginRecognitionFixture()
         controller.finish()
@@ -111,15 +88,15 @@ final class DictationControllerTests: XCTestCase {
             onFailure: { _ in failures += 1 }
         )
         let generation = try controller.beginRecognitionFixture()
-        controller.handleReroutedRecognition(
+        controller.handleRecognition(
             .failure(DictationController.DictationError.unavailable),
             generation: generation,
-            detectedIdentifier: "fr-FR"
+            reroutedTo: "fr-FR"
         )
-        controller.handleReroutedRecognition(
+        controller.handleRecognition(
             .transcript("ouvre les réglages", isFinal: true, words: []),
             generation: generation,
-            detectedIdentifier: "fr-FR"
+            reroutedTo: "fr-FR"
         )
 
         XCTAssertEqual(failures, 1)
@@ -130,8 +107,7 @@ final class DictationControllerTests: XCTestCase {
         let failure = expectation(description: "Finalization expires")
         let controller = DictationController(
             onTranscript: { _ in XCTFail("Unexpected transcript") },
-            onFailure: { _ in failure.fulfill() },
-            selectFallbackInput: { _ in XCTFail("Unexpected microphone recovery"); return false }
+            onFailure: { _ in failure.fulfill() }
         )
         _ = try controller.beginRecognitionFixture()
         controller.finish()

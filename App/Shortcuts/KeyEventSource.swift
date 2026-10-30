@@ -62,10 +62,6 @@ final class KeyEventSource {
         }
     }
 
-    static func isTapDisabled(_ type: CGEventType) -> Bool {
-        type == .tapDisabledByTimeout || type == .tapDisabledByUserInput
-    }
-
     private static var mayListen: Bool {
         CGPreflightListenEventAccess() || AXIsProcessTrusted()
     }

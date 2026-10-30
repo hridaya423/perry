@@ -4,61 +4,96 @@ import Speech
 import PerryCore
 import PerryGuide
 
+struct WakeWordMatcher {
+    private var recent: [Double] = []
+    private var capture: (detector: EndOfTurnDetector, command: String)?
+
+    mutating func tap(rms: Double) -> Bool {
+        if capture == nil { record(rms) }
+        return capture != nil
+    }
+
+    mutating func inspect(_ transcript: String, at now: TimeInterval) -> Bool {
+        if var current = capture {
+            current.command = Self.remainder(of: transcript)
+            _ = current.detector.transcript(at: now, text: current.command, lastWordEnd: 0)
+            capture = current
+            return false
+        }
+        guard WakeWordGate(enabled: true).match(inTranscript: transcript) != nil else { return false }
+        let command = Self.remainder(of: transcript)
+        var detector = EndOfTurnDetector(startedAt: now, noiseFloor: floor)
+        if !command.isEmpty {
+            _ = detector.transcript(at: now, text: command, lastWordEnd: 0)
+        }
+        capture = (detector, command)
+        return true
+    }
+
+    mutating func hear(rms: Double, at time: TimeInterval) -> String? {
+        guard var current = capture else {
+            record(rms)
+            return nil
+        }
+        let event = current.detector.frame(at: time, rms: rms)
+        capture = current
+        switch event {
+        case .commit?, .abort?:
+            capture = nil
+            return current.command
+        default:
+            return nil
+        }
+    }
+
+    mutating func takeCommand() -> String? {
+        defer { capture = nil }
+        return capture?.command
+    }
+
+    mutating func reset() {
+        self = WakeWordMatcher()
+    }
+
+    static func remainder(of transcript: String) -> String {
+        let phraseWords = WakeWordGate.defaultPhrase.split(separator: " ").count
+        return transcript.split(whereSeparator: \.isWhitespace).dropFirst(phraseWords).joined(separator: " ")
+    }
+
+    private var floor: Double? {
+        guard !recent.isEmpty else { return nil }
+        return recent.sorted()[recent.count / 5]
+    }
+
+    private mutating func record(_ rms: Double) {
+        recent.append(rms)
+        if recent.count > 75 { recent.removeFirst(recent.count - 75) }
+    }
+}
+
 @MainActor
 final class WakeWordListener {
-    typealias RestartScheduler = (@escaping @MainActor @Sendable () -> Void) -> Void
-    typealias StartEngineOverride = (UInt64, @escaping () -> Void) throws -> Void
-
     private let onWake: (String) -> Void
     private let onHeard: () -> Void
-    private let now: () -> TimeInterval
     private let onFailure: (String) -> Void
-    private let scheduleRestart: RestartScheduler
-    private let startEngineOverride: StartEngineOverride?
-    private let audioEngine = AVAudioEngine()
-    private var recognizer: SFSpeechRecognizer?
+    private let mic = MicCapture()
+    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
-    private var tapInstalled = false
     private var wantsToListen = false
     private var generation: UInt64 = 0
     private var activeGeneration: UInt64?
     private var pendingRestartGeneration: UInt64?
-    private var capture: (detector: EndOfTurnDetector, command: String)?
-    private let levels = OSAllocatedUnfairLock(initialState: Levels())
-
-    struct Levels {
-        var capturing = false
-        var recent: [Double] = []
-
-        mutating func record(_ rms: Double) {
-            recent.append(rms)
-            if recent.count > 75 { recent.removeFirst(recent.count - 75) }
-        }
-
-        var floor: Double? {
-            guard !recent.isEmpty else { return nil }
-            return recent.sorted()[recent.count / 5]
-        }
-    }
+    private let matcher = OSAllocatedUnfairLock(initialState: WakeWordMatcher())
 
     init(
         onWake: @escaping (String) -> Void,
         onHeard: @escaping () -> Void = {},
-        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        onFailure: @escaping (String) -> Void = { _ in },
-        scheduleRestart: @escaping RestartScheduler = { work in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
-        },
-        startEngineOverride: StartEngineOverride? = nil
+        onFailure: @escaping (String) -> Void = { _ in }
     ) {
         self.onWake = onWake
         self.onHeard = onHeard
-        self.now = now
         self.onFailure = onFailure
-        self.scheduleRestart = scheduleRestart
-        self.startEngineOverride = startEngineOverride
-        recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     }
 
     func start() {
@@ -79,56 +114,29 @@ final class WakeWordListener {
     }
 
     private var isRunning: Bool {
-        activeGeneration != nil || audioEngine.isRunning || tapInstalled || request != nil || task != nil
+        activeGeneration != nil || mic.isRunning || request != nil || task != nil
     }
 
     private func startListening() throws {
         generation &+= 1
         let generation = generation
         activeGeneration = generation
-        if let startEngineOverride {
-            try startEngineOverride(generation) { [weak self] in
-                self?.restartAfterTerminal(for: generation)
-            }
-            return
-        }
-        try startEngine(for: generation)
-    }
-
-    private func startEngine(for generation: UInt64) throws {
-        guard let recognizer, recognizer.isAvailable else {
+        guard let recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
             throw ListenerError.unavailable
         }
-        guard recognizer.supportsOnDeviceRecognition else {
-            throw ListenerError.unavailable
-        }
-        let input = audioEngine.inputNode
-        let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw ListenerError.unavailable
-        }
-
         let recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         recognitionRequest.shouldReportPartialResults = true
         recognitionRequest.contextualStrings = ["hey", "Perry"]
         recognitionRequest.requiresOnDeviceRecognition = true
         request = recognitionRequest
-        let levels = levels
-        let tapped = DictationController.installTap(on: input, format: format) { buffer, when in
+        let matcher = matcher
+        try mic.start(deviceID: nil) { buffer, when in
             recognitionRequest.append(buffer)
-            let rms = DictationController.rms(buffer)
-            let capturing = levels.withLock { levels in
-                if !levels.capturing { levels.record(rms) }
-                return levels.capturing
-            }
-            guard capturing else { return }
+            let rms = MicCapture.rms(buffer)
+            guard matcher.withLock({ $0.tap(rms: rms) }) else { return }
             let time = AVAudioTime.seconds(forHostTime: when.hostTime)
             Task { @MainActor [weak self] in self?.hear(rms: rms, at: time) }
         }
-        guard tapped else { throw ListenerError.unavailable }
-        tapInstalled = true
-        audioEngine.prepare()
-        try audioEngine.start()
         task = recognizer.recognitionTask(with: recognitionRequest) { result, error in
             if let result {
                 let transcript = result.bestTranscription.formattedString
@@ -146,57 +154,29 @@ final class WakeWordListener {
         }
     }
 
-    func inspect(_ transcript: String) {
+    private func inspect(_ transcript: String) {
         guard wantsToListen else { return }
-        if var capture {
-            capture.command = Self.remainder(of: transcript)
-            _ = capture.detector.transcript(at: now(), text: capture.command, lastWordEnd: 0)
-            self.capture = capture
-            return
+        let now = ProcessInfo.processInfo.systemUptime
+        if matcher.withLock({ $0.inspect(transcript, at: now) }) {
+            onHeard()
         }
-        guard WakeWordGate(enabled: true).match(inTranscript: transcript) != nil else { return }
-        let command = Self.remainder(of: transcript)
-        let floor = levels.withLock { levels in
-            levels.capturing = true
-            return levels.floor
-        }
-        var detector = EndOfTurnDetector(startedAt: now(), noiseFloor: floor)
-        if !command.isEmpty {
-            _ = detector.transcript(at: now(), text: command, lastWordEnd: 0)
-        }
-        capture = (detector, command)
-        onHeard()
     }
 
-    func hear(rms: Double, at time: TimeInterval) {
+    private func hear(rms: Double, at time: TimeInterval) {
         guard wantsToListen else { return }
-        guard var capture else {
-            levels.withLock { $0.record(rms) }
-            return
-        }
-        let event = capture.detector.frame(at: time, rms: rms)
-        self.capture = capture
-        switch event {
-        case .commit?, .abort?: finishCapture()
-        default: break
+        if let command = matcher.withLock({ $0.hear(rms: rms, at: time) }) {
+            finish(with: command)
         }
     }
 
-    static func remainder(of transcript: String) -> String {
-        let phraseWords = WakeWordGate.defaultPhrase.split(separator: " ").count
-        return transcript.split(whereSeparator: \.isWhitespace).dropFirst(phraseWords).joined(separator: " ")
-    }
-
-    private func finishCapture() {
-        guard let capture else { return }
-        self.capture = nil
+    private func finish(with command: String) {
         stop()
-        onWake(capture.command)
+        onWake(command)
     }
 
     private func restartAfterTerminal(for generation: UInt64) {
-        if capture != nil, activeGeneration == generation {
-            finishCapture()
+        if activeGeneration == generation, let command = matcher.withLock({ $0.takeCommand() }) {
+            finish(with: command)
             return
         }
         guard wantsToListen else {
@@ -207,7 +187,7 @@ final class WakeWordListener {
         guard pendingRestartGeneration == nil else { return }
         pendingRestartGeneration = generation
         stopEngine()
-        scheduleRestart { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self,
                   self.wantsToListen,
                   self.pendingRestartGeneration == generation else { return }
@@ -223,14 +203,8 @@ final class WakeWordListener {
 
     private func stopEngine() {
         activeGeneration = nil
-        capture = nil
-        levels.withLock { $0 = Levels() }
-        if startEngineOverride != nil { return }
-        audioEngine.stop()
-        if tapInstalled {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            tapInstalled = false
-        }
+        matcher.withLock { $0.reset() }
+        mic.stop()
         request?.endAudio()
         task?.cancel()
         request = nil
