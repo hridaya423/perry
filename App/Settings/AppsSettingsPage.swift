@@ -60,7 +60,7 @@ struct AppsSettingsPage: View {
             )) {
                 Text(skill.displayName)
                 Text("\(skill.bundleID) · \(skill.source.rawValue)")
-                    .font(PerryTheme.Typography.monoSmall)
+                    .font(PerryTheme.Scale.monoSmall)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
             }
             .settingsRowPadding()

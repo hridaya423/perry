@@ -6,9 +6,6 @@ import PerryOverlay
 struct HistoryView: View {
     let store: TranscriptStore
     let activityLog: ActivityLog
-    /// Resolves which entries still offer a safe Undo — the
-    /// recovery-availability half of the history outcome surface. Loaded
-    /// with the entries so the badge never paints stale.
     let undoableEntryIDs: (@MainActor () async -> Set<UUID>)?
     var askPerry: (() -> Void)?
     @State private var entries: [TranscriptEntry] = []
@@ -195,7 +192,7 @@ struct HistoryRow: View {
                         if let verified = entry.verified {
                             StatusLabel(verified ? "Checked" : "Needs checking", verified ? .ok : .attention, tint: emphasized ? selectionText : nil)
                                 .font(PerryTheme.Scale.meta)
-                                .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.warning))
+                                .foregroundStyle(emphasized ? selectionText : (verified ? PerryTheme.Colors.success : PerryTheme.Colors.caution))
                         }
                     }
                 }

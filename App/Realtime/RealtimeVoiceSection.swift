@@ -73,7 +73,7 @@ struct RealtimeVoiceSection: View {
                     InkSlider(value: $speed, range: 0.25...1.5, step: 0.05, label: "Response speed")
                         .frame(width: 160)
                     Text("\(speed, specifier: "%.2f")×")
-                        .font(PerryTheme.Typography.value)
+                        .font(PerryTheme.Scale.value)
                         .frame(width: PerryTheme.Sizing.realtimeRateValueWidth, alignment: .trailing)
                 }
                 SettingsDivider()

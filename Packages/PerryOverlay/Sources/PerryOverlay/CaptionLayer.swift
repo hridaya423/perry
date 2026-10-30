@@ -8,8 +8,6 @@ struct AgentTaskBubbleSizePreferenceKey: PreferenceKey {
     }
 }
 
-/// Resolves a hex accent to a Color; blank or unparseable input falls
-/// back to the product accent rather than failing silently.
 func perryAccentColor(_ rawHex: String?) -> Color {
     guard let hex = rawHex?.trimmingCharacters(in: .whitespacesAndNewlines),
           !hex.isEmpty,
@@ -19,8 +17,6 @@ func perryAccentColor(_ rawHex: String?) -> Color {
     return color
 }
 
-/// Estimated rendered size of a caption bubble, used to place it without
-/// a measurement pass.
 func estimatedCaptionBubbleSize(for caption: String) -> CGSize {
     let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return CGSize(width: 72, height: 28) }
@@ -85,8 +81,6 @@ extension PerryCursorState {
     }
 }
 
-/// The shared caption bubble: rounded surface, caption text, opacity
-/// driven by the voice-caption-opacity preference.
 struct PerryCaptionBubble: View {
     let caption: String
     let position: CGPoint
@@ -122,8 +116,6 @@ struct PerryCaptionBubble: View {
     }
 }
 
-/// A caption bubble beside an anchor rect — a control, a ghost cursor —
-/// kept off the anchor and the marks it must not cover.
 struct PerryAnchoredCaption: View {
     let caption: String
     let anchor: CGRect
@@ -139,12 +131,9 @@ struct PerryAnchoredCaption: View {
     }
 }
 
-/// The status bubble riding the pointer while a task or agent run is in
-/// flight ("Working on …"), hidden while Perry is listening or thinking.
 struct TaskBubbleLayer: View {
     @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
-    /// Live pointer position in local coordinates — the bubble anchors to it.
     let anchor: CGPoint
     let isVisible: Bool
     let opacity: Double

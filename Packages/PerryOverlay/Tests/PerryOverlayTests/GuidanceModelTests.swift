@@ -24,7 +24,6 @@ struct PerryGuidanceOverlayTests {
         #expect(overlay.style.fillOpacity == 0.65)
         #expect(overlay.style.caption == "Target")
         #expect(overlay.duration == 60)
-        #expect(overlay.isRenderable)
 
         let encoded = try JSONEncoder().encode(overlay)
         let decoded = try JSONDecoder().decode(PerryGuidanceOverlay.self, from: encoded)
@@ -34,7 +33,7 @@ struct PerryGuidanceOverlayTests {
         #expect(clamped.rect == PerryGuidanceRect(x: 120, y: 100, width: 80, height: 50))
     }
 
-    @Test func scribbleRequiresAtLeastTwoPointsAndClampsPoints() throws {
+    @Test func scribbleClampsPoints() throws {
         let overlay = PerryGuidanceOverlay.scribble(
             points: [CGPoint(x: -10, y: 20), CGPoint(x: 100, y: 120), CGPoint(x: 300, y: 10)],
             accentHex: "#F59E0B",
@@ -42,7 +41,6 @@ struct PerryGuidanceOverlayTests {
             duration: 0.01
         )
 
-        #expect(overlay.isRenderable)
         #expect(overlay.style.lineWidth == 1)
         #expect(overlay.duration == 0.2)
 
@@ -52,9 +50,6 @@ struct PerryGuidanceOverlayTests {
             CGPoint(x: 100, y: 100),
             CGPoint(x: 200, y: 10),
         ])
-
-        let singlePoint = PerryGuidanceOverlay.scribble(points: [CGPoint(x: 1, y: 1)])
-        #expect(!singlePoint.isRenderable)
     }
 
     @Test func translatedShiftsRectAndPoints() {
@@ -89,7 +84,6 @@ struct PerryGuidanceOverlayTests {
             PerryOverlayTheme.Colors.selection,
             PerryOverlayTheme.Colors.labelForeground,
             PerryOverlayTheme.Colors.labelBackground,
-            PerryOverlayTheme.Colors.eyeHighlight,
             PerryOverlayTheme.Colors.captionSurface,
             PerryOverlayTheme.Colors.captionText,
             PerryOverlayTheme.Colors.shadow,
@@ -116,40 +110,32 @@ struct PerryGuidanceOverlayTests {
 struct MarkGeometryTests {
     private let element = CGRect(x: 400, y: 300, width: 90, height: 30)
 
-    /// `point` used to be `.scribble([center, center])` — a zero-length path
-    /// that renders nothing. The mark is now a real dot with a leader.
     @Test func pointMarkProducesANonDegenerateDotAndLeader() {
         let overlay = PerryGuidanceOverlay.pointMark(center: CGPoint(x: 445, y: 315))
         let cg = overlay.points.map(\.cgPoint)
 
         #expect(overlay.kind == PerryGuidanceOverlayKind.scribble)
-        #expect(overlay.isRenderable)
         #expect(Set(cg).count > 2)
         let loop = cg.dropFirst()
         for p in loop {
             #expect((10...16).contains(hypot(p.x - 445, p.y - 315)))
         }
         #expect(hypot(cg[0].x - 445, cg[0].y - 315) > 50)
-        // The leader approaches from below-left (AppKit: -x, -y).
         #expect(cg[0].x < 445 && cg[0].y < 315)
     }
 
-    /// The arrow keeps its below-approach and carries a real head: two barbs
-    /// retraced at the tip, all short of the element's bottom edge.
     @Test func arrowMarkEndsInAHeadShortOfTheElement() {
         let overlay = PerryGuidanceOverlay.arrowMark(to: element)
         let cg = overlay.points.map(\.cgPoint)
 
         #expect(cg.count == 5)
-        #expect(cg[1] == cg[3]) // tip retraced between barbs
+        #expect(cg[1] == cg[3])
         for p in cg {
-            #expect(p.y < element.minY) // never overlaps the element
+            #expect(p.y < element.minY)
         }
-        #expect(cg[1].y > cg[2].y && cg[1].y > cg[4].y) // head points up at the element
+        #expect(cg[1].y > cg[2].y && cg[1].y > cg[4].y)
     }
 
-    /// `underline` drew at `maxY + 4` — above the element in AppKit space.
-    /// It belongs below: `minY -`.
     @Test func underlineMarkSitsBelowTheElement() {
         let overlay = PerryGuidanceOverlay.underlineMark(below: element)
         for p in overlay.points.map(\.cgPoint) {
@@ -158,11 +144,9 @@ struct MarkGeometryTests {
         }
     }
 
-    /// `ring` is an ellipse padded off the element, not the old crisp rect.
     @Test func ringMarkIsAPaddedEllipse() {
         let overlay = PerryGuidanceOverlay.ringMark(around: element, padding: 8)
         #expect(overlay.kind == PerryGuidanceOverlayKind.ellipse)
-        #expect(overlay.isRenderable)
         let r = overlay.rect!.cgRect
         #expect(r.minX == element.minX - 8 && r.minY == element.minY - 8)
         #expect(r.width == element.width + 16 && r.height == element.height + 16)
@@ -174,7 +158,6 @@ struct MarkGeometryTests {
         let b = InkStroke.ellipse(in: rect)
         #expect(a == b)
         #expect(a.count > 14)
-        // Every sample stays inside (plus jitter slack); loop closes near start.
         for p in a {
             #expect(rect.insetBy(dx: -2, dy: -2).contains(p))
         }

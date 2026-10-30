@@ -1,33 +1,19 @@
 import AppKit
 import SwiftUI
 
-final class PermissionHelperPanel: NSPanel {
+final class PermissionHelperPanel: PerryPanel {
     static let cardSize = CGSize(width: 420, height: 200)
 
     init() {
-        super.init(
-            contentRect: NSRect(origin: .zero, size: Self.cardSize),
-            styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        level = .floating
+        super.init(frame: NSRect(origin: .zero, size: Self.cardSize), level: .floating, hasShadow: true, extraStyle: .fullSizeContentView)
         isFloatingPanel = true
         hidesOnDeactivate = false
+        sharingType = .readOnly
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        isOpaque = false
-        backgroundColor = .clear
-        hasShadow = true
         animationBehavior = .none
         becomesKeyOnlyIfNeeded = true
         isReleasedWhenClosed = false
-        appearance = NSAppearance(named: .darkAqua)
     }
-
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 
     func show<Content: View>(_ content: Content) {
         let host = NSHostingView(rootView: content)
@@ -158,7 +144,7 @@ struct PermissionHelperView: View {
         .background(PerryTheme.Colors.crown, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: PerryTheme.Radius.panel, style: .continuous)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                .strokeBorder(PerryTheme.Colors.veil(0.1), lineWidth: 1)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .environment(\.colorScheme, .dark)

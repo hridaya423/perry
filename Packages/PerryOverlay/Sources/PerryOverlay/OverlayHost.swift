@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// AppKit screen point (bottom-left origin) ↔ SwiftUI overlay-local
-/// point (top-left origin) for the overlay covering a screen's frame.
 enum PerryOverlaySpace {
     static func besideCursor(_ local: CGPoint) -> CGPoint {
         CGPoint(x: local.x + 20, y: local.y + 24)
@@ -34,9 +32,6 @@ class OverlayWindow: NSWindow {
             defer: false
         )
 
-        // Make window transparent and click-through. A content-view `hitTest`
-        // returning nil does NOT pass clicks to the app behind, so the window
-        // itself must ignore events to stay transparent.
         self.isOpaque = false
         self.backgroundColor = .clear
         PerryWindowChrome.applyChrome(to: self)
@@ -54,7 +49,6 @@ class OverlayWindow: NSWindow {
         }
     }
 
-    // Prevent window from becoming key (no focus stealing)
     override var canBecomeKey: Bool {
         return false
     }
@@ -64,14 +58,9 @@ class OverlayWindow: NSWindow {
     }
 }
 
-/// One persistent window + hosting view per screen. Windows are created
-/// once and toggled with orderFront/orderOut — never rebuilt per
-/// invocation — so the render cost is paid once at warm, not per Do.
 private final class OverlayHost {
     let window: OverlayWindow
     let hostingView: NSHostingView<PerryOverlaySurface>
-    /// The state object this host's view is bound to. A different object
-    /// means the content view must be rebuilt.
     let boundState: PerryCursorState
 
     init(screen: NSScreen, state: PerryCursorState) {
@@ -125,13 +114,8 @@ public class OverlayWindowManager {
         }
     }
 
-    /// Creates (or reuses) the host for `screen` and guarantees it has been
-    /// rendered once while invisible.
     private func host(for screen: NSScreen, state: PerryCursorState) -> OverlayHost {
         let key = ObjectIdentifier(screen)
-        // Reuse only when the bound state and the captured frame still
-        // match — the root view's coordinate math is derived from
-        // screenFrame at init, so a resized screen gets a fresh host.
         if let existing = hosts[key],
            existing.boundState === state,
            existing.window.frame == screen.frame {
@@ -163,7 +147,6 @@ public class OverlayWindowManager {
 
         OverlayPerfProbe.shared.reset()
         DispatchQueue.main.async { [weak self] in
-            // First presentation opportunity after ordering the windows.
             self?.onSample?("overlay.first_frame_ms", "ms", (CFAbsoluteTimeGetCurrent() - start) * 1000)
         }
         emitStallSample()
@@ -217,8 +200,6 @@ public class OverlayWindowManager {
         }
     }
 
-    /// Round-trip through a background queue onto main: the hop latency is a
-    /// cheap proxy for main-thread stalls while the overlay is up.
     private func emitStallSample() {
         guard onSample != nil else { return }
         let queued = CFAbsoluteTimeGetCurrent()
@@ -234,8 +215,6 @@ public class OverlayWindowManager {
     }
 
     private func refreshOverlayWindowsForCurrentScreens() {
-        // Drop hosts for detached displays; a changed frame is refit on
-        // the next host(for:) call inside showOverlay.
         let live = Set(NSScreen.screens.map { ObjectIdentifier($0) })
         for (key, host) in hosts where !live.contains(key) {
             host.window.orderOut(nil)

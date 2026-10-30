@@ -48,7 +48,7 @@ struct RoutineOfferView: View {
                     .keyboardShortcut(.defaultAction)
             }
             Text("Works best for steps inside one app window. I can’t see passwords.")
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -56,22 +56,4 @@ struct RoutineOfferView: View {
         .tint(PerryTheme.Colors.accent)
         .foregroundStyle(PerryTheme.Colors.text)
     }
-}
-
-@MainActor
-final class RoutineOfferWindow {
-    private let id = UUID()
-    private let content: RoutineOfferView
-    private let presentation: NotchPresentation
-
-    init(onShowMe: @escaping () -> Void, onNotNow: @escaping () -> Void, presentation: NotchPresentation? = nil) {
-        self.presentation = presentation ?? .shared
-        content = RoutineOfferView(onShowMe: onShowMe, onNotNow: onNotNow)
-    }
-
-    func show() {
-        presentation.present(id: id, priority: .routine, content: content)
-    }
-
-    func close() { presentation.remove(id) }
 }

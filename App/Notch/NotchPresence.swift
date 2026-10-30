@@ -46,8 +46,6 @@ final class NotchPresence {
         return enabled
     }
 
-    // MARK: - Lifecycle
-
     func start() {
         guard monitors.isEmpty else { return }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -118,58 +116,13 @@ final class NotchPresence {
         resumeMonitoring = false
     }
 
-    // MARK: - Zone geometry
-
-    nonisolated static let notchEar: CGFloat = 26
-    nonisolated static let zonePadding: CGFloat = 6
-
-    nonisolated static func zoneRect(for screen: NSScreen) -> CGRect {
-        let top = screen.frame.maxY
-        if screen.safeAreaInsets.top > 0 {
-            let left = screen.auxiliaryTopLeftArea?.maxX ?? screen.frame.midX - 100
-            let right = screen.auxiliaryTopRightArea?.minX ?? screen.frame.midX + 100
-            let center = (left + right) / 2
-            let width = right - left + (notchEar + zonePadding) * 2
-            return CGRect(x: center - width / 2,
-                          y: top - screen.safeAreaInsets.top - zonePadding,
-                          width: width,
-                          height: screen.safeAreaInsets.top + zonePadding)
-        }
-        let menuBar = max(24, screen.frame.maxY - screen.visibleFrame.maxY)
-        return CGRect(x: screen.frame.midX - 60, y: top - menuBar, width: 120, height: menuBar)
-    }
-
-    static func screenUnderPointer() -> NSScreen? {
-        let point = NSEvent.mouseLocation
-        return NSScreen.screens.first { $0.frame.contains(point) }
-            ?? NSScreen.screens.first { $0.safeAreaInsets.top > 0 }
-            ?? NSScreen.main
-    }
-
-    nonisolated static func clickRect(for screen: NSScreen) -> CGRect {
-        guard screen.safeAreaInsets.top > 0,
-              let left = screen.auxiliaryTopLeftArea?.maxX,
-              let right = screen.auxiliaryTopRightArea?.minX else { return zoneRect(for: screen) }
-        return CGRect(x: left - notchEar, y: screen.frame.maxY - screen.safeAreaInsets.top,
-                      width: right - left + notchEar * 2, height: screen.safeAreaInsets.top)
-    }
-
-    nonisolated static func notchPanelFrame(size: CGSize, screenFrame: CGRect, centerX: CGFloat) -> CGRect {
-        let width = min(size.width, screenFrame.width)
-        let height = min(size.height, screenFrame.height)
-        let x = min(max(centerX - width / 2, screenFrame.minX), screenFrame.maxX - width)
-        return CGRect(x: x, y: screenFrame.maxY - height, width: width, height: height)
-    }
-
     private func currentZones() -> [CGRect]? {
         guard accepting, isEnabled else { return nil }
         if let cachedZones { return cachedZones }
-        let zones = NSScreen.screens.map(Self.zoneRect(for:))
+        let zones = NSScreen.screens.map { NotchGeometry(screen: $0).zone }
         cachedZones = zones
         return zones
     }
-
-    // MARK: - Pointer and keys
 
     private func pointerMoved() {
         guard let zones = currentZones() else {
@@ -196,7 +149,7 @@ final class NotchPresence {
         let point = NSEvent.mouseLocation
         guard currentZones() != nil,
               let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }),
-              Self.clickRect(for: screen).contains(point) else { return }
+              NotchGeometry(screen: screen).clickRect.contains(point) else { return }
         if surface == .open { return }
         openConversation()
     }
@@ -263,8 +216,6 @@ final class NotchPresence {
         deadlineTimer = timer
     }
 
-    // MARK: - Panels
-
     private func showRestingDotIfNeeded() {
         guard isEnabled, dotPanels.isEmpty else { return }
         dotPanels = NSScreen.screens.map(makeEyesPanel(on:))
@@ -273,24 +224,14 @@ final class NotchPresence {
     }
 
     private func makeEyesPanel(on screen: NSScreen) -> NSPanel {
-        var notch: CGSize?
-        if screen.safeAreaInsets.top > 0, let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-            notch = CGSize(width: right.minX - left.maxX, height: screen.safeAreaInsets.top)
-        }
+        let geometry = NotchGeometry(screen: screen)
+        let notch = geometry.housing
         let height = notch?.height ?? max(24, screen.frame.maxY - screen.visibleFrame.maxY)
         let pad = NotchEyesView.padding
         let width = (notch?.width ?? 150) + 4 + NotchEyesView.wing * 2 + NotchShape.closed.topRadius * 2 + pad * 2
-        let centerX = Self.zoneRect(for: screen).midX
-        let frame = CGRect(x: centerX - width / 2, y: screen.frame.maxY - height - pad, width: width, height: height + pad)
-        let panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.level = .statusBar
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
+        let frame = CGRect(x: geometry.centerX - width / 2, y: screen.frame.maxY - height - pad, width: width, height: height + pad)
+        let panel = PerryPanel(frame: frame)
         panel.ignoresMouseEvents = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        PerryWindowChrome.applyChrome(to: panel)
-        panel.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: NotchEyesView(model: eyes, notch: notch, height: height))
         host.sizingOptions = []
         panel.contentView = host

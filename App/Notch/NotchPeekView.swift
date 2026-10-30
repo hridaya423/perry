@@ -189,7 +189,7 @@ private struct PeekRowView: View {
             }
             .padding(.vertical, 8)
             .padding(.horizontal, PeekRowMetrics.inset)
-            .background(RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous).fill(.white.opacity(hovered ? 0.08 : 0)))
+            .background(RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous).fill(PerryTheme.Colors.veil(hovered ? 0.08 : 0)))
             .contentShape(Rectangle())
         }
         .padding(.horizontal, -6)

@@ -31,7 +31,7 @@ final class GuideSessionCoordinator {
     private var guideScopes: [UUID: GuideWorkerSession] = [:]
     private var currentGuideScopeID: UUID?
     private var lastGuideSpeechIdentity: GuideSpeechIdentity?
-    private var guideControlsWindow: GuideControlsWindow?
+    private let guideControlsID = UUID()
     private lazy var guideVoiceCommands = GuideVoiceCommands(
         onCommand: { [weak self] command in self?.handleVoiceCommand(command) },
         isSpeaking: { [weak self] in self?.output?.guideIsSpeaking() ?? false }
@@ -238,21 +238,18 @@ final class GuideSessionCoordinator {
     func showGuideControls() {
         guideVoiceCommands.startIfPermitted()
         output?.guideSetBuddyState(.guiding)
-        if guideControlsWindow == nil {
-            guideControlsWindow = GuideControlsWindow(
-                state: guideControlsState,
-                onDone: { [weak self] in self?.advanceGuide() },
-                onBack: { [weak self] in self?.goBackGuideStep() },
-                onSkip: { [weak self] in self?.skipGuideStep() },
-                onRepoint: { [weak self] in self?.repointGuideStep() },
-                onSelectMarker: { [weak self] index in self?.selectMarker(index: index) },
-                onChooseInput: { [weak self] index in self?.answerGuideInput(at: index) },
-                onTakeOver: { [weak self] in self?.takeOverGuide() },
-                onStop: { [weak self] in _ = self?.dismissIfActive() }
-            )
-        }
-        guard let window = guideControlsWindow, !window.isVisible else { return }
-        window.show()
+        guard !NotchPresentation.shared.contains(guideControlsID) else { return }
+        NotchPresentation.shared.present(id: guideControlsID, priority: .guide, content: GuideControlsView(
+            state: guideControlsState,
+            onDone: { [weak self] in self?.advanceGuide() },
+            onBack: { [weak self] in self?.goBackGuideStep() },
+            onSkip: { [weak self] in self?.skipGuideStep() },
+            onRepoint: { [weak self] in self?.repointGuideStep() },
+            onSelectMarker: { [weak self] index in self?.selectMarker(index: index) },
+            onChooseInput: { [weak self] index in self?.answerGuideInput(at: index) },
+            onTakeOver: { [weak self] in self?.takeOverGuide() },
+            onStop: { [weak self] in _ = self?.dismissIfActive() }
+        ))
     }
 
     func speak(_ text: String, guideID: UUID, stepID: UUID? = nil) {
@@ -338,8 +335,7 @@ final class GuideSessionCoordinator {
 
     private func hideGuideControls() {
         guideVoiceCommands.stop()
-        guideControlsWindow?.orderOut(nil)
-        guideControlsWindow = nil
+        NotchPresentation.shared.remove(guideControlsID)
         guideControlsState.reset()
         guideStepPosition = 0
     }
@@ -393,7 +389,8 @@ final class GuideSessionCoordinator {
     private func handleSessionClick(_ axPoint: CGPointShim) {
         guard activeGuideID != nil else { return }
         let clickPoint = AXCoordinateConverter.appKitPoint(of: axPoint)
-        let interactiveFrames = ([guideControlsWindow?.frame] + (output?.guideInteractiveFrames() ?? []))
+        let controlsFrame = NotchPresentation.shared.contains(guideControlsID) ? NotchPresentation.shared.frame : nil
+        let interactiveFrames = ([controlsFrame] + (output?.guideInteractiveFrames() ?? []))
             .compactMap { $0 }
         if interactiveFrames.contains(where: { $0.contains(clickPoint) }) || selectMarker(at: axPoint) {
             return

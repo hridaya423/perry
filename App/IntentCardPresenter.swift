@@ -2,48 +2,53 @@ import AppKit
 import PerryGuide
 import PerryRuntimes
 
-/// The one supervisor-path intent card on screen at a time. A card resolves
-/// when the user answers, when its task is cancelled, or when the session
-/// that asked for it is dismissed.
 @MainActor
 final class IntentCardPresenter {
-    private var window: IntentCardWindow?
+    static let shared = IntentCardPresenter()
 
-    var frame: CGRect? { window?.frame }
+    private let presentation: NotchPresentation
+    private var currentID: UUID?
 
-    func present(id: UUID, card: IntentCard, allowsStepThrough: Bool) async -> PlanDecision {
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                guard !Task.isCancelled else {
-                    continuation.resume(returning: .cancel)
-                    return
-                }
-                let window = IntentCardWindow(approvalID: id, card: card, allowsStepThrough: allowsStepThrough) { [weak self] decision in
-                    if self?.window?.approvalID == id {
-                        self?.window = nil
-                    }
-                    continuation.resume(returning: decision)
-                }
-                self.window = window
-                window.show()
-            }
-        } onCancel: {
-            Task { @MainActor [weak self] in
-                guard self?.window?.approvalID == id else { return }
-                self?.window?.cancel()
-            }
+    init(presentation: NotchPresentation = .shared) {
+        self.presentation = presentation
+    }
+
+    var frame: CGRect? { currentID == nil ? nil : presentation.frame }
+
+    func present(
+        id: UUID = UUID(),
+        card: IntentCard,
+        allowsStepThrough: Bool = false,
+        alwaysAllowLabel: String? = nil,
+        onAlwaysAllow: (() -> Void)? = nil
+    ) async -> PlanDecision {
+        dismiss()
+        currentID = id
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let previousApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
+        let decision = await presentation.ask(id: id, priority: .approval, title: card.title, cancelled: PlanDecision.cancel) { answer in
+            IntentCardView(
+                card: card,
+                allowsStepThrough: allowsStepThrough,
+                alwaysAllowLabel: alwaysAllowLabel,
+                onAlwaysAllow: onAlwaysAllow,
+                onAnswer: answer
+            )
         }
+        if currentID == id { currentID = nil }
+        previousApplication?.activate(options: [.activateAllWindows])
+        return decision
     }
 
     func dismiss() {
-        window?.cancel()
-        window = nil
+        guard let currentID else { return }
+        presentation.cancelAsk(currentID)
+        self.currentID = nil
     }
 
 #if DEBUG
     func showFixture(_ card: IntentCard) {
-        window = IntentCardWindow(card: card) { _ in }
-        window?.show()
+        Task { _ = await present(card: card) }
     }
 #endif
 }
@@ -79,8 +84,6 @@ struct InteractiveConfirmer: Confirmer {
             tier: request.tier,
             targetSummary: request.targetSummary ?? request.actionSummary,
             requiredPhrase: request.requiredText,
-            // The plan card approves the whole rehearsal — the button is the
-            // action, not the goal.
             approveLabel: "Run",
             reversible: request.reversible
         )
@@ -99,8 +102,6 @@ extension AppController {
         await presentIntentCard(id: id, card: card, allowsStepThrough: false) == .run
     }
 
-    /// Plan-level card: the same intent card plus a "Step through" choice that
-    /// walks the plan one confirmed action at a time.
     func requestPlanDecision(id: UUID, card: IntentCard) async -> PlanDecision {
         await presentIntentCard(id: id, card: card, allowsStepThrough: true)
     }

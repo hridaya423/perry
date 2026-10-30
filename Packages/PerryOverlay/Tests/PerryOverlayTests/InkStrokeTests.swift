@@ -21,7 +21,6 @@ final class InkStrokeTests: XCTestCase {
     }
 
     func testZeroJitterStaysOnTheSpline() {
-        // A straight segment with zero jitter keeps every sample on the line.
         let out = InkStroke.sampled(
             through: [CGPoint(x: 0, y: 0), CGPoint(x: 100, y: 0)],
             jitter: 0, seed: 9
@@ -47,11 +46,11 @@ final class InkStrokeTests: XCTestCase {
     func testWidthsMatchSampleCountAndTaperEnds() {
         let widths = InkStroke.widths(count: 20, baseWidth: 5, seed: 3)
         XCTAssertEqual(widths.count, 20)
-        XCTAssertLessThan(widths[0], widths[10]) // taper in
-        XCTAssertLessThan(widths[19], widths[10]) // taper out
+        XCTAssertLessThan(widths[0], widths[10])
+        XCTAssertLessThan(widths[19], widths[10])
         for w in widths {
             XCTAssertGreaterThanOrEqual(w, 0.5)
-            XCTAssertLessThanOrEqual(w, 5.9) // base * 1.0 taper * 1.18 wobble ceiling
+            XCTAssertLessThanOrEqual(w, 5.9)
         }
     }
 
@@ -162,7 +161,6 @@ final class CaptionPlacerTests: XCTestCase {
     }
 
     func testFlipsAboveWhenBottomIsCrowded() {
-        // Target hugging the bottom edge: below overflows, above is clean.
         let anchor = CGRect(x: 600, y: 860, width: 80, height: 40)
         let placed = CaptionPlacer.place(size: size, anchor: anchor, in: screen)
         XCTAssertLessThan(placed.maxY, anchor.minY)
@@ -171,7 +169,6 @@ final class CaptionPlacerTests: XCTestCase {
 
     func testAvoidsObstacleRect() {
         let anchor = CGRect(x: 600, y: 300, width: 80, height: 40)
-        // Block the below slot so "above" wins.
         let obstacle = CGRect(x: 540, y: 340, width: 320, height: 60)
         let placed = CaptionPlacer.place(size: size, anchor: anchor, avoiding: [obstacle], in: screen)
         XCTAssertLessThan(placed.maxY, anchor.minY)

@@ -2,14 +2,18 @@ import SwiftUI
 
 public enum PerryOverlayTheme {
     public enum Colors {
-        public static let accent = Color(red: 0.612, green: 0.796, blue: 0.714)
+        public static let accentRGB = 0x9CCBB6
+        public static let accent = Color(
+            red: Double((accentRGB >> 16) & 0xFF) / 255,
+            green: Double((accentRGB >> 8) & 0xFF) / 255,
+            blue: Double(accentRGB & 0xFF) / 255
+        )
         public static let ink = Color(white: 0.16)
         public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
-        /// Amber hold — the §5 blocked morph. Distinct from failure red.
+        /// Amber hold — the blocked morph. Distinct from failure red.
         public static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
         public static let labelForeground = Color.white
         public static let labelBackground = Color.black.opacity(0.72)
-        public static let eyeHighlight = Color.white
         public static let captionSurface = Color.white
         public static let captionText = Color.black
         public static let shadow = Color.black.opacity(0.22)
@@ -20,7 +24,6 @@ public enum PerryOverlayTheme {
     /// opacity/color feedback and removes travel and bounce.
     public enum Motion {
         public static let feedback = Animation.easeOut(duration: 0.14)
-        public static let entrance = Animation.easeOut(duration: 0.24)
         public static let travel = Animation.spring(response: 0.2, dampingFraction: 0.6)
         public static let travelFast = Animation.spring(response: 0.16, dampingFraction: 0.72)
         public static let ambientPulse = Animation.easeInOut(duration: 0.82)
@@ -28,9 +31,6 @@ public enum PerryOverlayTheme {
 }
 
 public extension Color {
-    /// Failable initializer for dynamic hex values (model output, external
-    /// cursor state). Returns nil on parse failure so callers can fall back
-    /// to their intended color rather than silently getting black.
     init?(optionalHex hex: String) {
         let sanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
@@ -81,19 +81,6 @@ public enum PerryBuddyState: String, Equatable, Sendable {
         case .blocked: return "Blocked"
         }
     }
-
-    public var symbolName: String {
-        switch self {
-        case .idle: return "face.smiling"
-        case .listening: return "ear"
-        case .thinking: return "ellipsis.bubble"
-        case .guiding: return "hand.point.up.left"
-        case .acting: return "figure.run"
-        case .awaitingApproval: return "hand.raised"
-        case .success: return "checkmark.circle"
-        case .blocked: return "exclamationmark.triangle"
-        }
-    }
 }
 
 public enum PerryVoicePhase: Equatable {
@@ -124,9 +111,6 @@ public final class PerryCursorState: ObservableObject {
     @Published public var circleSelectSnapLabel: String?
     @Published public var activeControlGlowRect: CGRect?
     @Published public var activeControlGlowLabel: String?
-    /// Set by OverlayWindowManager: overlay windows are persistent now, so
-    /// this flag — not view appear/disappear — drives cursor tracking. A
-    /// hidden host must hold zero monitors and timers (idle CPU budget).
     @Published public var overlayVisible: Bool = false
     @Published public var panelScreenFrame: CGRect?
 
@@ -162,11 +146,6 @@ public final class PerryCursorState: ObservableObject {
                 visualGuidanceOverlays.removeAll { $0.id == id }
             }
         }
-    }
-
-    public func clearDetectedElementLocation() {
-        detectedElementScreenLocation = nil
-        detectedElementDisplayFrame = nil
     }
 }
 
@@ -236,7 +215,7 @@ public final class OverlayPerfProbe {
     }
 }
 
-/// The chrome contract every Perry window follows (plan §10): excluded
+/// The chrome contract every Perry window follows: excluded
 /// from screenshots and screen shares (`sharingType = .none`), visible on
 /// every space including fullscreen apps, stationary, and out of the
 /// ⌘⇥ window cycle. Interactive levels stack just under the system

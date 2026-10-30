@@ -22,7 +22,7 @@ struct CustomConnectorsSection: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Custom connectors")
-                        .font(PerryTheme.Typography.panelBody.weight(.semibold))
+                        .font(PerryTheme.Scale.body.weight(.semibold))
                     Text("Connect a tool you set up yourself. Perry asks before it changes anything.")
                         .settingNote()
                 }
@@ -50,7 +50,7 @@ struct CustomConnectorsSection: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(connector.name)
-                        .font(PerryTheme.Typography.panelBody)
+                        .font(PerryTheme.Scale.body)
                     if connector.secret != nil {
                         Image(systemName: "key.fill")
                             .font(PerryTheme.Icon.utility).imageScale(.small)
@@ -60,7 +60,7 @@ struct CustomConnectorsSection: View {
                     }
                 }
                 Text(connector.summary)
-                    .font(PerryTheme.Typography.monoSmall)
+                    .font(PerryTheme.Scale.monoSmall)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -74,7 +74,7 @@ struct CustomConnectorsSection: View {
             }
             Button("Remove", role: .destructive) { connectors.remove(connector.id) }
                 .buttonStyle(.pressable)
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
@@ -87,7 +87,7 @@ struct CustomConnectorsSection: View {
                 .foregroundStyle(PerryTheme.Colors.success)
         case .failed(let message):
             StatusLabel("Offline", .attention)
-                .foregroundStyle(PerryTheme.Colors.warning)
+                .foregroundStyle(PerryTheme.Colors.caution)
                 .help(message)
         case .connecting, nil:
             ProgressView().controlSize(.small)
@@ -109,13 +109,13 @@ struct CustomConnectorsSection: View {
             }
             TextField(kind == .command ? "npx -y @modelcontextprotocol/server-memory" : "https://example.com/mcp", text: $address)
                 .textFieldStyle(.roundedBorder)
-                .font(PerryTheme.Typography.monoSmall)
+                .font(PerryTheme.Scale.monoSmall)
                 .onSubmit(add)
             HStack(spacing: 8) {
                 if kind == .command {
                     TextField("API_KEY", text: $secretVariable)
                         .textFieldStyle(.roundedBorder)
-                        .font(PerryTheme.Typography.monoSmall)
+                        .font(PerryTheme.Scale.monoSmall)
                         .frame(maxWidth: 180)
                         .accessibilityLabel("Key variable name")
                 }
@@ -129,8 +129,8 @@ struct CustomConnectorsSection: View {
             }
             if let addError {
                 Text(addError)
-                    .font(PerryTheme.Typography.note)
-                    .foregroundStyle(PerryTheme.Colors.warning)
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.caution)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text(kind == .command

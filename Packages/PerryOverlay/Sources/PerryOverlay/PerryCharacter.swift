@@ -326,7 +326,7 @@ public struct PerryCharacterView: View {
         self.tint = tint
     }
 
-    public static let sage = Color(red: 0.612, green: 0.796, blue: 0.714)
+    public static let sage = PerryOverlayTheme.Colors.accent
     static let carbon = Color(red: 0.047, green: 0.051, blue: 0.055)
     static let amber = Color(red: 0.98, green: 0.70, blue: 0.20)
 

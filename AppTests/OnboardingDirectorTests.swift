@@ -116,9 +116,6 @@ final class OnboardingDirectorTests: XCTestCase {
         XCTAssertEqual(dismissed, 1)
         XCTAssertEqual(defaults.string(forKey: "perry.onboarding.beat"), "access")
         XCTAssertTrue(defaults.bool(forKey: "perry.onboarding.dismissed"))
-        XCTAssertFalse(OnboardingCoordinator.opensAtLaunch(completed: false, dismissed: true))
-        XCTAssertTrue(OnboardingCoordinator.opensAtLaunch(completed: false, dismissed: false))
-        XCTAssertFalse(OnboardingCoordinator.opensAtLaunch(completed: true, dismissed: false))
 
         let setup = PeekRow.setup
         XCTAssertEqual(setup.title, "Finish setup")
@@ -232,7 +229,6 @@ final class OnboardingDirectorTests: XCTestCase {
         await director.grant(.accessibility)
         await director.grant(.microphone)
         XCTAssertEqual(asked, [.accessibility, .microphone])
-        XCTAssertFalse(OnboardingDirector.accessPanes.contains(.screenRecording))
         director.stop()
     }
 

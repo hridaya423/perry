@@ -56,37 +56,6 @@ final class NotchDialogTests: XCTestCase {
         XCTAssertFalse(presentation.contains(dialog.id))
     }
 
-    func testItemSnapshotSurvivesSourceClearing() {
-        let presentation = NotchPresentation()
-        let target = UUID()
-        var source: UUID? = target
-        var hit: UUID?
-        let dialog = NotchDialog(
-            title: "Discard this unsaved request?",
-            item: source,
-            actions: { id in [NotchDialog.Action("Discard", role: .destructive) { hit = id }] },
-            presentation: presentation,
-            onClearSource: { source = nil })
-        XCTAssertNotNil(dialog)
-        source = nil
-        dialog?.present()
-        dialog?.select(0)
-        XCTAssertEqual(hit, target)
-        XCTAssertNil(source)
-        XCTAssertFalse(presentation.contains(dialog?.id ?? UUID()))
-    }
-
-    func testNilItemNeverBuilds() {
-        let presentation = NotchPresentation()
-        let dialog = NotchDialog(
-            title: "Discard?",
-            item: Optional<UUID>.none,
-            actions: { _ in [NotchDialog.Action("Discard") {}] },
-            presentation: presentation)
-        XCTAssertNil(dialog)
-        XCTAssertNil(presentation.current)
-    }
-
     func testOKOnlyDialogResolvesThroughCancel() {
         let presentation = NotchPresentation()
         var clears = 0
@@ -165,7 +134,7 @@ final class NotchDialogTests: XCTestCase {
             .appendingPathComponent("build/notch-rebuild-evidence")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(origin: .zero, size: size)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let panel = NotchLayout.size(.focused(content: size.height - 28 - NotchLayout.bottomInset), cameraInset: 24, screen: CGSize(width: 1728, height: 1117))

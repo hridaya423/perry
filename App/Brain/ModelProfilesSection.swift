@@ -109,7 +109,7 @@ struct ModelProfilesSection: View {
                 .textFieldStyle(.roundedBorder)
         } else {
             LabeledContent("Endpoint") {
-                Text(baseURL).font(PerryTheme.Typography.monoSmall).foregroundStyle(PerryTheme.Colors.textSecondary)
+                Text(baseURL).font(PerryTheme.Scale.monoSmall).foregroundStyle(PerryTheme.Colors.textSecondary)
             }
         }
         if !preset.isLocal {

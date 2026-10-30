@@ -85,7 +85,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertTrue(reopened)
         XCTAssertTrue(controller.backgroundTasks.acceptsControls)
         XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
-        XCTAssertTrue(NSApp.windows.contains { $0.identifier == CompactConversationPanel.identifier })
+        XCTAssertTrue(NSApp.windows.contains { $0.identifier == SessionPanelPresenter.panelIdentifier })
         controller.notchPresence.stop()
         controller.homeController.closeHome()
     }

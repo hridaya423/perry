@@ -81,7 +81,7 @@ final class IconRenderTests: XCTestCase {
             .appendingPathComponent("build/icon-evidence")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(origin: .zero, size: size)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: content)

@@ -10,8 +10,6 @@ public enum InkStroke {
     /// Perpendicular wobble amplitude in points — slight, not messy.
     public static let defaultJitter: CGFloat = 0.6
 
-    /// Deterministic rng (SplitMix64). No Foundation RNG: seeded output must
-    /// be identical across launches for snapshot evidence.
     struct SplitMix64 {
         private var state: UInt64
         init(seed: UInt64) { state = seed &* 0x9E3779B97F4A7C15 }
@@ -38,7 +36,7 @@ public enum InkStroke {
         guard points.count > 1 else { return points }
         var output: [CGPoint] = []
         var rng = SplitMix64(seed: seed)
-        let alpha: CGFloat = 0.5 // centripetal: no cusps or self-intersections
+        let alpha: CGFloat = 0.5
 
         func knot(_ index: Int) -> CGPoint {
             points[min(max(index, 0), points.count - 1)]
@@ -80,7 +78,6 @@ public enum InkStroke {
         return output
     }
 
-    /// Catmull-Rom evaluation on non-uniform knots (Barry–Goldman form).
     private static func evaluate(
         _ p0: CGPoint, _ p1: CGPoint, _ p2: CGPoint, _ p3: CGPoint,
         t0: CGFloat, t1: CGFloat, t2: CGFloat, t3: CGFloat, at t: CGFloat
@@ -104,7 +101,6 @@ public enum InkStroke {
         var rng = SplitMix64(seed: seed ^ 0xA5A5A5A5)
         return (0..<count).map { i in
             let progress = CGFloat(i) / CGFloat(max(count - 1, 1))
-            // Taper the first/last 15%; undulate ±18% through the body.
             let end = min(1, min(progress, 1 - progress) / 0.15)
             let taper = 0.35 + 0.65 * end
             let wobble = 0.82 + 0.36 * rng.unit()
@@ -114,7 +110,7 @@ public enum InkStroke {
 
     /// A closed perimeter stroke around `rect`: two control points per edge
     /// plus the corner, so Catmull-Rom softens corners into a hand-drawn
-    /// loop instead of a machine-perfect rectangle (§5).
+    /// loop instead of a machine-perfect rectangle.
     public static func rectangle(in rect: CGRect) -> [CGPoint] {
         sampled(through: [
             CGPoint(x: rect.minX, y: rect.minY),
@@ -130,7 +126,7 @@ public enum InkStroke {
     }
 
     /// A closed elliptical loop inscribed in `rect` — the ring mark's
-    /// hand-inked form (§5). The join sits off-axis so it doesn't land on a
+    /// hand-inked form. The join sits off-axis so it doesn't land on a
     /// pole of the ellipse where the eye looks first.
     public static func ellipse(in rect: CGRect, controlPoints count: Int = 14, seed: UInt64 = 1) -> [CGPoint] {
         guard count > 2, rect.width > 0, rect.height > 0 else { return [] }
@@ -224,10 +220,10 @@ public struct InkStrokeShape: Shape {
 
 /// Luminance-adaptive ink color: sample a small patch of the screen capture
 /// already held in memory for the turn (never a fresh capture) and pick the
-/// ink that reads on it — sage on dark, deep green on light (§5).
+/// ink that reads on it — sage on dark, deep green on light.
 public enum InkColor {
     /// Sage, the theme accent on dark backgrounds.
-    public static let onDarkHex = "9CCBB6"
+    public static let onDarkHex = String(PerryOverlayTheme.Colors.accentRGB, radix: 16, uppercase: true)
     /// Deep green on light backgrounds.
     public static let onLightHex = "3C7765"
     /// Rec. 601 midpoint where sage stops being legible.

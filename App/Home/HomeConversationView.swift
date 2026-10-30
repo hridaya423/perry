@@ -27,7 +27,7 @@ struct HomeConversationView: View {
                                 .textSelection(.enabled)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
-                                .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
+                                .background(PerryTheme.Colors.veil(0.09), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.card, style: .continuous))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             if !turn.answer.isEmpty {
                                 ConversationAnswer(text: turn.answer)
@@ -385,7 +385,7 @@ struct ConversationAnswer: View {
             }
             if run.inlinePresentationIntent?.contains(.code) == true {
                 fragment.font = .system(.body, design: .monospaced)
-                fragment.backgroundColor = Color.white.opacity(0.08)
+                fragment.backgroundColor = PerryTheme.Colors.veil(0.08)
             }
             if let kind = components.first?.kind {
                 switch kind {
@@ -418,7 +418,7 @@ private struct CodeBlock: View {
                 .padding(.trailing, 72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
+        .background(PerryTheme.Colors.veil(0.06), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
         .overlay(alignment: .topTrailing) {
             Button {
                 NSPasteboard.general.clearContents()

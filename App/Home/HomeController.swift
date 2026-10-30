@@ -34,7 +34,6 @@ final class HomeController {
     var onStop: ((UUID) -> Void)?
     var onOpenConversation: (() -> Void)?
 
-    /// Owner binds the coordinator's running set → composer's working row.
     func bindWorkingThreads(_ publisher: some Publisher<Set<UUID>, Never>) -> AnyCancellable {
         publisher
             .receive(on: DispatchQueue.main)
@@ -44,8 +43,6 @@ final class HomeController {
                 self.performWork { await self.refreshThreads() }
             }
     }
-
-    // MARK: - Lifecycle
 
     func closeAdmission() {
         acceptsInput = false
@@ -98,21 +95,15 @@ final class HomeController {
         return task
     }
 
-    // MARK: - Content
-
     func updatePerrys(_ perrys: [Perry]) {
         guard homeModel.perrys != perrys else { return }
         homeModel.perrys = perrys
     }
 
-    /// Refreshes the sidebar's Perry list — injected by AppController so the
-    /// view never touches `PerryStore` directly.
     var perryListProvider: (() async -> [Perry])?
 
-    /// Owns card lifecycle (act/dismiss bookkeeping); injected by the owner.
     var suggestionController: SuggestionController?
 
-    /// Sidebar routines — injected so the view never touches RoutineStore.
     var routineListProvider: (() -> [LearnedRoutine])?
     var onRoutineRun: ((LearnedRoutine) -> Void)?
     var onRoutineRemove: ((LearnedRoutine) -> Void)?
@@ -125,12 +116,9 @@ final class HomeController {
         homeModel.routines = routineListProvider?() ?? []
     }
 
-    /// Services the embedded pages need — set once by AppController.
     func configure(deps: HomeModel.Deps) {
         homeModel.deps = deps
     }
-
-    // MARK: - Full Home
 
     func openHome(selection: HomeModel.Selection? = nil) {
         guard acceptsInput else { return }
@@ -314,8 +302,6 @@ final class HomeController {
         homeModel.onPerrySelected = { [weak self] perry in
             guard let self, self.acceptsInput, let uuid = UUID(uuidString: perry.threadID) else { return }
             self.performWork {
-                // The Perry's thread is created on first open, stamped with
-                // perryID so tool consent scopes to the Perry, not the turn.
                 if await self.threadStore?.thread(id: uuid) == nil {
                     do {
                         try await self.threadStore?.upsert(
@@ -357,10 +343,6 @@ final class HomeController {
                 }
             }
             if finish == .interrupted {
-                // Accepted but never dispatched: promote the staged request
-                // into the thread draft so it survives quit. restoreWaitingInput
-                // refuses when the composer already holds another draft — the
-                // staged copy stays listed for manual restore.
                 try? await self.threadStore?.restoreWaitingInput(input.request.id, from: threadID)
             }
         }
@@ -377,9 +359,6 @@ final class HomeController {
         } else if let requestedThreadID {
             threadID = requestedThreadID
         } else if let contextKey {
-            // Talk holds keep one thread per app window (Phase 2.5): a window
-            // that already has a live thread continues it, a fresh window
-            // starts fresh — never spilling into an unrelated selected thread.
             if let mapped = talkContextStore.thread(for: contextKey),
                homeModel.threads.contains(where: { $0.id == mapped }) {
                 threadID = mapped
@@ -511,8 +490,6 @@ final class HomeController {
             self?.homeModel.streamingAnswers[threadID] = partial
         }
         if !markedFirstText, finish == .completed {
-            // Non-streaming providers answer only at finish — the first
-            // visible text lands here.
             PerfMark.mark("home.answer.first_text")
         }
         homeModel.threadErrors[threadID] = finish.failureReason
@@ -535,7 +512,6 @@ final class HomeController {
             await self.refreshThreads()
         }
     }
-
 
     @MainActor
     private func restoreWelcomeDraft() async {

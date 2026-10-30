@@ -363,7 +363,7 @@ final class RoutineRunner {
     }
 
     private static func presentAskUser(prompt: String, choices: [String]) async throws {
-        try await TaskQuestionPresenter(prompt: prompt, choices: choices).ask()
+        try await NotchPresentation.shared.askChoice(prompt: prompt, choices: choices)
     }
 
     private func typedTaskResources(

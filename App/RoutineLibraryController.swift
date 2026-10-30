@@ -21,7 +21,7 @@ final class RoutineLibraryController {
     private var recorder: DemonstrationRecorder?
     private var pendingRoutine: LearnedRoutine?
     private var pendingRun: LearnedRoutine?
-    private var reviewWindow: RoutineReviewWindow?
+    private let reviewID = UUID()
     private let reviewState = RoutineReviewState()
 
     init(
@@ -233,22 +233,18 @@ final class RoutineLibraryController {
     }
 
     private func closeReview() {
-        reviewWindow?.close()
-        reviewWindow = nil
+        NotchPresentation.shared.remove(reviewID)
     }
 
     private func showReviewWindow() {
-        if reviewWindow == nil {
-            reviewWindow = RoutineReviewWindow(
-                state: reviewState,
-                onStopRecording: { [weak self] in Task { await self?.stopRecordingForReview() } },
-                onDiscard: { [weak self] in self?.discardPendingReview() },
-                onSave: { [weak self] in self?.savePendingRoutine() },
-                onSaveAndTry: { [weak self] in self?.savePendingRoutine(thenRun: true) },
-                onRun: { [weak self] in self?.runPendingRoutine() }
-            )
-        }
-        reviewWindow?.show()
+        NotchPresentation.shared.present(id: reviewID, priority: .routine, content: RoutineReviewView(
+            state: reviewState,
+            onStopRecording: { [weak self] in Task { await self?.stopRecordingForReview() } },
+            onDiscard: { [weak self] in self?.discardPendingReview() },
+            onSave: { [weak self] in self?.savePendingRoutine() },
+            onSaveAndTry: { [weak self] in self?.savePendingRoutine(thenRun: true) },
+            onRun: { [weak self] in self?.runPendingRoutine() }
+        ))
     }
 
     /// Read-only window observation for click correlation — the same worker

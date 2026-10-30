@@ -43,19 +43,33 @@ final class NotchPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.current?.contentHeight, 240)
     }
 
-    func testCollapsingDoesNotResolveApprovalAndCancelResolvesOnce() {
+    func testCollapsingDoesNotResolveApprovalAndDismissResolvesCancel() async {
         let presentation = NotchPresentation()
-        var decisions: [PlanDecision] = []
+        let presenter = IntentCardPresenter(presentation: presentation)
         let card = IntentCard(title: "Remove file", detail: "Remove selected file", tier: .red, targetSummary: "Selected file")
-        let approval = IntentCardWindow(card: card, presentation: presentation) { decisions.append($0) }
-        approval.show()
+        let asking = Task { await presenter.present(card: card) }
+        for _ in 0..<200 where presentation.current == nil { await Task.yield() }
         presentation.showsInteraction = false
-        XCTAssertTrue(decisions.isEmpty)
         XCTAssertEqual(presentation.current?.priority, .approval)
-        approval.cancel()
-        approval.cancel()
-        XCTAssertEqual(decisions.count, 1)
-        guard case .cancel? = decisions.first else { return XCTFail("Approval must cancel") }
+        presenter.dismiss()
+        presenter.dismiss()
+        let decision = await asking.value
+        guard case .cancel = decision else { return XCTFail("Approval must cancel") }
+        XCTAssertNil(presentation.current)
+    }
+
+    func testPresentingASecondIntentCardCancelsTheFirst() async {
+        let presentation = NotchPresentation()
+        let presenter = IntentCardPresenter(presentation: presentation)
+        let card = IntentCard(title: "Remove file", detail: nil, tier: .orange, targetSummary: "Selected file")
+        let first = Task { await presenter.present(card: card) }
+        for _ in 0..<200 where presentation.current == nil { await Task.yield() }
+        let second = Task { await presenter.present(card: card) }
+        let firstDecision = await first.value
+        guard case .cancel = firstDecision else { return XCTFail("The first card must be cancelled") }
+        XCTAssertEqual(presentation.entries.count, 1)
+        presenter.dismiss()
+        _ = await second.value
         XCTAssertNil(presentation.current)
     }
 
@@ -71,7 +85,7 @@ final class NotchPresentationTests: XCTestCase {
 
     func testNotchRemainsAttachedOnOffsetAndSmallDisplays() {
         for screen in [CGRect(x: 0, y: 0, width: 1512, height: 982), CGRect(x: -1280, y: 500, width: 1280, height: 720)] {
-            let frame = NotchPresence.notchPanelFrame(size: CGSize(width: 892, height: 552), screenFrame: screen, centerX: screen.midX)
+            let frame = NotchGeometry.panelFrame(size: CGSize(width: 892, height: 552), screenFrame: screen, centerX: screen.midX)
             XCTAssertEqual(frame.maxY, screen.maxY)
             XCTAssertEqual(frame.midX, screen.midX)
             XCTAssertGreaterThanOrEqual(frame.minX, screen.minX)

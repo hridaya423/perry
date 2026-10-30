@@ -9,11 +9,7 @@ final class GuideControlsState: ObservableObject {
     @Published var markerCaptions: [String] = []
     @Published var pendingPrompt: String?
     @Published var pendingChoices: [String] = []
-    /// Steps that carry a postcondition verify themselves on the user's
-    /// click — the manual Done is hidden so it can't confirm what the
-    /// observation can already prove (§3.4).
     @Published var hasPostcondition = false
-    /// Whether a previous presented step exists to return to (§3.4 Back).
     @Published var canGoBack = false
 
     var mapIsPresented: Bool { !markerCaptions.isEmpty }
@@ -132,7 +128,7 @@ struct GuideControlsView: View {
                             .font(.callout.weight(.semibold))
                             .monospacedDigit()
                             .frame(width: 32, height: 32)
-                            .background(Color.white.opacity(0.06), in: Circle())
+                            .background(PerryTheme.Colors.veil(0.06), in: Circle())
                             .overlay(Circle().strokeBorder(PerryTheme.Colors.subtleSeparator, lineWidth: 1))
                     }
                     .buttonStyle(.pressable)
@@ -164,40 +160,4 @@ struct GuideControlsView: View {
             }
         }
     }
-}
-
-@MainActor
-final class GuideControlsWindow {
-    let controlsState: GuideControlsState
-    private let id = UUID()
-    private let content: GuideControlsView
-    private let presentation: NotchPresentation
-
-    var isVisible: Bool { presentation.contains(id) }
-    var frame: NSRect { isVisible ? presentation.frame : .zero }
-
-    init(
-        state: GuideControlsState,
-        onDone: @escaping () -> Void,
-        onBack: @escaping () -> Void,
-        onSkip: @escaping () -> Void,
-        onRepoint: @escaping () -> Void,
-        onSelectMarker: @escaping (Int) -> Void,
-        onChooseInput: @escaping (Int) -> Void,
-        onTakeOver: @escaping () -> Void,
-        onStop: @escaping () -> Void,
-        presentation: NotchPresentation? = nil
-    ) {
-        controlsState = state
-        self.presentation = presentation ?? .shared
-        content = GuideControlsView(state: state, onDone: onDone, onBack: onBack, onSkip: onSkip,
-                                    onRepoint: onRepoint, onSelectMarker: onSelectMarker,
-                                    onChooseInput: onChooseInput, onTakeOver: onTakeOver, onStop: onStop)
-    }
-
-    func show() {
-        presentation.present(id: id, priority: .guide, content: content)
-    }
-
-    func orderOut(_ sender: Any?) { presentation.remove(id) }
 }

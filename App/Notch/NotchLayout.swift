@@ -15,13 +15,13 @@ enum NotchLayout {
 
         @MainActor
         init(_ screen: NSScreen?) {
-            cameraInset = max(24, screen?.safeAreaInsets.top ?? 0)
+            let geometry = screen.map(NotchGeometry.init)
+            cameraInset = geometry?.cameraInset ?? 24
             self.screen = screen?.frame.size ?? .zero
-            if let screen, screen.safeAreaInsets.top > 0,
-               let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-                closed = CGSize(width: right.minX - left.maxX + NotchShape.closed.topRadius * 2, height: screen.safeAreaInsets.top)
+            if let housing = geometry?.housing {
+                closed = CGSize(width: housing.width + NotchShape.closed.topRadius * 2, height: housing.height)
             } else {
-                closed = screen.map { NotchPresence.zoneRect(for: $0).size } ?? CGSize(width: 120, height: 24)
+                closed = geometry?.zone.size ?? CGSize(width: 120, height: 24)
             }
 #if DEBUG
             if let inset = ProcessInfo.processInfo.environment["PERRY_LAB_NOTCH_INSET"].flatMap(Double.init) {
@@ -77,7 +77,7 @@ enum NotchLayout {
 
     static func windowFrame(screen: CGRect, centerX: CGFloat) -> CGRect {
         let cap = cap(screen: screen.size)
-        return NotchPresence.notchPanelFrame(
+        return NotchGeometry.panelFrame(
             size: CGSize(width: cap.width + shadowPadding * 2, height: cap.height + shadowPadding),
             screenFrame: screen,
             centerX: centerX

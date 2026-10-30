@@ -1,13 +1,9 @@
 import AppKit
 import PerryOverlay
 
-/// Rendered in plain AppKit, not NSHostingView: a hosting view attached to a
-/// borderless panel can re-invalidate the window's size extrema every
-/// constraint pass until AppKit throws. A fixed NSStackView can't.
 @MainActor
 final class NotchStatusController {
-
-    private var window: NSPanel?
+    private var window: PerryPanel?
     private var fadeGeneration = 0
     private var stack: NSStackView?
     private var isRecording = false
@@ -47,8 +43,6 @@ final class NotchStatusController {
         present()
     }
 
-    /// Ambient wake is the one state this indicator shows even when the user
-    /// turned the notch status off: an open microphone is never invisible.
     func setListeningForWake(_ listening: Bool) {
         listeningForWake = listening
         present()
@@ -132,15 +126,9 @@ final class NotchStatusController {
         if reviews > 0 { parts.append("\(reviews) awaiting approval") }
         panel.contentView?.setAccessibilityLabel(parts.joined(separator: ", "))
 
-        let midX: CGFloat
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-            midX = (left.maxX + right.minX) / 2
-        } else {
-            midX = screen.frame.midX
-        }
         stack.edgeInsets = NSEdgeInsets(top: screen.safeAreaInsets.top + 7, left: 16, bottom: 9, right: 16)
         let size = CGSize(width: max(220, stack.fittingSize.width), height: stack.fittingSize.height)
-        let frame = NotchPresence.notchPanelFrame(size: size, screenFrame: screen.frame, centerX: midX)
+        let frame = NotchGeometry.panelFrame(size: size, screenFrame: screen.frame, centerX: NotchGeometry(screen: screen).centerX)
         panel.contentView?.layer?.cornerRadius = 14
         panel.contentView?.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         window = panel
@@ -159,20 +147,8 @@ final class NotchStatusController {
         }
     }
 
-    private static func makePanel(controller: NotchStatusController) -> NSPanel {
-        let panel = NotchStatusPanel(
-            contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = .statusBar
-        panel.appearance = NSAppearance(named: .darkAqua)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.ignoresMouseEvents = false
-        PerryWindowChrome.applyChrome(to: panel)
+    private static func makePanel(controller: NotchStatusController) -> PerryPanel {
+        let panel = PerryPanel()
 
         let font = NSFont.systemFont(ofSize: 11, weight: .medium)
         controller.dot.wantsLayer = true
@@ -230,11 +206,5 @@ final class NotchStatusController {
         ])
         panel.contentView = capsule
         return panel
-    }
-}
-
-private final class NotchStatusPanel: NSPanel {
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        frameRect
     }
 }

@@ -87,7 +87,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         host.sizingOptions = []
         return host
     }
-    let intentCards = IntentCardPresenter()
+    let intentCards = IntentCardPresenter.shared
     lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }

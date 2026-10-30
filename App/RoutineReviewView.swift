@@ -4,10 +4,6 @@ import PerryGuide
 import PerryOverlay
 import SwiftUI
 
-/// Floating Watch & Learn surface. While recording it shows the bounded
-/// step count and Done; after the demonstration ends it morphs into the
-/// review — the inferred steps, a name field, and Save/Discard. Nothing is
-/// saved until the user reviews it.
 final class RoutineReviewState: ObservableObject {
     enum Phase { case recording, review, fillParameters }
 
@@ -92,7 +88,7 @@ struct RoutineReviewView: View {
                     .keyboardShortcut(.defaultAction)
             }
             Text("Press Esc twice to cancel. Nothing is saved.")
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
         }
     }
@@ -110,7 +106,7 @@ struct RoutineReviewView: View {
             .frame(maxHeight: 104)
             .fixedSize(horizontal: false, vertical: true)
             Text("Check each step before you save. I ask for typed text each time it runs unless you turn that off for a step.")
-                .font(PerryTheme.Typography.note)
+                .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
             HStack {
                 Button("Discard") { onDiscard() }
@@ -133,18 +129,18 @@ struct RoutineReviewView: View {
             ForEach(Array(state.steps.enumerated()), id: \.offset) { index, step in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text("\(index + 1)")
-                        .font(PerryTheme.Typography.panelClose)
+                        .font(PerryTheme.Scale.close)
                         .monospacedDigit()
                         .foregroundStyle(PerryTheme.Colors.textSecondary)
                         .frame(width: 20, height: 20)
-                        .background(Color.white.opacity(0.08), in: Circle())
+                        .background(PerryTheme.Colors.veil(0.08), in: Circle())
                     VStack(alignment: .leading, spacing: 6) {
                         Text(step.summary)
                             .font(.callout)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if step.requiresHuman {
                             Text("You do this one")
-                                .font(PerryTheme.Typography.note)
+                                .font(PerryTheme.Scale.secondary)
                                 .foregroundStyle(PerryTheme.Colors.textSecondary)
                         } else if case .typeText = step.action {
                             Toggle(isOn: Binding(
@@ -152,7 +148,7 @@ struct RoutineReviewView: View {
                                 set: { _ in state.toggleParameter(index) }
                             )) {
                                 Text("Ask me for this text each time")
-                                    .font(PerryTheme.Typography.note)
+                                    .font(PerryTheme.Scale.secondary)
                                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                             }
                             .toggleStyle(InkSwitchStyle())
@@ -188,31 +184,4 @@ struct RoutineReviewView: View {
             }
         }
     }
-}
-
-@MainActor
-final class RoutineReviewWindow {
-    private let id = UUID()
-    private let content: RoutineReviewView
-    private let presentation: NotchPresentation
-
-    init(
-        state: RoutineReviewState,
-        onStopRecording: @escaping () -> Void,
-        onDiscard: @escaping () -> Void,
-        onSave: @escaping () -> Void,
-        onSaveAndTry: @escaping () -> Void,
-        onRun: @escaping () -> Void,
-        presentation: NotchPresentation? = nil
-    ) {
-        self.presentation = presentation ?? .shared
-        content = RoutineReviewView(state: state, onStopRecording: onStopRecording,
-                                    onDiscard: onDiscard, onSave: onSave, onSaveAndTry: onSaveAndTry, onRun: onRun)
-    }
-
-    func show() {
-        presentation.present(id: id, priority: .routine, content: content)
-    }
-
-    func close() { presentation.remove(id) }
 }

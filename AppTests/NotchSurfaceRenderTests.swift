@@ -21,25 +21,24 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let presentation = NotchPresentation.shared
         let previousOnPresent = presentation.onPresent
         presentation.onPresent = nil
-        let presenter = TaskQuestionPresenter(prompt: "Which version should I use?", choices: ["The latest draft with updated research notes", "The version shared with the team yesterday"])
-        let asking = Task { try await presenter.ask() }
+        let asking = Task { try await presentation.askChoice(prompt: "Which version should I use?", choices: ["The latest draft with updated research notes", "The version shared with the team yesterday"]) }
         defer {
-            presenter.cancel()
+            asking.cancel()
             presentation.onPresent = previousOnPresent
             controller.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
-        for _ in 0..<100 where !presentation.contains(presenter.requestID) { await Task.yield() }
-        XCTAssertEqual(presentation.current?.id, presenter.requestID)
+        for _ in 0..<100 where presentation.current == nil { await Task.yield() }
+        let questionID = try XCTUnwrap(presentation.current?.id)
         try await render(openNotch(controller), name: "task-question-notch", size: NSSize(width: 592, height: 400))
-        presenter.cancel()
+        asking.cancel()
         do {
             try await asking.value
             XCTFail("Cancelling a question must cancel the pending task")
         } catch {
             XCTAssertTrue(error is CancellationError)
         }
-        XCTAssertFalse(presentation.contains(presenter.requestID))
+        XCTAssertFalse(presentation.contains(questionID))
     }
 
     func testRenderActiveInteractionSurfaces() async throws {
@@ -81,7 +80,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         activity.detail = "Writing the outline"
         activity.progress = 0.5
         activity.isExpanded = true
-        let activityView = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})
+        let activityView = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {})
         presentation.present(id: id, priority: .activity, content: activityView, reveal: false)
         try await render(openNotch(controller), name: "task-working", size: NSSize(width: 592, height: 492))
         activity.phase = .failed
@@ -147,7 +146,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         activity.phase = .reporting
         activity.title = "Done"
         activity.detail = try XCTUnwrap(RoutineRunCopy.success(priorVerifiedRuns: 0))
-        let strip = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})
+        let strip = AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {})
         presentation.remove(id)
         id = UUID()
         presentation.present(id: id, priority: .activity, content: strip, reveal: false)
@@ -402,7 +401,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(x: 0, y: 0, width: 592, height: 492)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: openNotch(controller))
@@ -508,7 +507,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         presentation.showsInteraction = true
         let bitmap = try await render(openNotch(controller), name: "hug-100", size: NSSize(width: 696, height: 488), wait: 0.6)
         let scale = CGFloat(bitmap.pixelsHigh) / 488
-        let screen = NotchPresence.screenUnderPointer()
+        let screen = NotchGeometry.screenUnderPointer()
         let column = bitmap.pixelsWide / 2
         let rows = (0..<bitmap.pixelsHigh).map { bitmap.colorAt(x: column, y: $0)?.usingColorSpace(.sRGB) }
         let red = rows.indices.filter { rows[$0].map { $0.redComponent > 0.8 && $0.greenComponent < 0.3 && $0.blueComponent < 0.3 } ?? false }
@@ -574,7 +573,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(x: 0, y: 0, width: 696, height: 400)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = NSColor(white: 0.85, alpha: 1)
@@ -598,12 +597,12 @@ final class NotchSurfaceRenderTests: XCTestCase {
                 try await Task.sleep(for: .milliseconds(16))
             }
         }
-        withAnimation(NotchMotion.open) { expansion.open = true }
-        withAnimation(NotchMotion.contentIn) { expansion.contentShown = true }
+        withAnimation(PerryTheme.Motion.open) { expansion.open = true }
+        withAnimation(PerryTheme.Motion.contentIn) { expansion.contentShown = true }
         try await capture(for: 0.7)
         print("notch.motion.close.from=\(index)")
-        withAnimation(NotchMotion.contentOut) { expansion.contentShown = false } completion: {
-            withAnimation(NotchMotion.close) { expansion.open = false }
+        withAnimation(PerryTheme.Motion.contentOut) { expansion.contentShown = false } completion: {
+            withAnimation(PerryTheme.Motion.close) { expansion.open = false }
         }
         try await capture(for: 0.7)
         print("notch.motion.frames=\(index)")
@@ -776,7 +775,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             .appendingPathComponent("build").appendingPathComponent(folder)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(origin: .zero, size: size)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: content)

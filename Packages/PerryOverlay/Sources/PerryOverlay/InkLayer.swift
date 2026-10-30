@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The guide's active-control highlight: a pulsing accent ring around the
-/// target rect with its step caption, drawn under the ghost cursors and ink.
 struct ControlGlowLayer: View {
     @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
@@ -31,14 +29,9 @@ struct ControlGlowLayer: View {
     }
 }
 
-/// The ink surface: visual guidance scribbles, rectangles, and ellipses
-/// published by tools and Guide, plus the circle-select trail and snapped
-/// highlight while a spatial selection is being drawn.
 struct InkLayer: View {
     @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
-    /// Read at draw time, not observed: a caption without screen bounds
-    /// anchors where the pointer was when the overlay appeared.
     let pointer: OverlayPointer
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -145,8 +138,6 @@ struct InkLayer: View {
         .allowsHitTesting(false)
     }
 
-    /// Caption next to a guidance mark (§5), clear of every mark and caption
-    /// and of the menu bar and Dock.
     @ViewBuilder
     private func guidanceCaption(_ caption: String, for overlay: PerryGuidanceOverlay, color: Color) -> some View {
         if let placed = state.captionLayout(in: screenFrame).markCaptions[overlay.id] {
@@ -242,8 +233,6 @@ private struct PerryGuidanceScribbleView: View {
 
     var body: some View {
         let clampedProgress = min(max(drawProgress, 0), 1)
-        // Hand-inked mark (§5): Catmull-Rom resample + seeded wobble +
-        // tapered variable-width outline, drawn on over drawingDuration.
         let samples = InkStroke.sampled(through: points)
         let widths = InkStroke.widths(count: samples.count, baseWidth: lineWidth)
 
@@ -275,16 +264,12 @@ private struct PerryGuidanceScribbleView: View {
     }
 }
 
-/// Freehand circle-select stroke: smooth path with a comet-style fading tail
-/// (oldest segments nearly invisible, head bright and slightly thicker).
-
 private struct PerryFadingTrailView: View {
     let points: [CGPoint]
     let color: Color
     let reduceMotion: Bool
     var overallOpacity: Double = 1.0
 
-    /// How many point-steps make up each fade band. Smaller = smoother fade.
     private let pointsPerBand = 3
     private let minOpacity: Double = 0.08
     private let maxOpacity: Double = 0.95
@@ -325,7 +310,6 @@ private struct PerryFadingTrailView: View {
         .opacity(overallOpacity)
     }
 
-    /// Overlapping index ranges so band strokes join without gaps.
     private func bandRanges(for count: Int) -> [Range<Int>] {
         guard count >= 2 else { return [] }
         var ranges: [Range<Int>] = []
@@ -334,13 +318,11 @@ private struct PerryFadingTrailView: View {
             let end = min(count, start + pointsPerBand + 1)
             ranges.append(start..<end)
             if end >= count { break }
-            // Overlap one point so adjacent bands share a join vertex.
             start = end - 1
         }
         return ranges
     }
 
-    /// 0 at the oldest end of the stroke, 1 at the newest (head).
     private func bandProgress(range: Range<Int>, total: Int) -> Double {
         guard total > 1 else { return 1 }
         let mid = Double(range.lowerBound + range.upperBound - 1) / 2.0
@@ -435,7 +417,6 @@ private struct PerryGuidanceRectangleView: View {
                 (ellipse ? AnyShape(Ellipse()) : AnyShape(Rectangle()))
                     .fill(color.opacity(fillOpacity * Double(clampedProgress)))
 
-                // Inked perimeter (§5): hand-drawn loop, not a crisp rect.
                 InkStrokeShape(samples: samples, widths: widths, progress: clampedProgress)
                     .fill(color)
                     .shadow(
