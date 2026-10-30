@@ -68,10 +68,7 @@ public enum RoutineReplay {
         )
         var actions: [ExecutableAction] = []
         for (index, step) in routine.steps.enumerated() {
-            if case .wait = step.action { continue } // waits are absorbed by per-step verification
-            // Manual steps are never dispatched — but never hidden either:
-            // they surface as askUser pauses so the run stops and tells the
-            // user exactly which part is theirs.
+            if case .wait = step.action { continue }
             if step.requiresHuman {
                 actions.append(try ExecutableAction(
                     id: ActionID("\(stepIDPrefix)\(index)"),
@@ -193,9 +190,6 @@ public enum RoutineReplay {
 
     private static let stepIDPrefix = "routine-step-"
 
-    /// A target resolves to exactly one element — a miss fails the plan and an
-    /// ambiguous match refuses to guess rather than acting on the wrong
-    /// control.
     private static func resolve(
         _ target: RoutineTarget,
         in elements: [AXElement],

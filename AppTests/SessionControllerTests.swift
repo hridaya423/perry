@@ -553,7 +553,7 @@ final class SessionControllerTests: XCTestCase {
         guard case .executing(let execution) = controller.state else {
             return XCTFail("expected a stopping execution")
         }
-        XCTAssertEqual(execution.stopIntent, .requested)
+        XCTAssertTrue(execution.stopRequested)
         XCTAssertEqual(execution.lifecycle, .stopping)
     }
 

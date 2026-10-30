@@ -446,7 +446,7 @@ final class HomeController {
             let finish = await self.presentRun(threadID: threadID, text: text) { onPartial in
                 var answer = ""
                 var finish: AgentFinish = .interrupted
-                for await event in coordinator.run(threadID: threadID, goal: text, surface: .talk, runID: input.request.id, target: target, spatialContext: spatial, waitingInputID: input.request.id) {
+                for await event in coordinator.run(threadID: threadID, goal: text, kind: .talk(spatial), runID: input.request.id, target: target, waitingInputID: input.request.id) {
                     switch event {
                     case .textDelta(let delta):
                         answer += delta

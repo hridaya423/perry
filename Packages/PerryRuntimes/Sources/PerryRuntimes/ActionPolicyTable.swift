@@ -40,8 +40,6 @@ extension ExecutableAction.Operation {
             return ActionPolicy(
                 trustTier: .yellow,
                 minimumApproval: .plan,
-                // Generic GUI input has no honest inverse; the plan's typed
-                // Undo scope covers workspace effects only.
                 reversible: false,
                 claims: [.application(bundleID: window.bundleID.lowercased())]
             )
@@ -56,8 +54,6 @@ extension ExecutableAction.Operation {
             return ActionPolicy(
                 trustTier: .yellow,
                 minimumApproval: .plan,
-                // A sandboxed coding task may create, mutate, or delete
-                // arbitrary workspace content; no general inverse exists.
                 reversible: false,
                 claims: [.workspace(workspace)]
             )
@@ -79,9 +75,6 @@ extension ExecutableAction.Operation {
                 )
             }
         case .askUser:
-            // The question surface itself is the user interaction; it needs an
-            // action-scoped grant so it stays valid even in a plan that has no
-            // other approvable action.
             return ActionPolicy(trustTier: .green, minimumApproval: .action, reversible: true, claims: [])
         }
     }
@@ -99,63 +92,6 @@ extension ExecutableAction.Operation {
         case .shell: return .shell
         case .transform: return .transform
         case .askUser: return .askUser
-        }
-    }
-
-    /// One honest line about where this operation lands — the rehearsal card
-    /// shows the real typed target, not the planner's prose summary.
-    public var rehearsalTarget: String {
-        switch self {
-        case .computer(let window, _):
-            return "controls \(window.bundleID)"
-        case .integration(let accountID, let command):
-            // Integration writes show the account, object, and exact payload —
-            // the review is the last place the user sees what leaves.
-            return "\(command.rehearsalService) as \(accountID): \(command.rehearsalPayload)"
-        case .shell(let workspace, let executable, _, _):
-            return "runs \(executable.path.lastPathComponent) in \(workspace.lastPathComponent)"
-        case .transform(_, let command):
-            return command.rehearsalTarget
-        case .askUser(let prompt, _):
-            return "asks you: \(prompt)"
-        }
-    }
-}
-
-extension ExecutableAction.FileTransform {
-    var rehearsalTarget: String {
-        switch self {
-        case .createUTF8File(let path, _): return "creates \(path)"
-        case .createDirectory(let path): return "creates folder \(path)"
-        case .rename(let path, let destination): return "renames \(path) → \(destination)"
-        case .moveToTrash(let path): return "trashes \(path)"
-        case .restoreFromTrash(_, let destination): return "restores \(destination) from the Trash"
-        }
-    }
-}
-
-extension ExecutableAction.IntegrationCommand {
-    var rehearsalService: String {
-        switch self {
-        case .slackSendMessage: return "Slack"
-        case .notionCreatePage, .notionUpdatePage, .notionAppendBlock: return "Notion"
-        case .linearUpdateIssue: return "Linear"
-        }
-    }
-
-    /// Object and payload, verbatim — e.g. `channel C123: "launch at 9"`.
-    var rehearsalPayload: String {
-        switch self {
-        case .slackSendMessage(let channelID, let text):
-            return "channel \(channelID): \"\(text)\""
-        case .notionCreatePage(let parentID, let title):
-            return "new page under \(parentID): \"\(title)\""
-        case .notionUpdatePage(let pageID, let title):
-            return "page \(pageID): \"\(title)\""
-        case .notionAppendBlock(let blockID, let text):
-            return "block \(blockID): \"\(text)\""
-        case .linearUpdateIssue(let issueID, let title):
-            return "issue \(issueID): \"\(title)\""
         }
     }
 }
@@ -199,8 +135,6 @@ public enum ExecutionPlanValidator {
             if case .shell(_, _, _, .registeredCommand) = action.operation {
                 throw ExecutablePlanError.invalid("registered commands have no executor")
             }
-            // An irreversible effect can never honestly claim bare
-            // repeat-safety; keyed dedupe stays allowed.
             guard action.policy.reversible || action.idempotency != .idempotent else {
                 throw ExecutablePlanError.invalid("a non-reversible action cannot be declared idempotent")
             }

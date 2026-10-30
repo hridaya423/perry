@@ -4,14 +4,8 @@ import PerryCore
 import PerryRuntimes
 
 public enum WorkspaceUndoError: Error, Equatable, Sendable, LocalizedError {
-    /// The receipt does not carry enough verified identity to undo safely
-    /// (legacy effects), or the path itself is unsafe.
     case notUndoable(String)
-    /// The world changed since the receipt: the item moved, was replaced,
-    /// grew content, or something else now occupies the restore location.
-    /// Undo stops rather than touch intervening work.
     case conflicted(String)
-    /// The conflict check passed but the filesystem operation failed.
     case failed(String)
 
     public var errorDescription: String? {
@@ -81,9 +75,6 @@ public struct WorkspaceUndoEngine: Sendable {
         )
     }
 
-    /// The workspace as it will be once the inverses planned so far have run,
-    /// so a chain (a folder and the file made in it, a rename of a rename)
-    /// is checked against the state each inverse will really meet.
     private struct PlannedState {
         var vacated: Set<String> = []
         var moved: [String: URL] = [:]
@@ -194,9 +185,6 @@ public struct WorkspaceUndoEngine: Sendable {
         )
     }
 
-    /// Same lexical rules as the runtime and verifier: workspace-relative,
-    /// no traversal, no symlinked ancestors (a swapped parent would resolve
-    /// outside the workspace and is treated as a conflict).
     private func resolveWorkspace(_ relative: String) throws -> URL {
         let components = relative.split(separator: "/", omittingEmptySubsequences: false)
         guard !relative.isEmpty,
@@ -248,5 +236,4 @@ public struct WorkspaceUndoEngine: Sendable {
             throw WorkspaceUndoError.conflicted("\(what.lowercased()) is now occupied by something else")
         }
     }
-
 }

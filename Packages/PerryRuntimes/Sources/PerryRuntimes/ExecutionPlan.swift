@@ -235,8 +235,6 @@ public struct ExecutableAction: Codable, Sendable, Identifiable {
 
         fileprivate func validate() throws {
             try ExecutableAction.requireText(bundleID)
-            // Generation 0 is a real first connection, not "unset"; dispatch
-            // re-checks the whole identity against the live target.
             guard processID > 0, windowID > 0 else {
                 throw ExecutablePlanError.invalid("window requires exact live identity")
             }

@@ -102,8 +102,6 @@ public struct CodexRuntime: Sendable {
         return try await invokeCommand(executable, arguments)
     }
 
-    /// The JSONL stream mixes event kinds; the final assistant answer arrives
-    /// as an item.completed event whose item type is agent_message.
     static func finalMessage(from jsonlOutput: String) -> String? {
         jsonlOutput
             .components(separatedBy: .newlines)
@@ -116,8 +114,6 @@ public struct CodexRuntime: Sendable {
     }
 }
 
-/// One line of `codex exec --json` output. Lines that aren't item.completed /
-/// agent_message events decode to an empty event and are ignored by callers.
 struct CodexJSONLEvent: Decodable {
     private(set) var agentMessage: String?
 

@@ -1,10 +1,5 @@
 import Foundation
 
-/// Runtime install/authentication status — the facts `RuntimeInventory` surfaces
-/// in Settings after probing each agent CLI. The provider-registry and
-/// routing machinery that used to live here was deleted with typed planning:
-/// nothing routes through providers anymore.
-
 public enum RuntimeInstallationSource: String, Codable, CaseIterable, Equatable, Sendable {
     case bundled
     case officialCLI

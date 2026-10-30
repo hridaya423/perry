@@ -449,7 +449,6 @@ final class AppSubsystems {
             remoteIntegrationExecutor: self.remoteIntegrationExecutor,
             activityLog: self.activityLog,
             executionFinalizer: self.executionFinalizer,
-            transcriptStore: self.transcriptStore,
             overlayState: self.overlayState,
             hooks: hooks,
             finalizationBarrier: app.debugSeams.finalizationBarrier,
@@ -467,7 +466,6 @@ final class AppSubsystems {
             remoteIntegrationExecutor: self.remoteIntegrationExecutor,
             activityLog: self.activityLog,
             executionFinalizer: self.executionFinalizer,
-            transcriptStore: self.transcriptStore,
             overlayState: self.overlayState,
             workspaceCoordinator: self.backgroundTaskCoordinator,
             hooks: hooks

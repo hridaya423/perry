@@ -45,10 +45,7 @@ extension AppController {
             NSWorkspace.shared.open(page)
             try? await Task.sleep(for: .seconds(3))
             let target = bundleID.map { CuaTargetHint(bundleID: $0) }
-            var answer = ""
-            for await event in agentCoordinator.run(threadID: UUID(), goal: goal, target: target, task: true) {
-                if case .textDelta(let delta) = event { answer += delta }
-            }
+            let answer = await agentCoordinator.runToEnd(threadID: UUID(), goal: goal, kind: .doTask, target: target).answer
             let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             if reply.contains("SIGNED_OUT") { continue }
             return reply.isEmpty ? nil : reply

@@ -26,9 +26,6 @@ struct GuideSessionState: Equatable {
     var actionableStepIDs: Set<UUID> = []
 }
 
-/// Read-only question session. Ask never plans or performs actions; it only
-/// observes one window, answers, and holds bounded follow-up context until the
-/// session is dismissed.
 struct AskSessionState: Equatable {
     let id: UUID
     var threadID: UUID? = nil
@@ -41,8 +38,6 @@ struct AskSessionState: Equatable {
     var isWorking = false
 }
 
-/// Voice-led point-and-talk session. Talk observes, draws, and speaks; it can
-/// never act — the .talk tool surface only admits observe + draw tools.
 struct TalkSessionState: Equatable {
     let id: UUID
     var threadID: UUID? = nil
@@ -66,10 +61,6 @@ enum ExecutionPhase: Equatable {
 enum ExecutionFinalizationPhase: Equatable {
     case verifying
     case stopping
-}
-
-enum ExecutionStopIntent: Equatable {
-    case requested
 }
 
 enum ExecutionLifecycle: Equatable {
@@ -148,7 +139,7 @@ struct ExecutionSessionState: Equatable {
     fileprivate(set) var verificationEvidence: [ExecutionVerificationEvidence]
     fileprivate(set) var initialWarnings: [String]
     fileprivate(set) var totalSteps: Int
-    fileprivate(set) var stopIntent: ExecutionStopIntent?
+    fileprivate(set) var stopRequested: Bool
     fileprivate(set) var finalizationOutcome: DoOutcome?
 
     init(
@@ -163,7 +154,7 @@ struct ExecutionSessionState: Equatable {
         verificationEvidence: [ExecutionVerificationEvidence] = [],
         initialWarnings: [String] = [],
         totalSteps: Int = 0,
-        stopIntent: ExecutionStopIntent? = nil,
+        stopRequested: Bool = false,
         finalizationOutcome: DoOutcome? = nil
     ) {
         precondition(totalSteps >= 0)
@@ -178,7 +169,7 @@ struct ExecutionSessionState: Equatable {
         self.verificationEvidence = verificationEvidence
         self.initialWarnings = initialWarnings
         self.totalSteps = totalSteps
-        self.stopIntent = stopIntent
+        self.stopRequested = stopRequested
         self.finalizationOutcome = finalizationOutcome
     }
 
@@ -296,8 +287,6 @@ final class SessionController: ObservableObject {
     @Published private(set) var state: SessionState = .idle
 
 #if DEBUG
-    /// Installs a fixture state directly. Used only by `DebugStateFixture`;
-    /// production transitions must go through the typed operations below.
     func debugSet(_ state: SessionState) {
         self.state = state
     }
@@ -327,12 +316,27 @@ final class SessionController: ObservableObject {
         state = .idle
     }
 
-    /// The live invocation's id while a wake is pending, else a fresh one —
-    /// lets a session start adopt the hotkey's invocation instead of
-    /// refusing a mismatched attempt.
     var currentOrFreshAttemptID: UUID {
         if case .invoking(let invocation) = state { return invocation.id }
         return UUID()
+    }
+
+    func isInvoking(_ attemptID: UUID) -> Bool {
+        guard case .invoking(let invocation) = state else { return false }
+        return invocation.id == attemptID
+    }
+
+    func beginInvokingIfNeeded(attemptID: UUID = UUID()) -> Bool {
+        switch state {
+        case .idle:
+            return (try? wake(attemptID: attemptID)) != nil
+        case .reporting, .failed:
+            return (try? completeDismissal()) != nil && (try? wake(attemptID: attemptID)) != nil
+        case .invoking(let invocation):
+            return invocation.id == attemptID
+        default:
+            return false
+        }
     }
 
     func startGuide(_ guide: GuideSessionState) throws {
@@ -361,9 +365,6 @@ final class SessionController: ObservableObject {
         state = .asking(ask)
     }
 
-    /// Mutates the live ask session (new question, delivered answer, working
-    /// flag). No-op outside `.asking` so late provider callbacks cannot
-    /// resurrect a dismissed session.
     func updateAsk(_ update: (inout AskSessionState) -> Void) {
         guard case .asking(var ask) = state else { return }
         update(&ask)
@@ -381,8 +382,6 @@ final class SessionController: ObservableObject {
         state = .talking(talk)
     }
 
-    /// Mutates the live talk session. No-op outside `.talking` so late provider
-    /// callbacks cannot resurrect a dismissed session.
     func updateTalk(_ update: (inout TalkSessionState) -> Void) {
         guard case .talking(var talk) = state else { return }
         update(&talk)
@@ -576,7 +575,7 @@ final class SessionController: ObservableObject {
         switch reportedOutcome {
         case .completed:
             switch execution.lifecycle {
-            case .stopping where execution.stopIntent != nil:
+            case .stopping where execution.stopRequested:
                 outcome = .blocked(reason: "stop was requested while finishing; completed actions were not undone")
                 execution.lifecycle = .finalizing(.stopping)
             case .running, .paused, .verifying:
@@ -605,7 +604,7 @@ final class SessionController: ObservableObject {
             throw IllegalSessionTransitionError(state: state, operation: "commit finalization")
         }
         let outcome: DoOutcome
-        if execution.stopIntent != nil {
+        if execution.stopRequested {
             outcome = .blocked(reason: "stop was requested while finishing; completed actions were not undone")
             execution.lifecycle = .finalizing(.stopping)
         } else {
@@ -633,7 +632,7 @@ final class SessionController: ObservableObject {
                 throw IllegalSessionTransitionError(state: state, operation: "report failed finalization")
             }
         } else {
-            effectiveOutcome = execution.stopIntent == nil ? outcome : .stopped
+            effectiveOutcome = execution.stopRequested ? .stopped : outcome
         }
         state = .reporting(ReportState(taskID: execution.taskID, summary: summary, outcome: effectiveOutcome))
     }
@@ -671,13 +670,13 @@ final class SessionController: ObservableObject {
         }
         switch execution.lifecycle {
         case .finalizing(.verifying):
-            execution.stopIntent = .requested
+            execution.stopRequested = true
             execution.lifecycle = .finalizing(.stopping)
             state = .executing(execution)
         case .finalizing(.stopping):
             break
         default:
-            execution.stopIntent = .requested
+            execution.stopRequested = true
             execution.lifecycle = .stopping
             state = .executing(execution)
         }

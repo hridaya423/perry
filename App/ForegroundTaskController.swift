@@ -8,12 +8,6 @@ import PerryRuntimes
 
 typealias FinalizationBarrier = @MainActor () async -> Void
 
-/// Owns the foreground Do flow end to end: the invocation attempt lifecycle,
-/// permission/health gates, grounded capture, runtime selection, plan
-/// validation, resource claims, the `DoSupervisor`, session-state event
-/// handling, finalization, retry/steer/pause controls, and the activity strip
-/// that mirrors execution. The shell owns panels, menus, and onboarding; this
-/// controller owns the work.
 @MainActor
 final class ForegroundTaskController: ObservableObject {
     struct Hooks {
@@ -30,71 +24,37 @@ final class ForegroundTaskController: ObservableObject {
         var guiTaskCompleted: () -> Void = {}
     }
 
-    private let sessionController: SessionController
-    private let workers: CuaWorkerService
-    private let probe: EnvironmentProbe
-    private let voice: VoiceController
-    private let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
-    private let activityLog: ActivityLog
+    let sessionController: SessionController
+    let workers: CuaWorkerService
+    let probe: EnvironmentProbe
+    let voice: VoiceController
+    let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
+    let activityLog: ActivityLog
+    let overlayState: PerryCursorState
+    let workspaceCoordinator: TaskCoordinator?
+    let hooks: Hooks
     private let executionFinalizer: ExecutionFinalizer
-    private let transcriptStore: TranscriptStore
-    private let overlayState: PerryCursorState
-    /// Durable record owner for workspace effects: when a plan contains file
-    /// transforms they run write-ahead through this coordinator, so a
-    /// foreground run lands the same receipts the queue produces — and Undo
-    /// covers it.
-    private let workspaceCoordinator: TaskCoordinator?
-    private let hooks: Hooks
 
-    private lazy var routines = RoutineRunner(
-        sessionController: sessionController,
-        workers: workers,
-        probe: probe,
-        remoteIntegrationExecutor: remoteIntegrationExecutor,
-        activityLog: activityLog,
-        overlayState: overlayState,
-        workspaceCoordinator: workspaceCoordinator,
-        hooks: hooks,
-        links: RoutineRunner.Links(
-            isCurrent: { [weak self] in self?.taskStartIsCurrent($0) ?? false },
-            transition: { [weak self] in self?.transitionSession($0) ?? false },
-            beginExecution: { [weak self] execution, attemptID in
-                guard let self else { return false }
-                return self.beginInvokingIfNeeded(attemptID: attemptID)
-                    && self.transitionSession({ try self.sessionController.startExecution(execution, attemptID: attemptID) })
-            },
-            showActivityStrip: { [weak self] in
-                self?.activityStripState.isExpanded = false
-                self?.showActivityStrip()
-            },
-            speak: { [weak self] in self?.voice.speak($0) }
-        )
-    )
-
-    private var activeSupervisor: DoSupervisor? { routines.activeSupervisor }
-    /// Open-ended Do goals run through the agent loop (Phase 7
-    /// consolidation); the typed-plan supervisor remains for routine
-    /// replay only. Set by the shell after init — no cycle either way.
     var agentCoordinator: AgentCoordinator?
-    /// Lent to tool executors for the duration of an agent-driven run.
     var workerLease: ForegroundWorkerLease?
-    /// The coordinator thread a live agent run is bound to; strip controls
-    /// (pause/resume/steer/stop) route here when set.
-    private var activeAgentThreadID: UUID?
+    var activeRun: (any RunHandle)?
     private var handoffToHuman = false
     private var handoffGoal: String?
     private var doStartTask: Task<Void, Never>?
     private var foregroundActivityGeneration = UUID()
     private var observedForegroundTaskID: UUID?
 
-    private let activityStripState = AgentActivityStripState()
-    private let activityStripID = UUID()
+    let activityStripState = AgentActivityStripState()
+    let activityStripID = UUID()
 
 #if DEBUG
     private var debugFinalizationBarrier: FinalizationBarrier?
+    var debugConfirmer: (any Confirmer)?
+    var debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
+    var debugTypedVerifier: (any TypedActionVerifier)?
 #endif
 
-    var supervisorActive: Bool { activeSupervisor != nil || activeAgentThreadID != nil }
+    var supervisorActive: Bool { activeRun != nil }
 
     var startIsInFlight: Bool { doStartTask != nil }
 
@@ -106,7 +66,6 @@ final class ForegroundTaskController: ObservableObject {
         remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
         activityLog: ActivityLog,
         executionFinalizer: ExecutionFinalizer,
-        transcriptStore: TranscriptStore,
         overlayState: PerryCursorState,
         workspaceCoordinator: TaskCoordinator?,
         hooks: Hooks
@@ -118,13 +77,9 @@ final class ForegroundTaskController: ObservableObject {
         self.remoteIntegrationExecutor = remoteIntegrationExecutor
         self.activityLog = activityLog
         self.executionFinalizer = executionFinalizer
-        self.transcriptStore = transcriptStore
         self.overlayState = overlayState
         self.workspaceCoordinator = workspaceCoordinator
         self.hooks = hooks
-#if DEBUG
-        self.debugFinalizationBarrier = nil
-#endif
     }
 
 #if DEBUG
@@ -136,7 +91,6 @@ final class ForegroundTaskController: ObservableObject {
         remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
         activityLog: ActivityLog,
         executionFinalizer: ExecutionFinalizer,
-        transcriptStore: TranscriptStore,
         overlayState: PerryCursorState,
         hooks: Hooks,
         finalizationBarrier: FinalizationBarrier?,
@@ -153,22 +107,17 @@ final class ForegroundTaskController: ObservableObject {
             remoteIntegrationExecutor: remoteIntegrationExecutor,
             activityLog: activityLog,
             executionFinalizer: executionFinalizer,
-            transcriptStore: transcriptStore,
             overlayState: overlayState,
             workspaceCoordinator: workspaceCoordinator,
             hooks: hooks
         )
         self.debugFinalizationBarrier = finalizationBarrier
-        routines.debugConfirmer = confirmer
-        routines.debugAskUser = askUser
-        routines.debugTypedVerifier = typedVerifier
+        self.debugConfirmer = confirmer
+        self.debugAskUser = askUser
+        self.debugTypedVerifier = typedVerifier
     }
 #endif
 
-    // MARK: Session observation
-
-    /// Keeps the retirement generation and the activity strip in step with the
-    /// session. Called from the shell's session-state sink.
     func handleSessionState(_ state: SessionState) {
         switch state {
         case .executing(let execution):
@@ -184,10 +133,8 @@ final class ForegroundTaskController: ObservableObject {
         activityStripState.apply(sessionState: state)
     }
 
-    // MARK: Invocation lifecycle
-
     @discardableResult
-    private func transitionSession(_ operation: () throws -> Void) -> Bool {
+    func transitionSession(_ operation: () throws -> Void) -> Bool {
         do {
             try operation()
             return true
@@ -197,65 +144,92 @@ final class ForegroundTaskController: ObservableObject {
         }
     }
 
-    private func beginInvokingIfNeeded(attemptID: UUID = UUID()) -> Bool {
-        switch sessionController.state {
-        case .idle:
-            return transitionSession { try sessionController.wake(attemptID: attemptID) }
-        case .reporting, .failed:
-            // A finished/stopped report never gates a new attempt — asking
-            // again is the dismissal (same rule requestDismissal applies).
-            guard transitionSession({ try sessionController.completeDismissal() }) else { return false }
-            return transitionSession { try sessionController.wake(attemptID: attemptID) }
-        case .invoking(let invocation):
-            return invocation.id == attemptID
-        default:
-            return false
-        }
-    }
-
     func cancelInvocationIfCurrent(_ attemptID: UUID) {
-        guard case .invoking(let invocation) = sessionController.state, invocation.id == attemptID else { return }
+        guard sessionController.isInvoking(attemptID) else { return }
         _ = try? sessionController.cancelInvocation(attemptID)
     }
 
-    private func taskStartIsCurrent(_ attemptID: UUID) -> Bool {
-        guard !Task.isCancelled else { return false }
-        guard case .invoking(let invocation) = sessionController.state else { return false }
-        return invocation.id == attemptID
+    func taskStartIsCurrent(_ attemptID: UUID) -> Bool {
+        !Task.isCancelled && sessionController.isInvoking(attemptID)
     }
 
-    // MARK: Do mode
-
     func start(goal: String, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) {
+        guard let attemptID = admitStart() else { return }
+        startGoal(goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
+    }
+
+    func startRoutine(_ routine: LearnedRoutine, parameters: [String: String] = [:]) {
+        guard let attemptID = admitStart() else { return }
+        spawn(attemptID) { controller in
+            _ = await controller.perform(
+                attemptID: attemptID,
+                failureMessage: { error in
+                    if let replay = error as? RoutineReplayError, let step = RoutineRunCopy.step(of: replay) {
+                        return RoutineRunCopy.stopped(routine: routine, step: step, error: replay, reason: replay.localizedDescription)
+                    }
+                    return "I couldn’t run the routine. Try again."
+                }
+            ) { worker in
+                switch try await controller.runRoutine(routine, parameters: parameters, attemptID: attemptID, worker: worker) {
+                case .notStarted:
+                    return nil
+                case .finished(let outcome, let headline):
+                    if outcome.isCompleted { controller.hooks.routineVerified(routine.id) }
+                    return await controller.finalizeTask(with: outcome, headline: headline)
+                }
+            }
+        }
+    }
+
+    private func startGoal(_ goal: String, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
+        spawn(attemptID) { controller in
+            _ = await controller.perform(
+                attemptID: attemptID,
+                failureMessage: { _ in "I couldn’t finish the task. Try again." }
+            ) { worker in
+                try await controller.runForegroundOperation(
+                    goal: goal,
+                    attemptID: attemptID,
+                    worker: worker, threadID: threadID, targetHint: targetHint
+                )
+            }
+        }
+    }
+
+    private func admitStart() -> UUID? {
         guard !hooks.isErasureInProgress() else {
             voice.speak("I’m finishing a data erase before starting anything new.")
-            return
+            return nil
         }
         guard !supervisorActive, !startIsInFlight else {
             voice.speak("I’m already working on a task. Stop or pause that one first.")
-            return
+            return nil
         }
         let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+        guard sessionController.beginInvokingIfNeeded(attemptID: attemptID) else {
             voice.speak("Finish or stop the current session first.")
             hooks.setStatus("Finish or stop the current session first.")
-            return
+            return nil
         }
-        start(goal: goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
+        return attemptID
     }
 
-    private func start(goal: String, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
+    private func spawn(_ attemptID: UUID, _ body: @escaping @MainActor (ForegroundTaskController) async -> Void) {
         doStartTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.cancelInvocationIfCurrent(attemptID)
                 self.doStartTask = nil
             }
-            _ = await self.begin(goal: goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
+            await body(self)
         }
     }
 
-    func begin(goal: String, attemptID: UUID, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) async -> DoOutcome? {
+    private func perform(
+        attemptID: UUID,
+        failureMessage: (Error) -> String,
+        _ operation: @escaping @MainActor (CuaWorkerHandle) async throws -> DoOutcome?
+    ) async -> DoOutcome? {
         guard !supervisorActive else {
             guard taskStartIsCurrent(attemptID) else { return nil }
             voice.speak("I’m already working on a task. Stop or pause that one first.")
@@ -264,22 +238,17 @@ final class ForegroundTaskController: ObservableObject {
         guard await preflight(attemptID: attemptID) else { return nil }
         do {
             return try await workers.withWorker(scope: .foreground, resources: []) { worker in
-                try await self.runForegroundOperation(
-                    goal: goal,
-                    attemptID: attemptID,
-                    worker: worker, threadID: threadID, targetHint: targetHint
-                )
+                try await operation(worker)
             }
         } catch {
             guard !(error is CancellationError), taskStartIsCurrent(attemptID) else { return nil }
-            hooks.setStatus("I couldn’t finish the task. Try again.")
-            voice.speak("I couldn’t finish the task. Try again.")
+            let message = failureMessage(error)
+            hooks.setStatus(message)
+            voice.speak(message)
             return nil
         }
     }
 
-    /// Permission and driver-health gates every foreground flow shares —
-    /// goal planning, routine replay, anything that will touch the screen.
     private func preflight(attemptID: UUID) async -> Bool {
         PerfMark.mark("task.preflight.begin")
         defer { PerfMark.mark("task.preflight.end") }
@@ -304,69 +273,21 @@ final class ForegroundTaskController: ObservableObject {
         return true
     }
 
-    // MARK: Routine replay
-
-    /// Runs a reviewed learned routine. The typed plan is rebuilt from a
-    /// fresh observation of the routine's own app window — recorded
-    /// coordinates are never replayed — then it flows through the same
-    /// rehearsal, approval, and verification gates as a planned task.
-    func startRoutine(_ routine: LearnedRoutine, parameters: [String: String] = [:]) {
-        guard !hooks.isErasureInProgress() else {
-            voice.speak("I’m finishing a data erase before starting anything new.")
-            return
+    func presentRunStart(_ execution: ExecutionSessionState, attemptID: UUID, bubble: String) -> Bool {
+        guard sessionController.beginInvokingIfNeeded(attemptID: attemptID),
+              transitionSession({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
+            return false
         }
-        guard !supervisorActive, !startIsInFlight else {
-            voice.speak("I’m already working on a task. Stop or pause that one first.")
-            return
-        }
-        let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else {
-            voice.speak("Finish or stop the current session first.")
-            hooks.setStatus("Finish or stop the current session first.")
-            return
-        }
-        doStartTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                self.cancelInvocationIfCurrent(attemptID)
-                self.doStartTask = nil
-            }
-            _ = await self.beginRoutine(routine, parameters: parameters, attemptID: attemptID)
-        }
-    }
-
-    private func beginRoutine(
-        _ routine: LearnedRoutine,
-        parameters: [String: String],
-        attemptID: UUID
-    ) async -> DoOutcome? {
-        guard !supervisorActive else {
-            guard taskStartIsCurrent(attemptID) else { return nil }
-            voice.speak("I’m already working on a task. Stop or pause that one first.")
-            return nil
-        }
-        guard await preflight(attemptID: attemptID) else { return nil }
-        do {
-            return try await workers.withWorker(scope: .foreground, resources: []) { worker in
-                switch try await self.routines.run(routine, parameters: parameters, attemptID: attemptID, worker: worker) {
-                case .notStarted: return nil
-                case .finished(let outcome, let headline):
-                    if case .completed = outcome { self.hooks.routineVerified(routine.id) }
-                    return await self.finalizeTask(with: outcome, headline: headline)
-                }
-            }
-        } catch {
-            guard !(error is CancellationError), taskStartIsCurrent(attemptID) else { return nil }
-            let message: String
-            if let replay = error as? RoutineReplayError, let step = RoutineRunCopy.step(of: replay) {
-                message = RoutineRunCopy.stopped(routine: routine, step: step, error: replay, reason: replay.localizedDescription)
-            } else {
-                message = "I couldn’t run the routine. Try again."
-            }
-            hooks.setStatus(message)
-            voice.speak(message)
-            return nil
-        }
+        hooks.setTranscriptPreview(execution.goal)
+        hooks.stopSpatialMonitoring()
+        hooks.stopGuideObservation()
+        hooks.hidePanel()
+        SoundPlayer.play(.send)
+        overlayState.buddyState = .acting
+        overlayState.agentTaskBubbleText = bubble
+        activityStripState.isExpanded = false
+        showActivityStrip()
+        return true
     }
 
     private func runForegroundOperation(
@@ -392,9 +313,6 @@ final class ForegroundTaskController: ObservableObject {
                 title: $0.title.isEmpty ? "Frontmost window" : $0.title
             )
         } ?? probe.targetWindow(for: captured.context)
-        // Open-ended Do runs the agent loop: the model observes and acts
-        // through the tool host itself (intent cards per call) instead of
-        // committing to a typed plan up front.
         guard let coordinator = agentCoordinator else {
             hooks.setStatus("I can’t run tasks right now. Restart Perry.")
             voice.speak("I can’t run tasks right now. Restart Perry.")
@@ -412,9 +330,6 @@ final class ForegroundTaskController: ObservableObject {
         )
     }
 
-    /// Agent-loop execution of an open-ended Do goal: session + strip come
-    /// up the same way as a typed run, then `AgentCoordinator` streams the
-    /// turn while this translates events into session evidence and status.
     private func executeAgentRun(
         goal: String,
         attemptID: UUID,
@@ -433,30 +348,18 @@ final class ForegroundTaskController: ObservableObject {
             appBundleID: targetWindow?.appBundleID,
             providerRoute: "agent-loop",
             workspace: workspace,
-            lifecycle: .starting,
-            initialWarnings: []
+            lifecycle: .starting
         )
-        guard beginInvokingIfNeeded(attemptID: attemptID), transitionSession({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
-            return nil
-        }
-        hooks.setTranscriptPreview(goal)
-        activityStripState.isExpanded = false
-        hooks.stopSpatialMonitoring()
-        hooks.stopGuideObservation()
-        hooks.hidePanel()
-        SoundPlayer.play(.send)
-        overlayState.buddyState = .acting
-        overlayState.agentTaskBubbleText = "Working on \(goal)…"
-        showActivityStrip()
-        guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
+        guard presentRunStart(execution, attemptID: attemptID, bubble: "Working on \(goal)…"),
+              transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
         hooks.setStatus("Working…")
 
         let threadID = conversationID ?? UUID()
-        activeAgentThreadID = threadID
+        activeRun = AgentRunHandle(coordinator: coordinator, threadID: threadID)
         let runID = UUID()
         workerLease?.set(worker, for: runID)
         defer {
-            activeAgentThreadID = nil
+            activeRun = nil
             workerLease?.set(nil, for: runID)
         }
 
@@ -466,17 +369,10 @@ final class ForegroundTaskController: ObservableObject {
         var actionsDone = 0
         var lastActionFailure: String?
         var usedGUI = false
-        var terminal: AgentFinish?
-        for await event in coordinator.run(threadID: threadID, goal: goal, runID: runID, target: target, task: true) {
-            guard case .executing(let current) = sessionController.state,
-                  current.taskID == taskUUID, !current.isFinalized else {
+        let result = await coordinator.runToEnd(threadID: threadID, goal: goal, kind: .doTask, runID: runID, target: target) { event in
+            guard executionIsCurrent(taskUUID), !Task.isCancelled else {
                 coordinator.stop(threadID: threadID)
-                return .blocked(reason: "the execution session changed")
-            }
-            if Task.isCancelled {
-                coordinator.stop(threadID: threadID)
-                terminal = .interrupted
-                break
+                return
             }
             switch event {
             case .textDelta(let delta):
@@ -489,7 +385,7 @@ final class ForegroundTaskController: ObservableObject {
                 hooks.setStatus(summary)
                 guard !coordinator.toolIsReadOnly(named: call.name) else { break }
                 actionCalls[call.id] = summary
-                _ = transitionSession {
+                transitionSession {
                     try sessionController.recordExecutionStep(
                         id: call.id,
                         summary: summary,
@@ -517,33 +413,32 @@ final class ForegroundTaskController: ObservableObject {
                 hooks.setStatus(note)
             case .draw(let command):
                 overlayState.apply(command)
-            case .finished(let finish):
-                terminal = finish
+            case .finished:
+                break
             }
         }
-        if terminal == nil || Task.isCancelled {
-            coordinator.stop(threadID: threadID)
-            terminal = .interrupted
-        }
-        guard case .executing(let current) = sessionController.state,
-              current.taskID == taskUUID, !current.isFinalized else {
+        let finish: AgentFinish = Task.isCancelled ? .interrupted : result.finish
+        if Task.isCancelled { coordinator.stop(threadID: threadID) }
+        guard executionIsCurrent(taskUUID) else {
             return .blocked(reason: "the execution session changed")
         }
         let outcome = await finalizeTask(
-            with: Self.doOutcome(terminal ?? .interrupted, stepsRun: actionsDone),
-            headline: terminal == .completed ? Self.doHeadline(actionsDone: actionsDone, lastActionFailure: lastActionFailure, answer: answer) : nil
+            with: finish.doOutcome(stepsRun: actionsDone),
+            headline: finish == .completed ? Self.doHeadline(actionsDone: actionsDone, lastActionFailure: lastActionFailure, answer: answer) : nil
         )
-        if usedGUI, case .completed = outcome { hooks.guiTaskCompleted() }
+        if usedGUI, outcome.isCompleted { hooks.guiTaskCompleted() }
         return outcome
+    }
+
+    func executionIsCurrent(_ taskID: UUID) -> Bool {
+        guard case .executing(let current) = sessionController.state else { return false }
+        return current.taskID == taskID && !current.isFinalized
     }
 
     static func isGUITool(_ name: String) -> Bool {
         name.hasPrefix("ui.")
     }
 
-    /// One-line strip/status text for a tool call — name plus the most
-    /// identifying argument, never raw values (a typed string may carry
-    /// secrets).
     private static func toolStepSummary(_ call: ToolCall) -> String {
         let label = call.arguments["label"]?.stringValue
             ?? call.arguments["path"]?.stringValue
@@ -552,8 +447,6 @@ final class ForegroundTaskController: ObservableObject {
         return label.map { "\(call.name) \($0)" } ?? call.name
     }
 
-    /// "Done. I ran N steps" is only said when N actions went through and
-    /// the last one did not fail.
     static func doHeadline(actionsDone: Int, lastActionFailure: String?, answer: String) -> String? {
         if let lastActionFailure { return "I finished, but my last action failed: \(lastActionFailure)." }
         guard actionsDone == 0 else { return nil }
@@ -561,18 +454,7 @@ final class ForegroundTaskController: ObservableObject {
         return reply.isEmpty ? "I didn’t change anything." : String(reply.prefix(240))
     }
 
-    private static func doOutcome(_ finish: AgentFinish, stepsRun: Int) -> DoOutcome {
-        switch finish {
-        case .completed: return .completed(stepsRun: stepsRun)
-        case .interrupted: return .blocked(reason: "stopped by the user")
-        case .paused: return .blocked(reason: "paused")
-        case .budgetToolCalls: return .blocked(reason: "reached the 60-action limit")
-        case .budgetTime: return .blocked(reason: "reached the 20-minute limit")
-        case .providerError(let message), .failed(let message): return .failed(stepSummary: "the model", reason: message)
-        }
-    }
-
-    private func showActivityStrip() {
+    func showActivityStrip() {
         NotchPresentation.shared.present(id: activityStripID, priority: .activity, content: AgentActivityStripView(
             state: activityStripState,
             onPause: { [weak self] in self?.pause() },
@@ -584,19 +466,10 @@ final class ForegroundTaskController: ObservableObject {
         ), reveal: activityStripState.isExpanded)
     }
 
-    // MARK: Controls
-
     func pause() {
-        if let threadID = activeAgentThreadID {
-            guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
-            hooks.setStatus("Pausing before the next step.")
-            agentCoordinator?.pause(threadID: threadID)
-            return
-        }
-        guard let activeSupervisor else { return }
-        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
         hooks.setStatus("Pausing before the next step.")
-        Task { await activeSupervisor.pause() }
+        activeRun.pause()
     }
 
     func resume() {
@@ -604,23 +477,13 @@ final class ForegroundTaskController: ObservableObject {
             continueFromHuman()
             return
         }
-        if let threadID = activeAgentThreadID {
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
-            hooks.setStatus("Resuming the task.")
-            agentCoordinator?.resume(threadID: threadID)
-            return
-        }
-        guard let activeSupervisor else { return }
-        guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
         hooks.setStatus("Resuming the task.")
-        Task { await activeSupervisor.resume() }
+        activeRun.resume()
     }
 
-    /// "I'll do this step": settle at the next boundary, hand control to the
-    /// user, and remember the goal so Continue can replan rather than resume
-    /// a plan that expected to perform the step itself.
     func takeOver() {
-        guard supervisorActive, !handoffToHuman else { return }
+        guard let activeRun, !handoffToHuman else { return }
         guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
         if case .executing(let execution) = sessionController.state {
             handoffGoal = execution.goal
@@ -629,45 +492,30 @@ final class ForegroundTaskController: ObservableObject {
         activityStripState.handedToHuman = true
         hooks.setStatus("You’re in control. Do the step yourself, then choose Resume.")
         voice.speak("You’re in control. Choose Resume when you’re done.")
-        if let threadID = activeAgentThreadID {
-            agentCoordinator?.pause(threadID: threadID)
-        } else {
-            Task { await activeSupervisor?.pause() }
-        }
+        activeRun.pause()
     }
 
-    /// After a human takeover, Continue resumes the run. On the agent path
-    /// the loop keeps its history — a steer tells the model the user did the
-    /// step, and it re-observes. On the typed-plan path the stale plan is
-    /// cancelled and the same goal replans against the current screen.
     private func continueFromHuman() {
-        guard handoffToHuman, let goal = handoffGoal else { return }
-        if let threadID = activeAgentThreadID {
-            handoffToHuman = false
-            handoffGoal = nil
-            activityStripState.handedToHuman = false
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
-            hooks.setStatus("Continuing. I’ll check what you did.")
-            agentCoordinator?.resume(threadID: threadID)
-            agentCoordinator?.steer(
-                "The user took over and did the current step themselves. Verify the result on screen, then continue the goal.",
-                threadID: threadID
-            )
-            return
-        }
-        guard let activeSupervisor else { return }
+        guard handoffToHuman, let goal = handoffGoal, let activeRun else { return }
         handoffToHuman = false
         handoffGoal = nil
         activityStripState.handedToHuman = false
+        if activeRun.continuesInPlace {
+            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+            hooks.setStatus("Continuing. I’ll check what you did.")
+            activeRun.resume()
+            activeRun.steer("The user took over and did the current step themselves. Verify the result on screen, then continue the goal.")
+            return
+        }
         hooks.setStatus("Planning the rest from the current screen.")
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await activeSupervisor.cancel()
-            for _ in 0..<100 where self.activeSupervisor != nil {
+            await activeRun.stop()
+            for _ in 0..<100 where self.activeRun != nil {
                 try? await Task.sleep(for: .milliseconds(50))
             }
-            guard self.activeSupervisor == nil else {
-                hooks.setStatus("I’m still stopping the paused task. Try Resume again in a moment.")
+            guard self.activeRun == nil else {
+                self.hooks.setStatus("I’m still stopping the paused task. Try Resume again in a moment.")
                 return
             }
             self.start(goal: goal)
@@ -675,56 +523,34 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     func cancel() {
-        if let threadID = activeAgentThreadID {
-            guard sessionController.requestStop() == .stopExecution else { return }
-            hooks.setStatus("Stopping safely…")
-            hooks.dismissIntentCard()
-            agentCoordinator?.stop(threadID: threadID)
-            return
-        }
-        guard let activeSupervisor else { return }
-        guard sessionController.requestStop() == .stopExecution else { return }
+        guard let activeRun, sessionController.requestStop() == .stopExecution else { return }
         hooks.setStatus("Stopping safely…")
         hooks.dismissIntentCard()
-        Task { await activeSupervisor.cancel() }
+        Task { await activeRun.stop() }
     }
 
-    /// Cancels the live run without touching the intent card or status —
-    /// used by dismiss, erasure, and worker-stop paths.
     func cancelActiveSupervisor() async {
-        if let threadID = activeAgentThreadID {
-            agentCoordinator?.stop(threadID: threadID)
-        }
-        await activeSupervisor?.cancel()
+        await activeRun?.stop()
     }
 
-    /// On the agent path a steer lands at the next loop boundary as a user
-    /// message — no replan needed, the model keeps its history. On the
-    /// typed-plan path steering settles the current plan then replans the
-    /// goal plus the instruction against a fresh observation — the new
-    /// segment earns its own rehearsal instead of pretending the first
-    /// preview predicted it.
     func steer(_ instruction: String) {
         guard !handoffToHuman else { return }
         let trimmed = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard case .executing(let execution) = sessionController.state,
-              execution.lifecycle == .running || execution.lifecycle == .paused else { return }
-        if let threadID = activeAgentThreadID {
+              execution.lifecycle == .running || execution.lifecycle == .paused,
+              let activeRun else { return }
+        activeRun.steer(trimmed)
+        if activeRun.continuesInPlace {
             hooks.setStatus("Steering: \(trimmed)")
-            agentCoordinator?.steer(trimmed, threadID: threadID)
             return
         }
-        guard let activeSupervisor else { return }
-        Task { await activeSupervisor.steer(trimmed) }
         guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
         handoffGoal = "\(execution.goal) — user steered: \(trimmed)"
         handoffToHuman = true
         hooks.setStatus("Replanning with your instruction…")
-        Task { @MainActor [weak self] in
-            await activeSupervisor.pause()
-            self?.continueFromHuman()
-        }
+        activeRun.pause()
+        continueFromHuman()
     }
 
     func retry() {
@@ -741,10 +567,8 @@ final class ForegroundTaskController: ObservableObject {
         guard transitionSession({ goal = try sessionController.retry(attemptID: attemptID) }),
               let goal else { return }
         foregroundActivityGeneration = UUID()
-        start(goal: goal, attemptID: attemptID, threadID: nil, targetHint: nil)
+        startGoal(goal, attemptID: attemptID, threadID: nil, targetHint: nil)
     }
-
-    // MARK: Shutdown
 
     func cancelStartTask() {
         doStartTask?.cancel()
@@ -755,7 +579,7 @@ final class ForegroundTaskController: ObservableObject {
         await doStartTask?.value
     }
 
-    private func finalizeTask(with reportedOutcome: DoOutcome, headline: String? = nil) async -> DoOutcome {
+    func finalizeTask(with reportedOutcome: DoOutcome, headline: String? = nil) async -> DoOutcome {
         guard case .executing = sessionController.state else { return reportedOutcome }
         let execution: ExecutionSessionState
         let outcome: DoOutcome
@@ -790,7 +614,6 @@ final class ForegroundTaskController: ObservableObject {
               currentExecution.finalizationOutcome == finalizationOutcome else {
             return finalizationOutcome
         }
-        let terminalOutcome = finalizationOutcome
         let completion = finalization.completion
         let summary: String
         if finalization.issues.contains(.transcriptPersistence) {
@@ -804,27 +627,24 @@ final class ForegroundTaskController: ObservableObject {
         overlayState.buddyState = completion.outcome == .failed || !finalization.historySaved ? .blocked : .success
         hooks.setStatus(summary)
         if completion.outcome == .failed || !finalization.historySaved {
-            _ = transitionSession {
+            transitionSession {
                 try sessionController.fail(
                     SessionFailure(taskID: execution.taskID, goal: execution.goal, message: summary)
                 )
             }
         } else {
-            let reportOutcome: ReportOutcome = if case .blocked = terminalOutcome { .stopped } else { .completed }
-            _ = transitionSession {
-                try sessionController.report(summary: summary, outcome: reportOutcome)
+            transitionSession {
+                try sessionController.report(summary: summary, outcome: finalizationOutcome.isCompleted ? .completed : .stopped)
             }
         }
         voice.deliverVoiceReply(summary)
-        routines.activeSupervisor = nil
-        activeAgentThreadID = nil
+        activeRun = nil
         handoffToHuman = false
         handoffGoal = nil
         activityStripState.handedToHuman = false
         voice.refreshWakeWordListener()
-        let generation = foregroundActivityGeneration
-        scheduleActivityRetirement(taskID: taskID, generation: generation, after: 8)
-        return terminalOutcome
+        scheduleActivityRetirement(taskID: taskID, generation: foregroundActivityGeneration, after: 8)
+        return finalizationOutcome
     }
 
     private func scheduleActivityRetirement(taskID: UUID, generation: UUID, after delay: TimeInterval) {
@@ -841,7 +661,7 @@ final class ForegroundTaskController: ObservableObject {
             }
             self.activityStripState.isExpanded = false
             NotchPresentation.shared.remove(self.activityStripID)
-            _ = self.transitionSession { try self.sessionController.completeDismissal() }
+            self.transitionSession { try self.sessionController.completeDismissal() }
         }
     }
 
@@ -862,7 +682,7 @@ final class ForegroundTaskController: ObservableObject {
 
     func debugRun(goal: String) async throws -> DoOutcome? {
         let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
+        guard sessionController.beginInvokingIfNeeded(attemptID: attemptID) else { return nil }
         defer { cancelInvocationIfCurrent(attemptID) }
         return try await workers.withWorker(scope: .foreground, resources: []) { worker in
             try await self.runForegroundOperation(
@@ -872,90 +692,9 @@ final class ForegroundTaskController: ObservableObject {
             )
         }
     }
-
-    func debugShowActivityFixture() {
-        let fixtureStart = Date()
-        activityStripState.reset()
-        activityStripState.isExpanded = true
-        activityStripState.phase = .working
-        activityStripState.title = "UI test fixture"
-        activityStripState.detail = "Long task fixture · running"
-        activityStripState.progress = 0.42
-        activityStripState.tier = .yellow
-        activityStripState.startedAt = fixtureStart
-        activityStripState.steps = [
-            AgentActivityStep(
-                id: "fixture-inspect",
-                summary: "Inspect the active window and collect a bounded snapshot",
-                tier: .green,
-                reversible: true,
-                timestamp: fixtureStart.addingTimeInterval(-18),
-                verification: "Checked: fixture snapshot ready"
-            ),
-            AgentActivityStep(
-                id: "fixture-plan",
-                summary: "Plan the next safe action from the current task state",
-                tier: .yellow,
-                reversible: true,
-                timestamp: fixtureStart.addingTimeInterval(-12),
-                verification: nil
-            ),
-            AgentActivityStep(
-                id: "fixture-prepare",
-                summary: "Prepare the staged result for review",
-                tier: .orange,
-                reversible: true,
-                timestamp: fixtureStart.addingTimeInterval(-6),
-                verification: nil
-            ),
-            AgentActivityStep(
-                id: "fixture-report",
-                summary: "Report the verified result and keep the task visible",
-                tier: .yellow,
-                reversible: true,
-                timestamp: fixtureStart,
-                verification: nil
-            )
-        ]
-        NotchPresentation.shared.present(id: activityStripID, priority: .activity, content: AgentActivityStripView(
-            state: activityStripState,
-            onPause: { [weak self] in
-                guard let self, self.activityStripState.phase == .working else { return }
-                self.activityStripState.phase = .paused
-                self.activityStripState.detail = "Long task fixture · paused"
-            },
-            onResume: { [weak self] in
-                guard let self, self.activityStripState.phase == .paused else { return }
-                self.activityStripState.phase = .working
-                self.activityStripState.detail = "Long task fixture · running"
-            },
-            onStop: { [weak self] in
-                guard let self else { return }
-                self.activityStripState.phase = .failed
-                self.activityStripState.detail = "Stopped by the UI test fixture; retry is available"
-                self.activityStripState.canRetry = true
-            },
-            onRetry: { [weak self] in
-                guard let self, self.activityStripState.retryIsAvailable else { return }
-                self.activityStripState.phase = .working
-                self.activityStripState.detail = "Long task fixture · running after retry"
-                self.activityStripState.progress = 0.42
-                self.activityStripState.canRetry = false
-            },
-            onSteer: { [weak self] instruction in
-                guard let self, self.activityStripState.steeringIsAvailable else { return }
-                self.activityStripState.detail = "Steering: \(instruction)"
-            },
-            onTakeOver: {}
-        ), reveal: activityStripState.isExpanded)
-    }
 #endif
 }
 
-/// The user-authorized root for Perry file work. Defaults to `~/PerryDemo`;
-/// a folder chosen through the status menu replaces it. Task workspaces are
-/// always per-task subdirectories inside this root, so existing containment
-/// checks and Undo bindings never see a path the user didn't authorize.
 enum WorkspaceScope {
     static var root: URL {
         if let path = PerryPreferences.workspaceRoot, !path.isEmpty {

@@ -33,8 +33,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         return try await completeOnce(prompt, observation: observation) { try Self.parsePath(text: $0, observation: observation) }
     }
 
-    /// A reply that breaks the strict format is asked for once more with the
-    /// reason, instead of ending the guide on one slip.
     private func completeOnce<Result>(_ prompt: String, observation: GuideObservation, parse: (String) throws -> Result) async throws -> Result {
         let screenshot = observation.screenshotData.map { ($0, observation.screenshotMIMEType) }
         try Task.checkCancellation()
@@ -49,10 +47,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         }
     }
 
-    // MARK: - Strict decoding
-
-    /// {"done":true} finishes the session; a step must name an instruction and
-    /// a target that survives observation validation.
     static func parseNextStep(text: String, observation: GuideObservation) throws -> GuideDecision {
         let payload = try strictJSONObject(text)
         guard payload.count == 1 else { throw GuidePlannerError.malformedResponse("expected exactly one outcome") }
@@ -79,8 +73,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         return .step(try GuideTargetValidator.validated(parseStep(step, observation: observation), in: observation))
     }
 
-    /// Every marker must ground in the live window; entries that do not are
-    /// dropped rather than painted in the wrong place.
     static func parsePath(text: String, observation: GuideObservation) throws -> [GuideStep] {
         let payload = try strictJSONObject(text)
         guard Set(payload.keys) == ["steps"], let list = payload["steps"] as? [[String: Any]], list.count <= 25 else {
@@ -128,10 +120,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         )
     }
 
-    /// The verifiable end-state of a step: {"exists":"id"}, {"absent":"id"},
-    /// {"label":"id","equals":"text"}, or {"window_title":"..."}. absent/label
-    /// reference the element being changed; an id that is not in the live
-    /// window could never verify, so that proof is dropped and the step stays.
     private static func parsePostcondition(_ value: Any, observation: GuideObservation) throws -> GuideStep.Postcondition? {
         guard let post = value as? [String: Any], !post.isEmpty else {
             throw GuidePlannerError.malformedResponse("post must be an object")
@@ -164,7 +152,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         throw GuidePlannerError.malformedResponse("unknown postcondition shape")
     }
 
-    /// The prompt lists ids in brackets, and models sometimes copy them.
     private static func normalizedID(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
     }
@@ -220,8 +207,6 @@ public struct RuntimeGuidePlanner: GuidePlanner {
         }
         return object
     }
-
-    // MARK: - Prompts
 
     private static func sharedContext(
         goal: String,

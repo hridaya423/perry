@@ -1,10 +1,6 @@
 import AppKit
 import PerryGuide
 
-/// Owns the Watch & Learn flow: armed recording through the review surface
-/// into the local routine store, and replay into the foreground Do path.
-/// Recording is bounded and nothing persists until the user reviews the
-/// inferred steps and names the routine.
 @MainActor
 final class RoutineLibraryController {
     private let store: RoutineStore
@@ -181,9 +177,6 @@ final class RoutineLibraryController {
         }
         do {
             var routine = try RoutineInference.infer(demonstration: demonstration, name: "New routine")
-            // Provider synthesis renames/rephrases only — the step structure
-            // stays exactly what was recorded; any provider failure keeps the
-            // local draft.
             if let complete = providerCompleter() {
                 routine = (try? await RoutineSynthesis.polish(routine: routine, complete: complete)) ?? routine
             }
@@ -247,8 +240,6 @@ final class RoutineLibraryController {
         ))
     }
 
-    /// Read-only window observation for click correlation — the same worker
-    /// scope Ask uses for captures.
     private func makeObserver() -> () async throws -> GuideObservation {
         let targetStore = CuaGuideTargetStore()
         return { [workers, context, targetStore] in

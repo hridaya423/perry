@@ -530,10 +530,6 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
         }
     }
 
-    // The Trash lives inside the workspace (`.trash/`): ~/.Trash cannot be
-    // opened without Full Disk Access, and a workspace-local trash keeps
-    // trashed work restorable by Perry for as long as the workspace exists.
-    // Created lazily so runs that never trash leave no empty directory.
     private func openTrashDirectory() throws -> (descriptor: Int32, device: dev_t) {
         try? FileManager.default.createDirectory(at: trashURL, withIntermediateDirectories: true)
         guard let root = Self.bindDirectory(trashURL) else {
@@ -838,7 +834,6 @@ public struct WorkspaceFileRuntime: ExecutableActionExecutor {
         }
         return data
     }
-
 }
 public struct WorkspaceFileVerifier: TypedActionVerifier {
     private let baseURL: URL
@@ -867,9 +862,6 @@ public struct WorkspaceFileVerifier: TypedActionVerifier {
               receiptMatches(receipt.effect, action: action) else {
             return .unverified(reason: "the typed executor returned a receipt for another approved action")
         }
-        // A journaled receipt binds the shared write-ahead record — the
-        // journal already validated grant, digest, and postcondition — while
-        // a direct receipt must bind this exact approved plan.
         if !result.journaled {
             guard receipt.planID == approvedAction.planID,
                   receipt.planDigest == approvedAction.planDigest,

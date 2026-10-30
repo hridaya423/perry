@@ -73,21 +73,4 @@ final class BackgroundTaskLaunchGateTests: XCTestCase {
 
         XCTAssertTrue(gate.contains(replacement))
     }
-
-    func testResourcesSerializeTheSameApplication() {
-        let gate = BackgroundTaskResourceGate()
-
-        XCTAssertTrue(gate.reserve([.application("com.apple.finder")], for: "first"))
-        XCTAssertFalse(gate.reserve([.application("com.apple.finder")], for: "second"))
-        XCTAssertTrue(gate.reserve([.application("com.apple.TextEdit")], for: "third"))
-    }
-
-    func testReleasedResourcesCanBeReservedByTheNextTask() {
-        let gate = BackgroundTaskResourceGate()
-
-        XCTAssertTrue(gate.reserve([.integration("slack")], for: "first"))
-        gate.release("first")
-
-        XCTAssertTrue(gate.reserve([.integration("slack")], for: "second"))
-    }
 }

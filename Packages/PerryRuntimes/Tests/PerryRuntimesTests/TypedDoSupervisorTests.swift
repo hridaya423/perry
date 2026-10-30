@@ -3,32 +3,6 @@ import PerryCore
 @testable import PerryRuntimes
 
 final class TypedDoSupervisorTests: XCTestCase {
-    func testTypedProductionPathHasNoLegacyPlanBridge() throws {
-        let sourceRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Sources/PerryRuntimes")
-        let sources = try ["DoSupervisor.swift", "RuntimeTypes.swift"].map {
-            try String(contentsOf: sourceRoot.appendingPathComponent($0), encoding: .utf8)
-        }.joined(separator: "\n")
-
-        XCTAssertFalse(sources.contains("PerryCore.ExecutionPlan"))
-        XCTAssertFalse(sources.contains("ExecutionPlanAdapter"))
-
-        let typedExecutionStart = "    private func execute(\n        _ plan: ExecutionPlan,"
-        let typedExecutionEnd = "    private func enterDoing()"
-        guard let start = sources.range(of: typedExecutionStart),
-              let end = sources.range(of: typedExecutionEnd, range: start.upperBound..<sources.endIndex) else {
-            return XCTFail("typed execution implementation was not found")
-        }
-        let typedExecution = sources[start.lowerBound..<end.lowerBound]
-        XCTAssertFalse(typedExecution.contains("LegacyPlanAdapter"))
-        XCTAssertFalse(typedExecution.contains("AgentRuntime"))
-        XCTAssertFalse(typedExecution.contains("action.step"))
-        XCTAssertFalse(typedExecution.contains("Step("))
-    }
-
     func testTypedRunDeliversExactOperationAndVerifiesTypedResult() async throws {
         let action = try makeAction()
         let plan = try makePlan(action: action)
@@ -37,7 +11,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         let events = TypedEventRecorder()
         let supervisor = DoSupervisor(
             activityLog: ActivityLog(),
-            confirmer: StubTypedConfirmer(approved: true),
+            confirmer: StubTypedConfirmer(),
             typedVerifier: verifier,
             onTypedEvent: { event in await events.record(event) }
         )
@@ -77,7 +51,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         let action = try makeAction()
         let executor = RecordingTypedActionExecutor()
         let supervisor = DoSupervisor(
-            confirmer: StubTypedConfirmer(approved: true)
+            confirmer: StubTypedConfirmer()
         )
 
         let outcome = await supervisor.run(
@@ -95,7 +69,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         let action = try makeAction()
         let executor = RecordingTypedActionExecutor()
         let supervisor = DoSupervisor(
-            confirmer: StubTypedConfirmer(approved: true),
+            confirmer: StubTypedConfirmer(),
             typedVerifier: FailingTypedActionVerifier()
         )
 
@@ -110,28 +84,11 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertTrue(reason.contains("verification failed"))
     }
 
-    func testTypedRunDenialPreventsDispatch() async throws {
-        let action = try makeAction()
-        let executor = RecordingTypedActionExecutor()
-        let supervisor = DoSupervisor(
-            confirmer: StubTypedConfirmer(approved: false)
-        )
-
-        let outcome = await supervisor.run(
-            plan: try makePlan(action: action),
-            typedExecutor: executor
-        )
-        let receivedAction = await executor.received
-
-        XCTAssertEqual(outcome, .blocked(reason: "user denied the execution plan"))
-        XCTAssertNil(receivedAction)
-    }
-
     func testTypedRunCancellationReachesExecutor() async throws {
         let action = try makeAction()
         let executor = CancellableTypedActionExecutor()
         let supervisor = DoSupervisor(
-            confirmer: StubTypedConfirmer(approved: true)
+            confirmer: StubTypedConfirmer()
         )
         let run = Task {
             await supervisor.run(
@@ -153,7 +110,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         let action = try makeAction(timeout: 0.03)
         let executor = CancellableTypedActionExecutor()
         let supervisor = DoSupervisor(
-            confirmer: StubTypedConfirmer(approved: true)
+            confirmer: StubTypedConfirmer()
         )
 
         let run = Task {
@@ -173,45 +130,6 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertTrue(cancellationObserved)
     }
 
-    func testRehearsalPreviewsEveryActionTargetBeforeDispatch() async throws {
-        let first = try makeAction()
-        let second = try ExecutableAction(
-            id: ActionID("rename-report"),
-            summary: "Rename report",
-            approvalRequirement: .action,
-            operation: .transform(
-                workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
-                command: .rename(path: "report.txt", destination: "done.txt")
-            ),
-            postcondition: .renamedItem(device: 1, inode: 2)
-        )
-        let plan = try PerryRuntimes.ExecutionPlan(
-            taskID: TaskID("typed-supervisor-task"),
-            goal: "Write report",
-            actions: [first, second],
-            requestedScopes: [.workspaceWrite]
-        )
-        let confirmer = RehearsalRecordingConfirmer()
-        let executor = RecordingTypedActionExecutor()
-        let supervisor = DoSupervisor(
-            activityLog: ActivityLog(),
-            confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier()
-        )
-
-        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
-        let requests = await confirmer.requests
-
-        XCTAssertEqual(outcome, .completed(stepsRun: 2))
-        let rehearsal = try XCTUnwrap(requests.first)
-        XCTAssertEqual(rehearsal.actionSummary, "Write report")
-        XCTAssertTrue(rehearsal.reason.contains("1. Write report — creates report.txt"))
-        XCTAssertTrue(rehearsal.reason.contains("2. Rename report — renames report.txt → done.txt"))
-        XCTAssertTrue(rehearsal.reversible)
-        // Rehearsal, then one card per .action step.
-        XCTAssertEqual(requests.count, 3)
-    }
-
     func testTypedRunCancellationDuringVerificationReturnsPromptlyWithoutRecording() async throws {
         let action = try makeAction()
         let executor = RecordingTypedActionExecutor()
@@ -219,7 +137,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         let log = ActivityLog()
         let supervisor = DoSupervisor(
             activityLog: log,
-            confirmer: StubTypedConfirmer(approved: true),
+            confirmer: StubTypedConfirmer(),
             typedVerifier: verifier
         )
         let run = Task {
@@ -249,77 +167,7 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertTrue(entries.isEmpty)
     }
 
-    func testStepThroughConfirmsEachAction() async throws {
-        let actions = try ["one.txt", "two.txt"].map { name in
-            try ExecutableAction(
-                id: ActionID("write-\(name)"),
-                summary: "Write \(name)",
-                approvalRequirement: .plan,
-                operation: .transform(
-                    workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
-                    command: .createUTF8File(path: name, contents: "hello")
-                ),
-                postcondition: .fileContents("hello")
-            )
-        }
-        let plan = try PerryRuntimes.ExecutionPlan(
-            taskID: TaskID("step-through-task"),
-            goal: "Write files",
-            actions: actions,
-            requestedScopes: [.workspaceWrite]
-        )
-        let confirmer = StepThroughConfirmer()
-        let supervisor = DoSupervisor(
-            activityLog: ActivityLog(),
-            confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier()
-        )
-
-        let outcome = await supervisor.run(plan: plan, typedExecutor: RecordingTypedActionExecutor())
-
-        XCTAssertEqual(outcome, .completed(stepsRun: 2))
-        let decisions = await confirmer.decisions
-        let actionRequests = await confirmer.actionRequests
-        XCTAssertEqual(decisions, 1)
-        XCTAssertEqual(actionRequests, 2)
-    }
-
-    func testRunDecisionSkipsPerActionConfirmations() async throws {
-        let actions = try ["one.txt", "two.txt"].map { name in
-            try ExecutableAction(
-                id: ActionID("write-\(name)"),
-                summary: "Write \(name)",
-                approvalRequirement: .plan,
-                operation: .transform(
-                    workspace: URL(fileURLWithPath: "/tmp/perry-typed-supervisor"),
-                    command: .createUTF8File(path: name, contents: "hello")
-                ),
-                postcondition: .fileContents("hello")
-            )
-        }
-        let plan = try PerryRuntimes.ExecutionPlan(
-            taskID: TaskID("run-decision-task"),
-            goal: "Write files",
-            actions: actions,
-            requestedScopes: [.workspaceWrite]
-        )
-        let confirmer = StepThroughConfirmer(decision: .run)
-        let supervisor = DoSupervisor(
-            activityLog: ActivityLog(),
-            confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier()
-        )
-
-        let outcome = await supervisor.run(plan: plan, typedExecutor: RecordingTypedActionExecutor())
-
-        XCTAssertEqual(outcome, .completed(stepsRun: 2))
-        let decisions = await confirmer.decisions
-        let actionRequests = await confirmer.actionRequests
-        XCTAssertEqual(decisions, 1)
-        XCTAssertEqual(actionRequests, 0)
-    }
-
-    func testUserRequestedRunAsksNothingForLocalActions() async throws {
+    func testRunAsksNothingForLocalActions() async throws {
         let rename = try ExecutableAction(
             id: ActionID("rename-report"),
             summary: "Rename report",
@@ -336,13 +184,12 @@ final class TypedDoSupervisorTests: XCTestCase {
             actions: [try makeAction(), rename],
             requestedScopes: [.workspaceWrite]
         )
-        let confirmer = RehearsalRecordingConfirmer()
+        let confirmer = RecordingConfirmer()
         let executor = RecordingTypedActionExecutor()
         let supervisor = DoSupervisor(
             activityLog: ActivityLog(),
             confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier(),
-            userRequested: true
+            typedVerifier: RecordingTypedActionVerifier()
         )
 
         let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
@@ -352,41 +199,28 @@ final class TypedDoSupervisorTests: XCTestCase {
         XCTAssertEqual(requests.count, 0)
     }
 
-    func testReplayPreviewReasksWithoutDispatching() async throws {
-        let action = try makeAction()
-        let plan = try makePlan(action: action)
-        let confirmer = StepThroughConfirmer(queue: [.replay, .run])
+    func testDeniedQuestionBlocksWithoutDispatching() async throws {
+        let ask = try ExecutableAction(
+            id: ActionID("ask"),
+            summary: "Ask which folder",
+            approvalRequirement: .action,
+            operation: .askUser(prompt: "Which folder?", choices: ["A", "B"]),
+            postcondition: .answered
+        )
         let executor = RecordingTypedActionExecutor()
-        let supervisor = DoSupervisor(
-            activityLog: ActivityLog(),
-            confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier()
+        let supervisor = DoSupervisor(confirmer: DenyingConfirmer())
+
+        let plan = try PerryRuntimes.ExecutionPlan(
+            taskID: TaskID("ask-task"),
+            goal: "Ask",
+            actions: [ask],
+            requestedScopes: []
         )
 
         let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
-
-        let decisions = await confirmer.decisions
         let received = await executor.received
-        XCTAssertEqual(outcome, .completed(stepsRun: 1))
-        XCTAssertEqual(decisions, 2)
-        XCTAssertEqual(received?.action.id, action.id)
-    }
 
-    func testEditDecisionBlocksWithoutDispatching() async throws {
-        let action = try makeAction()
-        let plan = try makePlan(action: action)
-        let confirmer = StepThroughConfirmer(queue: [.edit])
-        let executor = RecordingTypedActionExecutor()
-        let supervisor = DoSupervisor(
-            activityLog: ActivityLog(),
-            confirmer: confirmer,
-            typedVerifier: RecordingTypedActionVerifier()
-        )
-
-        let outcome = await supervisor.run(plan: plan, typedExecutor: executor)
-
-        let received = await executor.received
-        XCTAssertEqual(outcome, .blocked(reason: "goal sent back for editing"))
+        XCTAssertEqual(outcome, .blocked(reason: "user denied Ask which folder"))
         XCTAssertNil(received)
     }
 
@@ -415,42 +249,14 @@ final class TypedDoSupervisorTests: XCTestCase {
 }
 
 private actor StubTypedConfirmer: Confirmer {
-    let approved: Bool
-
-    init(approved: Bool) {
-        self.approved = approved
-    }
-
-    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
-        approved
-    }
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { true }
 }
 
-private actor StepThroughConfirmer: Confirmer {
-    private var queue: [PlanDecision]
-    private(set) var decisions = 0
-    private(set) var actionRequests = 0
-
-    init(decision: PlanDecision = .stepThrough) {
-        self.queue = [decision]
-    }
-
-    init(queue: [PlanDecision]) {
-        self.queue = queue
-    }
-
-    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {
-        actionRequests += 1
-        return true
-    }
-
-    func requestPlanDecision(_ request: ConfirmationRequest) async -> PlanDecision {
-        decisions += 1
-        return queue.count > 1 ? queue.removeFirst() : queue.first ?? .run
-    }
+private struct DenyingConfirmer: Confirmer {
+    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { false }
 }
 
-private actor RehearsalRecordingConfirmer: Confirmer {
+private actor RecordingConfirmer: Confirmer {
     private(set) var requests: [ConfirmationRequest] = []
 
     func requestConfirmation(_ request: ConfirmationRequest) async -> Bool {

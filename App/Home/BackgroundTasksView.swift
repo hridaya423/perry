@@ -122,12 +122,6 @@ private struct BackgroundTaskRow: View {
                 .font(PerryTheme.Scale.secondary)
                 .monospacedDigit()
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
-                if case .legacy(let plan) = record.plan {
-                    Text("Run by \(runtimes.name(for: plan.runtimeID))")
-                        .font(PerryTheme.Scale.secondary)
-                        .monospacedDigit()
-                        .foregroundStyle(PerryTheme.Colors.textSecondary)
-                }
                 if let recoveryNotice {
                     BackgroundTaskRecoveryNoticeView(notice: recoveryNotice)
                 } else if record.checkpoint.isAwaitingApproval,
@@ -186,12 +180,6 @@ private struct BackgroundTaskRow: View {
                         .controlSize(.small)
                         .accessibilityLabel("Stop task \(record.goal)")
                 } else {
-                    if recoveryNotice == .legacyPlan {
-                        Button("Plan again") { backgroundTasks.replan(record.id) }
-                            .buttonStyle(InkButtonStyle())
-                            .controlSize(.small)
-                            .accessibilityLabel("Replan task \(record.goal)")
-                    }
                     Button("Delete…", role: .destructive) { showDeleteConfirmation = true }
                         .controlSize(.small)
                         .accessibilityLabel("Delete task \(record.goal)")
