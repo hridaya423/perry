@@ -26,7 +26,7 @@ final class IntentCardPresenter {
         currentID = id
         let frontmost = NSWorkspace.shared.frontmostApplication
         let previousApplication = frontmost?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : frontmost
-        let decision = await presentation.ask(id: id, priority: .approval, title: card.title, cancelled: .cancel) { answer in
+        let decision = await presentation.ask(id: id, priority: .approval, title: card.title, cancelled: PlanDecision.cancel) { answer in
             IntentCardView(
                 card: card,
                 allowsStepThrough: allowsStepThrough,

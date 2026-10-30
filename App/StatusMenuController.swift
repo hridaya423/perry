@@ -2,7 +2,6 @@ import AppKit
 
 @MainActor
 final class StatusMenuController: NSObject, NSMenuDelegate {
-    @MainActor
     private final class ActionItem: NSMenuItem {
         private let handler: () -> Void
 

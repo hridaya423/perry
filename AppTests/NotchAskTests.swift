@@ -2,6 +2,10 @@ import SwiftUI
 import XCTest
 @testable import Perry
 
+private final class AnswerBox<Answer> {
+    var answer: ((Answer) -> Void)?
+}
+
 @MainActor
 final class NotchAskTests: XCTestCase {
     private func waitForEntry(in presentation: NotchPresentation) async -> UUID? {
@@ -13,17 +17,18 @@ final class NotchAskTests: XCTestCase {
 
     func testAnsweringResolvesOnceAndRemovesTheEntry() async throws {
         let presentation = NotchPresentation()
-        var answerBox: ((String) -> Void)?
+        let box = AnswerBox<String>()
         let asking = Task {
             await presentation.ask(priority: .approval, cancelled: "none") { answer in
-                answerBox = answer
+                box.answer = answer
                 return Text("Pick")
             }
         }
-        let id = try XCTUnwrap(await waitForEntry(in: presentation))
+        let entryID = await waitForEntry(in: presentation)
+        let id = try XCTUnwrap(entryID)
         XCTAssertEqual(presentation.current?.priority, .approval)
-        answerBox?("first")
-        answerBox?("second")
+        box.answer?("first")
+        box.answer?("second")
         let result = await asking.value
         XCTAssertEqual(result, "first")
         XCTAssertFalse(presentation.contains(id))
@@ -45,16 +50,16 @@ final class NotchAskTests: XCTestCase {
     func testAnswerAfterCancelAskIsIgnored() async throws {
         let presentation = NotchPresentation()
         let id = UUID()
-        var answerBox: ((Bool) -> Void)?
+        let box = AnswerBox<Bool>()
         let asking = Task {
             await presentation.ask(id: id, priority: .approval, cancelled: false) { answer in
-                answerBox = answer
+                box.answer = answer
                 return Text("Confirm")
             }
         }
         _ = await waitForEntry(in: presentation)
         presentation.cancelAsk(id)
-        answerBox?(true)
+        box.answer?(true)
         let result = await asking.value
         XCTAssertFalse(result)
     }
@@ -64,7 +69,8 @@ final class NotchAskTests: XCTestCase {
         let asking = Task {
             await presentation.ask(priority: .approval, cancelled: false) { _ in Text("Confirm") }
         }
-        let id = try XCTUnwrap(await waitForEntry(in: presentation))
+        let entryID = await waitForEntry(in: presentation)
+        let id = try XCTUnwrap(entryID)
         asking.cancel()
         let result = await asking.value
         XCTAssertFalse(result)
@@ -87,7 +93,8 @@ final class NotchAskTests: XCTestCase {
         let asking = Task {
             await presentation.ask(priority: .approval, cancelled: false) { _ in Text("Confirm") }
         }
-        let id = try XCTUnwrap(await waitForEntry(in: presentation))
+        let entryID = await waitForEntry(in: presentation)
+        let id = try XCTUnwrap(entryID)
         presentation.dismissCurrent()
         let result = await asking.value
         XCTAssertFalse(result)
