@@ -12,8 +12,7 @@ import PerryRuntimes
 @MainActor
 final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testErasurePromptDeduplicatesAndCollapseCancelsBeforeMaintenance() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
@@ -42,8 +41,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testCollapsingUnsavedQuitConfirmationRestoresAdmissionAndRequest() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
@@ -68,8 +66,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testQuitChecksFailedAcceptedWritesBeforeDiscardingInput() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let controller = AppController.testing(directory: directory)
         controller.subsystems.homeController.threadStore = nil
         let input = controller.subsystems.homeController.acceptInput("Keep this unsaved request")
@@ -91,8 +88,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testRenderUnsavedQuitConfirmation() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
@@ -125,8 +121,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testNotificationCannotApproveNewRevisionBehindStaleTaskList() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let workspace = directory.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
@@ -184,8 +179,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testMultiActionTaskRetainsMetadataUntilSecondApprovalAndReport() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let workspace = directory.appendingPathComponent("BackgroundWorkspaces/two-file-app-task", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let actions = try ["first", "second"].map { name in
@@ -244,8 +238,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testCancellationReportsPartialWorkWithoutRunningPreparedSecondAction() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let workspace = directory.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false)
         let actions = try ["first", "second"].map { name in
@@ -286,8 +279,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testCancelledVerifiedReportPausesOnHistoryFailureWithoutRecreatingWorkspace() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try self.removeFixture(directory) }
+        let directory = try makeTemporaryDirectory()
         let workspace = directory.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: false)
         let proposed = try await WorkspaceFilePlanFabricator().workspaceExecutionPlan(
@@ -351,7 +343,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testCancelWaitsForSetupWriterBeforeFinalization() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         addTeardownBlock {
             try self.removeFixture(directory)
         }
@@ -410,7 +402,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testUncooperativeSetupWriterRefusesFinalizationAtDeadline() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         addTeardownBlock {
             try self.removeFixture(directory)
         }
@@ -475,7 +467,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testPauseInvalidatesQueuedColdResumeBeforeWorkerAdmission() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         addTeardownBlock {
             try self.removeFixture(directory)
         }
@@ -533,7 +525,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     }
 
     func testErasureOwnerRejectsConcurrentQuitWithoutReopeningControls() async throws {
-        let directory = try temporaryDirectory()
+        let directory = try makeTemporaryDirectory()
         addTeardownBlock {
             try self.removeFixture(directory)
         }
@@ -626,13 +618,6 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             }
         }
         return await condition()
-    }
-
-    private func temporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PerryBackgroundTaskLifecycle-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 
     private func removeFixture(_ directory: URL) throws {

@@ -175,11 +175,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             model.sidebarSelection = selection
             try await render(openNotch(controller), name: name, size: NSSize(width: 892, height: 552))
         }
-        let previousTab = UserDefaults.standard.object(forKey: PerryPreferences.$settingsTab.key)
-        defer {
-            if let previousTab { UserDefaults.standard.set(previousTab, forKey: PerryPreferences.$settingsTab.key) }
-            else { UserDefaults.standard.removeObject(forKey: PerryPreferences.$settingsTab.key) }
-        }
+        restoreDefaultsAfterTest([PerryPreferences.$settingsTab.key], clearing: false)
         model.sidebarSelection = .settings
         for page in SettingsPage.allCases {
             UserDefaults.standard.set(page.rawValue, forKey: PerryPreferences.$settingsTab.key)

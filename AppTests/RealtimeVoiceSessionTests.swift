@@ -57,8 +57,7 @@ final class RealtimeVoiceSessionTests: XCTestCase {
     func testOpenAIDefaultsToTheSupportedRealtimeModel() {
         let defaults = UserDefaults.standard
         let keys = [PerryPreferences.$realtimeVoiceEndpoint.key, PerryPreferences.$realtimeVoiceModel.key, PerryPreferences.$realtimeVoiceProvider.key]
-        let saved = keys.map { defaults.object(forKey: $0) }
-        defer { for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) } }
+        restoreDefaultsAfterTest(keys, clearing: false)
         defaults.set("wss://api.openai.com/v1/realtime", forKey: keys[0])
         defaults.removeObject(forKey: keys[2])
         for stored in ["", "gpt-realtime"] {

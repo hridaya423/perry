@@ -8,8 +8,7 @@ import PerryRuntimes
 @MainActor
 final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
     func testActiveUnverifiedActionKeepsLiveControlsButInterruptedActionExplainsRecovery() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let directory = try makeTemporaryDirectory()
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let plan = try executablePlan(taskID: "action", workspace: directory)
         let queued = try await coordinator.enqueue(executablePlan: plan)
@@ -36,8 +35,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
     }
 
     func testOrdinaryApprovalDoesNotShowRecoveryWarning() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let directory = try makeTemporaryDirectory()
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let queued = try await coordinator.enqueue(
             executablePlan: try executablePlan(taskID: "approval", workspace: directory)
@@ -80,8 +78,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
     }
 
     func testLaunchPolicyRejectsCancelledTasks() async throws {
-        let directory = try temporaryDirectory()
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let directory = try makeTemporaryDirectory()
         let coordinator = TaskCoordinator(storageDirectory: directory)
         let queued = try await coordinator.enqueue(
             executablePlan: try executablePlan(taskID: "cancelled", workspace: directory)
@@ -109,12 +106,5 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
             actions: [action],
             requestedScopes: [.workspaceWrite]
         )
-    }
-
-    private func temporaryDirectory() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PerryRecoveryNotice-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
     }
 }

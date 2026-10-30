@@ -31,17 +31,9 @@ final class RealtimeProviderTests: XCTestCase {
         PerryPreferences.$realtimeVoiceVoice.key,
         PerryPreferences.$realtimeVoiceProtocol.key,
     ]
-    private var savedPreferences: [Any?] = []
 
     override func setUp() async throws {
-        savedPreferences = preferenceKeys.map { UserDefaults.standard.object(forKey: $0) }
-        preferenceKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
-    }
-
-    override func tearDown() async throws {
-        for (key, value) in zip(preferenceKeys, savedPreferences) {
-            UserDefaults.standard.set(value, forKey: key)
-        }
+        restoreDefaultsAfterTest(preferenceKeys)
     }
 
     private func grokConfiguration() throws -> RealtimeVoiceConfiguration {

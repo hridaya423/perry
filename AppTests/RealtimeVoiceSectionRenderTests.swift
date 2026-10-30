@@ -13,13 +13,11 @@ final class RealtimeVoiceSectionRenderTests: XCTestCase {
             PerryPreferences.$realtimeVoiceVoice.key,
             PerryPreferences.$realtimeVoiceModel.key,
         ]
-        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+        restoreDefaultsAfterTest(keys)
         let keychain = KeychainStore(service: "dev.perry.keys.tests.\(UUID().uuidString)")
         defer {
-            for (key, value) in zip(keys, saved) { UserDefaults.standard.set(value, forKey: key) }
             for id in RealtimeProviderID.allCases { try? keychain.deleteChecked(account: RealtimeProvider(id).keychainAccount) }
         }
-        keys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
         try keychain.save("xai-fixture", account: RealtimeProvider(.grok).keychainAccount)
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build/realtime-settings-evidence")

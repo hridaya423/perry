@@ -4,10 +4,7 @@ import XCTest
 final class PerryPreferencesTests: XCTestCase {
     func testGesturePreferencesKeepRawValuesAndFallBackOnUnknownOnes() {
         let key = PerryPreferences.$typeGesture.key
-        let saved = UserDefaults.standard.object(forKey: key)
-        addTeardownBlock {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        restoreDefaultsAfterTest([key], clearing: false)
 
         PerryPreferences.typeGesture = .doubleTap([.option])
         XCTAssertEqual(UserDefaults.standard.string(forKey: key), "doubleTap:option")

@@ -12,13 +12,7 @@ final class ShortcutRolesTests: XCTestCase {
             PerryPreferences.$storedDictateGesture.key, PerryPreferences.$storedWakeGesture.key,
             PerryPreferences.$typeGesture.key,
         ]
-        for key in keys {
-            let saved = UserDefaults.standard.object(forKey: key)
-            UserDefaults.standard.removeObject(forKey: key)
-            addTeardownBlock {
-                if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-            }
-        }
+        restoreDefaultsAfterTest(keys)
     }
 
     func testDictateMigratesEachLegacyValueOnFirstRead() {

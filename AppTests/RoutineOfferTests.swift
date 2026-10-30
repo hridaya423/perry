@@ -62,10 +62,7 @@ final class RoutineOfferTests: XCTestCase {
     func testTheOfferedFlagIsAPerryPreference() {
         let key = PerryPreferences.$routineOffered.key
         XCTAssertTrue(key.hasPrefix("perry."))
-        let saved = UserDefaults.standard.object(forKey: key)
-        addTeardownBlock {
-            if let saved { UserDefaults.standard.set(saved, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
-        }
+        restoreDefaultsAfterTest([key], clearing: false)
         PerryPreferences.$routineOffered.reset()
         XCTAssertFalse(PerryPreferences.routineOffered)
         PerryPreferences.routineOffered = true
