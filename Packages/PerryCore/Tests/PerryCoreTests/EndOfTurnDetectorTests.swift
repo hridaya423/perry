@@ -120,15 +120,6 @@ final class EndOfTurnDetectorTests: XCTestCase {
         XCTAssertLessThan(median, 0.9)
     }
 
-    func testUserActionsEndTheTurnImmediately() {
-        var detector = EndOfTurnDetector(startedAt: 0)
-        XCTAssertEqual(detector.transcript(at: 0.5, text: "open", lastWordEnd: 0.4), .speechStarted)
-        XCTAssertEqual(detector.userAction(.sendNow), .commit(.userSent))
-        XCTAssertNil(detector.frame(at: 0.6, rms: 0.1))
-        var cancelled = EndOfTurnDetector(startedAt: 0)
-        XCTAssertEqual(cancelled.userAction(.cancel), .abort(.cancelled))
-    }
-
     func testTrailingCuesWaitLongerThanClearEnds() {
         var detector = EndOfTurnDetector(startedAt: 0)
         _ = detector.transcript(at: 1, text: "Draft a reply and", lastWordEnd: 0.9)

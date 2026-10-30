@@ -2,16 +2,8 @@ import PerryBrain
 import PerryGuide
 import QuartzCore
 
-/// BYOK realtime voice inside Talk (plan §1.5): one RealtimeVoiceSession
-/// per app lifetime, `beginInput()` per hold, commits for transcription
-/// only — Perry's brain still owns the answer — and renders replies through
-/// the provider voice via `speakText`. Falls back to the on-device stack
-/// whenever the session can't reach `.listening`.
 @MainActor
 final class RealtimeTalkVoice {
-    /// The session's only response channel is output rendering, so its
-    /// instructions constrain it to speaking exactly what it is handed —
-    /// the standard realtime-TTS pattern over conversation.item.create.
     private static let instructions = """
         You are Perry's voice. Repeat each message you receive verbatim in \
         natural speech — no preamble, no extra words, no answers.
@@ -30,10 +22,7 @@ final class RealtimeTalkVoice {
         fallbackInput: (any TalkSpeechInput)? = nil,
         fallbackOutput: (any TalkSpeechOutput)? = nil,
         connectBudget: TimeInterval = 2,
-        finalizeBudget: TimeInterval = 5,
-        onPerformanceSample: @escaping (PerformanceSample) -> Void = { _ in },
-        onPerformanceMarker: @escaping (PerformanceMarker) -> Void = { _ in },
-        onTaskSnapshot: @escaping (RealtimeTaskSnapshot) -> Void = { _ in }
+        finalizeBudget: TimeInterval = 5
     ) {
         let input = RealtimeTalkInput(fallback: fallbackInput ?? SFSpeechInput())
         input.finalizeBudget = finalizeBudget
@@ -54,9 +43,6 @@ final class RealtimeTalkVoice {
                 configuration: talkConfiguration,
                 apiKey: apiKey,
                 transport: makeTransport?(),
-                onPerformanceSample: onPerformanceSample,
-                onPerformanceMarker: onPerformanceMarker,
-                onTaskSnapshot: onTaskSnapshot,
                 onEvent: { [weak input] event in input?.handle(event) }
             )
         }
@@ -70,15 +56,10 @@ final class RealtimeTalkVoice {
         output.isRealtimeActive = { [weak input] in input?.isUsingRealtime ?? false }
     }
 
-    /// Builds a realtime Talk voice when BYOK realtime is configured and a
-    /// keychain key exists; nil keeps Talk on the on-device stack.
     static func configured(
         keychain: KeychainStore = KeychainStore(),
         fallbackInput: (any TalkSpeechInput)? = nil,
-        fallbackOutput: (any TalkSpeechOutput)? = nil,
-        onPerformanceSample: @escaping (PerformanceSample) -> Void = { _ in },
-        onPerformanceMarker: @escaping (PerformanceMarker) -> Void = { _ in },
-        onTaskSnapshot: @escaping (RealtimeTaskSnapshot) -> Void = { _ in }
+        fallbackOutput: (any TalkSpeechOutput)? = nil
     ) -> RealtimeTalkVoice? {
         guard let provider = RealtimeProvider.current,
               let configuration = provider.configuration(),
@@ -88,22 +69,15 @@ final class RealtimeTalkVoice {
             configuration: configuration,
             apiKey: apiKey,
             fallbackInput: fallbackInput,
-            fallbackOutput: fallbackOutput,
-            onPerformanceSample: onPerformanceSample,
-            onPerformanceMarker: onPerformanceMarker,
-            onTaskSnapshot: onTaskSnapshot
+            fallbackOutput: fallbackOutput
         )
     }
 
-    /// Connect at launch so the first realtime hold never pays it.
     func warmUp() {
         guard RealtimeProvider(session.configuration.provider).billing == .perToken else { return }
         ensureSession().start()
     }
 
-    /// A usable session: rebuilds a failed one (a stopped session cannot
-    /// restart — `shutdownRequested` is terminal) and starts an idle one.
-    /// Callers still bound the wait to `.listening` themselves.
     func ensureListening() async -> Bool {
         let session = ensureSession()
         if session.state == .idle { session.start() }
@@ -124,19 +98,11 @@ final class RealtimeTalkVoice {
     }
 }
 
-/// TalkSpeechInput over the realtime session: `beginInput()` re-arms the
-/// buffer per hold, `finishInputTranscribing()` commits for transcription
-/// without a provider response, and `cancel()` clears the utterance.
-/// Realtime transcription carries no word timestamps, so `finalize()`
-/// spreads the words evenly across the hold — the deixis epoch stays
-/// seconds-since-start like every other input.
 @MainActor
 final class RealtimeTalkInput: TalkSpeechInput {
     private let fallback: any TalkSpeechInput
     private weak var voice: RealtimeTalkVoice?
 
-    /// Bound on the provider's transcription reply — a dropped commit must
-    /// not hang the turn.
     var finalizeBudget: TimeInterval = 5
     private var beganAt: TimeInterval = 0
     private var endedAt: TimeInterval = 0
@@ -144,9 +110,6 @@ final class RealtimeTalkInput: TalkSpeechInput {
     private var settled = false
     private var finalization: CheckedContinuation<Void, Never>?
 
-    /// True while the current turn is driven by the realtime session — the
-    /// output adapter reads it so input/output never straddle the two
-    /// stacks mid-turn. Cleared on cancel; kept through the answer.
     private(set) var isUsingRealtime = false
 
     init(fallback: any TalkSpeechInput) {
@@ -205,8 +168,6 @@ final class RealtimeTalkInput: TalkSpeechInput {
             if session.hasPendingInputAudio {
                 session.finishInputTranscribing()
             } else {
-                // Nothing reached the buffer — committing would only fail
-                // the session on emptyInput.
                 finish(transcript: nil)
             }
             let timeout = Task { @MainActor [weak self] in
@@ -227,8 +188,6 @@ final class RealtimeTalkInput: TalkSpeechInput {
 
     func cancel() {
         if isUsingRealtime {
-            // Discards the buffered utterance and re-arms listening — the
-            // bumped generation also settles out any in-flight commit.
             voice?.session.beginInput()
         } else {
             fallback.cancel()
@@ -258,9 +217,6 @@ final class RealtimeTalkInput: TalkSpeechInput {
     }
 }
 
-/// TalkSpeechOutput over the realtime session: `speak` sends the sentence
-/// for verbatim rendering, `shutUp` is the barge-in path. Routes to the
-/// on-device fallback whenever the turn's input isn't realtime-driven.
 @MainActor
 final class RealtimeTalkOutput: TalkSpeechOutput {
     private let fallback: any TalkSpeechOutput
@@ -293,8 +249,6 @@ final class RealtimeTalkOutput: TalkSpeechOutput {
     }
 }
 
-/// Used only when no fallback output is injected — realtime output without
-/// a local owner should still be safe to silence.
 @MainActor
 private final class SilentTalkOutput: TalkSpeechOutput {
     var isSpeaking: Bool { false }
@@ -302,9 +256,6 @@ private final class SilentTalkOutput: TalkSpeechOutput {
     func shutUp() {}
 }
 
-/// TalkSession's single output seam: hands speech to the realtime voice
-/// while a realtime hold is live and to the on-device synthesizer
-/// otherwise, so `Services.output` never has to be rebuilt per turn.
 @MainActor
 final class TalkSpeechOutputRouter: TalkSpeechOutput {
     private let realtime: () -> RealtimeTalkOutput?

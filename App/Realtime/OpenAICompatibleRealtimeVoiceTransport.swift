@@ -78,8 +78,6 @@ actor OpenAICompatibleRealtimeVoiceTransport: RealtimeVoiceTransport {
         }
     }
 
-    /// Commit without `response.create`: the provider transcribes the
-    /// buffered audio and stays silent — Talk's brain owns the reply.
     func commitInput(tag: RealtimeVoicePacketTag) async throws {
         guard inputHasAudio else { throw RealtimeVoiceError.emptyInput }
         guard correlation.enqueueCommit(tag: tag) else {

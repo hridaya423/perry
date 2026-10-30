@@ -3,14 +3,6 @@ import ApplicationServices
 import PerryGuide
 import ScreenCaptureKit
 
-/// Talk's fast capture path. The bundled driver's `get_window_state` walks the
-/// target's whole AX tree over IPC (~6–11s measured, over the 15s request
-/// timeout under load). Everything Talk needs is cheaper locally: window
-/// discovery via CGWindowList (~100ms), a pointer hit-test (~80–450ms), a
-/// bounded index of the pointed element's neighbourhood (~25ms per batched
-/// describe), and a ScreenCaptureKit frame (~300–600ms). A hung target app can
-/// still stall AX IPC, so the whole path runs inside a timeout and the caller
-/// falls back to the driver.
 struct LocalTalkObserver: GuideObserving {
     let hint: CuaTargetHint
     let pointerAXPoint: CGPoint
@@ -34,15 +26,10 @@ struct LocalTalkObserver: GuideObserving {
         try await observation(includeScreenshot: true)
     }
 
-    /// Verification reads skip the ScreenCaptureKit frame — postcondition
-    /// checks need the element index, never pixels.
     func observeElements() async throws -> GuideObservation {
         try await observation(includeScreenshot: false)
     }
 
-    /// Waits on the target app's AX change notifications. The pid comes from
-    /// the last resolved window (or the launch hint before the first read);
-    /// without one there is nothing to watch and the caller still reads once.
     func awaitUIChange(within: Duration) async -> Bool {
         guard let pid = await targetStore.current()?.processID ?? hint.processID else { return false }
         return await changes.waitForChange(pid: pid, within: within)
@@ -89,9 +76,6 @@ struct LocalTalkObserver: GuideObserving {
         }
     }
 
-    /// The hint is fresh at keypress so it wins. When its window has vanished,
-    /// the window under the pointer is the next-best statement of intent —
-    /// Talk is point-driven.
     private static func resolveWindow(hint: CuaTargetHint, anchor: CGPoint) -> ResolvedWindow? {
         if let windowID = hint.windowID,
            let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(windowID)) as? [[String: Any]])?.first,
@@ -135,11 +119,6 @@ struct LocalTalkObserver: GuideObserving {
         )
     }
 
-    /// The index is deliberately shallow: the pointed element, its parent, the
-    /// parent's children (siblings), and the hit's own children. That covers
-    /// "this" (the hit) and "that" (a sibling near another trace point) — the
-    /// cases `DeixisResolver` needs — without the full-tree cost. Every
-    /// describe is one batched AX round-trip.
     private static func elementIndex(pid: pid_t, bounds: CGRect, anchor: CGPoint) -> [AXElement] {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, messagingTimeout)
@@ -163,8 +142,6 @@ struct LocalTalkObserver: GuideObserving {
         var neighbourhoodSource = parent ?? hit
         if let parent {
             include(parent)
-            // When the hit is the window itself, the app's children are just
-            // windows — the useful neighbourhood is inside the hit.
             if axString(parent, kAXRoleAttribute) == "AXApplication" {
                 neighbourhoodSource = hit
             }
@@ -290,9 +267,6 @@ struct LocalTalkObserver: GuideObserving {
     }
 }
 
-/// Shared with `CuaDriverClient`'s snapshot mapping — both readers must agree
-/// on what counts as actionable so Guide validation behaves identically across
-/// capture paths.
 func axGuideRole(_ rawRole: String) -> AXElement.Role {
     switch rawRole {
     case "AXButton", "button": return .button

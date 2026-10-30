@@ -55,14 +55,21 @@ final class RealtimeVoiceSession {
     private var pipelineWorkerTokens: [RealtimeWorkerRole: [RealtimeWorkerToken]] = [:]
     private var sessionGeneration = 0
     private(set) var state: RealtimeVoiceSessionState = .idle
-    private(set) var echoCancellationEnabled = false
     private var meteredHangUp: Task<Void, Never>?
     var meteredIdleTimeout: Duration = .seconds(30)
     var isShutDown: Bool { shutdownRequested }
 
-    /// Whether uncommitted microphone audio is buffered — a silent hold
-    /// should settle empty rather than commit nothing and fail the
-    /// session on `emptyInput` (§1.5 transcribe-only input path).
+    private static let wireFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16,
+        sampleRate: 24_000,
+        channels: 1,
+        interleaved: false
+    )!
+
+    private var currentTag: RealtimeVoicePacketTag {
+        RealtimeVoicePacketTag(sessionID: sessionGeneration, utteranceGeneration: inputGeneration)
+    }
+
     var hasPendingInputAudio: Bool { inputHasAudio }
 
     init(
@@ -200,10 +207,7 @@ final class RealtimeVoiceSession {
         let cancelResponse = wasResponding
             || responseTracker.authorizedRequestCount > 0
             || operationPipeline.hasQueuedResponseCancellation
-        let previousTag = RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
+        let previousTag = currentTag
         outputReservations.invalidate(tag: previousTag)
         responseTracker.cancel(tag: previousTag)
         inputGeneration += 1
@@ -221,10 +225,7 @@ final class RealtimeVoiceSession {
             if wasResponding {
                 onPerformanceMarker(PerformanceMarker(name: "voice.barge_in_requested", capturedAt: Date()))
             }
-            if audioGraphInstalled {
-                player.stop()
-                player.play()
-            }
+            flushPlayer()
         }
         if wasResponding {
             onEvent(.responseInterrupted(nil))
@@ -291,10 +292,7 @@ final class RealtimeVoiceSession {
         sessionGeneration += 1
         inputGeneration += 1
         transcriptBarrier.advance(
-            to: RealtimeVoicePacketTag(
-                sessionID: sessionGeneration,
-                utteranceGeneration: inputGeneration
-            )
+            to: currentTag
         )
         startTask?.cancel()
         startTask = nil
@@ -320,7 +318,6 @@ final class RealtimeVoiceSession {
             await operationPipeline.stop()
             await receiveTask?.value
         }
-        echoCancellationEnabled = false
         audioEngineStarted = false
         inputFinishRequested = false
         inputFinished = false
@@ -333,9 +330,6 @@ final class RealtimeVoiceSession {
         finishInput(createsResponse: true)
     }
 
-    /// Commit for transcription only: the buffered utterance is committed
-    /// without `response.create`, so the provider transcribes and stays
-    /// silent — Talk's own brain answers (§1.5 `RealtimeInput`).
     func finishInputTranscribing() {
         finishInput(createsResponse: false)
     }
@@ -427,16 +421,10 @@ final class RealtimeVoiceSession {
 
     func cancelCurrentResponse() {
         guard state == .responding || responseTracker.authorizedRequestCount > 0 else { return }
-        let tag = RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
+        let tag = currentTag
         outputReservations.invalidate(tag: tag, responseID: responseTracker.activeResponseID)
         responseTracker.cancel()
-        if audioGraphInstalled {
-            player.stop()
-            player.play()
-        }
+        flushPlayer()
         state = .listening
         onEvent(.responseInterrupted(nil))
         _ = operationPipeline.enqueue(
@@ -470,21 +458,12 @@ final class RealtimeVoiceSession {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         scheduleMeteredHangUp()
         let cancelResponse = state == .responding || responseTracker.authorizedRequestCount > 0
-        let tag = RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
+        let tag = currentTag
         outputReservations.invalidate(tag: tag)
-        if audioGraphInstalled {
-            player.stop()
-            player.play()
-        }
+        flushPlayer()
         if cancelResponse {
             responseTracker.cancel(tag: tag)
-            if audioGraphInstalled {
-                player.stop()
-                player.play()
-            }
+            flushPlayer()
             state = .listening
             onEvent(.responseInterrupted(nil))
         }
@@ -509,30 +488,29 @@ final class RealtimeVoiceSession {
         }
     }
 
+    private func flushPlayer() {
+        guard audioGraphInstalled else { return }
+        player.stop()
+        player.play()
+    }
+
     private func startAudioGraph() throws {
         if !audioGraphInstalled {
             let input = audioEngine.inputNode
             do {
                 try input.setVoiceProcessingEnabled(true)
-                echoCancellationEnabled = input.isVoiceProcessingEnabled
             } catch {
                 throw RealtimeVoiceError.echoCancellationUnavailable
             }
-            guard echoCancellationEnabled else {
+            guard input.isVoiceProcessingEnabled else {
                 throw RealtimeVoiceError.echoCancellationUnavailable
             }
             let inputFormat = input.outputFormat(forBus: 0)
             guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
                 throw RealtimeVoiceError.audioUnavailable
             }
-            guard let outputFormat = AVAudioFormat(
-                commonFormat: .pcmFormatInt16,
-                sampleRate: 24_000,
-                channels: 1,
-                interleaved: false
-            ) else { throw RealtimeVoiceError.audioUnavailable }
             audioEngine.attach(player)
-            audioEngine.connect(player, to: audioEngine.mainMixerNode, format: outputFormat)
+            audioEngine.connect(player, to: audioEngine.mainMixerNode, format: Self.wireFormat)
             audioGraphInstalled = true
         }
         guard !audioEngineStarted || !audioEngine.isRunning else { return }
@@ -556,12 +534,7 @@ final class RealtimeVoiceSession {
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
             throw RealtimeVoiceError.audioUnavailable
         }
-        guard let outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 24_000,
-            channels: 1,
-            interleaved: false
-        ), let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
+        guard let converter = AVAudioConverter(from: inputFormat, to: Self.wireFormat) else {
             throw RealtimeVoiceError.audioUnavailable
         }
         inputConverter = converter
@@ -574,7 +547,7 @@ final class RealtimeVoiceSession {
         )
         inputTapGeneration = generation
         installAudioIngressConsumer(ingress, tag: ingressTag)
-        let tapped = DictationController.installTap(on: input, format: inputFormat) { buffer, _ in
+        let tapped = MicCapture.installTap(on: input, format: inputFormat) { buffer, _ in
             let data = RealtimePCM16Encoder.encode(buffer, converter: converter)
             guard !data.isEmpty else { return }
             ingress.yield(RealtimeVoiceAudioPacket(
@@ -666,10 +639,7 @@ final class RealtimeVoiceSession {
         tag: RealtimeVoicePacketTag,
         ingress: RealtimeVoiceAudioIngress? = nil
     ) {
-        guard tag == RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        ) else { return }
+        guard tag == currentTag else { return }
         if let ingress, let currentIngress = audioIngress, currentIngress !== ingress { return }
         guard !audioSendFailed else { return }
         audioSendFailed = true
@@ -685,10 +655,7 @@ final class RealtimeVoiceSession {
         if case .finishInput = operation.kind { return }
         if case .commitInput = operation.kind { return }
         guard !shutdownRequested,
-              operation.tag == RealtimeVoicePacketTag(
-                  sessionID: sessionGeneration,
-                  utteranceGeneration: inputGeneration
-              ) else { return }
+              operation.tag == currentTag else { return }
         let message = error.localizedDescription
         transcriptBarrier.failInput(operation.tag)
         shutdown(failure: message)
@@ -732,10 +699,7 @@ final class RealtimeVoiceSession {
                             ),
                             responseID: responseTracker.activeResponseID
                         )
-                        if audioGraphInstalled {
-                            player.stop()
-                            player.play()
-                        }
+                        flushPlayer()
                         responseTracker.cancel()
                         _ = operationPipeline.enqueue(
                             .cancelResponse,
@@ -746,10 +710,6 @@ final class RealtimeVoiceSession {
                     state = .listening
                     onEvent(.speechStarted)
                 case .audio(let data, let responseID):
-                    let currentTag = RealtimeVoicePacketTag(
-                        sessionID: sessionID,
-                        utteranceGeneration: inputGeneration
-                    )
                     guard let responseID,
                           let responseTag = responseTracker.activeRequest?.tag,
                           responseTag == currentTag,
@@ -759,10 +719,6 @@ final class RealtimeVoiceSession {
                 case .responseStarted(let responseID, let metadata):
                     switch responseTracker.admit(responseID, metadata: metadata) {
                     case .accepted(let request):
-                        let currentTag = RealtimeVoicePacketTag(
-                            sessionID: sessionID,
-                            utteranceGeneration: inputGeneration
-                        )
                         guard request.tag == currentTag else {
                             responseTracker.cancel(request)
                             onEvent(.error(RealtimeVoiceError.responseCorrelationUnavailable.localizedDescription))
@@ -779,20 +735,12 @@ final class RealtimeVoiceSession {
                         continue
                     }
                 case .responseFinished(let responseID):
-                    let currentTag = RealtimeVoicePacketTag(
-                        sessionID: sessionID,
-                        utteranceGeneration: inputGeneration
-                    )
                     guard responseTracker.activeRequest?.tag == currentTag else { continue }
                     guard responseTracker.finish(responseID) else { continue }
                     state = .listening
                     scheduleMeteredHangUp()
                     onEvent(.responseFinished(responseID))
                 case .responseInterrupted(let responseID):
-                    let currentTag = RealtimeVoicePacketTag(
-                        sessionID: sessionID,
-                        utteranceGeneration: inputGeneration
-                    )
                     guard let responseTag = responseTracker.activeRequest?.tag,
                           responseTag == currentTag else { continue }
                     guard responseTracker.interrupt(responseID) else { continue }
@@ -800,24 +748,13 @@ final class RealtimeVoiceSession {
                         tag: responseTag,
                         responseID: responseID
                     )
-                    if audioGraphInstalled {
-                        player.stop()
-                        player.play()
-                    }
+                    flushPlayer()
                     state = .listening
                     onEvent(.responseInterrupted(responseID))
                 case .assistantTranscriptDelta(let text, let responseID):
-                    let currentTag = RealtimeVoicePacketTag(
-                        sessionID: sessionID,
-                        utteranceGeneration: inputGeneration
-                    )
                     guard responseTracker.accepts(responseID, tag: currentTag) else { continue }
                     onEvent(.assistantTranscriptDelta(text, responseID: responseID))
                 case .assistantTranscriptFinal(let text, let responseID):
-                    let currentTag = RealtimeVoicePacketTag(
-                        sessionID: sessionID,
-                        utteranceGeneration: inputGeneration
-                    )
                     guard responseTracker.accepts(responseID, tag: currentTag) else { continue }
                     onEvent(.assistantTranscriptFinal(text, responseID: responseID))
                 case .error(let message):
@@ -841,22 +778,6 @@ final class RealtimeVoiceSession {
         }
     }
 
-    func submitTranscript(
-        _ text: String,
-        source: RealtimeVoiceTranscriptSource
-    ) {
-        let tag = RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
-        guard case .committed(let commit) = transcriptBarrier.offerTranscript(
-            text,
-            source: source,
-            tag: tag
-        ) else { return }
-        publishTranscript(commit)
-    }
-
     private func publishTranscript(_ commit: RealtimeVoiceTranscriptCommit) {
         guard transcriptBarrier.dispatch(commit) == .dispatched else { return }
         onEvent(.transcriptFinal(commit.text))
@@ -878,13 +799,8 @@ final class RealtimeVoiceSession {
             failOutputAudio(responseID: responseID, error: .audioOutputBufferFull)
             return
         }
-        guard let format = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: 24_000,
-            channels: 1,
-            interleaved: false
-        ), let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: Self.wireFormat,
             frameCapacity: AVAudioFrameCount(frameCount)
         ), let channel = buffer.int16ChannelData?[0] else {
             outputReservations.complete(reservation)
@@ -931,17 +847,11 @@ final class RealtimeVoiceSession {
     }
 
     private func failOutputAudio(responseID: String, error: RealtimeVoiceError) {
-        let tag = RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
+        let tag = currentTag
         outputReservations.invalidate(tag: tag)
         guard responseTracker.accepts(responseID) else { return }
         responseTracker.cancel()
-        if audioGraphInstalled {
-            player.stop()
-            player.play()
-        }
+        flushPlayer()
         state = .listening
         onEvent(.responseInterrupted(nil))
         _ = operationPipeline.enqueue(
@@ -973,9 +883,17 @@ final class RealtimeVoiceSession {
     }
 
     #if DEBUG
-    func receiveFixtureEvents() async {
-        beginEmptyInputFixture()
-        await receiveEvents(sessionID: sessionGeneration)
+    func submitTranscript(
+        _ text: String,
+        source: RealtimeVoiceTranscriptSource
+    ) {
+        let tag = currentTag
+        guard case .committed(let commit) = transcriptBarrier.offerTranscript(
+            text,
+            source: source,
+            tag: tag
+        ) else { return }
+        publishTranscript(commit)
     }
 
     func receiveCurrentFixtureEvents() async {
@@ -986,10 +904,7 @@ final class RealtimeVoiceSession {
         sessionGeneration += 1
         inputGeneration += 1
         operationPipeline.advance(sessionID: sessionGeneration, utteranceGeneration: inputGeneration)
-        transcriptBarrier.advance(to: RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        ))
+        transcriptBarrier.advance(to: currentTag)
         state = .listening
     }
 
@@ -997,10 +912,7 @@ final class RealtimeVoiceSession {
         inputTapGeneration = inputGeneration
         installAudioIngressConsumer(
             ingress,
-            tag: RealtimeVoicePacketTag(
-                sessionID: sessionGeneration,
-                utteranceGeneration: inputGeneration
-            )
+            tag: currentTag
         )
     }
     #endif
@@ -1009,10 +921,7 @@ final class RealtimeVoiceSession {
         _ role: RealtimeWorkerRole,
         tag: RealtimeVoicePacketTag? = nil
     ) -> RealtimeWorkerToken {
-        let resolvedTag = tag ?? RealtimeVoicePacketTag(
-            sessionID: sessionGeneration,
-            utteranceGeneration: inputGeneration
-        )
+        let resolvedTag = tag ?? currentTag
         let (token, snapshot) = taskLedger.start(
             role,
             sessionGeneration: resolvedTag.sessionID,

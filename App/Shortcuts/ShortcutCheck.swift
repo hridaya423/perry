@@ -12,7 +12,7 @@ final class ShortcutCheck: ObservableObject {
     @Published private(set) var result = Result.idle
     private var timeout: Task<Void, Never>?
 
-    func begin(captureMode: PushToTalkController.CaptureMode?, timeoutAfter: Duration = .seconds(10)) {
+    func begin(captureMode: KeyEventSource.Capture?, timeoutAfter: Duration = .seconds(10)) {
         timeout?.cancel()
         guard captureMode == .eventTap else {
             result = .needsInputMonitoring

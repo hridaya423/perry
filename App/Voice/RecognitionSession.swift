@@ -2,6 +2,100 @@ import AVFoundation
 import PerryBrain
 import Speech
 
+enum DictationRecognitionEvent {
+    case transcript(String, isFinal: Bool, words: [SpokenWord])
+    case failure(Error)
+
+    init?(result: SFSpeechRecognitionResult?, error: Error?) {
+        if let error {
+            self = .failure(error)
+        } else if let result {
+            self = .transcript(
+                result.bestTranscription.formattedString,
+                isFinal: result.isFinal,
+                words: result.bestTranscription.segments.map {
+                    SpokenWord(text: $0.substring, start: $0.timestamp, duration: $0.duration)
+                }
+            )
+        } else {
+            return nil
+        }
+    }
+}
+
+struct DictationRecognitionGate: Equatable, Sendable {
+    private(set) var generation = 0
+    private var deliveredGeneration: Int?
+    private(set) var inputOpen = false
+
+    mutating func advance() -> Int {
+        generation += 1
+        deliveredGeneration = nil
+        inputOpen = true
+        return generation
+    }
+
+    mutating func invalidate() {
+        generation += 1
+        deliveredGeneration = nil
+        inputOpen = false
+    }
+
+    mutating func finishInput() {
+        inputOpen = false
+    }
+
+    func accepts(_ callbackGeneration: Int) -> Bool {
+        generation == callbackGeneration && deliveredGeneration != callbackGeneration
+    }
+
+    mutating func claim(_ callbackGeneration: Int) -> Bool {
+        guard accepts(callbackGeneration) else { return false }
+        deliveredGeneration = callbackGeneration
+        return true
+    }
+}
+
+struct VoiceInvocationGate {
+    private enum State {
+        case idle
+        case recording(UUID)
+        case finalizing(UUID)
+    }
+
+    private var state = State.idle
+
+    var id: UUID? {
+        switch state {
+        case .idle: nil
+        case .recording(let id), .finalizing(let id): id
+        }
+    }
+
+    var inputOpen: Bool {
+        if case .recording = state { return true }
+        return false
+    }
+
+    mutating func begin() {
+        state = .recording(UUID())
+    }
+
+    mutating func finishInput() {
+        if case .recording(let id) = state { state = .finalizing(id) }
+    }
+
+    mutating func cancel() {
+        state = .idle
+    }
+
+    mutating func claim(_ id: UUID) -> Bool {
+        guard self.id == id else { return false }
+        state = .idle
+        return true
+    }
+}
+
 protocol RecognitionSession: AnyObject {
     func append(_ buffer: AVAudioPCMBuffer)
     func endAudio()
@@ -148,7 +242,7 @@ final class AnalyzerRecognitionSession: RecognitionSession, @unchecked Sendable 
     }
 
     private func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        if buffer.format == format { return DictationController.copyBuffer(buffer) }
+        if buffer.format == format { return MicCapture.copy(buffer) }
         if converter?.inputFormat != buffer.format {
             converter = AVAudioConverter(from: buffer.format, to: format)
         }

@@ -9,10 +9,6 @@ import PerryGuide
 import PerryOverlay
 import PerryRuntimes
 
-/// Owns the voice surface end to end: push-to-talk and wake-word listeners,
-/// on-device dictation, realtime voice sessions, speech output, and
-/// voice-typed text insertion. Session routing (guide/do/panel) and status
-/// text reach the session shell through explicit hooks.
 @MainActor
 final class VoiceController: NSObject, ObservableObject {
     struct Hooks {
@@ -24,7 +20,6 @@ final class VoiceController: NSObject, ObservableObject {
         var wakeListeningChanged: () -> Void = {}
         var executingTaskID: () -> UUID? = { nil }
     }
-
 
     let overlayState: PerryCursorState
     let workers: CuaWorkerService
@@ -43,7 +38,6 @@ final class VoiceController: NSObject, ObservableObject {
     var dictationScopedTaskID: UUID?
     var dictationWorkerTask: Task<Void, Never>?
     var dictationInsertionID: UUID?
-    /// Post-insert edit watch for learn-on-edit (see scheduleDictationLearnChecks).
     var dictationLearnCheckTask: Task<Void, Never>?
     private var voiceInvocation = VoiceInvocationGate()
     var dictationSpeechEndedAt: UInt64?
@@ -75,9 +69,9 @@ final class VoiceController: NSObject, ObservableObject {
         RealtimeVoiceSession(
             configuration: configuration,
             apiKey: apiKey,
-            onPerformanceSample: { self?.recordPerformanceSample($0) },
-            onPerformanceMarker: { self?.recordPerformanceMarker($0) },
-            onTaskSnapshot: { self?.recordTaskSnapshot($0) },
+            onPerformanceSample: { sample in self?.recordPerformance { try await $0.append(sample) } },
+            onPerformanceMarker: { marker in self?.recordPerformance { try await $0.append(marker) } },
+            onTaskSnapshot: { snapshot in self?.recordPerformance { try await $0.append(snapshot) } },
             onEvent: onEvent
         )
     }
@@ -172,13 +166,10 @@ final class VoiceController: NSObject, ObservableObject {
         neuralSpeech.onFailure = { [weak self] text in self?.speakWithSystemVoice(text) }
     }
 
-    /// Starts the global input listeners once the app is up.
     func startInputListeners() {
         pushToTalk.start()
         audioRouteMonitor.start()
     }
-
-    // MARK: Dictation input
 
     func beginDictation(steering: Bool = false) {
         dictationAttemptID = nil
@@ -322,7 +313,6 @@ final class VoiceController: NSObject, ObservableObject {
         overlayState.buddyState = .idle
     }
 
-    /// Waits for in-flight dictation insertion work; used before worker shutdown.
     func joinInputWork() async {
         dictationLearnCheckTask?.cancel()
         await dictationWorkerTask?.value
@@ -403,33 +393,11 @@ final class VoiceController: NSObject, ObservableObject {
         }
     }
 
-    private func recordPerformanceSample(_ sample: PerformanceSample) {
+    private func recordPerformance(_ write: @escaping (PerformanceSampleLog) async throws -> Void) {
         guard let performanceSampleLog else { return }
         Task { @MainActor [weak self] in
             do {
-                try await performanceSampleLog.append(sample)
-            } catch {
-                self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func recordPerformanceMarker(_ marker: PerformanceMarker) {
-        guard let performanceSampleLog else { return }
-        Task { @MainActor [weak self] in
-            do {
-                try await performanceSampleLog.append(marker)
-            } catch {
-                self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func recordTaskSnapshot(_ snapshot: RealtimeTaskSnapshot) {
-        guard let performanceSampleLog else { return }
-        Task { @MainActor [weak self] in
-            do {
-                try await performanceSampleLog.append(snapshot)
+                try await write(performanceSampleLog)
             } catch {
                 self?.hooks.setStatus("Performance recording failed: \(error.localizedDescription)")
             }
@@ -483,8 +451,6 @@ final class VoiceController: NSObject, ObservableObject {
             status: "Audio output was muted; the reply is on your clipboard."
         )
     }
-
-    // MARK: Shortcuts and wake word
 
     func updatePushToTalkGesture(_ gesture: Gesture) {
         pushToTalk.update(gesture: gesture)

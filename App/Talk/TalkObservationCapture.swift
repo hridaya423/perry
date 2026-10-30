@@ -3,10 +3,6 @@ import PerryCapture
 import PerryCore
 import PerryGuide
 
-/// Talk's screen capture. The local observer (window list + AX hit-test +
-/// bounded index + ScreenCaptureKit) runs first — it's ~10x faster than the
-/// driver tree walk and claims no worker. The driver path remains for when
-/// Perry lacks grants or the local walk fails.
 @MainActor
 final class TalkObservationCapture {
     private let workers: CuaWorkerService

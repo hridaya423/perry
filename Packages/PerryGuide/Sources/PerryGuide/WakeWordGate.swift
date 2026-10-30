@@ -1,8 +1,6 @@
 import Foundation
 
-/// PRD §4 Invocation: wake word off by default; nothing happens without the
-/// hotkey or an explicit opt-in wake word. This gate encodes that policy so
-/// no code path can listen without the user having turned it on.
+/// Wake word policy: off unless the user opts in.
 public struct WakeWordGate: Sendable {
     public static let defaultPhrase = "hey perry"
 

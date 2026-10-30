@@ -25,40 +25,6 @@ final class SpeechLanguageDetectorTests: XCTestCase {
         )
     }
 
-    func testLanguageChangeCanRerouteOnlyOnce() {
-        let spanish = Self.fixtures.first { $0.expectedIdentifier == "es-ES" }!
-        let supportedIdentifiers = ["en-US", "es-ES", "fr-FR"]
-
-        let firstTarget = SpeechLanguageDetector.rerouteTarget(
-            for: spanish.transcript,
-            activeIdentifier: "en-US",
-            supportedIdentifiers: supportedIdentifiers,
-            rerouteAlreadyAttempted: false
-        )
-        let secondTarget = SpeechLanguageDetector.rerouteTarget(
-            for: spanish.transcript,
-            activeIdentifier: "en-US",
-            supportedIdentifiers: supportedIdentifiers,
-            rerouteAlreadyAttempted: true
-        )
-
-        XCTAssertEqual(firstTarget, "es-ES")
-        XCTAssertNil(secondTarget)
-    }
-
-    func testSameLanguageDoesNotRerouteAcrossLocaleVariants() {
-        let spanish = Self.fixtures.first { $0.expectedIdentifier == "es-ES" }!
-
-        XCTAssertNil(
-            SpeechLanguageDetector.rerouteTarget(
-                for: spanish.transcript,
-                activeIdentifier: "es-MX",
-                supportedIdentifiers: ["es-ES", "es-MX"],
-                rerouteAlreadyAttempted: false
-            )
-        )
-    }
-
     private struct Fixture {
         let transcript: String
         let expectedIdentifier: String

@@ -3,155 +3,71 @@ import XCTest
 
 @MainActor
 final class VoiceInputLifecycleTests: XCTestCase {
-    func testPushToTalkRecognizesBothDisabledEventTypes() {
-        XCTAssertTrue(PushToTalkController.tapIsDisabled(.tapDisabledByTimeout))
-        XCTAssertTrue(PushToTalkController.tapIsDisabled(.tapDisabledByUserInput))
-        XCTAssertFalse(PushToTalkController.tapIsDisabled(.keyDown))
-    }
-
-    func testPushToTalkEventMaskIncludesBothDisabledEventTypes() {
+    func testKeyEventSourceMaskIncludesBothDisabledEventTypes() {
         let timeoutMask = CGEventMask(1) &<< CGEventType.tapDisabledByTimeout.rawValue
         let userInputMask = CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue
 
-        XCTAssertNotEqual(PushToTalkController.eventTapMask & timeoutMask, 0)
-        XCTAssertNotEqual(PushToTalkController.eventTapMask & userInputMask, 0)
+        XCTAssertNotEqual(KeyEventSource.eventMask & timeoutMask, 0)
+        XCTAssertNotEqual(KeyEventSource.eventMask & userInputMask, 0)
     }
 
-    func testWakeWordDuplicateTerminalCallbacksScheduleOneRestartAndStartOneNewGeneration() {
-        let state = WakeWordTestState()
-        let listener = WakeWordListener(
-            onWake: { _ in },
-            scheduleRestart: { work in state.restarts.append(work) },
-            startEngineOverride: { _, terminal in
-                state.starts += 1
-                state.terminals.append(terminal)
-            }
-        )
-
-        listener.start()
-        state.terminals[0]()
-        state.terminals[0]()
-
-        XCTAssertEqual(state.starts, 1)
-        XCTAssertEqual(state.restarts.count, 1)
-
-        state.restarts[0]()
-
-        XCTAssertEqual(state.starts, 2)
-    }
-
-    private func capturingListener(clock: @escaping () -> TimeInterval, wakes: @escaping (String) -> Void, heard: @escaping () -> Void = {}) -> WakeWordListener {
-        WakeWordListener(
-            onWake: wakes,
-            onHeard: heard,
-            now: clock,
-            scheduleRestart: { _ in },
-            startEngineOverride: { _, _ in }
-        )
-    }
-
-    func testWakeWordWaitsForTheEndOfTheSentence() {
+    private struct WakeRun {
+        var matcher = WakeWordMatcher()
         var clock: TimeInterval = 50
         var wakes: [String] = []
         var heard = 0
-        let listener = capturingListener(clock: { clock }, wakes: { wakes.append($0) }, heard: { heard += 1 })
-        func frames(_ seconds: Double, rms: Double) {
+
+        mutating func frames(_ seconds: Double, rms: Double) {
             for _ in 0..<Int((seconds / 0.02).rounded()) {
                 clock += 0.02
-                listener.hear(rms: rms, at: clock)
+                if let command = matcher.hear(rms: rms, at: clock) { wakes.append(command) }
             }
         }
-        listener.start()
-        frames(1.0, rms: 0.001)
+
+        mutating func inspect(_ transcript: String) {
+            if matcher.inspect(transcript, at: clock) { heard += 1 }
+        }
+    }
+
+    func testWakeWordWaitsForTheEndOfTheSentence() {
+        var run = WakeRun()
+        run.frames(1.0, rms: 0.001)
         let stream = ["hey", "hey perry", "hey perry what's", "hey perry what's the weather", "hey perry what's the weather in paris"]
         for partial in stream {
-            frames(0.3, rms: 0.06)
-            listener.inspect(partial)
-            XCTAssertTrue(wakes.isEmpty, "dispatched after \"\(partial)\"")
+            run.frames(0.3, rms: 0.06)
+            run.inspect(partial)
+            XCTAssertTrue(run.wakes.isEmpty, "dispatched after \"\(partial)\"")
         }
-        XCTAssertEqual(heard, 1)
-        frames(0.5, rms: 0.001)
-        XCTAssertTrue(wakes.isEmpty)
-        frames(0.7, rms: 0.001)
-        XCTAssertEqual(wakes, ["what's the weather in paris"])
+        XCTAssertEqual(run.heard, 1)
+        run.frames(0.5, rms: 0.001)
+        XCTAssertTrue(run.wakes.isEmpty)
+        run.frames(0.7, rms: 0.001)
+        XCTAssertEqual(run.wakes, ["what's the weather in paris"])
     }
 
     func testHeyPerryAloneWaitsForTheRequest() {
-        var clock: TimeInterval = 50
-        var wakes: [String] = []
-        let listener = capturingListener(clock: { clock }, wakes: { wakes.append($0) })
-        func frames(_ seconds: Double, rms: Double) {
-            for _ in 0..<Int((seconds / 0.02).rounded()) {
-                clock += 0.02
-                listener.hear(rms: rms, at: clock)
-            }
-        }
-        listener.start()
-        frames(1.0, rms: 0.001)
-        frames(0.4, rms: 0.06)
-        listener.inspect("Hey Perry.")
-        frames(2, rms: 0.001)
-        XCTAssertTrue(wakes.isEmpty)
-        frames(0.6, rms: 0.06)
-        listener.inspect("Hey Perry. Open my notes.")
-        frames(1.0, rms: 0.001)
-        XCTAssertEqual(wakes, ["Open my notes."])
+        var run = WakeRun()
+        run.frames(1.0, rms: 0.001)
+        run.frames(0.4, rms: 0.06)
+        run.inspect("Hey Perry.")
+        run.frames(2, rms: 0.001)
+        XCTAssertTrue(run.wakes.isEmpty)
+        run.frames(0.6, rms: 0.06)
+        run.inspect("Hey Perry. Open my notes.")
+        run.frames(1.0, rms: 0.001)
+        XCTAssertEqual(run.wakes, ["Open my notes."])
     }
 
     func testHeyPerryWithNothingAfterGivesUpQuietly() {
-        var clock: TimeInterval = 50
-        var wakes: [String] = []
-        let listener = capturingListener(clock: { clock }, wakes: { wakes.append($0) })
-        listener.start()
-        listener.inspect("hey perry")
-        for _ in 0..<410 {
-            clock += 0.02
-            listener.hear(rms: 0.001, at: clock)
-        }
-        XCTAssertEqual(wakes, [""])
+        var run = WakeRun()
+        run.inspect("hey perry")
+        run.frames(8.2, rms: 0.001)
+        XCTAssertEqual(run.wakes, [""])
     }
 
     func testWakeRemainderKeepsTheSpokenText() {
-        XCTAssertEqual(WakeWordListener.remainder(of: "Hey Perry, what's the weather in Paris?"), "what's the weather in Paris?")
-        XCTAssertEqual(WakeWordListener.remainder(of: "hey perry"), "")
-    }
-
-    func testWakeWordStopInvalidatesPendingRestart() {
-        let state = WakeWordTestState()
-        let listener = WakeWordListener(
-            onWake: { _ in },
-            scheduleRestart: { work in state.restarts.append(work) },
-            startEngineOverride: { _, terminal in
-                state.starts += 1
-                state.terminals.append(terminal)
-            }
-        )
-
-        listener.start()
-        state.terminals[0]()
-        listener.stop()
-        state.restarts[0]()
-
-        XCTAssertEqual(state.starts, 1)
-    }
-
-    func testWakeWordReplacementInvalidatesPendingRestart() {
-        let state = WakeWordTestState()
-        let listener = WakeWordListener(
-            onWake: { _ in },
-            scheduleRestart: { work in state.restarts.append(work) },
-            startEngineOverride: { _, terminal in
-                state.starts += 1
-                state.terminals.append(terminal)
-            }
-        )
-
-        listener.start()
-        state.terminals[0]()
-        listener.start()
-        state.restarts[0]()
-
-        XCTAssertEqual(state.starts, 2)
+        XCTAssertEqual(WakeWordMatcher.remainder(of: "Hey Perry, what's the weather in Paris?"), "what's the weather in Paris?")
+        XCTAssertEqual(WakeWordMatcher.remainder(of: "hey perry"), "")
     }
 
     func testPushToTalkDisabledEventReleasesOnceAndIgnoresLaterKeyUp() {
@@ -312,13 +228,6 @@ final class VoiceInputLifecycleTests: XCTestCase {
         XCTAssertEqual(state.presses, 0)
         XCTAssertEqual(state.releases, 0)
     }
-}
-
-@MainActor
-private final class WakeWordTestState {
-    var starts = 0
-    var restarts: [@MainActor @Sendable () -> Void] = []
-    var terminals: [() -> Void] = []
 }
 
 @MainActor
