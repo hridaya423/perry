@@ -16,27 +16,6 @@ public struct WorkspaceEntry: Sendable, Equatable {
     }
 }
 
-/// File primitives confined to a workspace root. The app can back this with
-/// `WorkspaceFileRuntime` for journaled receipts; `LocalWorkspaceFiles` is the
-/// default implementation and what unit tests exercise.
-public protocol WorkspaceFileBackend: Sendable {
-    func list(path: String) async throws -> [WorkspaceEntry]
-    /// UTF-8 text of the file, truncated to `maxBytes`; `truncated` reports it.
-    func read(path: String, maxBytes: Int) async throws -> (text: String, byteCount: Int64, truncated: Bool)
-    /// Create a new file; fails when the path exists. Parent must exist.
-    func write(path: String, contents: String) async throws
-    /// Replace or create; returns the previous UTF-8 text when it existed and
-    /// fit in the undo snapshot cap, else nil.
-    func overwrite(path: String, contents: String) async throws -> String?
-    /// Create a directory including intermediates.
-    func makeDirectory(path: String) async throws
-    /// Move/rename; destination must not exist. Both sides confined.
-    func move(source: String, destination: String) async throws
-    /// Move into the workspace's `.trash/` (reversible via `move`); returns
-    /// the trashed path relative to the root.
-    func trash(path: String) async throws -> String
-}
-
 public struct WorkspaceFileError: Error, Sendable, Equatable, LocalizedError {
     public let message: String
     public init(_ message: String) { self.message = message }
@@ -46,7 +25,7 @@ public struct WorkspaceFileError: Error, Sendable, Equatable, LocalizedError {
 /// Root-confined file backend: resolves `..` and symlinks, refuses anything
 /// that lands outside the workspace root. Suitable as the app's default
 /// executor backend for un-journaled reads and quick writes.
-public struct LocalWorkspaceFiles: WorkspaceFileBackend {
+public struct LocalWorkspaceFiles: Sendable {
     public static let maximumWriteBytes = 8 * 1_024 * 1_024
     public static let maximumReadBytes = 8 * 1_024 * 1_024
 
@@ -235,7 +214,7 @@ public struct LocalWorkspaceFiles: WorkspaceFileBackend {
 
 /// `files.*` executors: schemas, tiers, and undo hints for the host.
 public enum FileToolExecutors {
-    public static func make(backend: any WorkspaceFileBackend) -> [any ToolExecutor] {
+    public static func make(backend: LocalWorkspaceFiles) -> [any ToolExecutor] {
         [
             ListTool(backend: backend), ReadTool(backend: backend),
             WriteTool(backend: backend), OverwriteTool(backend: backend),
@@ -261,7 +240,7 @@ public enum FileToolExecutors {
     }
 
     private struct ListTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.list",
             description: "List files and folders inside the workspace.",
@@ -286,7 +265,7 @@ public enum FileToolExecutors {
     }
 
     private struct ReadTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.read",
             description: "Read a UTF-8 text file from the workspace.",
@@ -313,7 +292,7 @@ public enum FileToolExecutors {
     }
 
     private struct WriteTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.write",
             description: "Create a new UTF-8 file in the workspace. Fails if it exists.",
@@ -342,7 +321,7 @@ public enum FileToolExecutors {
     }
 
     private struct OverwriteTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.overwrite",
             description: "Replace the contents of a workspace file (or create it).",
@@ -373,7 +352,7 @@ public enum FileToolExecutors {
     }
 
     private struct MkdirTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.mkdir",
             description: "Create a directory in the workspace, including intermediates.",
@@ -396,7 +375,7 @@ public enum FileToolExecutors {
     }
 
     private struct MoveTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.move",
             description: "Move or rename a file inside the workspace.",
@@ -425,7 +404,7 @@ public enum FileToolExecutors {
     }
 
     private struct TrashTool: ToolExecutor {
-        let backend: any WorkspaceFileBackend
+        let backend: LocalWorkspaceFiles
         let spec = ToolSpec(
             name: "files.trash",
             description: "Move a workspace file or folder to the workspace .trash (restorable via files.move).",

@@ -1,23 +1,6 @@
 import Foundation
 import ImageIO
 
-public struct ToolCallResult: Sendable {
-    public var content: [ModelContentPart]
-    public var isError: Bool
-
-    public init(content: [ModelContentPart], isError: Bool = false) {
-        self.content = content
-        self.isError = isError
-    }
-
-    public init(text: String, isError: Bool = false) {
-        self.content = [.text(text)]
-        self.isError = isError
-    }
-}
-
-public typealias ToolCallHandler = @Sendable (ToolCall) async -> ToolCallResult
-
 public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
     public var executesTools: Bool { true }
 
@@ -27,7 +10,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
     public let account: CodexAccount
 
     private let process: CodexAppServerProcess
-    private let toolHandler: ToolCallHandler?
     private let models: @Sendable () -> BrainModelDefaults?
     private let supportsDynamicTools: Bool
     private let lock = NSLock()
@@ -84,12 +66,10 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
 
     public init(
         process: CodexAppServerProcess,
-        toolHandler: ToolCallHandler? = nil,
         models: @escaping @Sendable () -> BrainModelDefaults? = { nil },
         supportsDynamicTools: Bool = true
     ) {
         self.process = process
-        self.toolHandler = toolHandler
         self.models = models
         self.supportsDynamicTools = supportsDynamicTools
         self.account = CodexAccount(process: process)
@@ -520,12 +500,11 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         }
         let call = ToolCall(id: callID, name: name, arguments: request.params["arguments"] ?? .object([:]))
         context.continuation.yield(.toolCall(call))
-        let result: ToolCallResult
+        let result: ToolResult
         if let executeTool = context.executeTool {
             do {
                 try Task.checkCancellation()
-                let executed = try await executeTool(call)
-                result = ToolCallResult(content: executed.content, isError: executed.isError)
+                result = try await executeTool(call)
             } catch {
                 context.continuation.finish(throwing: error)
                 try? await respondError(request, on: connection, message: "Perry stopped this task")
@@ -538,10 +517,8 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
                 }
                 return
             }
-        } else if let toolHandler {
-            result = await toolHandler(call)
         } else {
-            result = ToolCallResult(text: "Perry tool host is not configured", isError: true)
+            result = .text(callID, "Perry tool host is not configured", isError: true)
         }
         let items: [JSONValue] = result.content.map { part in
             switch part {

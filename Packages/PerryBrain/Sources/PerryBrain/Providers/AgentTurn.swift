@@ -13,7 +13,7 @@ struct AgentTurnPrompt {
             case .user(let parts) where index == lastUser:
                 latest = parts
             case .user(let parts):
-                let text = parts.compactMap { if case .text(let text) = $0 { text } else { nil } }.joined(separator: "\n")
+                let text = parts.joinedText
                 if !text.isEmpty { transcript.append("User: \(text)") }
             case .assistant(let text, _):
                 if !text.isEmpty { transcript.append("You: \(text)") }

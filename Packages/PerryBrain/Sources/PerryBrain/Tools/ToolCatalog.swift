@@ -5,7 +5,7 @@ import Foundation
 /// driver and overlay) are appended by the app itself.
 public enum ToolCatalog {
     public static func agentExecutors(
-        files: any WorkspaceFileBackend,
+        files: LocalWorkspaceFiles,
         memory: MemoryFiles,
         integrations: any IntegrationBackend,
         perrys: PerryStore,
