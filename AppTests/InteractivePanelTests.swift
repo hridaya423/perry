@@ -76,7 +76,7 @@ final class InteractivePanelTests: XCTestCase {
     }
 
     func testNotchCanActivateForKeyboardInput() {
-        let panel = CompactConversationPanel(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        let panel = PerryPanel(frame: .zero, canBecomeKey: true)
         XCTAssertTrue(panel.canBecomeKey)
         XCTAssertFalse(panel.canBecomeMain)
         panel.close()

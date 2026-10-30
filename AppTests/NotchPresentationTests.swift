@@ -85,7 +85,7 @@ final class NotchPresentationTests: XCTestCase {
 
     func testNotchRemainsAttachedOnOffsetAndSmallDisplays() {
         for screen in [CGRect(x: 0, y: 0, width: 1512, height: 982), CGRect(x: -1280, y: 500, width: 1280, height: 720)] {
-            let frame = NotchPresence.notchPanelFrame(size: CGSize(width: 892, height: 552), screenFrame: screen, centerX: screen.midX)
+            let frame = NotchGeometry.panelFrame(size: CGSize(width: 892, height: 552), screenFrame: screen, centerX: screen.midX)
             XCTAssertEqual(frame.maxY, screen.maxY)
             XCTAssertEqual(frame.midX, screen.midX)
             XCTAssertGreaterThanOrEqual(frame.minX, screen.minX)

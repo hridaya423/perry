@@ -5,10 +5,10 @@ final class NotchStatusControllerTests: XCTestCase {
     @MainActor
     func testNativePanelKeepsRequestedScreenEdgeAfterPresentation() throws {
         let screen = try XCTUnwrap(NSScreen.main)
-        let requested = NotchPresence.notchPanelFrame(
+        let requested = NotchGeometry.panelFrame(
             size: CGSize(width: 480, height: 380), screenFrame: screen.frame, centerX: screen.frame.midX
         )
-        let panel = CompactConversationPanel(contentRect: requested, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let panel = PerryPanel(frame: requested, canBecomeKey: true)
         panel.isReleasedWhenClosed = false
         panel.level = .statusBar
         defer { panel.close() }

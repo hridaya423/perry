@@ -2,9 +2,6 @@ import AppKit
 import PerryOverlay
 import SwiftUI
 
-/// The expanded notch: one borderless panel pinned under the camera housing.
-/// Built once, shown on invocation, and on hide hands focus back to the app
-/// the user came from.
 @MainActor
 final class SessionPanelPresenter {
     private let makeContent: () -> NSView
@@ -14,6 +11,8 @@ final class SessionPanelPresenter {
     init(makeContent: @escaping () -> NSView) {
         self.makeContent = makeContent
     }
+
+    static let panelIdentifier = NSUserInterfaceItemIdentifier("perry.session")
 
     let expansion = NotchExpansion()
     var frame: CGRect? { isVisible ? visibleFrame : nil }
@@ -70,8 +69,6 @@ final class SessionPanelPresenter {
         panel.makeKey()
     }
 
-    /// Pays the one-time render cost so a first invocation only orders an
-    /// already-rendered window on screen.
     func warm() {
         ensurePanel().displayIfNeeded()
     }
@@ -116,23 +113,15 @@ final class SessionPanelPresenter {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let p = CompactConversationPanel(
-            contentRect: NSRect(x: 0, y: 0, width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
+        let p = PerryPanel(
+            frame: NSRect(x: 0, y: 0, width: PerryTheme.Sizing.panelWidth, height: PerryTheme.Sizing.panelHeight),
+            canBecomeKey: true
         )
         p.contentView = makeContent()
-        p.appearance = NSAppearance(named: .darkAqua)
-        p.identifier = CompactConversationPanel.identifier
-        p.level = .statusBar
+        p.identifier = Self.panelIdentifier
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = false
         p.isMovable = false
-        PerryWindowChrome.applyChrome(to: p)
         panel = p
         return p
     }
@@ -162,19 +151,19 @@ extension AppController {
         homeController.prepareConversation(target: probe.presentationTarget())
         notchPresence.setConversationVisible(true)
         notchStatus.setConversationVisible(true)
-        if !sessionPanel.isVisible { sessionPanel.screen = NotchPresence.screenUnderPointer() }
+        if !sessionPanel.isVisible { sessionPanel.screen = NotchGeometry.screenUnderPointer() }
         let layout = notchLayout()
         sessionPanel.show(window: layout.window, visible: layout.visible, activate: activate)
         overlayState.panelScreenFrame = sessionPanel.frame
     }
 
     private func notchLayout() -> (window: NSRect, visible: NSRect) {
-        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchPresence.screenUnderPointer() else { return (.zero, .zero) }
+        guard let screen = sessionPanel.screen.flatMap({ NSScreen.screens.contains($0) ? $0 : nil }) ?? NotchGeometry.screenUnderPointer() else { return (.zero, .zero) }
         let presentation = NotchPresentation.shared
-        let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchPresence.zoneRect(for: screen).midX)
+        let window = NotchLayout.windowFrame(screen: screen.frame, centerX: NotchGeometry(screen: screen).centerX)
         let expansion = sessionPanel.expansion
         let showsPeek = expansion.peeking && homeController.homeModel.onboarding == nil
-        let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion, showsPeek: showsPeek), cameraInset: max(24, screen.safeAreaInsets.top), screen: screen.frame.size)
+        let size = NotchLayout.size(NotchLayout.mode(presentation, expansion: expansion, showsPeek: showsPeek), cameraInset: NotchGeometry(screen: screen).cameraInset, screen: screen.frame.size)
         presentation.frame = NotchLayout.visibleFrame(size, in: window)
         return (window, presentation.frame)
     }
@@ -265,8 +254,6 @@ extension AppController {
         notchStatus.repositionIfVisible()
     }
 
-    /// Pays the one-time render cost for the session surfaces at launch so a
-    /// first invocation only orders already-rendered windows on screen.
     func warmSessionSurfaces() {
         sessionPanel.warm()
         overlayManager.warmRenderPipeline(state: overlayState)

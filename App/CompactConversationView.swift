@@ -8,17 +8,6 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-final class CompactConversationPanel: NSPanel {
-    static let identifier = NSUserInterfaceItemIdentifier("perry.session")
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
-        frameRect
-    }
-}
-
 extension EnvironmentValues {
     @Entry var notchMood: PerryMood = .resting
     @Entry var notchCameraInset: CGFloat = 24
@@ -37,7 +26,7 @@ struct CompactConversationView: View {
         self.controller = controller
         self.model = controller.homeController.homeModel
         self.expansion = controller.sessionPanel.expansion
-        _metrics = State(initialValue: NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer()))
+        _metrics = State(initialValue: NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchGeometry.screenUnderPointer()))
     }
 
     private var cameraInset: CGFloat { metrics.cameraInset }
@@ -190,7 +179,7 @@ struct CompactConversationView: View {
     }
 
     private func updateCameraInset() {
-        metrics = NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchPresence.screenUnderPointer())
+        metrics = NotchLayout.Metrics(controller.sessionPanel.screen ?? NotchGeometry.screenUnderPointer())
     }
 }
 

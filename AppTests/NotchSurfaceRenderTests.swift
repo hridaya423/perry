@@ -401,7 +401,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(x: 0, y: 0, width: 592, height: 492)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: openNotch(controller))
@@ -507,7 +507,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         presentation.showsInteraction = true
         let bitmap = try await render(openNotch(controller), name: "hug-100", size: NSSize(width: 696, height: 488), wait: 0.6)
         let scale = CGFloat(bitmap.pixelsHigh) / 488
-        let screen = NotchPresence.screenUnderPointer()
+        let screen = NotchGeometry.screenUnderPointer()
         let column = bitmap.pixelsWide / 2
         let rows = (0..<bitmap.pixelsHigh).map { bitmap.colorAt(x: column, y: $0)?.usingColorSpace(.sRGB) }
         let red = rows.indices.filter { rows[$0].map { $0.redComponent > 0.8 && $0.greenComponent < 0.3 && $0.blueComponent < 0.3 } ?? false }
@@ -573,7 +573,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(x: 0, y: 0, width: 696, height: 400)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = NSColor(white: 0.85, alpha: 1)
@@ -775,7 +775,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             .appendingPathComponent("build").appendingPathComponent(folder)
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(origin: .zero, size: size)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let host = NSHostingView(rootView: content)

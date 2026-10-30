@@ -165,7 +165,7 @@ final class NotchDialogTests: XCTestCase {
             .appendingPathComponent("build/notch-rebuild-evidence")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         let frame = NSRect(origin: .zero, size: size)
-        let window = CompactConversationPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let window = PerryPanel(frame: frame, canBecomeKey: true)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         let panel = NotchLayout.size(.focused(content: size.height - 28 - NotchLayout.bottomInset), cameraInset: 24, screen: CGSize(width: 1728, height: 1117))
