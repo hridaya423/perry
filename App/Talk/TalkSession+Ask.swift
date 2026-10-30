@@ -110,7 +110,7 @@ extension TalkSession {
             try GuideTargetValidator.requireUnprotected(baseline)
             try Task.checkCancellation()
             guard case .asking(let ask) = sessionController.state, ask.id == askID else { throw CancellationError() }
-            index = ElementIndex(elements: baseline.observedElements)
+            marks.index = ElementIndex(elements: baseline.observedElements)
             let spatial = AgentCoordinator.SpatialContext(
                 observation: baseline,
                 bindings: [],
@@ -142,7 +142,7 @@ extension TalkSession {
                 if answer.isEmpty { PerfMark.mark("answer.first_text") }
                 answer += delta
                 sessionController.updateAsk { $0.answerText = answer }
-            case .draw(let command): draw(command, observation: observation)
+            case .draw(let command): marks.draw(command, observation: observation)
             case .finished(let outcome): finish = outcome
             default: break
             }

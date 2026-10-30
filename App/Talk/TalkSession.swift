@@ -96,20 +96,12 @@ final class TalkSession: ObservableObject {
     var askTransitionTask: Task<Void, Never>?
     var askInputSaveTask: Task<Bool, Never>?
     var activeAskID: UUID?
-    var index = ElementIndex(elements: [])
+    let marks: TalkMarks
     private var answerText = ""
     private var firstTextMarked = false
-    private var firstInkMarked = false
     private var firstAudioMarked = false
 
-    private var reanchorTimer: Timer?
-    private var markOverlayIDs: Set<UUID> = []
-    private var markWindowID: CGWindowID?
-    private var markWindowBL = CGRect.zero
-
     var onTurnCompleted: (() -> Void)?
-
-    private var primaryMaxY: CGFloat { NSScreen.screens.first?.frame.maxY ?? 0 }
 
     init(
         sessionController: SessionController,
@@ -123,6 +115,7 @@ final class TalkSession: ObservableObject {
         self.output = output
         self.services = services
         self.tracer = tracer ?? .live()
+        marks = TalkMarks(overlayState: overlayState)
     }
 
     func keyDown() {
@@ -223,9 +216,7 @@ final class TalkSession: ObservableObject {
         cancelAsk()
         abortActiveWork()
         _ = tracer.stop()
-        overlayState.visualGuidanceOverlays = []
-        markOverlayIDs = []
-        stopReanchor()
+        marks.clear()
         overlayState.buddyState = .idle
     }
 
@@ -310,7 +301,7 @@ final class TalkSession: ObservableObject {
 
             let elements = observation.observedElements
             PerfMark.markDynamic("deixis.index.\(elements.count)")
-            index = ElementIndex(elements: elements)
+            marks.index = ElementIndex(elements: elements)
             let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: elements)
             if bindings.isEmpty {
                 PerfMark.markDynamic("deixis.none")
@@ -404,7 +395,7 @@ final class TalkSession: ObservableObject {
         var completed = false
         answerText = ""
         firstTextMarked = false
-        firstInkMarked = false
+        marks.beginTurn()
         firstAudioMarked = false
         for await event in events {
             try Task.checkCancellation()
@@ -420,7 +411,7 @@ final class TalkSession: ObservableObject {
                     speak(sentence)
                 }
             case .draw(let command):
-                draw(command, observation: observation)
+                marks.draw(command, observation: observation)
             case .finished(.completed):
                 completed = true
             case .finished(.interrupted), .finished(.paused):
@@ -429,10 +420,7 @@ final class TalkSession: ObservableObject {
                 throw ResponseError(message: outcome.failureReason ?? "I couldn’t finish that answer. Try again.")
             case .toolCallStarted(let call):
                 if ToolGate.observeTools.contains(call.name) {
-                    index = ElementIndex(elements: [])
-                    overlayState.visualGuidanceOverlays.removeAll { markOverlayIDs.contains($0.id) }
-                    markOverlayIDs.removeAll()
-                    stopReanchor()
+                    marks.clearForNewObservation()
                 }
             case .toolCallFinished, .note:
                 break
@@ -464,119 +452,6 @@ final class TalkSession: ObservableObject {
         phase = .speaking
         overlayState.voiceState = .responding
         services.output.speak(sentence)
-    }
-
-    func draw(_ command: DrawCommand, observation: GuideObservation) {
-        switch command.verb {
-        case .clear:
-            overlayState.visualGuidanceOverlays = []
-            markOverlayIDs = []
-            stopReanchor()
-            return
-        default:
-            break
-        }
-        guard let frame = command.frame ?? index.element(for: command.elementID ?? "")?.frame else { return }
-        let rect = AXCoordinateConverter.appKitRect(
-            axX: frame.origin.x,
-            axY: frame.origin.y,
-            width: frame.width,
-            height: frame.height,
-            primaryScreenMaxY: primaryMaxY
-        )
-        let accentHex = observation.screenshotData.flatMap { data in
-            InkAccentSampler.accentHex(
-                imageJPEG: data,
-                elementCenterAX: CGPoint(x: frame.midX, y: frame.midY),
-                windowBoundsAX: observation.windowBounds.map {
-                    CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
-                } ?? .zero
-            )
-        } ?? "#9CCBB6"
-        var overlay: PerryGuidanceOverlay
-        switch command.verb {
-        case .point:
-            overlay = .pointMark(center: CGPoint(x: rect.midX, y: rect.midY), accentHex: accentHex, caption: command.label, duration: 15)
-        case .arrow:
-            overlay = .arrowMark(to: rect, accentHex: accentHex, caption: command.label, duration: 15)
-        case .underline:
-            overlay = .underlineMark(below: rect, accentHex: accentHex, caption: command.label, duration: 15)
-        case .ring, .caption:
-            overlay = .ringMark(around: rect, accentHex: accentHex, caption: command.label, duration: 15)
-        case .clear:
-            return
-        }
-        overlay.nearbyControls = (command.nearbyFrames.isEmpty ? index.controlFrames(near: frame) : command.nearbyFrames).map {
-            AXCoordinateConverter.appKitRect(
-                axX: $0.origin.x, axY: $0.origin.y, width: $0.width, height: $0.height,
-                primaryScreenMaxY: primaryMaxY
-            )
-        }
-        overlayState.visualGuidanceOverlays.append(overlay)
-        markOverlayIDs.insert(overlay.id)
-        if reanchorTimer == nil {
-            startReanchor(for: observation)
-        }
-        if !firstInkMarked {
-            firstInkMarked = true
-            PerfMark.mark("ink.first_draw")
-        }
-    }
-
-    private func startReanchor(for observation: GuideObservation) {
-        guard let windowID = observation.windowID else { return }
-        markWindowID = CGWindowID(windowID)
-        markWindowBL = observation.windowBounds.map {
-            AXCoordinateConverter.appKitRect(
-                axX: $0.x, axY: $0.y, width: $0.width, height: $0.height,
-                primaryScreenMaxY: primaryMaxY
-            )
-        } ?? .zero
-        reanchorTimer?.invalidate()
-        reanchorTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reanchorMarks() }
-        }
-    }
-
-    private func stopReanchor() {
-        reanchorTimer?.invalidate()
-        reanchorTimer = nil
-        markWindowID = nil
-        markWindowBL = .zero
-    }
-
-    private func reanchorMarks() {
-        markOverlayIDs.formIntersection(
-            Set(overlayState.visualGuidanceOverlays.map(\.id))
-        )
-        guard !markOverlayIDs.isEmpty else {
-            stopReanchor()
-            return
-        }
-        guard let windowID = markWindowID,
-              let list = CGWindowListCopyWindowInfo(
-                  [.optionIncludingWindow], windowID
-              ) as? [[String: Any]],
-              let bounds = list.first?[kCGWindowBounds as String] as? [String: Any],
-              let topLeft = CGRect(dictionaryRepresentation: bounds as CFDictionary)
-        else { return }
-        let bottomLeft = CGRect(
-            x: topLeft.minX, y: primaryMaxY - topLeft.maxY,
-            width: topLeft.width, height: topLeft.height
-        )
-        if markWindowBL == .zero {
-            markWindowBL = bottomLeft
-            return
-        }
-        let delta = CGPoint(
-            x: bottomLeft.minX - markWindowBL.minX,
-            y: bottomLeft.minY - markWindowBL.minY
-        )
-        guard delta != .zero else { return }
-        markWindowBL = bottomLeft
-        overlayState.visualGuidanceOverlays = overlayState.visualGuidanceOverlays.map {
-            markOverlayIDs.contains($0.id) ? $0.translated(by: delta) : $0
-        }
     }
 
     private var clickSpeech: any TalkSpeechOutput { services.clickOutput ?? services.output }
