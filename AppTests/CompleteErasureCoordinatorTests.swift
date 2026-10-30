@@ -221,6 +221,44 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
     }
 
     @MainActor
+    func testHistoryErasureRemovesTheDictationBackup() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PerryDictationBackupErasureTests")
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let backup = DictationBackupStore(
+            directory: supportDirectory.appendingPathComponent(DictationBackupStore.directoryName, isDirectory: true)
+        )
+        try backup.record(text: "dictated words")
+        let suiteName = "PerryDictationBackupErasureTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let erasers = PerryLiveErasureErasers.make(
+            paths: PerryErasurePaths(
+                supportDirectory: supportDirectory,
+                homeDirectory: supportDirectory.appendingPathComponent("Home"),
+                temporaryDirectory: supportDirectory.appendingPathComponent("Temporary"),
+                cachesDirectory: supportDirectory.appendingPathComponent("Caches")
+            ),
+            defaults: defaults,
+            taskCoordinator: TaskCoordinator(storageDirectory: supportDirectory),
+            backgroundTaskContextStore: BackgroundTaskContextStore(storageDirectory: supportDirectory),
+            activityLog: ActivityLog(storageDirectory: supportDirectory),
+            transcriptStore: TranscriptStore(directory: supportDirectory),
+            memoryStore: MemoryStore(storageDirectory: supportDirectory)
+        )
+        let history = try XCTUnwrap(erasers.first { $0.category == .history })
+
+        let inventory = try await history.inventory()
+        XCTAssertTrue(inventory.contains(PerryErasureItem(category: .history, identifier: "DictationBackup")))
+
+        try await history.erase()
+
+        XCTAssertTrue(backup.entries().isEmpty)
+    }
+
+    @MainActor
     func testProductionKeychainInventoryOwnsEveryShippedSecretService() {
         XCTAssertEqual(
             Set(PerryLiveErasureErasers.providerKeychainServices),

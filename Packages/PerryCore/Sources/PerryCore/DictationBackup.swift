@@ -17,6 +17,7 @@ public struct DictationBackupStore: Sendable {
     }
 
     public static let retentionDays = 7
+    public static let directoryName = "dictation-backup"
 
     private let directory: URL
     private let calendar: Calendar
@@ -59,13 +60,6 @@ public struct DictationBackupStore: Sendable {
         let cutoff = calendar.date(byAdding: .day, value: -Self.retentionDays, to: now) ?? now
         for file in dayFiles() where dayDate(for: file).map({ $0 < cutoff }) ?? false {
             try FileManager.default.removeItem(at: file)
-        }
-    }
-
-    /// Remove the whole backup store (Memory & privacy "erase").
-    public func eraseAll() throws {
-        if FileManager.default.fileExists(atPath: directory.path) {
-            try FileManager.default.removeItem(at: directory)
         }
     }
 
