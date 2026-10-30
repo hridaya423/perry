@@ -232,32 +232,25 @@ final class TaskCoordinatorTests: XCTestCase {
         XCTAssertEqual(fresh.state, .queued)
     }
 
-    func testOnlyLegacyEnvelopeMayOmitRecoveryDisposition() async throws {
-        for version in [1, 2] {
+    func testRetiredPlanRecordsAreDroppedAndTheRestLoad() async throws {
+        let kept = try makePlan(taskID: "kept")
+        var retired = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(TaskRecord(executablePlan: makePlan(taskID: "retired")))) as? [String: Any])
+        retired["planKind"] = "legacy"
+        retired["goal"] = "retired goal"
+        retired["steps"] = [["id": "step-1", "kind": "highlight", "summary": "retired step", "payload": [:]]]
+        retired.removeValue(forKey: "executionPlan")
+        let keptRecord = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(TaskRecord(executablePlan: kept))) as? [String: Any])
+        for version in [1, 2, 5] {
             let fileURL = directory.appendingPathComponent("version-\(version).json")
-            var encodedTask = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(TaskRecord(executablePlan: makePlan(taskID: "legacy")))) as? [String: Any])
-            encodedTask["planKind"] = "legacy"
-            encodedTask["goal"] = "legacy goal"
-            encodedTask["runtimeID"] = "local.test"
-            encodedTask["steps"] = [["id": "step-1", "kind": "highlight", "summary": "legacy step", "payload": [:]]]
-            encodedTask.removeValue(forKey: "executionPlan")
-            encodedTask.removeValue(forKey: "revision")
-            encodedTask.removeValue(forKey: "recoveryDisposition")
-            let data = try JSONSerialization.data(withJSONObject: ["version": version, "tasks": [encodedTask]])
-            try data.write(to: fileURL)
+            let tasks = version == 5 ? [retired, keptRecord] : [retired]
+            try JSONSerialization.data(withJSONObject: ["version": version, "tasks": tasks]).write(to: fileURL)
+
             let coordinator = TaskCoordinator(fileURL: fileURL)
-            let records = await coordinator.records()
-            if version == 1 {
-                XCTAssertEqual(records.count, 1)
-                XCTAssertEqual(records.first?.recoveryDisposition, .current)
-                XCTAssertFalse(records.first?.canResumeWorkspaceTask == true)
-                _ = try await coordinator.pause(id: "legacy")
-                let envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any])
-                XCTAssertEqual(envelope["version"] as? Int, 5)
-            } else {
-                XCTAssertTrue(records.isEmpty)
-                XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-            }
+
+            let ids = await coordinator.records().map(\.id)
+            XCTAssertEqual(ids, version == 5 ? [TaskID("kept")] : [])
+            let issue = await coordinator.lastPersistenceError
+            XCTAssertNil(issue)
         }
     }
 

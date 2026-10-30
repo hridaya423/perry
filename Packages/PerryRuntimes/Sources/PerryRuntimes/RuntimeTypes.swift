@@ -51,51 +51,6 @@ public struct ScreenContext: Sendable {
     public static let empty = ScreenContext()
 }
 
-public struct Step: Sendable, Equatable {
-    public enum Kind: String, Sendable, CaseIterable {
-        case highlight
-        case movePointer
-        case typeText
-        case clickControl
-        case rightClick
-        case doubleClick
-        case scroll
-        case pressKey
-        case hotkey
-        case drag
-        case createFile
-        case renameFile
-        case moveToTrash
-        case delegate
-        case remoteRead
-        case remoteWrite
-    }
-
-    public let id: String
-    public let kind: Kind
-    public let summary: String
-    public let payload: [String: String]
-
-    public init(id: String = UUID().uuidString, kind: Kind, summary: String, payload: [String: String] = [:]) {
-        self.id = id
-        self.kind = kind
-        self.summary = summary
-        self.payload = payload
-    }
-}
-
-public struct Plan: Sendable, Equatable {
-    public let goal: String
-    public let runtimeID: String
-    public let steps: [Step]
-
-    public init(goal: String, runtimeID: String, steps: [Step]) {
-        self.goal = goal
-        self.runtimeID = runtimeID
-        self.steps = steps
-    }
-}
-
 public struct StepResult: Sendable, Equatable {
     public let stepID: String
     public let success: Bool

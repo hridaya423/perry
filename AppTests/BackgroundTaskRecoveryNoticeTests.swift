@@ -79,7 +79,7 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
         )
     }
 
-    func testLaunchPolicyRejectsCancelledAndRetiredPlanTasks() async throws {
+    func testLaunchPolicyRejectsCancelledTasks() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let coordinator = TaskCoordinator(storageDirectory: directory)
@@ -90,23 +90,6 @@ final class BackgroundTaskRecoveryNoticeTests: XCTestCase {
             id: "cancelled", expectedRevision: queued.revision
         )
         XCTAssertNotNil(BackgroundTaskLaunchGate.blocker(record: cancelled))
-
-        let legacyDirectory = directory.appendingPathComponent("legacy-store", isDirectory: true)
-        try FileManager.default.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
-        let legacyStore = """
-        {"version":5,"tasks":[{"id":"retired","revision":"\(UUID().uuidString)","planKind":"legacy","goal":"Send the reviewed update","runtimeID":"test","steps":[{"id":"send","kind":"remoteWrite","summary":"Send the update","payload":{}}],"state":"paused","nextStepIndex":0,"intent":"pause","recoveryDisposition":"current"}]}
-        """
-        try Data(legacyStore.utf8).write(to: legacyDirectory.appendingPathComponent("tasks.json"))
-        let legacyCoordinator = TaskCoordinator(storageDirectory: legacyDirectory)
-        let retiredRecord = await legacyCoordinator.record(id: "retired")
-        let retired = try XCTUnwrap(retiredRecord)
-        XCTAssertEqual(
-            BackgroundTaskRecoveryNotice(record: retired, isRunning: false), .legacyPlan
-        )
-        XCTAssertEqual(
-            BackgroundTaskLaunchGate.blocker(record: retired),
-            BackgroundTaskRecoveryNotice.legacyPlan.message
-        )
     }
 
     private func executablePlan(taskID: TaskID, workspace: URL) throws -> ExecutionPlan {

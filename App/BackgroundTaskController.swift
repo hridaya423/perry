@@ -558,27 +558,6 @@ final class BackgroundTaskController: ObservableObject {
         }
     }
 
-    func replan(_ id: TaskID) {
-        guard runTasks[id] == nil else { return }
-        guard controlScope.acceptsControls else { return }
-        _ = controlScope.start { @MainActor [weak self] in
-            guard let self else { return }
-            guard let record = await self.runner.records().first(where: { $0.id == id }),
-                  case .legacy = record.plan else { return }
-            let goal = record.goal
-            do {
-                try await self.runner.discard(id: id)
-                try Self.removeWorkspace(for: id, root: self.workspaceRoot())
-                try await self.contextStore.remove(for: id)
-            } catch {
-                self.messages[id] = "Couldn’t remove the saved task: \(error.localizedDescription)"
-                return
-            }
-            self.refreshRecords()
-            self.queue(goal: goal)
-        }
-    }
-
     @discardableResult
     private func start(
         record: TaskRecord,
@@ -592,11 +571,6 @@ final class BackgroundTaskController: ObservableObject {
             return startWorkspaceTask(record: record, launchLease: launchLease)
         case .agent:
             return startAgentTask(record: record, launchLease: launchLease)
-        case .legacy:
-            // Legacy-format records survive for inspection only. They can be
-            // replanned as a new task or discarded — never executed.
-            messages[record.id] = "This saved task uses a retired plan format. Replan or discard it."
-            return false
         }
     }
 
@@ -1024,8 +998,6 @@ final class BackgroundTaskController: ObservableObject {
 
     func debugSeed(record: TaskRecord, metadata: BackgroundTaskMetadata) async throws {
         switch record.plan {
-        case .legacy:
-            throw ExecutionError(message: "legacy task records are read-only")
         case .executable(let plan):
             _ = try await coordinator.enqueue(executablePlan: plan)
         case .agent(let plan):
