@@ -8,7 +8,7 @@ public enum ToolSurface: String, Sendable, Hashable {
 public enum ToolGate {
     public static let observeTools: Set<String> = [
         "screen.observe", "screen.desktop", "screen.zoom",
-        "browser.read", "document.read", "clipboard.read",
+        "document.read", "clipboard.read",
     ]
     public static let drawTools: Set<String> = [
         "point", "ring", "arrow", "underline", "caption", "path", "clear",

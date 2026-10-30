@@ -1,5 +1,4 @@
 import Foundation
-import PerryCapture
 import PerryCore
 import PerryGuide
 

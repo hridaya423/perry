@@ -16,9 +16,6 @@ final class MCPScopeRelay: MCPScopeHost, @unchecked Sendable {
     }
 }
 
-/// Perry's MCP socket across the app's lifetime: a delayed start after
-/// launch, closed admission while maintenance owns the app, a restart when
-/// it hands control back, and a stop for quit or erase.
 @MainActor
 final class MCPSocketLifecycle {
     private let makeSocket: (URL) -> PerryMCPSocket
@@ -57,13 +54,11 @@ final class MCPSocketLifecycle {
         }
     }
 
-    /// Maintenance took the app: no pending start, no new connections.
     func suspend() {
         startup?.cancel()
         socket?.closeAdmission()
     }
 
-    /// Maintenance handed the app back: restart a socket that was running.
     func resume() {
         guard let socket else { return }
         let previousStartup = startup
@@ -80,13 +75,11 @@ final class MCPSocketLifecycle {
         }
     }
 
-    /// Quit: stops the socket but keeps it, so a cancelled quit can resume it.
     func stop() async {
         await startup?.value
         await socket?.stop()
     }
 
-    /// Erase: stops and forgets the socket; it comes back on the next launch.
     func discard() async {
         await startup?.value
         startup = nil

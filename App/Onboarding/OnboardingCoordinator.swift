@@ -1,7 +1,7 @@
 import AppKit
 import Combine
 import PerryBrain
-import PerryCapture
+import PerryCore
 
 @MainActor
 final class OnboardingCoordinator {

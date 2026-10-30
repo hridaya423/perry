@@ -1,14 +1,9 @@
 import AppKit
 import Foundation
-import PerryCapture
 import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Owns environment sensing for planning: permission and Cua health
-/// snapshots, live screen-context capture through the worker, and target
-/// window/app resolution. DEBUG loaders substitute the real probes at this
-/// boundary so owners below it stay headless-testable.
 @MainActor
 final class EnvironmentProbe {
     private let workers: CuaWorkerService

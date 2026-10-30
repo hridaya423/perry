@@ -25,8 +25,6 @@ packages:
     path: Packages/PerryRuntimes
   PerryOverlay:
     path: Packages/PerryOverlay
-  PerryCapture:
-    path: Packages/PerryCapture
   PerryGuide:
     path: Packages/PerryGuide
   PerryBrain:
@@ -61,7 +59,6 @@ targets:
       - package: PerryCore
       - package: PerryRuntimes
       - package: PerryOverlay
-      - package: PerryCapture
       - package: PerryGuide
       - package: PerryBrain
         product: PerryBrain

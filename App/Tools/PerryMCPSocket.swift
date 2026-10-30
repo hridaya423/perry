@@ -63,8 +63,7 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
                 close(fd)
                 throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
             }
-            // The socket inherits the umask — pin it to owner-only so the
-            // token handshake can't be raced by another user on this machine.
+            // bind() honors the umask, so pin the socket to owner-only before anyone can race the token handshake.
             chmod(path, 0o600)
             guard fcntl(fd, F_SETFL, O_NONBLOCK) == 0 else {
                 close(fd)
@@ -156,10 +155,6 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
     private func serve(client fd: Int32) {
         var noSignal: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
-        // §6.1: the 0600 mode and token gate the filesystem, but the peer
-        // itself is validated too — same uid via getpeereid, and when Perry
-        // is team-signed the peer must carry the same team identifier so a
-        // foreign binary can't drive the tool surface even with the token.
         guard Self.peerIsTrusted(fd) else {
             close(fd)
             return
@@ -234,13 +229,11 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
         }
     }
 
-    /// Same-user check first, then — only when Perry itself is team-signed —
-    /// the peer must match our team identifier. Adhoc debug builds carry no
-    /// team on either side, so the uid gate is the enforceable floor there.
     private static func peerIsTrusted(_ fd: Int32) -> Bool {
         var uid = uid_t(0)
         var gid = gid_t(0)
         guard getpeereid(fd, &uid, &gid) == 0, uid == getuid() else { return false }
+        // Ad-hoc debug builds carry no team identifier on either side; the uid check is the only gate there.
         guard let teamID = ourTeamIdentifier() else { return true }
         var pid = pid_t(0)
         var size = socklen_t(MemoryLayout<pid_t>.size)

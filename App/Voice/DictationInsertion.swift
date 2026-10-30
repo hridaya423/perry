@@ -2,7 +2,6 @@ import AppKit
 import ApplicationServices
 import AVFoundation
 import Speech
-import PerryCapture
 import PerryCore
 import PerryGuide
 import PerryOverlay

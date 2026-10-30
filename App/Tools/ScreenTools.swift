@@ -3,10 +3,6 @@ import Foundation
 import PerryBrain
 import PerryGuide
 
-/// Observation tools (`screen.observe`, `screen.desktop`, `screen.zoom`,
-/// `clipboard.read`). Observation is safe on every surface; nothing here
-/// moves the pointer or steals focus — capture goes through the background
-/// Cua worker.
 struct ScreenTools {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
@@ -14,19 +10,18 @@ struct ScreenTools {
     var skills: AppSkillLibrary?
 
     var executors: [any ToolExecutor] {
-        [
-            ScreenObserveExecutor(workers: workers, lease: lease, observations: observations, skills: skills),
-            ScreenDesktopExecutor(workers: workers, lease: lease, observations: observations),
-            ScreenZoomExecutor(workers: workers, lease: lease, observations: observations),
+        let worker = ToolWorkerContext(workers: workers, lease: lease, observations: observations)
+        return [
+            ScreenObserveExecutor(worker: worker, skills: skills),
+            ScreenDesktopExecutor(worker: worker),
+            ScreenZoomExecutor(worker: worker),
             ClipboardReadExecutor(),
         ]
     }
 }
 
 private struct ScreenObserveExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
+    let worker: ToolWorkerContext
     let skills: AppSkillLibrary?
 
     var spec: ToolSpec {
@@ -48,11 +43,12 @@ private struct ScreenObserveExecutor: ToolExecutor {
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
         let bundleID = call.arguments["bundleID"]?.stringValue
         let windowTitle = call.arguments["windowTitle"]?.stringValue
+        let observations = worker.observations
         let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID, windowTitle: windowTitle)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
-            var content = try await observeWindow(worker: worker, hint: hint, observations: observations, runID: context.runID)
+        return try await worker.withWorker(runID: context.runID, resources: resources) { handle in
+            var content = try await observeWindow(worker: handle, hint: hint, observations: observations, runID: context.runID)
             if context.surface == .agent,
                let skill = skills?.promptContext(for: observations.snapshot(runID: context.runID)?.window?.bundleID) {
                 content.append(.text(skill))
@@ -63,9 +59,7 @@ private struct ScreenObserveExecutor: ToolExecutor {
 }
 
 private struct ScreenDesktopExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
+    let worker: ToolWorkerContext
 
     var spec: ToolSpec {
         ToolSpec(
@@ -78,9 +72,10 @@ private struct ScreenDesktopExecutor: ToolExecutor {
     }
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
+        let observations = worker.observations
         let hint = try observations.prepareCapture(runID: context.runID)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: []) { worker in
-            let captured = try await worker.capture(target: hint)
+        return try await worker.withWorker(runID: context.runID) { handle in
+            let captured = try await handle.capture(target: hint)
             observations.setTarget(captured.target.hint, runID: context.runID)
             return ToolResult(
                 callID: call.id,
@@ -94,9 +89,7 @@ private struct ScreenDesktopExecutor: ToolExecutor {
 }
 
 private struct ScreenZoomExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
+    let worker: ToolWorkerContext
 
     var spec: ToolSpec {
         ToolSpec(
@@ -126,10 +119,8 @@ private struct ScreenZoomExecutor: ToolExecutor {
         }
         let rect = CGRect(x: x, y: y, width: w, height: h)
         let bundleID = args["bundleID"]?.stringValue
+        let observations = worker.observations
 
-        // §3.5: a zoom crops the run's cached capture when it's for the same
-        // window — a second zoom verifies against the exact frame the model
-        // already reasoned about, and no second capture round-trips.
         if let cached = observations.snapshot(runID: context.runID),
            let shot = cached.screenshotData,
            let window = cached.window,
@@ -147,8 +138,8 @@ private struct ScreenZoomExecutor: ToolExecutor {
         let hint = try observations.prepareCapture(runID: context.runID, bundleID: bundleID)
         let resources: Set<BackgroundTaskResource> = bundleID.map { [.application($0.lowercased())] } ?? []
 
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: resources) { worker in
-            let captured = try await worker.capture(target: hint)
+        return try await worker.withWorker(runID: context.runID, resources: resources) { handle in
+            let captured = try await handle.capture(target: hint)
             observations.setTarget(captured.target.hint, runID: context.runID)
             let image = ModelImage.fitting(captured.screenshotData, mimeType: captured.screenshotMIMEType)
             guard let data = ScreenCrop.jpeg(image.data, rectInWindowPoints: rect, windowSizePoints: image.size) else {
@@ -163,11 +154,8 @@ private struct ScreenZoomExecutor: ToolExecutor {
             )
         }
     }
-
 }
 
-/// Crop args are window points; the capture is pixels — scale the rect so
-/// Retina captures don't crop the wrong region.
 enum ScreenCrop {
     static func jpeg(_ data: Data, rectInWindowPoints rect: CGRect, windowSizePoints: CGSize) -> Data? {
         guard let image = NSImage(data: data)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
@@ -206,19 +194,11 @@ func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: A
     let elements = (captured.accessibilitySnapshotModel?.elements ?? [])
         .filter { $0.sensitivity != .secure }
         .compactMap { element -> ObservedElement? in
-            let frame = CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height)
             let detail = captured.elementDetails[element.stableID]
+            let frame = CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height)
             let named = !(element.label ?? "").isEmpty || detail?.value != nil
             guard frame.intersects(window), named || !unlabeledContainers.contains(element.rawRole ?? "") else { return nil }
-            return ObservedElement(
-                id: element.stableID,
-                role: element.rawRole ?? "AX\(element.role.rawValue)",
-                label: element.label ?? "",
-                frame: frame,
-                windowID: Int(captured.target.windowID),
-                value: detail?.value,
-                pressable: detail?.pressable ?? true
-            )
+            return ObservedElement(element, windowID: Int(captured.target.windowID), detail: detail)
         }
     let index = ElementIndex(elements: elements, prefix: observations.nextIDPrefix(runID: runID))
     let image = ModelImage.fitting(captured.screenshotData, mimeType: captured.screenshotMIMEType)
@@ -260,8 +240,6 @@ func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: A
     ]
 }
 
-/// Screenshots wider than the model API's 1568-pixel limit are scaled down
-/// here, so the pixels the model reasons in are the pixels it was sent.
 enum ModelImage {
     static let maxLongEdge = 1568.0
 

@@ -145,7 +145,7 @@
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryCapture/Sources/PerryCapture/PerryPermissionProbe.swift"
+          "reference": "Packages/PerryCore/Sources/PerryCore/PerryPermissionProbe.swift"
         }
       ]
     },
@@ -697,7 +697,7 @@
       "id": "guide.screen-context",
       "name": "Screen-as-context questions from a screenshot",
       "status": "unit-tested",
-      "owner": "PerryCapture",
+      "owner": "App",
       "support": "Cua target-window screenshot and local OCR, with optional BYOK image planning",
       "limitations": [
         "Default Codex and CLI paths consume OCR context; direct image reasoning is optional and this registry has no provider live test.",
@@ -722,10 +722,6 @@
         {
           "kind": "source",
           "reference": "App/CuaDriverClient.swift"
-        },
-        {
-          "kind": "source",
-          "reference": "Packages/PerryCapture/Sources/PerryCapture/PerryVisionOCR.swift"
         },
         {
           "kind": "unit-test",

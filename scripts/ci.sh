@@ -41,7 +41,7 @@ echo "== build (Debug arm64) =="
 xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
     -derivedDataPath "$DERIVED" -destination "$DESTINATION" 2>&1 | tail -3
 
-for pkg in PerryCore PerryBrain PerryGuide PerryOverlay PerryCapture PerryRuntimes; do
+for pkg in PerryCore PerryBrain PerryGuide PerryOverlay PerryRuntimes; do
     echo "== swift test: $pkg =="
     swift test --package-path "Packages/$pkg" 2>&1 | tail -3
 done

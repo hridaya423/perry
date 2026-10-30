@@ -1,6 +1,5 @@
 import XCTest
-@testable import PerryCapture
-import PerryCore
+@testable import PerryCore
 
 final class PermissionProbeTests: XCTestCase {
     func testAllGrantedRequiresEveryPermission() {

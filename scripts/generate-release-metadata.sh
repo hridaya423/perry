@@ -51,7 +51,7 @@ command -v swift >/dev/null 2>&1 || die "swift is required"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/perry-release-metadata.XXXXXX")"
 trap 'rm -rf "${TMP}"' EXIT
 
-for package in PerryCore PerryRuntimes PerryOverlay PerryCapture PerryGuide; do
+for package in PerryCore PerryRuntimes PerryOverlay PerryGuide; do
   GRAPH_PATH="${TMP}/${package}.json"
   swift package show-dependencies \
     --package-path "${REPO_ROOT}/Packages/${package}" \
@@ -71,7 +71,6 @@ if [ "${MODE}" = "write" ]; then
     --graph "${TMP}/PerryCore.json" \
     --graph "${TMP}/PerryRuntimes.json" \
     --graph "${TMP}/PerryOverlay.json" \
-    --graph "${TMP}/PerryCapture.json" \
     --graph "${TMP}/PerryGuide.json"
   exit 0
 fi
@@ -89,7 +88,6 @@ mkdir -p "${GENERATED_DIR}"
   --graph "${TMP}/PerryCore.json" \
   --graph "${TMP}/PerryRuntimes.json" \
   --graph "${TMP}/PerryOverlay.json" \
-  --graph "${TMP}/PerryCapture.json" \
   --graph "${TMP}/PerryGuide.json" >/dev/null
 
 [ -f "${SBOM_PATH}" ] || die "missing generated SBOM: ${SBOM_PATH}"

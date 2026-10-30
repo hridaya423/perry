@@ -3,18 +3,6 @@ import PerryBrain
 import PerryGuide
 import PerryRuntimes
 
-/// Presents a tool call for user approval via the intent card near the
-/// cursor. Returns true only when the user chose to run it; every other
-/// decision (stop/cancel/dismiss) denies. Red-tier calls additionally need
-/// the card's typed-confirmation flow — `IntentCardView` enforces the exact
-/// displayed phrase, so the card itself is the typed-confirmation surface.
-///
-/// When a `consentScope` is supplied (thread ID), orange-tier cards offer
-/// "Always allow" which records a per-thread grant; future calls of the same
-/// tool in that thread skip the card. Red-tier calls are never auto-approved.
-/// On `unattended` turns nobody can answer a card — anything without a
-/// recorded grant denies immediately rather than parking the job on a window
-/// nobody will ever see.
 @MainActor
 enum ToolApprovalPresenter {
     static func present(
@@ -23,8 +11,6 @@ enum ToolApprovalPresenter {
         consentScope: String? = nil,
         consentStore: ToolConsentStore,
         unattended: Bool = false,
-        /// AX-space frame of the element the call acts on, when the last
-        /// observation can supply one — anchors the card at the target.
         targetFrame: CGRect? = nil
     ) async -> ToolApproval {
         if let consentScope,
@@ -63,19 +49,10 @@ enum ToolApprovalPresenter {
     }
 
     static func headline(_ call: ToolCall, target: String?) -> String {
+        if let headline = UITools.headline(forTool: call.name, target: target) { return headline }
         let file = target.map { URL(fileURLWithPath: $0).lastPathComponent }
         switch call.name {
         case "app.launch": return "Open \(target ?? "this app")?"
-        case "ui.click": return target.map { "Click “\($0)”?" } ?? "Click here?"
-        case "ui.doubleclick": return target.map { "Double-click “\($0)”?" } ?? "Double-click here?"
-        case "ui.rightclick": return target.map { "Right-click “\($0)”?" } ?? "Right-click here?"
-        case "ui.type": return "Type into this field?"
-        case "ui.steps": return "Do these steps in this app?"
-        case "ui.setValue": return target.map { "Change “\($0)”?" } ?? "Change this field?"
-        case "ui.key": return target.map { "Press \($0)?" } ?? "Press a key?"
-        case "ui.hotkey": return "Press a keyboard shortcut?"
-        case "ui.drag": return "Drag here?"
-        case "ui.scroll": return "Scroll this window?"
         case "files.write": return "Create \(file ?? "a file")?"
         case "files.overwrite": return "Replace \(file ?? "this file")?"
         case "files.move": return "Move \(file ?? "this file")?"
@@ -92,8 +69,6 @@ enum ToolApprovalPresenter {
         }
     }
 
-    /// Short, non-secret target text — only well-known locator keys, never
-    /// raw free-text arguments (those may carry typed content).
     private static func targetValue(_ call: ToolCall) -> String? {
         let args = call.arguments.objectValue ?? [:]
         for key in ["label", "name", "bundleID", "path", "key", "direction", "accountID"] {

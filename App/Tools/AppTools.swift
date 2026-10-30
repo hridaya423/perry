@@ -1,7 +1,6 @@
 import AppKit
 import PerryBrain
 
-/// `app.launch` — opens an installed app by name or bundle id.
 struct AppTools {
     var executors: [any ToolExecutor] { [LaunchTool()] }
 

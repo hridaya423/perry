@@ -7,7 +7,6 @@ import AppKit
 import Combine
 import Foundation
 import PerryBrain
-import PerryCapture
 import PerryCore
 import PerryGuide
 import PerryOverlay

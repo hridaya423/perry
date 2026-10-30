@@ -1,7 +1,8 @@
 import Foundation
 import ImageIO
+import Vision
 import XCTest
-import PerryCapture
+import PerryCore
 @testable import Perry
 
 final class CuaLiveTests: XCTestCase {
@@ -81,8 +82,10 @@ final class CuaLiveTests: XCTestCase {
         let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(imageSource, 0, nil))
         XCTAssertGreaterThan(image.width, 100)
         XCTAssertGreaterThan(image.height, 100)
-        let text = try PerryVisionTextRecognizer.recognizeText(in: capture.screenshotData)
-            .map(\.text).joined(separator: " ")
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
         XCTAssertTrue(text.contains(fixtureMarker), "The exact-window image must contain the seeded fixture marker")
     }
 }

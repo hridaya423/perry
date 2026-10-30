@@ -1,5 +1,5 @@
 import PerryBrain
-import PerryCapture
+import PerryCore
 import SwiftUI
 
 enum FirstGoal: Equatable {

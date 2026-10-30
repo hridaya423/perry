@@ -54,7 +54,7 @@ final class RoutineOfferTests: XCTestCase {
         for name in ["ui.click", "ui.type", "ui.hotkey", "ui.drag"] {
             XCTAssertTrue(ForegroundTaskController.isGUITool(name), name)
         }
-        for name in ["files.read", "screen.observe", "memory.write", "browser.read", "integrations.write"] {
+        for name in ["files.read", "screen.observe", "memory.write", "integrations.write"] {
             XCTAssertFalse(ForegroundTaskController.isGUITool(name), name)
         }
     }

@@ -4,34 +4,25 @@ import PerryBrain
 import PerryCore
 import PerryRuntimes
 
-/// Actuation tools (`ui.click`, `ui.type`, `ui.scroll`, …). Input goes
-/// through the Cua worker. When the user is there, the target window comes
-/// to the front first and the ghost cursor moves to the target before acting;
-/// unattended runs stay in the background. Targets resolve from the thread's
-/// last `screen.observe` (compact element id), a label, or raw coordinates.
+typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize, _ accepts: @escaping @Sendable (CGPoint) -> Bool) async throws -> ClickGrounder.Located
+
 struct UITools {
     let workers: CuaWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
-    /// Actuation hook: called with the AX-space point each ui.* tool acts on.
-    /// When set, foreground runs also glide the real pointer there and click
-    /// and press keys with real input.
     var onActuation: (@Sendable (CGPoint, String?) -> Void)?
     var locate: LocateTarget?
 
     var executors: [any ToolExecutor] {
-        [
-            UIActionExecutor(kind: .click, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UIActionExecutor(kind: .doubleClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UIActionExecutor(kind: .rightClick, workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UITypeExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UISetValueExecutor(workers: workers, lease: lease, observations: observations),
-            UIStepsExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-            UIScrollExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UIKeyExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation, locate: locate),
-            UIHotkeyExecutor(workers: workers, lease: lease, observations: observations),
-            UIDragExecutor(workers: workers, lease: lease, observations: observations, onActuation: onActuation),
-        ]
+        let worker = ToolWorkerContext(workers: workers, lease: lease, observations: observations)
+        return UIToolDefinition.all.map {
+            UIToolExecutor(definition: $0, worker: worker, onActuation: onActuation, locate: locate)
+        } + [UIStepsExecutor(worker: worker, onActuation: onActuation)]
+    }
+
+    static func headline(forTool name: String, target: String?) -> String? {
+        if name == UIStepsExecutor.name { return "Do these steps in this app?" }
+        return UIToolDefinition.all.first { $0.name == name }?.headline(target)
     }
 }
 
@@ -39,82 +30,305 @@ private enum UIClickKind: String {
     case click = "ui.click"
     case doubleClick = "ui.doubleclick"
     case rightClick = "ui.rightclick"
+
+    func operation(_ target: ComputerTarget) -> ComputerAction.Operation {
+        switch self {
+        case .click: .click(target)
+        case .doubleClick: .doubleClick(target)
+        case .rightClick: .rightClick(target)
+        }
+    }
 }
 
-/// Shared argument→target resolution. An elementID wins, then an explicit
-/// label, then raw (x, y). Returns the ComputerTarget plus the owning
-/// bundleID so the worker can claim the app resource.
-typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize, _ accepts: @escaping @Sendable (CGPoint) -> Bool) async throws -> ClickGrounder.Located
+private enum UIRealInput: Sendable {
+    case click(UIClickKind)
+    case key(String, [String]?)
+}
 
-private struct ResolvedTarget {
-    let target: ComputerTarget
-    let bundleID: String?
-    var note: String? = nil
-    var pressable = true
+private struct UIPlan: Sendable {
+    var operation: ComputerAction.Operation
+    var bundleID: String?
+    var actuation: ComputerCoordinates?
+    var actuationLabel: String?
+    var movesPointer = true
+    var note: String?
+    var realInput: UIRealInput?
+    var reportsWindow = true
+}
 
-    var pointerTarget: ComputerTarget {
-        pressable ? target : ComputerTarget(stableID: nil, label: nil, coordinates: target.coordinates)
-    }
+private struct UIPlanRequest: Sendable {
+    let arguments: JSONValue
+    let runID: UUID
+    let observations: AgentObservationStore
+    let locate: LocateTarget?
 }
 
 private struct ToolResolutionError: Error {
     let message: String
 }
 
-private func resolveTarget(
-    args: JSONValue,
-    observations: AgentObservationStore,
-    runID: UUID,
-    locate: LocateTarget?
-) async -> Result<ResolvedTarget, ToolResolutionError> {
+private struct UIToolDefinition: Sendable {
+    typealias Plan = @Sendable (UIPlanRequest) async -> Result<UIPlan, ToolResolutionError>
+
+    let name: String
+    let description: String
+    let schema: JSONValue
+    let headline: @Sendable (String?) -> String
+    let plan: Plan
+
+    static let all: [UIToolDefinition] = [
+        click(.click, verb: "Click", headline: { $0.map { "Click “\($0)”?" } ?? "Click here?" }),
+        click(.doubleClick, verb: "Double-click", headline: { $0.map { "Double-click “\($0)”?" } ?? "Double-click here?" }),
+        click(.rightClick, verb: "Right-click", headline: { $0.map { "Right-click “\($0)”?" } ?? "Right-click here?" }),
+        UIToolDefinition(
+            name: "ui.type",
+            description: "Type text into an element or point, without moving the user's cursor. With no target, type into the field that already has focus.",
+            schema: objectSchema(["text": .object(["type": .string("string")])], required: ["text"], target: true),
+            headline: { _ in "Type into this field?" },
+            plan: { request in
+                let arguments = request.arguments
+                guard let text = arguments["text"]?.stringValue else {
+                    return .failure(ToolResolutionError(message: "missing text"))
+                }
+                let focused = !["elementID", "x", "y", "label", "describe"].contains { arguments[$0] != nil }
+                if focused {
+                    return .success(UIPlan(
+                        operation: .typeText(text: text, target: nil),
+                        bundleID: arguments["bundleID"]?.stringValue
+                    ))
+                }
+                return await resolveTarget(request).map { resolved in
+                    UIPlan(
+                        operation: .typeText(text: text, target: windowPixels(resolved.target, request)),
+                        bundleID: resolved.bundleID,
+                        actuation: resolved.target.point,
+                        actuationLabel: resolved.target.label,
+                        note: resolved.note
+                    )
+                }
+            }
+        ),
+        UIToolDefinition(
+            name: "ui.setValue",
+            description: "Replace an element's whole value in one step: a native text field's text, a pop-up menu's chosen item, a slider or stepper. On a Finder file name (not being edited) it renames the file; give the full new name with its extension. Not for web pages: for a web input, click it and use ui.type; for a web dropdown, click it, then pick with ui.key (down, return), because setting it directly makes macOS ask the user for Automation access.",
+            schema: objectSchema([
+                "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
+                "value": .object(["type": .string("string")]),
+                "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
+            ], required: ["elementID", "value"]),
+            headline: { $0.map { "Change “\($0)”?" } ?? "Change this field?" },
+            plan: { request in
+                guard let elementID = request.arguments["elementID"]?.stringValue,
+                      let value = request.arguments["value"]?.stringValue else {
+                    return .failure(ToolResolutionError(message: "needs elementID and value"))
+                }
+                guard let element = request.observations.resolveElement(elementID, runID: request.runID) else {
+                    return .failure(staleElement(elementID))
+                }
+                return .success(UIPlan(
+                    operation: .setValue(value: value, target: .element(id: element.id, label: element.label.nilIfEmpty, point: nil)),
+                    bundleID: request.observations.snapshot(runID: request.runID)?.window?.bundleID
+                ))
+            }
+        ),
+        UIToolDefinition(
+            name: "ui.scroll",
+            description: "Scroll within an element or window.",
+            schema: objectSchema([
+                "direction": .object(["type": .string("string"), "enum": .array(directions.map { .string($0) })]),
+                "amount": .object(["type": .string("integer"), "description": .string("Scroll units (default 3)")]),
+            ], required: ["direction"], target: true),
+            headline: { _ in "Scroll this window?" },
+            plan: { request in
+                guard let direction = request.arguments["direction"]?.stringValue.flatMap(ComputerAction.Direction.init(rawValue:)) else {
+                    return .failure(ToolResolutionError(message: "direction must be up/down/left/right"))
+                }
+                let amount = request.arguments["amount"]?.doubleValue.map { Int($0) } ?? 3
+                let resolved = try? await resolveTarget(request).get()
+                return .success(UIPlan(
+                    operation: .scroll(direction: direction, amount: amount, by: nil, target: resolved.map { windowPixels($0.target, request) }),
+                    bundleID: resolved?.bundleID,
+                    actuation: resolved?.target.point,
+                    actuationLabel: resolved?.target.label,
+                    note: resolved?.note
+                ))
+            }
+        ),
+        UIToolDefinition(
+            name: "ui.key",
+            description: "Press a key (optionally with modifiers like cmd/shift) in the target app.",
+            schema: objectSchema([
+                "key": .object(["type": .string("string")]),
+                "modifiers": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
+            ], required: ["key"], target: true),
+            headline: { $0.map { "Press \($0)?" } ?? "Press a key?" },
+            plan: { request in
+                guard let key = request.arguments["key"]?.stringValue else {
+                    return .failure(ToolResolutionError(message: "missing key"))
+                }
+                let modifiers = request.arguments["modifiers"]?.arrayValue?.compactMap(\.stringValue)
+                let resolved = try? await resolveTarget(request).get()
+                return .success(UIPlan(
+                    operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: resolved.map { windowPixels($0.target, request) }),
+                    bundleID: resolved?.bundleID,
+                    actuation: resolved?.target.point,
+                    actuationLabel: resolved?.target.label,
+                    note: resolved?.note,
+                    realInput: .key(key, modifiers)
+                ))
+            }
+        ),
+        UIToolDefinition(
+            name: "ui.hotkey",
+            description: "Press a key chord like [cmd, shift, s] in the target app.",
+            schema: objectSchema([
+                "keys": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
+                "bundleID": .object(["type": .string("string")]),
+            ], required: ["keys"]),
+            headline: { _ in "Press a keyboard shortcut?" },
+            plan: { request in
+                let keys = request.arguments["keys"]?.arrayValue?.compactMap(\.stringValue) ?? []
+                guard !keys.isEmpty else {
+                    return .failure(ToolResolutionError(message: "keys must be a non-empty list"))
+                }
+                return .success(UIPlan(
+                    operation: .hotkey(keys: keys.map { $0.lowercased() }, target: nil),
+                    bundleID: request.arguments["bundleID"]?.stringValue,
+                    reportsWindow: false
+                ))
+            }
+        ),
+        UIToolDefinition(
+            name: "ui.drag",
+            description: "Drag between two pixels of the latest screen.observe screenshot. Reviewed: drags have unknown effects.",
+            schema: objectSchema([
+                "fromX": .object(["type": .string("number")]),
+                "fromY": .object(["type": .string("number")]),
+                "toX": .object(["type": .string("number")]),
+                "toY": .object(["type": .string("number")]),
+                "bundleID": .object(["type": .string("string")]),
+            ], required: ["fromX", "fromY", "toX", "toY"]),
+            headline: { _ in "Drag here?" },
+            plan: { request in
+                let arguments = request.arguments
+                guard let fromX = arguments["fromX"]?.doubleValue, let fromY = arguments["fromY"]?.doubleValue,
+                      let toX = arguments["toX"]?.doubleValue, let toY = arguments["toY"]?.doubleValue else {
+                    return .failure(ToolResolutionError(message: "needs fromX/fromY/toX/toY"))
+                }
+                let from = screenPoint(fromX, fromY, request)
+                let to = screenPoint(toX, toY, request)
+                return .success(UIPlan(
+                    operation: .drag(
+                        from: windowPixels(from, request),
+                        to: windowPixels(to, request),
+                        durationMilliseconds: nil,
+                        steps: nil
+                    ),
+                    bundleID: arguments["bundleID"]?.stringValue,
+                    actuation: to,
+                    movesPointer: false,
+                    reportsWindow: false
+                ))
+            }
+        ),
+    ]
+
+    private static func click(_ kind: UIClickKind, verb: String, headline: @escaping @Sendable (String?) -> String) -> UIToolDefinition {
+        UIToolDefinition(
+            name: kind.rawValue,
+            description: "\(verb) an element, a point, or a described target without moving the user's cursor. Prefer elementID from screen.observe; use describe for targets missing from the element list.",
+            schema: objectSchema([:], target: true),
+            headline: headline,
+            plan: { request in
+                await resolveTarget(request).map { resolved in
+                    UIPlan(
+                        operation: kind.operation(windowPixels(resolved.pointerTarget, request)),
+                        bundleID: resolved.bundleID,
+                        actuation: resolved.target.point,
+                        actuationLabel: resolved.target.label,
+                        note: resolved.note,
+                        realInput: .click(kind)
+                    )
+                }
+            }
+        )
+    }
+}
+
+private let directions = ["up", "down", "left", "right"]
+
+private let targetSchemaProperties: [String: JSONValue] = [
+    "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
+    "x": .object(["type": .string("number"), "description": .string("Pixel in the latest screen.observe screenshot, from its top-left corner; used when elementID is absent")]),
+    "y": .object(["type": .string("number")]),
+    "label": .object(["type": .string("string"), "description": .string("Accessible label text to match")]),
+    "describe": .object(["type": .string("string"), "description": .string("When the target has no element id: describe it for this Mac's click model. Quote its visible text or name its icon, say where it is relative to nearby controls, and say what it does, e.g. \"gear icon at the top right of the sidebar, opens the action menu\".")]),
+    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
+]
+
+private func objectSchema(_ properties: [String: JSONValue], required: [String] = [], target: Bool = false) -> JSONValue {
+    var fields: [String: JSONValue] = [
+        "type": .string("object"),
+        "properties": .object((target ? targetSchemaProperties : [:]).merging(properties) { _, new in new }),
+    ]
+    if !required.isEmpty {
+        fields["required"] = .array(required.map { .string($0) })
+    }
+    return .object(fields)
+}
+
+private struct ResolvedTarget {
+    let target: ComputerTarget
+    let bundleID: String?
+    var note: String?
+    var pressable = true
+
+    var pointerTarget: ComputerTarget {
+        guard !pressable, let point = target.point else { return target }
+        return .point(point)
+    }
+}
+
+private func staleElement(_ elementID: String) -> ToolResolutionError {
+    ToolResolutionError(message: "element \(elementID) is stale or unknown — run screen.observe again")
+}
+
+private func resolveTarget(_ request: UIPlanRequest) async -> Result<ResolvedTarget, ToolResolutionError> {
+    let args = request.arguments
+    let observations = request.observations
     if let elementID = args["elementID"]?.stringValue {
-        guard let element = observations.resolveElement(elementID, runID: runID) else {
-            return .failure(ToolResolutionError(message: "element \(elementID) is stale or unknown — run screen.observe again"))
+        guard let element = observations.resolveElement(elementID, runID: request.runID) else {
+            return .failure(staleElement(elementID))
         }
-        let window = observations.snapshot(runID: runID)?.window
         return .success(ResolvedTarget(
-            target: ComputerTarget(
-                stableID: element.id,
-                label: element.label.nilIfEmpty,
-                coordinates: ComputerCoordinates(x: element.frame.midX, y: element.frame.midY)
-            ),
-            bundleID: window?.bundleID,
+            target: .element(id: element.id, label: element.label.nilIfEmpty, point: ComputerCoordinates(x: element.frame.midX, y: element.frame.midY)),
+            bundleID: observations.snapshot(runID: request.runID)?.window?.bundleID,
             pressable: element.pressable
         ))
     }
     if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
-        let point = screenPoint(x, y, observations: observations, runID: runID)
+        let screen = screenPoint(x, y, request)
         return .success(ResolvedTarget(
-            target: ComputerTarget(
-                stableID: nil,
-                label: args["label"]?.stringValue,
-                coordinates: ComputerCoordinates(x: point.x, y: point.y)
-            ),
+            target: args["label"]?.stringValue.map { ComputerTarget.label($0, point: screen) } ?? ComputerTarget.point(screen),
             bundleID: args["bundleID"]?.stringValue
         ))
     }
     if let description = args["describe"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !description.isEmpty {
-        return await locateDescribed(description, observations: observations, runID: runID, locate: locate)
+        return await locateDescribed(description, request)
     }
     if let label = args["label"]?.stringValue {
-        return .success(ResolvedTarget(
-            target: ComputerTarget(stableID: nil, label: label, coordinates: nil),
-            bundleID: args["bundleID"]?.stringValue
-        ))
+        return .success(ResolvedTarget(target: .label(label, point: nil), bundleID: args["bundleID"]?.stringValue))
     }
     return .failure(ToolResolutionError(message: "needs elementID, x/y, or label"))
 }
 
-private func locateDescribed(
-    _ description: String,
-    observations: AgentObservationStore,
-    runID: UUID,
-    locate: LocateTarget?
-) async -> Result<ResolvedTarget, ToolResolutionError> {
-    guard let locate else {
+private func locateDescribed(_ description: String, _ request: UIPlanRequest) async -> Result<ResolvedTarget, ToolResolutionError> {
+    guard let locate = request.locate else {
         return .failure(ToolResolutionError(message: "describe needs this Mac's click model, which isn't downloaded. Use elementID or x/y instead."))
     }
-    guard let snapshot = observations.snapshot(runID: runID), let screenshot = snapshot.screenshotData, let bounds = snapshot.windowBoundsAX else {
+    guard let snapshot = request.observations.snapshot(runID: request.runID),
+          let screenshot = snapshot.screenshotData,
+          let bounds = snapshot.windowBoundsAX else {
         return .failure(ToolResolutionError(message: "run screen.observe first so there is a screenshot to search"))
     }
     let elements = snapshot.index.entries.map(\.element)
@@ -142,42 +356,29 @@ private func locateDescribed(
     var note = "Found \"\(description)\" at (\(Int(shown.x)), \(Int(shown.y)))"
     if let element { note += " on \(element.role) \"\(element.label)\"" }
     note += located.confident ? "." : ". The click model was unsure, so check the window below before going on."
+    let coordinates = ComputerCoordinates(x: point.x, y: point.y)
     return .success(ResolvedTarget(
-        target: ComputerTarget(
-            stableID: element?.id,
-            label: element?.label.nilIfEmpty ?? description,
-            coordinates: ComputerCoordinates(x: point.x, y: point.y)
-        ),
+        target: element.map { ComputerTarget.element(id: $0.id, label: $0.label.nilIfEmpty ?? description, point: coordinates) }
+            ?? ComputerTarget.label(description, point: coordinates),
         bundleID: snapshot.window?.bundleID,
         note: note
     ))
 }
 
-private let targetSchemaProperties: JSONValue = .object([
-    "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
-    "x": .object(["type": .string("number"), "description": .string("Pixel in the latest screen.observe screenshot, from its top-left corner; used when elementID is absent")]),
-    "y": .object(["type": .string("number")]),
-    "label": .object(["type": .string("string"), "description": .string("Accessible label text to match")]),
-    "describe": .object(["type": .string("string"), "description": .string("When the target has no element id: describe it for this Mac's click model. Quote its visible text or name its icon, say where it is relative to nearby controls, and say what it does, e.g. \"gear icon at the top right of the sidebar, opens the action menu\".")]),
-    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
-])
-
-private func windowPixels(_ target: ComputerTarget, observations: AgentObservationStore, runID: UUID) -> ComputerTarget {
-    ComputerTarget(stableID: target.stableID, label: target.label, coordinates: target.coordinates.map { windowPixels($0, observations: observations, runID: runID) })
+private func windowPixels(_ target: ComputerTarget, _ request: UIPlanRequest) -> ComputerTarget {
+    target.mappingPoint { windowPixels($0, request) }
 }
 
-private func windowPixels(_ point: ComputerCoordinates, observations: AgentObservationStore, runID: UUID) -> ComputerCoordinates {
-    guard let snapshot = observations.snapshot(runID: runID), let bounds = snapshot.windowBoundsAX else { return point }
+private func windowPixels(_ point: ComputerCoordinates, _ request: UIPlanRequest) -> ComputerCoordinates {
+    guard let snapshot = request.observations.snapshot(runID: request.runID), let bounds = snapshot.windowBoundsAX else { return point }
     return ComputerCoordinates(x: (point.x - bounds.minX) * snapshot.driverScale, y: (point.y - bounds.minY) * snapshot.driverScale)
 }
 
-private func screenPoint(_ x: Double, _ y: Double, observations: AgentObservationStore, runID: UUID) -> CGPoint {
-    observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: runID)
+private func screenPoint(_ x: Double, _ y: Double, _ request: UIPlanRequest) -> ComputerCoordinates {
+    let point = request.observations.screenPoint(fromImage: CGPoint(x: x, y: y), runID: request.runID)
+    return ComputerCoordinates(x: point.x, y: point.y)
 }
 
-/// Brings the window Perry is about to act on to the front, so the app
-/// accepts the input and the user sees the change happen. Unattended runs
-/// stay in the background.
 private func bringForward(_ bundleID: String?, observations: AgentObservationStore, context: ToolContext) async {
     guard !context.unattended else { return }
     let window = observations.snapshot(runID: context.runID)?.window
@@ -196,21 +397,12 @@ private func bringForward(_ bundleID: String?, observations: AgentObservationSto
 @MainActor
 private func raise(_ window: CuaWindowTarget, in pid: pid_t) {
     let app = AXUIElementCreateApplication(pid)
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
-          let windows = value as? [AXUIElement] else { return }
-    let match = windows.first { element in
-        var title: CFTypeRef?
-        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &title)
-        return (title as? String) == window.title
-    }
+    let match = AXQuery.elements(app, kAXWindowsAttribute).first { AXQuery.string($0, kAXTitleAttribute) == window.title }
     guard let match else { return }
     AXUIElementPerformAction(match, kAXRaiseAction as CFString)
     AXUIElementSetAttributeValue(match, kAXMainAttribute as CFString, kCFBooleanTrue)
 }
 
-/// Moves the ghost cursor to the target and lets it arrive before the action,
-/// so the user sees where Perry is about to act.
 @discardableResult
 private func showActuation(_ onActuation: (@Sendable (CGPoint, String?) -> Void)?, at point: CGPoint, label: String?, movesPointer: Bool = false) async -> Bool {
     onActuation?(point, label)
@@ -291,22 +483,17 @@ private func verifiedResult(
     return ToolResult(callID: call.id, content: [.text(note)] + after)
 }
 
-private struct UIActionExecutor: ToolExecutor {
-    let kind: UIClickKind
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
+private struct UIToolExecutor: ToolExecutor {
+    let definition: UIToolDefinition
+    let worker: ToolWorkerContext
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
     let locate: LocateTarget?
 
     var spec: ToolSpec {
         ToolSpec(
-            name: kind.rawValue,
-            description: "\(kind == .click ? "Click" : kind == .doubleClick ? "Double-click" : "Right-click") an element, a point, or a described target without moving the user's cursor. Prefer elementID from screen.observe; use describe for targets missing from the element list.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": targetSchemaProperties,
-            ]),
+            name: definition.name,
+            description: definition.description,
+            inputSchema: definition.schema,
             tier: .yellow,
             surfaces: [.agent],
             requiredCapabilities: [.tools, .vision]
@@ -314,158 +501,90 @@ private struct UIActionExecutor: ToolExecutor {
     }
 
     func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
-        guard case .success(let resolved) = resolved else {
-            return .text(call.id, "\(kind.rawValue): \(resolved.errorMessage)", isError: true)
+        let request = UIPlanRequest(arguments: call.arguments, runID: context.runID, observations: worker.observations, locate: locate)
+        let plan: UIPlan
+        switch await definition.plan(request) {
+        case .success(let built): plan = built
+        case .failure(let error): return .text(call.id, "\(definition.name): \(error.message)", isError: true)
         }
-        let onWindow = windowPixels(resolved.pointerTarget, observations: observations, runID: context.runID)
-        let operation: ComputerAction.Operation = switch kind {
-        case .click: .click(onWindow)
-        case .doubleClick: .doubleClick(onWindow)
-        case .rightClick: .rightClick(onWindow)
-        }
-        let action = ComputerAction(stepID: call.id, operation: operation)
-        await bringForward(resolved.bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
-            if let point = resolved.target.coordinates,
-               await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended) {
-                await pointerClick(at: CGPoint(x: point.x, y: point.y), kind: kind)
-                let clicked = StepResult(stepID: call.id, success: true, message: "Clicked \(resolved.target.label ?? "the target") with the pointer.")
-                return await verifiedResult(call, clicked, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
+        let action = ComputerAction(stepID: call.id, operation: plan.operation)
+        await bringForward(plan.bundleID, observations: worker.observations, context: context)
+        let onActuation = onActuation
+        let observations = worker.observations
+        return try await worker.withWorker(runID: context.runID, resources: targetResources(plan.bundleID)) { handle in
+            var arrived = false
+            if let point = plan.actuation {
+                arrived = await showActuation(
+                    onActuation, at: CGPoint(x: point.x, y: point.y), label: plan.actuationLabel,
+                    movesPointer: plan.movesPointer && !context.unattended
+                )
             }
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
-        }
-    }
-}
-
-private struct UITypeExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
-    let locate: LocateTarget?
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.type",
-            description: "Type text into an element or point, without moving the user's cursor. With no target, type into the field that already has focus.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object(targetSchemaProperties.objectValue!.merging(
-                    ["text": .object(["type": .string("string")])]
-                ) { _, new in new }),
-                "required": .array([.string("text")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        guard let text = call.arguments["text"]?.stringValue else {
-            return .text(call.id, "ui.type: missing text", isError: true)
-        }
-        let focused = !["elementID", "x", "y", "label", "describe"].contains { call.arguments[$0] != nil }
-        let resolved: Result<ResolvedTarget, ToolResolutionError> = focused
-            ? .success(ResolvedTarget(target: ComputerTarget(stableID: nil, label: nil, coordinates: nil), bundleID: call.arguments["bundleID"]?.stringValue))
-            : await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
-        guard case .success(let resolved) = resolved else {
-            return .text(call.id, "ui.type: \(resolved.errorMessage)", isError: true)
-        }
-        let action = ComputerAction(stepID: call.id, operation: .typeText(text: text, target: windowPixels(resolved.target, observations: observations, runID: context.runID)))
-        await bringForward(resolved.bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(resolved.bundleID)) { worker in
-            if let point = resolved.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: resolved.target.label, movesPointer: !context.unattended)
+            let result: StepResult
+            if let handled = await performRealInput(plan, arrived: arrived, unattended: context.unattended, actuating: onActuation != nil) {
+                result = StepResult(stepID: call.id, success: true, message: handled)
+            } else {
+                result = try await handle.execute(action)
             }
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: resolved.note)
+            guard plan.reportsWindow else { return .text(call.id, result.message, isError: !result.success) }
+            return await verifiedResult(call, result, worker: handle, observations: observations, runID: context.runID, located: plan.note)
         }
     }
-}
 
-private struct UISetValueExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.setValue",
-            description: "Replace an element's whole value in one step: a native text field's text, a pop-up menu's chosen item, a slider or stepper. On a Finder file name (not being edited) it renames the file; give the full new name with its extension. Not for web pages: for a web input, click it and use ui.type; for a web dropdown, click it, then pick with ui.key (down, return), because setting it directly makes macOS ask the user for Automation access.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "elementID": .object(["type": .string("string"), "description": .string("Compact element id from screen.observe, like e12")]),
-                    "value": .object(["type": .string("string")]),
-                    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
-                ]),
-                "required": .array([.string("elementID"), .string("value")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        guard let elementID = call.arguments["elementID"]?.stringValue, let value = call.arguments["value"]?.stringValue else {
-            return .text(call.id, "ui.setValue: needs elementID and value", isError: true)
-        }
-        guard let element = observations.resolveElement(elementID, runID: context.runID) else {
-            return .text(call.id, "ui.setValue: element \(elementID) is stale or unknown — run screen.observe again", isError: true)
-        }
-        let bundleID = observations.snapshot(runID: context.runID)?.window?.bundleID
-        let target = ComputerTarget(stableID: element.id, label: element.label.nilIfEmpty, coordinates: nil)
-        let action = ComputerAction(stepID: call.id, operation: .setValue(value: value, target: target))
-        await bringForward(bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+    private func performRealInput(_ plan: UIPlan, arrived: Bool, unattended: Bool, actuating: Bool) async -> String? {
+        switch plan.realInput {
+        case .click(let kind)?:
+            guard arrived, let point = plan.actuation else { return nil }
+            await pointerClick(at: CGPoint(x: point.x, y: point.y), kind: kind)
+            return "Clicked \(plan.actuationLabel ?? "the target") with the pointer."
+        case .key(let key, let modifiers)?:
+            guard !unattended, actuating, keyboardPress(key, modifiers: modifiers) else { return nil }
+            try? await Task.sleep(for: .milliseconds(150))
+            return "Pressed \(key)."
+        case nil:
+            return nil
         }
     }
 }
 
 private struct UIStepsExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
+    static let name = "ui.steps"
+
+    let worker: ToolWorkerContext
     let onActuation: (@Sendable (CGPoint, String?) -> Void)?
+
+    private struct PlannedStep {
+        let operation: ComputerAction.Operation
+        let target: ComputerTarget?
+    }
 
     var spec: ToolSpec {
         ToolSpec(
-            name: "ui.steps",
+            name: Self.name,
             description: "Run several actions in one call when you already know them, then see the window once: for example click a row, press return, type a name, press return. Steps run in order and stop at the first failure. Element ids come from the latest screen.observe and stay valid through the batch, so end the batch at a step that opens a new screen and observe before going on.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
-                    "steps": .object([
-                        "type": .string("array"),
-                        "maxItems": .number(20),
-                        "items": .object([
-                            "type": .string("object"),
-                            "properties": .object([
-                                "action": .object(["type": .string("string"), "enum": .array(["click", "doubleclick", "rightclick", "type", "setValue", "key", "hotkey", "scroll"].map { .string($0) })]),
-                                "elementID": .object(["type": .string("string")]),
-                                "x": .object(["type": .string("number"), "description": .string("Screenshot pixel, as in ui.click")]),
-                                "y": .object(["type": .string("number")]),
-                                "text": .object(["type": .string("string"), "description": .string("For type; with no target it goes to the focused field")]),
-                                "value": .object(["type": .string("string"), "description": .string("For setValue")]),
-                                "key": .object(["type": .string("string"), "description": .string("For key")]),
-                                "modifiers": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
-                                "keys": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("For hotkey, like [\"cmd\", \"s\"]")]),
-                                "direction": .object(["type": .string("string"), "enum": .array([.string("up"), .string("down"), .string("left"), .string("right")])]),
-                                "amount": .object(["type": .string("number")]),
-                            ]),
-                            "required": .array([.string("action")]),
+            inputSchema: objectSchema([
+                "bundleID": .object(["type": .string("string"), "description": .string("App to claim and target")]),
+                "steps": .object([
+                    "type": .string("array"),
+                    "maxItems": .number(20),
+                    "items": .object([
+                        "type": .string("object"),
+                        "properties": .object([
+                            "action": .object(["type": .string("string"), "enum": .array(["click", "doubleclick", "rightclick", "type", "setValue", "key", "hotkey", "scroll"].map { .string($0) })]),
+                            "elementID": .object(["type": .string("string")]),
+                            "x": .object(["type": .string("number"), "description": .string("Screenshot pixel, as in ui.click")]),
+                            "y": .object(["type": .string("number")]),
+                            "text": .object(["type": .string("string"), "description": .string("For type; with no target it goes to the focused field")]),
+                            "value": .object(["type": .string("string"), "description": .string("For setValue")]),
+                            "key": .object(["type": .string("string"), "description": .string("For key")]),
+                            "modifiers": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
+                            "keys": .object(["type": .string("array"), "items": .object(["type": .string("string")]), "description": .string("For hotkey, like [\"cmd\", \"s\"]")]),
+                            "direction": .object(["type": .string("string"), "enum": .array(directions.map { .string($0) })]),
+                            "amount": .object(["type": .string("number")]),
                         ]),
+                        "required": .array([.string("action")]),
                     ]),
                 ]),
-                "required": .array([.string("steps")]),
-            ]),
+            ], required: ["steps"]),
             tier: .yellow,
             surfaces: [.agent],
             requiredCapabilities: [.tools, .vision]
@@ -476,36 +595,39 @@ private struct UIStepsExecutor: ToolExecutor {
         guard let steps = call.arguments["steps"]?.arrayValue, !steps.isEmpty, steps.count <= 20 else {
             return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true)
         }
-        var planned: [(operation: ComputerAction.Operation, target: ComputerTarget?)] = []
+        var planned: [PlannedStep] = []
         for (index, step) in steps.enumerated() {
-            switch await stepOperation(step, runID: context.runID) {
-            case .success(let operation): planned.append(operation)
+            let request = UIPlanRequest(arguments: step, runID: context.runID, observations: worker.observations, locate: nil)
+            switch await plannedStep(request) {
+            case .success(let next): planned.append(next)
             case .failure(let error): return .text(call.id, "ui.steps: step \(index + 1): \(error.message)", isError: true)
             }
         }
-        let bundleID = call.arguments["bundleID"]?.stringValue ?? observations.snapshot(runID: context.runID)?.window?.bundleID
-        await bringForward(bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
+        let bundleID = call.arguments["bundleID"]?.stringValue ?? worker.observations.snapshot(runID: context.runID)?.window?.bundleID
+        await bringForward(bundleID, observations: worker.observations, context: context)
+        let observations = worker.observations
+        let onActuation = onActuation
+        return try await worker.withWorker(runID: context.runID, resources: targetResources(bundleID)) { handle in
             guard !context.unattended else {
-                let result = try await worker.execute(ComputerAction(stepID: call.id, operation: .steps(planned.map(\.operation))))
-                return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID)
+                let result = try await handle.execute(ComputerAction(stepID: call.id, operation: .steps(planned.map(\.operation))))
+                return await verifiedResult(call, result, worker: handle, observations: observations, runID: context.runID)
             }
             var last: StepResult?
             for (index, step) in planned.enumerated() {
                 var arrived = false
-                if let point = step.target?.coordinates {
+                if let point = step.target?.point {
                     arrived = await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: step.target?.label, movesPointer: true)
                 }
-                if let handled = await performWithPointer(step.operation, at: step.target?.coordinates, arrived: arrived) {
+                if let handled = await performWithPointer(step.operation, at: step.target?.point, arrived: arrived) {
                     last = StepResult(stepID: "\(call.id)-\(index)", success: true, message: handled)
                     continue
                 }
-                let result = try await worker.execute(ComputerAction(stepID: "\(call.id)-\(index)", operation: step.operation))
+                let result = try await handle.execute(ComputerAction(stepID: "\(call.id)-\(index)", operation: step.operation))
                 guard result.success else { return .text(call.id, "ui.steps: step \(index + 1): \(result.message)", isError: true) }
                 last = result
             }
             guard let last else { return .text(call.id, "ui.steps: needs 1 to 20 steps", isError: true) }
-            return await verifiedResult(call, last, worker: worker, observations: observations, runID: context.runID)
+            return await verifiedResult(call, last, worker: handle, observations: observations, runID: context.runID)
         }
     }
 
@@ -529,243 +651,48 @@ private struct UIStepsExecutor: ToolExecutor {
         }
     }
 
-    private func stepOperation(_ step: JSONValue, runID: UUID) async -> Result<(operation: ComputerAction.Operation, target: ComputerTarget?), ToolResolutionError> {
+    private func plannedStep(_ request: UIPlanRequest) async -> Result<PlannedStep, ToolResolutionError> {
+        let step = request.arguments
         let targeted = step["elementID"] != nil || (step["x"] != nil && step["y"] != nil)
-        let resolved: ResolvedTarget? = targeted ? try? await resolveTarget(args: step, observations: observations, runID: runID, locate: nil).get() : nil
+        let resolved: ResolvedTarget? = targeted ? try? await resolveTarget(request).get() : nil
         if targeted, resolved == nil {
             return .failure(ToolResolutionError(message: "element \(step["elementID"]?.stringValue ?? "at x/y") is stale or unknown — run screen.observe again"))
         }
-        let pointer = resolved.map { windowPixels($0.pointerTarget, observations: observations, runID: runID) }
-        let plain = resolved.map { windowPixels($0.target, observations: observations, runID: runID) }
+        let pointer = resolved.map { windowPixels($0.pointerTarget, request) }
+        let plain = resolved.map { windowPixels($0.target, request) }
+        func planned(_ operation: ComputerAction.Operation) -> Result<PlannedStep, ToolResolutionError> {
+            .success(PlannedStep(operation: operation, target: resolved?.target))
+        }
         switch step["action"]?.stringValue {
         case "click", "doubleclick", "rightclick":
             guard let pointer else { return .failure(ToolResolutionError(message: "needs elementID or x/y")) }
             switch step["action"]?.stringValue {
-            case "doubleclick": return .success((.doubleClick(pointer), resolved?.target))
-            case "rightclick": return .success((.rightClick(pointer), resolved?.target))
-            default: return .success((.click(pointer), resolved?.target))
+            case "doubleclick": return planned(.doubleClick(pointer))
+            case "rightclick": return planned(.rightClick(pointer))
+            default: return planned(.click(pointer))
             }
         case "type":
             guard let text = step["text"]?.stringValue else { return .failure(ToolResolutionError(message: "type needs text")) }
-            return .success((.typeText(text: text, target: plain ?? ComputerTarget(stableID: nil, label: nil, coordinates: nil)), resolved?.target))
+            return planned(.typeText(text: text, target: plain))
         case "setValue":
-            guard let value = step["value"]?.stringValue, let resolved, resolved.target.stableID != nil else {
+            guard let value = step["value"]?.stringValue, let id = resolved?.target.id else {
                 return .failure(ToolResolutionError(message: "setValue needs elementID and value"))
             }
-            return .success((.setValue(value: value, target: ComputerTarget(stableID: resolved.target.stableID, label: resolved.target.label, coordinates: nil)), resolved.target))
+            return planned(.setValue(value: value, target: .element(id: id, label: resolved?.target.label, point: nil)))
         case "key":
             guard let key = step["key"]?.stringValue else { return .failure(ToolResolutionError(message: "key needs key")) }
-            return .success((.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain), resolved?.target))
+            return planned(.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain))
         case "hotkey":
             guard let keys = step["keys"]?.arrayValue?.compactMap(\.stringValue), !keys.isEmpty else { return .failure(ToolResolutionError(message: "hotkey needs keys")) }
-            return .success((.hotkey(keys: keys.map { $0.lowercased() }, target: plain), resolved?.target))
+            return planned(.hotkey(keys: keys.map { $0.lowercased() }, target: plain))
         case "scroll":
             guard let direction = step["direction"]?.stringValue.flatMap(ComputerAction.Direction.init(rawValue:)) else {
                 return .failure(ToolResolutionError(message: "scroll needs a direction"))
             }
-            return .success((.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain), resolved?.target))
+            return planned(.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain))
         default:
             return .failure(ToolResolutionError(message: "unknown action"))
         }
-    }
-}
-
-private struct UIScrollExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
-    let locate: LocateTarget?
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.scroll",
-            description: "Scroll within an element or window.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object(targetSchemaProperties.objectValue!.merging([
-                    "direction": .object(["type": .string("string"), "enum": .array([.string("up"), .string("down"), .string("left"), .string("right")])]),
-                    "amount": .object(["type": .string("integer"), "description": .string("Scroll units (default 3)")]),
-                ]) { _, new in new }),
-                "required": .array([.string("direction")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let args = call.arguments
-        guard let directionRaw = args["direction"]?.stringValue,
-              let direction = ComputerAction.Direction(rawValue: directionRaw) else {
-            return .text(call.id, "ui.scroll: direction must be up/down/left/right", isError: true)
-        }
-        let amount = args["amount"]?.doubleValue.map { Int($0) } ?? 3
-        let resolved = await resolveTarget(args: args, observations: observations, runID: context.runID, locate: locate)
-        let target = try? resolved.get()
-        let action = ComputerAction(
-            stepID: call.id,
-            operation: .scroll(direction: direction, amount: amount, by: nil, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
-        )
-        await bringForward(target?.bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
-            if let point = target?.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label, movesPointer: !context.unattended)
-            }
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
-        }
-    }
-}
-
-private struct UIKeyExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
-    let locate: LocateTarget?
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.key",
-            description: "Press a key (optionally with modifiers like cmd/shift) in the target app.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object(targetSchemaProperties.objectValue!.merging([
-                    "key": .object(["type": .string("string")]),
-                    "modifiers": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
-                ]) { _, new in new }),
-                "required": .array([.string("key")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        guard let key = call.arguments["key"]?.stringValue else {
-            return .text(call.id, "ui.key: missing key", isError: true)
-        }
-        let modifiers = call.arguments["modifiers"]?.arrayValue?.compactMap(\.stringValue)
-        let resolved = await resolveTarget(args: call.arguments, observations: observations, runID: context.runID, locate: locate)
-        let target = try? resolved.get()
-        let action = ComputerAction(
-            stepID: call.id,
-            operation: .pressKey(key: key.lowercased(), modifiers: modifiers, target: target.map { windowPixels($0.target, observations: observations, runID: context.runID) })
-        )
-        await bringForward(target?.bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(target?.bundleID)) { worker in
-            if let point = target?.target.coordinates {
-                await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: target?.target.label, movesPointer: !context.unattended)
-            }
-            if !context.unattended, onActuation != nil, keyboardPress(key, modifiers: modifiers) {
-                try? await Task.sleep(for: .milliseconds(150))
-                let pressed = StepResult(stepID: call.id, success: true, message: "Pressed \(key).")
-                return await verifiedResult(call, pressed, worker: worker, observations: observations, runID: context.runID, located: target?.note)
-            }
-            let result = try await worker.execute(action)
-            return await verifiedResult(call, result, worker: worker, observations: observations, runID: context.runID, located: target?.note)
-        }
-    }
-}
-
-private struct UIHotkeyExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.hotkey",
-            description: "Press a key chord like [cmd, shift, s] in the target app.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "keys": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
-                    "bundleID": .object(["type": .string("string")]),
-                ]),
-                "required": .array([.string("keys")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let keys = call.arguments["keys"]?.arrayValue?.compactMap(\.stringValue) ?? []
-        guard !keys.isEmpty else {
-            return .text(call.id, "ui.hotkey: keys must be a non-empty list", isError: true)
-        }
-        let bundleID = call.arguments["bundleID"]?.stringValue
-        let action = ComputerAction(stepID: call.id, operation: .hotkey(keys: keys.map { $0.lowercased() }, target: nil))
-        await bringForward(bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
-            let result = try await worker.execute(action)
-            return .text(call.id, result.message, isError: !result.success)
-        }
-    }
-}
-
-private struct UIDragExecutor: ToolExecutor {
-    let workers: CuaWorkerService
-    let lease: ForegroundWorkerLease?
-    let observations: AgentObservationStore
-    let onActuation: (@Sendable (CGPoint, String?) -> Void)?
-
-    var spec: ToolSpec {
-        ToolSpec(
-            name: "ui.drag",
-            description: "Drag between two pixels of the latest screen.observe screenshot. Reviewed: drags have unknown effects.",
-            inputSchema: .object([
-                "type": .string("object"),
-                "properties": .object([
-                    "fromX": .object(["type": .string("number")]),
-                    "fromY": .object(["type": .string("number")]),
-                    "toX": .object(["type": .string("number")]),
-                    "toY": .object(["type": .string("number")]),
-                    "bundleID": .object(["type": .string("string")]),
-                ]),
-                "required": .array([.string("fromX"), .string("fromY"), .string("toX"), .string("toY")]),
-            ]),
-            tier: .yellow,
-            surfaces: [.agent],
-            requiredCapabilities: [.tools, .vision]
-        )
-    }
-
-    func run(_ call: ToolCall, context: ToolContext) async throws -> ToolResult {
-        let args = call.arguments
-        guard let fromX = args["fromX"]?.doubleValue, let fromY = args["fromY"]?.doubleValue,
-              let toX = args["toX"]?.doubleValue, let toY = args["toY"]?.doubleValue else {
-            return .text(call.id, "ui.drag: needs fromX/fromY/toX/toY", isError: true)
-        }
-        let from = screenPoint(fromX, fromY, observations: observations, runID: context.runID)
-        let to = screenPoint(toX, toY, observations: observations, runID: context.runID)
-        let action = ComputerAction(
-            stepID: call.id,
-            operation: .drag(
-                from: windowPixels(ComputerCoordinates(x: from.x, y: from.y), observations: observations, runID: context.runID),
-                to: windowPixels(ComputerCoordinates(x: to.x, y: to.y), observations: observations, runID: context.runID),
-                durationMilliseconds: nil, steps: nil
-            )
-        )
-        let bundleID = args["bundleID"]?.stringValue
-        await bringForward(bundleID, observations: observations, context: context)
-        return try await withCuaWorker(workers, lease: lease, runID: context.runID, resources: targetResources(bundleID)) { worker in
-            await showActuation(onActuation, at: to, label: nil)
-            let result = try await worker.execute(action)
-            return .text(call.id, result.message, isError: !result.success)
-        }
-    }
-}
-
-private extension Result where Failure == ToolResolutionError {
-    var errorMessage: String {
-        if case .failure(let error) = self { return error.message }
-        return "unknown error"
     }
 }
 

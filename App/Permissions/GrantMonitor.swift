@@ -1,5 +1,5 @@
 import AppKit
-import PerryCapture
+import PerryCore
 
 enum PermissionCheck {
     static let flag = "--check-permission"

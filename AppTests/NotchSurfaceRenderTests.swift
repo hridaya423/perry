@@ -3,7 +3,7 @@ import SwiftUI
 import XCTest
 import PerryGuide
 import PerryBrain
-import PerryCapture
+import PerryCore
 import PerryOverlay
 @testable import Perry
 

@@ -3,11 +3,6 @@ import Foundation
 import PerryCore
 import PerryRuntimes
 
-/// Production typed verifier. Every supported operation gets real evidence:
-/// transforms and sandboxed writes are read back from the workspace, GUI
-/// actions are re-observed through the same live Cua worker, integration
-/// writes must echo their payload in the service response, and ask-user is
-/// its own answer. Executor acceptance alone is never success evidence.
 struct CompositeActionVerifier: TypedActionVerifier {
     let workspace: URL
     let worker: CuaWorkerHandle?

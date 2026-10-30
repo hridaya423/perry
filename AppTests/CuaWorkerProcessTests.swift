@@ -261,7 +261,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let (service, _) = try makeFixture()
         try await service.withWorker(scope: .foreground, resources: []) { worker in
             _ = try await worker.capture(target: nil)
-            let missing = ComputerAction(stepID: "missing", operation: .click(ComputerTarget(stableID: nil, label: "Missing", coordinates: nil)))
+            let missing = ComputerAction(stepID: "missing", operation: .click(.label("Missing", point: nil)))
             do {
                 _ = try await worker.execute(missing)
                 XCTFail("A click on a missing control must fail")

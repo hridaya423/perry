@@ -137,23 +137,6 @@
       "version": "0.38.0"
     },
     {
-      "bom-ref": "swift:perrycapture@unspecified",
-      "name": "PerryCapture",
-      "properties": [
-        {
-          "name": "perry:identity",
-          "value": "perrycapture"
-        },
-        {
-          "name": "perry:package-location",
-          "value": "Packages/PerryCapture"
-        }
-      ],
-      "scope": "required",
-      "type": "library",
-      "version": "unspecified"
-    },
-    {
       "bom-ref": "swift:perrycore@unspecified",
       "name": "PerryCore",
       "properties": [
@@ -267,7 +250,6 @@
         "framework:sparkle",
         "runtime:codex",
         "runtime:cua-driver",
-        "swift:perrycapture@unspecified",
         "swift:perrycore@unspecified",
         "swift:perryguide@unspecified",
         "swift:perryoverlay@unspecified",
@@ -277,18 +259,11 @@
       "ref": "application:perry"
     },
     {
-      "dependsOn": [
-        "swift:perrycore@unspecified"
-      ],
-      "ref": "swift:perrycapture@unspecified"
-    },
-    {
       "dependsOn": [],
       "ref": "swift:perrycore@unspecified"
     },
     {
       "dependsOn": [
-        "swift:perrycapture@unspecified",
         "swift:perrycore@unspecified",
         "swift:perryoverlay@unspecified",
         "swift:perryruntimes@unspecified"
@@ -296,9 +271,7 @@
       "ref": "swift:perryguide@unspecified"
     },
     {
-      "dependsOn": [
-        "swift:perrycapture@unspecified"
-      ],
+      "dependsOn": [],
       "ref": "swift:perryoverlay@unspecified"
     },
     {
