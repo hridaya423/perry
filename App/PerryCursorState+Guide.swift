@@ -15,7 +15,7 @@ extension AXCoordinateConverter {
 
     @MainActor
     private static var primaryScreenMaxY: Double {
-        NSScreen.screens.first?.frame.maxY ?? 0
+        Double(NSScreen.screens.first?.frame.maxY ?? 0)
     }
 }
 

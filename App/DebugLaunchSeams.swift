@@ -209,11 +209,11 @@ extension AppController {
             let now = ProcessInfo.processInfo.systemUptime
             switch note.userInfo?["phase"] as? String {
             case "down":
-                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: true, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control, .option], isFlagsChanged: true, tapDisabled: false)
             case "up":
-                self.modifierHoldMonitor.handle(timestamp: now, control: true, option: false, isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, control: false, option: false, isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [], isFlagsChanged: true, tapDisabled: false)
             default:
                 break
             }

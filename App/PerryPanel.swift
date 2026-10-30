@@ -14,7 +14,7 @@ class PerryPanel: NSPanel {
         keyable = canBecomeKey
         super.init(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel].union(extraStyle),
+            styleMask: NSWindow.StyleMask([.borderless, .nonactivatingPanel]).union(extraStyle),
             backing: .buffered,
             defer: false
         )
