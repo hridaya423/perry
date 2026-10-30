@@ -40,30 +40,6 @@ final class AXModelTests: XCTestCase {
         XCTAssertEqual(snapshot.actionableElements().map(\.stableID), ["btn-1"])
     }
 
-    func testChangeDetectorDetectsAddedAndRemovedElements() {
-        let detector = ScreenChangeDetector()
-        let before = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
-            element(id: "a"), element(id: "b"),
-        ])
-        let after = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
-            element(id: "a"), element(id: "c"),
-        ])
-        XCTAssertTrue(detector.didChange(from: before, to: after))
-    }
-
-    func testChangeDetectorIgnoresIdenticalScreens() {
-        let detector = ScreenChangeDetector()
-        let before = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [element(id: "a")])
-        let after = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [element(id: "a")])
-        XCTAssertFalse(detector.didChange(from: before, to: after))
-    }
-
-    func testChangeDetectorCountsTitleChangeAlone() {
-        let detector = ScreenChangeDetector()
-        let before = AXSnapshot(appBundleID: "x", windowTitle: "General", elements: [])
-        XCTAssertTrue(detector.didChange(from: before, titleAfter: "Accessibility"))
-    }
-
     func testMissingSensitivityDecodesAsUnknown() throws {
         let json = #"{"stableID":"f1","role":"textField","label":"Name","frame":{"x":0,"y":0,"width":100,"height":24},"isActionable":true}"#
         let decoded = try JSONDecoder().decode(AXElement.self, from: Data(json.utf8))
@@ -94,33 +70,6 @@ final class AXModelTests: XCTestCase {
         XCTAssertEqual(decoded.value, "alice")
         XCTAssertEqual(decoded.sensitivity, .ordinary)
         XCTAssertEqual(decoded, field)
-    }
-
-    func testChangeDetectorCountsValueOnlyChange() {
-        let detector = ScreenChangeDetector()
-        let before = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
-            AXElement(
-                stableID: "f1",
-                role: .textField,
-                label: "Name",
-                frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
-                isActionable: true,
-                value: "a",
-                sensitivity: .ordinary
-            ),
-        ])
-        let after = AXSnapshot(appBundleID: "x", windowTitle: "Same", elements: [
-            AXElement(
-                stableID: "f1",
-                role: .textField,
-                label: "Name",
-                frame: AXElementFrame(x: 0, y: 0, width: 100, height: 24),
-                isActionable: true,
-                value: "ab",
-                sensitivity: .ordinary
-            ),
-        ])
-        XCTAssertTrue(detector.didChange(from: before, to: after))
     }
 
     func testSensitiveAndUnknownValuesAreDiscardedBeforeEncoding() throws {

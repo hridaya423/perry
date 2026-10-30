@@ -21,11 +21,7 @@ public struct AppSkill: Equatable, Sendable, Identifiable {
     }
 }
 
-/// Data-driven skill registry. Bundled skills ship as a versioned manifest
-/// plus one Markdown resource each — adding a dense-app skill is a resource
-/// change, never a Swift branch. User skills are Markdown files under
-/// `AppSkills/` in local storage, validated by name and size, and always
-/// treated as untrusted prompt context.
+/// Bundled app skills plus user-written Markdown skills in local storage. User skills are untrusted prompt context, validated by name and size.
 public struct AppSkillLibrary: @unchecked Sendable {
     private struct BundledEntry {
         let body: String
@@ -36,8 +32,6 @@ public struct AppSkillLibrary: @unchecked Sendable {
     private let storageDirectory: URL?
     private let defaults: UserDefaults
 
-    /// User skill bodies are capped so a stray giant file can't blow up
-    /// planner prompts.
     public static let maximumSkillBytes = 64 * 1024
 
     public init(storageDirectory: URL? = nil, defaults: UserDefaults = .standard) {
@@ -105,15 +99,6 @@ public struct AppSkillLibrary: @unchecked Sendable {
         try trimmed.write(to: fileURL(for: normalized, in: storageDirectory), atomically: true, encoding: .utf8)
     }
 
-    public func removeUserSkill(for bundleID: String) throws {
-        guard let storageDirectory,
-              let normalized = Self.normalizedBundleID(bundleID) else { return }
-        let url = fileURL(for: normalized, in: storageDirectory)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
-        }
-    }
-
     private func fileURL(for bundleID: String, in directory: URL) -> URL {
         directory.appendingPathComponent("AppSkills", isDirectory: true).appendingPathComponent("\(bundleID).md")
     }
@@ -172,8 +157,6 @@ public struct AppSkillLibrary: @unchecked Sendable {
         }
     }
 
-    /// Reads a user skill only when it decodes as UTF-8, is non-empty, and
-    /// stays under the size cap.
     private static func readUserSkill(at url: URL) -> String? {
         guard let data = try? Data(contentsOf: url),
               data.count <= maximumSkillBytes,

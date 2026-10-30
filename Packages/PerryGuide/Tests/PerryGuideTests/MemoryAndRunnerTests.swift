@@ -258,8 +258,8 @@ final class MemoryStoreTests: XCTestCase {
         XCTAssertNil(context)
     }
 
-    func testGoldfishModeRecallsNothing() async {
-        let store = MemoryStore(storageDirectory: nil, configuration: .goldfish)
+    func testDisabledMemoryRecallsNothing() async {
+        let store = MemoryStore(storageDirectory: nil)
         _ = await store.remember(MemoryRecord(category: .pastSession, summary: "anything"))
         let snapshot = await store.snapshot()
         XCTAssertTrue(snapshot.isEmpty)

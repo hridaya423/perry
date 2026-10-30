@@ -14,7 +14,7 @@ final class GuideSupportTests: XCTestCase {
         )
     }
 
-    func testEverythingViewBuildsNumberedMarkersWithConnectors() {
+    func testEverythingViewBuildsNumberedMarkers() {
         let snapshot = AXSnapshot(
             appBundleID: "com.apple.finder",
             windowTitle: "Desktop",
@@ -25,12 +25,11 @@ final class GuideSupportTests: XCTestCase {
             GuideStep(instruction: "next one Second", target: .axElement(stableID: "b")),
         ]
 
-        let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot, goal: "tag a file")
+        let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot)
 
         XCTAssertNotNil(viewPlan)
         XCTAssertEqual(viewPlan?.markers.map(\.number), [1, 2])
         XCTAssertEqual(viewPlan?.markers.count, 2)
-        XCTAssertEqual(viewPlan?.connectors.count, 1)
         XCTAssertEqual(viewPlan?.markers[1].position.x ?? 0, 245)
     }
 
@@ -48,7 +47,6 @@ final class GuideSupportTests: XCTestCase {
 
         let viewPlan = EverythingViewBuilder.build(steps: steps, snapshot: snapshot)
         XCTAssertEqual(viewPlan?.markers.count, 1)
-        XCTAssertEqual(viewPlan?.connectors.count, 0)
     }
 
     func testEverythingViewNilWhenNothingDrawable() {

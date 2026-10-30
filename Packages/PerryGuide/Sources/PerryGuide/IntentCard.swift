@@ -1,9 +1,7 @@
 import Foundation
 import PerryCore
 
-/// The inline intent card from PRD §4 Confirmation UX: Perry highlights the
-/// exact target and floats a card ("About to move 34 files to Trash ·
-/// Approve / Stop") answerable by click or hotkey.
+/// The confirmation card Perry floats over the exact target before a risky action.
 public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
     public enum Choice: String, Codable, Sendable {
         case approve
@@ -42,14 +40,11 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
         self.createdAt = createdAt
     }
 
-    /// The phrase a red-tier answer must match: the exact displayed target,
-    /// never a generic word like "confirm".
+    /// The phrase a red-tier answer must match: the exact displayed target, never a generic word.
     public var redPhrase: String {
         requiredPhrase ?? targetSummary
     }
 
-    /// Spoken line that accompanies the card (PRD: a spoken line accompanies
-    /// it; voice-only confirmation never suffices for red).
     public var spokenLine: String {
         switch tier {
         case .orange:
@@ -59,28 +54,5 @@ public struct IntentCard: Codable, Equatable, Sendable, Identifiable {
         default:
             return title
         }
-    }
-}
-
-/// Routes intent-card answers with the PRD's rules enforced: orange accepts
-/// click or hotkey; red additionally requires an explicit typed-style confirm
-/// flag (the UI binds this to a text field, never speech).
-public struct IntentCardPolicy: Sendable {
-    public init() {}
-
-    public func resolve(
-        _ card: IntentCard,
-        choice: IntentCard.Choice?,
-        typedConfirmation: String?,
-        sourceIsVoice: Bool
-    ) -> Bool {
-        guard choice == .approve else { return false }
-        if card.tier >= .red {
-            guard !sourceIsVoice else { return false }
-            guard let typed = typedConfirmation?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !typed.isEmpty else { return false }
-            return typed == card.redPhrase
-        }
-        return true
     }
 }
