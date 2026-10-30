@@ -130,7 +130,7 @@ final class AppSubsystems {
 
     let workers = CuaWorkerService()
 
-    lazy var spatial = SpatialSelectionController(
+    lazy var spatial: SpatialSelectionController = SpatialSelectionController(
         overlayState: self.overlayState,
         workers: self.workers,
         targetHint: { [unowned self] in await self.probe.currentTargetHint() },
@@ -345,7 +345,7 @@ final class AppSubsystems {
 
     lazy var runtimes = RuntimeCatalog(setupLoader: app.overrides.runtimeSetupLoader)
 
-    lazy var probe = EnvironmentProbe(
+    lazy var probe: EnvironmentProbe = EnvironmentProbe(
         workers: self.workers,
         memoryStore: self.memoryStore,
         oauthCoordinator: self.oauthCoordinator,
