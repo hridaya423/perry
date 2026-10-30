@@ -42,10 +42,6 @@ final class TalkContextStore {
         entries.removeValue(forKey: key)
     }
 
-    func resetAll() {
-        entries.removeAll()
-    }
-
     static func isResetPhrase(_ text: String) -> Bool {
         let lowered = text.lowercased()
         return ["new topic", "new subject", "different question", "forget that"]

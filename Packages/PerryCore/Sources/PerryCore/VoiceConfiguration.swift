@@ -53,15 +53,6 @@ public struct DictationPreferences: Equatable, Codable, Sendable {
 
     public static let `default` = DictationPreferences()
 
-    public mutating func addCustomWord(_ word: String) {
-        let normalized = Self.normalizedWords([word])
-        customWords = Self.normalizedWords(customWords + normalized)
-    }
-
-    public mutating func removeCustomWord(_ word: String) {
-        customWords.removeAll { $0.caseInsensitiveCompare(word.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame }
-    }
-
     private static func normalizedWords(_ words: [String]) -> [String] {
         var seen = Set<String>()
         return words.compactMap { word in

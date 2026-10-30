@@ -271,10 +271,7 @@ extension VoiceController {
             let spoken = respelled(speechStream.next(text))
             guard !spoken.isEmpty else { return }
             overlayState.voiceState = .responding
-            let utterance = AVSpeechUtterance(string: spoken)
-            utterance.voice = voice
-            utterance.rate = Self.speechRate(for: rate)
-            synthesizer.speak(utterance)
+            speakWithSystem(spoken, voice: voice, rate: rate)
         case .neural(let voice):
             let spoken = respelled(speechStream.next(text, spellNumbers: voice.spellsNumbers))
             guard !spoken.isEmpty else { return }
@@ -290,9 +287,13 @@ extension VoiceController {
 
     func speakWithSystemVoice(_ text: String) {
         guard let voice = Self.speakingVoice(for: lastDictationLanguageIdentifier) else { return }
+        speakWithSystem(text, voice: voice, rate: Self.currentSpeechPreferences().rateMultiplier)
+    }
+
+    private func speakWithSystem(_ text: String, voice: AVSpeechSynthesisVoice, rate: Double) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
-        utterance.rate = Self.speechRate(for: Self.currentSpeechPreferences().rateMultiplier)
+        utterance.rate = Self.speechRate(for: rate)
         synthesizer.speak(utterance)
     }
 
@@ -326,10 +327,7 @@ extension VoiceController {
             return
         }
         synthesizer.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: "This is Perry's voice.")
-        utterance.voice = voice
-        utterance.rate = Self.speechRate(for: Self.currentSpeechPreferences().rateMultiplier)
-        synthesizer.speak(utterance)
+        speakWithSystem("This is Perry's voice.", voice: voice, rate: Self.currentSpeechPreferences().rateMultiplier)
     }
 
     func copyReplyToClipboard(_ text: String, status: String) {

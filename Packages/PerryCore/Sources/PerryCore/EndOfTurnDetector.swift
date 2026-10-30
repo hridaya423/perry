@@ -9,15 +9,11 @@ public struct EndOfTurnDetector: Sendable {
     }
 
     public enum CommitReason: Equatable, Sendable {
-        case silence, hardCap, turnCap, userSent
+        case silence, hardCap, turnCap
     }
 
     public enum AbortReason: Equatable, Sendable {
-        case noSpeech, cancelled
-    }
-
-    public enum UserAction: Sendable {
-        case sendNow, cancel
+        case noSpeech
     }
 
     public struct Parameters: Sendable {
@@ -122,16 +118,6 @@ public struct EndOfTurnDetector: Sendable {
             self.lastWordEnd = lastWordEnd
         }
         return speaking ? nil : startSpeech(at: t)
-    }
-
-    public mutating func userAction(_ action: UserAction) -> Event? {
-        guard !finished else { return nil }
-        switch action {
-        case .sendNow:
-            return finish(speaking ? .commit(.userSent) : .abort(.noSpeech))
-        case .cancel:
-            return finish(.abort(.cancelled))
-        }
     }
 
     private mutating func startSpeech(at t: TimeInterval) -> Event {

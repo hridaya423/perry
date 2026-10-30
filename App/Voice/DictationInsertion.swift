@@ -193,7 +193,7 @@ extension VoiceController {
     private func learnDictationEdits(
         inserted: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
     ) async {
-        let insertedTokens = DictationCleanupGuard.tokens(inserted)
+        let insertedTokens = DictationWords.tokens(inserted)
         guard !insertedTokens.isEmpty else { return }
         guard let observed = focusedTextValue(target: target, bundleID: bundleID) else { return }
         let learned = PersonalDictionaryLearner.learn(

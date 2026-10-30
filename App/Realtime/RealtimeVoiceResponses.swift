@@ -153,7 +153,6 @@ struct RealtimeVoiceTransportCorrelation: Equatable, Sendable {
 enum RealtimeVoiceTranscriptSource: Equatable, Sendable {
     case realtime
     case fallback
-    case rerouted
 }
 
 struct RealtimeVoiceTranscriptCommit: Equatable, Sendable {

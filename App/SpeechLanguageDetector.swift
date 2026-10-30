@@ -14,23 +14,6 @@ enum SpeechLanguageDetector {
         return supportedIdentifiers.first { languageCode(for: $0) == detectedCode }
     }
 
-    static func rerouteTarget(
-        for transcript: String,
-        activeIdentifier: String,
-        supportedIdentifiers: [String],
-        rerouteAlreadyAttempted: Bool
-    ) -> String? {
-        guard !rerouteAlreadyAttempted,
-              let detectedIdentifier = localeIdentifier(
-                  for: transcript,
-                  supportedIdentifiers: supportedIdentifiers
-              ),
-              let activeCode = languageCode(for: activeIdentifier),
-              let detectedCode = languageCode(for: detectedIdentifier),
-              activeCode != detectedCode else { return nil }
-        return detectedIdentifier
-    }
-
     private static func languageCode(for identifier: String) -> String? {
         Locale(identifier: identifier).language.languageCode?.identifier.lowercased()
     }
