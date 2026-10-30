@@ -9,7 +9,6 @@ import PerryRuntimes
 
 typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
 typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
-typealias FullGuidePlanner = @MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep]
 typealias FinalizationPersistenceBarrier = @Sendable () async -> Void
 
 /// Fixture seams the DEBUG harness init and `--perry-debug-*` launch
@@ -24,7 +23,6 @@ struct DebugLaunchSeams {
     var screenContextLoader: EnvironmentProbe.ScreenContextLoader?
     var fullGuideCaptureLoader: FullGuideCaptureLoader?
     var fullGuideContinuationBarrier: FullGuideContinuationBarrier?
-    var fullGuidePlanner: FullGuidePlanner?
     var guidePlanner: (any GuidePlanner)?
     var finalizationBarrier: FinalizationBarrier?
     var typedVerifier: (any TypedActionVerifier)?

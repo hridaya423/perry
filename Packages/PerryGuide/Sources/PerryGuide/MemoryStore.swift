@@ -51,8 +51,6 @@ public struct MemoryConfiguration: Codable, Equatable, Sendable {
             result[category] = categoryToggles[category] ?? true
         }
     }
-
-    public static let goldfish = MemoryConfiguration(enabled: false)
 }
 
 public actor MemoryStore {
@@ -130,7 +128,6 @@ public actor MemoryStore {
         return true
     }
 
-    /// Recall used when planning; respects the same toggles as writing.
     public func recall(category: MemoryRecord.Category?, appBundleID: String?) -> [MemoryRecord] {
         guard configuration.enabled else { return [] }
         let now = Date()
@@ -167,7 +164,6 @@ public actor MemoryStore {
         }.map(\.element)
     }
 
-    /// PRD §4: one-click wipe.
     @discardableResult
     public func wipe() -> Bool {
         guard persist(configuration: configuration, records: [], includeMarkdown: false) else {

@@ -561,7 +561,6 @@ final class TalkCompletionTests: XCTestCase {
         func guideInteractiveFrames() -> [CGRect] { [] }
         func guideShowFullPath(_ viewPlan: EverythingViewPlan) {}
         func guideClearPresentation() {}
-        func guideClearHighlight() {}
         func guideClearFullPath() {}
         func guideTargetHint() -> CuaTargetHint { CuaTargetHint() }
         func guideAppBundleID(for targetHint: CuaTargetHint) -> String? { targetHint.bundleID }
@@ -832,7 +831,7 @@ final class TalkCompletionTests: XCTestCase {
             let guide = GuideSessionCoordinator(
                 sessionController: session, workers: CuaWorkerService(),
                 transcriptStore: TranscriptStore(directory: root), memoryStore: MemoryStore(storageDirectory: root),
-                storageDirectory: root, output: output, context: output,
+                output: output, context: output,
                 fullGuideCaptureLoader: { _, target in
                     XCTAssertEqual(target, CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid"))
                     captured = true
@@ -1089,7 +1088,6 @@ final class TalkClickToTalkTests: XCTestCase {
         func guideInteractiveFrames() -> [CGRect] { [] }
         func guideShowFullPath(_ viewPlan: EverythingViewPlan) {}
         func guideClearPresentation() {}
-        func guideClearHighlight() {}
         func guideClearFullPath() {}
     }
 

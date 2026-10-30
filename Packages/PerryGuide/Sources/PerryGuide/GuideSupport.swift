@@ -1,9 +1,6 @@
 import Foundation
-import PerryCore
-import PerryOverlay
 
-/// "Show me everything": paints the full annotated path at once — numbered
-/// markers plus arrows over a transparent overlay (PRD §4 Guide mode).
+/// The full annotated path, painted at once as numbered markers over the target window.
 public struct EverythingViewPlan: Equatable, Sendable {
     public struct Marker: Equatable, Sendable, Identifiable {
         public let id: Int
@@ -19,57 +16,34 @@ public struct EverythingViewPlan: Equatable, Sendable {
         }
     }
 
-    public struct Connector: Equatable, Sendable {
-        public let fromMarkerID: Int
-        public let toMarkerID: Int
-
-        public init(from fromMarkerID: Int, to toMarkerID: Int) {
-            self.fromMarkerID = fromMarkerID
-            self.toMarkerID = toMarkerID
-        }
-    }
-
-    public let goal: String
     public let markers: [Marker]
-    public let connectors: [Connector]
 
-    public init(goal: String, markers: [Marker], connectors: [Connector]) {
-        self.goal = goal
+    public init(markers: [Marker]) {
         self.markers = markers
-        self.connectors = connectors
     }
 }
 
 public enum EverythingViewBuilder {
-    /// Converts the visible-path steps plus the AX snapshot they were grounded
-    /// in into a paintable overlay plan. Steps whose targets are missing or
-    /// verbal are skipped rather than drawn in the wrong place.
-    public static func build(steps: [GuideStep], snapshot: AXSnapshot, goal: String = "") -> EverythingViewPlan? {
+    /// Steps whose targets are missing or verbal are skipped rather than drawn in the wrong place.
+    public static func build(steps: [GuideStep], snapshot: AXSnapshot) -> EverythingViewPlan? {
         var markers: [EverythingViewPlan.Marker] = []
-
         for (index, step) in steps.enumerated() {
             guard case .axElement(let stableID) = step.target,
                   let element = snapshot.element(withStableID: stableID) else { continue }
-            let center = element.center
             markers.append(
                 EverythingViewPlan.Marker(
                     id: index,
                     number: markers.count + 1,
-                    position: center,
+                    position: element.center,
                     caption: element.label ?? step.instruction
                 )
             )
         }
-
-        guard !markers.isEmpty else { return nil }
-
-        return EverythingViewPlan(goal: goal, markers: markers, connectors: zip(markers.dropFirst(), markers).map { next, current in
-            EverythingViewPlan.Connector(from: current.id, to: next.id)
-        })
+        return markers.isEmpty ? nil : EverythingViewPlan(markers: markers)
     }
 }
 
-/// Grammar for spoken/typed guide requests. PRD §4: type and talk co-equal.
+/// Grammar for spoken and typed guide requests.
 public enum GuideIntentParser {
     public enum Intent: Equatable, Sendable {
         case guide(goal: String)
@@ -107,7 +81,6 @@ public enum GuideIntentParser {
     private static func extractGoal(_ text: String, prefix: String) -> String {
         var remainder = text.dropFirst(prefix.count)
             .drop(while: { $0 == ":" || $0 == " " })
-        // "how do I X" reads better as a goal without the stray pronoun.
         if prefix == "how do i", remainder.lowercased().hasPrefix("i ") {
             remainder = remainder.dropFirst(2)
         }

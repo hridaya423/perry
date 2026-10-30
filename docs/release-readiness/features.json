@@ -1900,7 +1900,7 @@
         },
         {
           "kind": "source",
-          "reference": "Packages/PerryGuide/Sources/PerryGuide/HardwareAndKeys.swift"
+          "reference": "Packages/PerryGuide/Sources/PerryGuide/KeychainStore.swift"
         },
         {
           "kind": "unit-test",

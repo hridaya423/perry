@@ -22,27 +22,6 @@ final class HardwareAndKeysTests: XCTestCase {
         try store.deleteChecked(account: "test-key")
         XCTAssertNil(try store.readChecked(account: "test-key"))
     }
-
-    func testHardwareProbePassesOnQualifyingMachine() {
-        let probe = HardwareProbe()
-        let report = probe.evaluate(chipName: "Apple M3 Pro", physicalMemoryBytes: 18 * 1024 * 1024 * 1024)
-        XCTAssertTrue(report.passesFloor)
-        XCTAssertNil(report.reasonIfBelow)
-    }
-
-    func testHardwareProbeFailsUnderMemoryFloorWithSpecifics() {
-        let probe = HardwareProbe()
-        let report = probe.evaluate(chipName: "Apple M2", physicalMemoryBytes: 8 * 1024 * 1024 * 1024)
-        XCTAssertFalse(report.passesFloor)
-        XCTAssertEqual(report.reasonIfBelow, "8 GB of unified memory is under the 16 GB floor for usable 4–7B quantized models.")
-    }
-
-    func testHardwareProbeFailsOnIntel() {
-        let probe = HardwareProbe()
-        let report = probe.evaluate(chipName: "Intel Core i9", physicalMemoryBytes: 32 * 1024 * 1024 * 1024)
-        XCTAssertFalse(report.passesFloor)
-        XCTAssertTrue(report.reasonIfBelow?.contains("Apple silicon") == true)
-    }
 }
 
 final class RuntimeGuidePlannerTests: XCTestCase {

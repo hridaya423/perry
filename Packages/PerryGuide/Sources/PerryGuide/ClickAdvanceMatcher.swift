@@ -48,8 +48,6 @@ public struct ClickAdvanceMatcher: Sendable {
             : .miss
     }
 
-    /// The smallest actionable element under the point, skipping the intended
-    /// target — used to say "that's the Effects tab" on a wrong click.
     public func elementUnder(
         clickPoint: CGPointShim, elements: [AXElement], excluding stableID: String?
     ) -> AXElement? {

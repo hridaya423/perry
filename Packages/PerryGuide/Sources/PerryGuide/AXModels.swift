@@ -1,5 +1,4 @@
 import Foundation
-import PerryCore
 import CoreGraphics
 
 public struct AXElementFrame: Codable, Equatable, Sendable {
@@ -38,8 +37,6 @@ public struct AXElement: Codable, Equatable, Sendable, Identifiable {
 
     public var id: String { stableID }
 
-    /// Stable across re-reads of the same window; synthesized from role and
-    /// path so a Guide plan can re-find its target after the user acts.
     public let stableID: String
     public let role: Role
     public let label: String?
@@ -97,8 +94,6 @@ public struct AXElement: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// Coordinate value that survives Codable round-trips without importing
-/// CoreGraphics into model payloads.
 public struct CGPointShim: Codable, Equatable, Sendable {
     public let x: Double
     public let y: Double
@@ -136,11 +131,7 @@ public extension Array where Element == AXElement {
         first { $0.stableID == id }
     }
 
-    /// The same control in this later read. Element ids are per read
-    /// (cua-driver tokens change on every observation), so identity comes
-    /// from what the element is: its role and label, and among look-alikes
-    /// the one nearest its old frame. `relabeled` also accepts a control of
-    /// the same role at the same frame whose label changed in place.
+    /// The same control in a later read: element ids change per read, so match by role and label, nearest old frame first.
     func counterpart(of element: AXElement, relabeled: Bool = false) -> AXElement? {
         let twins = filter { $0.role == element.role && $0.rawRole == element.rawRole && $0.label == element.label }
         if let nearest = twins.min(by: { element.frame.distance(to: $0.frame) < element.frame.distance(to: $1.frame) }) {
@@ -160,37 +151,7 @@ extension AXElementFrame {
     }
 }
 
-/// Screen-change detection for step-follows-you: after pointing at control N,
-/// Perry waits while you act, then confirms the screen changed before moving on.
-public struct ScreenChangeDetector: Sendable {
-    private let minimumChangedElements: Int
-
-    public init(minimumChangedElements: Int = 1) {
-        self.minimumChangedElements = minimumChangedElements
-    }
-
-    /// Compares two snapshots by stable IDs plus labels/roles; returns true
-    /// when at least `minimumChangedElements` differ.
-    public func didChange(from before: AXSnapshot, to after: AXSnapshot) -> Bool {
-        let beforeKeys = Set(before.elements.map(Self.fingerprint))
-        let afterKeys = Set(after.elements.map(Self.fingerprint))
-        let removed = beforeKeys.subtracting(afterKeys).count
-        let added = afterKeys.subtracting(beforeKeys).count
-        return (removed + added) >= minimumChangedElements
-    }
-
-    /// Title change alone counts (e.g. navigating System Settings panes).
-    public func didChange(from before: AXSnapshot, titleAfter: String) -> Bool {
-        before.windowTitle != titleAfter
-    }
-
-    static func fingerprint(_ element: AXElement) -> String {
-        "\(element.stableID)|\(element.role.rawValue)|\(element.label ?? "")|\(element.value ?? "")"
-    }
-}
-
-/// Accessibility reports geometry in global coordinates with a top-left
-/// origin; AppKit screens use bottom-left. Convert once, here, everywhere.
+/// Accessibility geometry is global with a top-left origin; AppKit screens use bottom-left.
 public enum AXCoordinateConverter {
     public static func appKitRect(
         axX: Double,

@@ -294,41 +294,16 @@ final class BackgroundTaskControlScopeTests: XCTestCase {
 
 @MainActor
 final class GuideCallbackAdmissionTests: XCTestCase {
-    func testClosedGuideSessionRejectsLateCallbacks() async throws {
-        let (finishStream, finishContinuation) = AsyncStream<Void>.makeStream()
-        let scope = GuideWorkerSession(
-            id: UUID(),
-            targetStore: CuaGuideTargetStore(),
-            finishStream: finishStream,
-            finishContinuation: finishContinuation
-        )
+    func testClosedGuideSessionRejectsLateCallbacks() async {
+        let scope = GuideWorkerSession(id: UUID())
         let gate = TestContinuationGate()
-        let callbackID = UUID()
-        let callback = Task { @MainActor in
-            await gate.wait()
-        }
+        scope.start(.presentation) { await gate.wait() }
+        scope.closeAndCancel()
 
-        XCTAssertTrue(scope.addCallback(callback, id: callbackID))
-        scope.closeCallbackAdmission()
-        XCTAssertNil(scope.reserveAction())
-
-        let lateGate = TestContinuationGate()
-        let lateCallback = Task { @MainActor in
-            await lateGate.wait()
-            if !Task.isCancelled {
-                XCTFail("A callback registered after closure")
-            }
-        }
-        XCTAssertFalse(scope.addCallback(lateCallback, id: UUID()))
-        scope.cancelCallbacks()
+        XCTAssertFalse(scope.startAction { XCTFail("An action started after closure") })
+        scope.start(.repoint) { XCTFail("A callback registered after closure") }
         await gate.release()
-        await lateGate.release()
-        for task in scope.callbacks() {
-            try await finishControlTask(task)
-        }
-        try await finishControlTask(lateCallback)
-        scope.removeCallback(callbackID)
-        XCTAssertTrue(scope.callbacks().isEmpty)
+        await scope.drain()
     }
 }
 

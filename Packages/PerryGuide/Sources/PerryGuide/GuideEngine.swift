@@ -1,11 +1,7 @@
 import Foundation
 import PerryCore
 
-/// Receding-horizon guide engine. There is no upfront plan: after every
-/// verified user action the engine re-observes the live window and asks the
-/// planner for the next single step, so each instruction is grounded in the
-/// UI the user actually sees. Every planner-produced step is validated
-/// against the observation before it is presented.
+/// Receding-horizon guide engine: after each verified user action it re-observes the live window and asks the planner for the next single step.
 public actor GuideEngine {
     public enum Phase: Equatable, Sendable {
         case idle
@@ -19,11 +15,8 @@ public actor GuideEngine {
     private let clickMatcher: ClickAdvanceMatcher
     private(set) public var phase: Phase
     private(set) public var progress = GuideProgress()
-    /// Every step the user was shown, in order — Back re-presents the
-    /// previous one rather than asking the planner for it again.
     private var presentedSteps: [(step: GuideStep, snapshot: AXSnapshot)] = []
 
-    /// True once a second presented step exists to go back to.
     public var canGoBack: Bool {
         currentStepIndex != nil && presentedSteps.count >= 2
     }
@@ -33,14 +26,8 @@ public actor GuideEngine {
     private var hasRepointed = false
     private var goal = ""
     private var context: GuideContext = .empty
-    /// The user's answer to a `needsInput` question — merged into the next
-    /// planner call only, then cleared so a later question can't silently
-    /// reuse it.
     private var inputAnswer: String?
     private var maximumSteps: Int?
-    /// The seeded horizon: steps the planner predicted up front. Consumed
-    /// while each target still validates against the live window; the first
-    /// deviation discards the rest and falls back to a live replan.
     private var plannedSteps: [GuideStep] = []
     private var plannedFrom: AXSnapshot?
 
@@ -55,13 +42,10 @@ public actor GuideEngine {
         self.phase = .idle
     }
 
-    /// Starts the dynamic loop: observe, ask the planner for one step, present
-    /// it. `maximumSteps` bounds the whole session, not a prefix of a plan.
+    /// Observes, asks the planner for one step, and presents it. `maximumSteps` bounds the whole session.
     public func start(goal: String, maximumSteps: Int? = nil, context: GuideContext = .empty) async throws -> GuideStep? {
         reset(goal: goal, context: context, maximumSteps: maximumSteps)
         let observation = try await observer.observe()
-        // Seed the horizon with one plan call; each later step validates
-        // against the live window instead of paying a planner round-trip.
         plannedSteps = (try? await planner.visiblePath(goal: goal, observation: observation, context: context)) ?? []
         plannedFrom = observation.snapshot
         guard let (step, planned) = try await nextValidStep(observation: observation) else {
@@ -72,9 +56,7 @@ public actor GuideEngine {
         return step
     }
 
-    /// Enters the loop at a marker selected from the visible path. Steps
-    /// before the selected one were seen on the map, so they count toward the
-    /// bound and are never re-suggested.
+    /// Enters the loop at a marker chosen from the visible path; earlier steps count toward the bound and are never re-suggested.
     public func start(
         goal: String,
         observation: GuideObservation,
@@ -91,8 +73,6 @@ public actor GuideEngine {
         for prior in steps[..<selectedIndex] {
             progress.recordSkipped(prior)
         }
-        // The map's remaining steps are the seeded horizon — same plan, no
-        // extra planner call when the user picks up mid-path.
         plannedSteps = Array(steps.dropFirst(selectedIndex + 1))
         plannedFrom = observation.snapshot
         let step = try GuideTargetValidator.validated(steps[selectedIndex], in: observation)
@@ -113,11 +93,7 @@ public actor GuideEngine {
         return GuidePresentation(step: step, target: target, snapshot: observation.snapshot)
     }
 
-    /// Re-observes once to repoint the current step's target. A stale target
-    /// is re-located by stable ID; it is never executed, so a moved window
-    /// simply re-paints the highlight at its new frame. `force` is for an
-    /// explicit user Re-point request; the automatic quiet-minute repoint
-    /// stays one-shot.
+    /// Re-observes to repoint the current step's target. `force` is for an explicit user request; the automatic repoint is one-shot.
     public func refreshPresentation(force: Bool = false) async throws -> GuidePresentation? {
         guard let step = currentStep, let baseline = presentationObservation else { return nil }
         guard !hasRepointed || force else { return currentPresentation() }
@@ -185,11 +161,7 @@ public actor GuideEngine {
         return await presentNext(observation: observation)
     }
 
-    /// Re-present the previous presented step ("Back") so the user can see
-    /// its instruction again. The current step is unpresented — it counts
-    /// neither toward the step bound nor the completed history — and the
-    /// previous step's target is re-validated against a fresh observation
-    /// so a moved or changed window never re-shows a stale mark.
+    /// Re-presents the previous step against a fresh observation; the current step is unpresented.
     public func back() async -> AdvanceResult {
         guard currentStepIndex != nil, presentedSteps.count >= 2 else {
             return .notPresenting
@@ -228,11 +200,7 @@ public actor GuideEngine {
         return .wentBack(toStep: previous, stepIndex: progress.presentedCount - 1)
     }
 
-    /// Continues after a planner `needsInput` pause: the chosen answer joins
-    /// the next planner call alongside a fresh observation. `.idle` is
-    /// accepted because a `needsInput` during `start` throws before any step
-    /// is presented; an idle engine that never started has no goal and is
-    /// rejected.
+    /// Continues after a `needsInput` pause with the user's answer.
     public func resume(withAnswer answer: String) async -> AdvanceResult {
         guard !goal.isEmpty else { return .notPresenting }
         switch phase {
@@ -268,18 +236,10 @@ public actor GuideEngine {
     }
 
     private func reset(goal: String, context: GuideContext, maximumSteps: Int?) {
-        phase = .idle
+        stop()
         self.goal = goal
         self.context = context
         self.maximumSteps = maximumSteps
-        currentStep = nil
-        presentationObservation = nil
-        actionBaseline = nil
-        progress = GuideProgress()
-        hasRepointed = false
-        inputAnswer = nil
-        plannedSteps = []
-        plannedFrom = nil
         presentedSteps = []
     }
 
@@ -290,19 +250,10 @@ public actor GuideEngine {
         }
     }
 
-    /// How long the first wait listens for the action's UI effect. When
-    /// nothing ever signals, verification costs no more than the legacy poll.
     private static let firstSignalWindow: Duration = .milliseconds(500)
-    /// Total window a postcondition may take to become true. Signals that
-    /// keep arriving reopen the read inside this bound — never beyond it.
     private static let verificationWindow: Duration = .milliseconds(1500)
-    /// Each signaled wake re-reads the AX tree; the cap keeps a chatty app
-    /// from turning verification into a capture storm.
     private static let maxVerificationReads = 4
 
-    /// Event-driven verification: the observer waits on AX change signals
-    /// rather than a fixed timer, and each wake re-reads only the element
-    /// index — postcondition checks never need another screen capture.
     private func verifyAndAdvance(step: GuideStep, baseline: GuideObservation, stepIndex: Int, userConfirmed: Bool = false) async -> AdvanceResult {
         let deadline = ContinuousClock.now.advanced(by: Self.verificationWindow)
         var reads = 0
@@ -312,19 +263,10 @@ public actor GuideEngine {
                 try Task.checkCancellation()
                 let remaining = deadline - ContinuousClock.now
                 if reads > 0, remaining <= .zero { break }
-                // A signal wait only pays off when a postcondition needs
-                // time to become true. Explicit confirms and postcondition-
-                // less clicks have nothing to wait for — read immediately
-                // instead of paying the first-signal window as dead time.
                 let nothingToWaitFor = userConfirmed || step.postcondition == nil
                 let window = reads == 0 ? (nothingToWaitFor ? .zero : min(remaining, Self.firstSignalWindow)) : remaining
                 let signaled = await observer.awaitUIChange(within: max(window, .zero))
-                // A deadline without a signal means the UI went quiet — the
-                // last read's verdict stands rather than paying another.
                 if reads > 0, !signaled { break }
-                // A postconditionless click on the target counts as the user
-                // doing the step — the element payload is never consulted, so
-                // probe identity instead of paying for the full AX walk.
                 observation = step.postcondition == nil && !userConfirmed
                     ? try await observer.probeTarget()
                     : try await observer.observeElements()
@@ -336,8 +278,6 @@ public actor GuideEngine {
                 phase = .waitingForUser(stepIndex: stepIndex)
                 return .blocked(reason: "I couldn’t confirm that step.")
             }
-            // stop()/skip() can interleave across the suspensions — a stale
-            // verification must never advance past a step that's gone.
             guard currentStep?.id == step.id else { return .notPresenting }
             reads += 1
             guard let postcondition = step.postcondition else {
@@ -366,9 +306,6 @@ public actor GuideEngine {
         return .stillWaiting(stepIndex: stepIndex)
     }
 
-    /// The control the user clicked vanished, changed in place, or opened
-    /// its menu, so the click took effect even when the planner's proof
-    /// cannot be read.
     static func clickedControlChanged(_ step: GuideStep, from before: AXSnapshot, to after: AXSnapshot) -> Bool {
         guard case .axElement(let id) = step.target, let clicked = before.element(withStableID: id) else { return false }
         if clicked.role == .menu, !before.elements.contains(where: { $0.role == .menuItem }),
@@ -379,10 +316,6 @@ public actor GuideEngine {
         return now.label != clicked.label || now.value != clicked.value
     }
 
-    /// Asks the planner for the next step from this observation, validates it,
-    /// and presents it — or finishes when the planner has nothing honest left.
-    /// Planner and validation failures surface as blocked, never as a silent
-    /// success.
     private func presentNext(observation: GuideObservation, allowsNewWindow: Bool = false) async -> AdvanceResult {
         do {
             let observation = try await planningObservation(observation)
@@ -412,8 +345,6 @@ public actor GuideEngine {
         return try await observer.observe()
     }
 
-    /// Planner call wrapped in the trust boundary: protected observations and
-    /// targets that don't validate against the live window both throw.
     private func nextValidStep(observation: GuideObservation, allowsNewWindow: Bool = false) async throws -> (GuideStep, GuideObservation)? {
         var observation = observation
         try GuideTargetValidator.requireUnprotected(observation)
@@ -424,18 +355,11 @@ public actor GuideEngine {
             throw GuidePlannerError.blocked("The guide stopped at its step limit. Perry didn’t check that the task is done.")
         }
         try Task.checkCancellation()
-        // The input answer is consumed once: it answers the question it was
-        // given for, then leaves the context so a later unrelated question
-        // can't silently reuse it.
         let answer = inputAnswer
         inputAnswer = nil
         if !plannedSteps.isEmpty {
             let planned = plannedSteps.removeFirst()
             let candidate = plannedFrom.map { planned.rebound(from: $0, to: observation.snapshot) } ?? planned
-            // Mid-run, a planned step that no longer grounds is a deviation:
-            // drop the stale horizon and replan. At session start there is no
-            // prior state to deviate from — a bad first step is the planner's
-            // own output and surfaces instead of being silently retried.
             if presentationObservation != nil {
                 if let validated = try? GuideTargetValidator.validated(candidate, in: observation) {
                     return (validated, observation)
@@ -486,15 +410,8 @@ public actor GuideEngine {
         phase = .presenting(stepIndex: progress.presentedCount - 1)
     }
 
-    /// Same app, same live window — unless the presented step predicted a new
-    /// window (`opensWindow`), in which case a different windowID under the
-    /// same pid/bundle/generation is the expected outcome, not a violation.
-    /// Window identity is carried by pid + CGWindowID + bundle — all stable
-    /// across a driver respawn. Connection generation is deliberately not
-    /// compared: element tokens are only resolved inside the observation that
-    /// produced them, so a restarted driver can never smuggle stale tokens
-    /// into a click, and blocking on generation would kill every guide the
-    /// moment the driver reconnects under a window that never moved.
+    // Connection generation is not compared: element tokens only resolve inside the observation that produced them,
+    // and comparing it would end every guide when the driver reconnects under an unmoved window.
     private func requireSameTarget(_ observation: GuideObservation, as baseline: GuideObservation, allowsNewWindow: Bool = false) throws {
         guard let processID = baseline.processID,
               let windowID = baseline.windowID,
@@ -505,7 +422,6 @@ public actor GuideEngine {
             throw GuidePlannerError.blocked("The target window changed or its identity is unavailable. Start a new guide.")
         }
     }
-
 }
 
 public struct GuidePresentation: Equatable, Sendable {

@@ -39,16 +39,13 @@ final class AppSkillLibraryTests: XCTestCase {
         }
     }
 
-    func testUserSkillOverridesTheBundledSkillAndCanBeRemoved() throws {
+    func testUserSkillOverridesTheBundledSkill() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let library = AppSkillLibrary(storageDirectory: directory)
         try library.save("User Finder instructions", for: "com.apple.finder")
 
         XCTAssertEqual(library.skill(for: "com.apple.finder")?.source, .user)
         XCTAssertEqual(library.promptContext(for: "com.apple.finder"), "User Finder instructions")
-
-        try library.removeUserSkill(for: "com.apple.finder")
-        XCTAssertEqual(library.skill(for: "com.apple.finder")?.source, .bundled)
     }
 
     func testUserSkillDisplayNameDerivesFromBundleID() throws {

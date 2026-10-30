@@ -88,7 +88,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return host
     }
     let intentCards = IntentCardPresenter()
-    private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
     lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
         onSpeak: { [weak self] text in self?.voice.speak(text) }
@@ -162,7 +161,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         cuaHealthLoader: EnvironmentProbe.CuaHealthLoader? = nil,
         fullGuideCaptureLoader: FullGuideCaptureLoader? = nil,
         fullGuideContinuationBarrier: FullGuideContinuationBarrier? = nil,
-        fullGuidePlanner: FullGuidePlanner? = nil,
         guidePlanner: (any GuidePlanner)? = AXGuidePlanner(),
         finalizationBarrier: FinalizationBarrier? = nil,
         finalizationPersistenceBarrier: FinalizationPersistenceBarrier? = nil,
@@ -180,7 +178,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             screenContextLoader: screenContextLoader,
             fullGuideCaptureLoader: fullGuideCaptureLoader,
             fullGuideContinuationBarrier: fullGuideContinuationBarrier,
-            fullGuidePlanner: fullGuidePlanner,
             guidePlanner: guidePlanner,
             finalizationBarrier: finalizationBarrier,
             typedVerifier: typedVerifier,
@@ -478,7 +475,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// Takes every session mark off the overlay, hides the overlay and panel,
     /// and lets the wake word listen again.
     func clearSessionSurfaces() {
-        guideOverlay.clearAll()
+        overlayState.clearGuideOverlays()
         overlayManager.fadeOutAndHideOverlay()
         hidePanel()
         voice.refreshWakeWordListener()
