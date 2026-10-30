@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import Darwin
 import XCTest
+import PerryBrain
 import PerryCore
 import PerryGuide
 import PerryRuntimes
@@ -601,20 +602,15 @@ final class CuaDriverClientTests: XCTestCase {
         }
     }
 
-    func testVerificationRequiresExplicitPositiveResult() {
-        XCTAssertFalse(CuaDriverClient.verificationSucceeded(nil))
-        XCTAssertFalse(CuaDriverClient.verificationSucceeded(["verified": false]))
-        XCTAssertFalse(CuaDriverClient.verificationSucceeded(["status": "complete"]))
-        XCTAssertTrue(CuaDriverClient.verificationSucceeded(["matched": true]))
-        XCTAssertTrue(CuaDriverClient.verificationSucceeded(["status": "verified"]))
-    }
-
     func testTextInsertionVerificationRejectsAttemptedAndUnverifiableEffects() {
-        XCTAssertFalse(CuaDriverClient.actionWasVerified(nil))
-        XCTAssertFalse(CuaDriverClient.actionWasVerified(["effect": "attempted"]))
-        XCTAssertFalse(CuaDriverClient.actionWasVerified(["effect": "unverifiable", "verified": false]))
-        XCTAssertTrue(CuaDriverClient.actionWasVerified(["effect": "confirmed"]))
-        XCTAssertTrue(CuaDriverClient.actionWasVerified(["verified": true]))
+        func output(_ structured: [String: JSONValue]) -> CuaToolOutput {
+            CuaToolOutput(.object(["structuredContent": .object(structured)]))
+        }
+        XCTAssertFalse(CuaToolOutput(.object([:])).effectConfirmed)
+        XCTAssertFalse(output(["effect": .string("attempted")]).effectConfirmed)
+        XCTAssertFalse(output(["effect": .string("unverifiable"), "verified": .bool(false)]).effectConfirmed)
+        XCTAssertTrue(output(["effect": .string("confirmed")]).effectConfirmed)
+        XCTAssertTrue(output(["verified": .bool(true)]).effectConfirmed)
     }
 
     func testStaleReaderCannotTearDownReplacementConnection() async throws {
@@ -957,7 +953,7 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         let sessionID = "unmatched-label"
         _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
-        let target = ComputerTarget(stableID: nil, label: "Cedar review\nNoor owns the venue checklist.", coordinates: ComputerCoordinates(x: 40, y: 60))
+        let target = ComputerTarget.label("Cedar review\nNoor owns the venue checklist.", point: ComputerCoordinates(x: 40, y: 60))
         _ = try await client.execute(ComputerAction(stepID: "text-area", operation: .click(target)), sessionID: sessionID)
         let click = try XCTUnwrap(requestLines().last { $0.contains("\"name\":\"click\"") })
         XCTAssertTrue(click.contains("\"x\":40"), click)
@@ -966,7 +962,7 @@ final class CuaDriverClientTests: XCTestCase {
 
     func testOnlyAForegroundClientRetriesRefusedBackgroundInputInTheForeground() async throws {
         try Data().write(to: testDirectory.appendingPathComponent("refuse-background"))
-        let point = ComputerTarget(stableID: nil, label: nil, coordinates: ComputerCoordinates(x: 5, y: 5))
+        let point = ComputerTarget.point(ComputerCoordinates(x: 5, y: 5))
         for allowed in [false, true] {
             let client = CuaDriverClient(configuration: CuaDriverConfiguration(
                 executableURL: driverURL,
@@ -988,7 +984,7 @@ final class CuaDriverClientTests: XCTestCase {
 
     func testOnlyAForegroundClientSendsFinderInputInTheForeground() async throws {
         try Data().write(to: testDirectory.appendingPathComponent("finder"))
-        let point = ComputerTarget(stableID: nil, label: nil, coordinates: ComputerCoordinates(x: 5, y: 5))
+        let point = ComputerTarget.point(ComputerCoordinates(x: 5, y: 5))
         for allowed in [false, true] {
             let client = CuaDriverClient(configuration: CuaDriverConfiguration(
                 executableURL: driverURL,
@@ -1011,7 +1007,7 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         let sessionID = "snapshot-token"
         _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
-        let area = ComputerTarget(stableID: "s0001:4", label: nil, coordinates: ComputerCoordinates(x: 50, y: 50))
+        let area = ComputerTarget.element(id: "s0001:4", label: nil, point: ComputerCoordinates(x: 50, y: 50))
         _ = try await client.execute(ComputerAction(stepID: "key", operation: .pressKey(key: "end", modifiers: [], target: area)), sessionID: sessionID)
         let lines = requestLines()
         XCTAssertEqual(lines.filter { $0.contains("\"name\":\"get_window_state\"") }.count, 1)
@@ -1171,7 +1167,7 @@ final class CuaDriverClientTests: XCTestCase {
             _ = try await requester.value
             XCTFail("a timed-out action completed")
         } catch let error as CuaDriverError {
-            XCTAssertEqual(error, .protocolFailure("request timed out"))
+            XCTAssertEqual(error, .requestTimedOut)
         } catch {
             XCTFail("timed-out action failed with an unexpected error: \(error)")
         }
@@ -1233,7 +1229,7 @@ final class CuaDriverClientTests: XCTestCase {
             _ = try await requester.value
             XCTFail("a timed-out action completed")
         } catch let error as CuaDriverError {
-            XCTAssertEqual(error, .protocolFailure("request timed out"))
+            XCTAssertEqual(error, .requestTimedOut)
         } catch {
             XCTFail("timed-out action failed with an unexpected error: \(error)")
         }
@@ -2140,21 +2136,24 @@ private struct AlwaysVerifiedTypedVerifier: TypedActionVerifier {
 }
 
 final class CuaLabelMatchTests: XCTestCase {
-    private func element(_ label: String, _ token: String) -> [String: Any] {
-        ["label": label, "element_token": token]
+    private func state(_ elements: [(label: String, token: String)]) throws -> CuaWindowState {
+        let payload = JSONValue.object(["structuredContent": .object([
+            "elements": .array(elements.map { .object(["label": .string($0.label), "element_token": .string($0.token)]) }),
+        ])])
+        return try XCTUnwrap(CuaToolOutput(payload).structure(CuaWindowState.self))
     }
 
-    func testAnExactLabelBeatsALongerOneThatContainsIt() {
-        let match = CuaDriverClient.uniqueLabelMatch("Save", in: [element("Save As…", "s1:1"), element("Save", "s1:2")])
-        XCTAssertEqual(match?["element_token"] as? String, "s1:2")
+    func testAnExactLabelBeatsALongerOneThatContainsIt() throws {
+        let window = try state([("Save As…", "s1:1"), ("Save", "s1:2")])
+        XCTAssertEqual(window.uniqueTokenMatching(label: "Save"), "s1:2")
     }
 
-    func testTwoControlsWithTheSameLabelAreAmbiguous() {
-        XCTAssertNil(CuaDriverClient.uniqueLabelMatch("Close", in: [element("Close", "s1:1"), element("Close", "s1:2")]))
+    func testTwoControlsWithTheSameLabelAreAmbiguous() throws {
+        XCTAssertNil(try state([("Close", "s1:1"), ("Close", "s1:2")]).uniqueTokenMatching(label: "Close"))
     }
 
-    func testAPartialLabelMatchesOnlyWhenItIsTheOnlyOne() {
-        XCTAssertEqual(CuaDriverClient.uniqueLabelMatch("Export", in: [element("Export PDF…", "s1:3")])?["element_token"] as? String, "s1:3")
-        XCTAssertNil(CuaDriverClient.uniqueLabelMatch("Save", in: [element("Save As…", "s1:1"), element("Don’t Save", "s1:2")]))
+    func testAPartialLabelMatchesOnlyWhenItIsTheOnlyOne() throws {
+        XCTAssertEqual(try state([("Export PDF…", "s1:3")]).uniqueTokenMatching(label: "Export"), "s1:3")
+        XCTAssertNil(try state([("Save As…", "s1:1"), ("Don’t Save", "s1:2")]).uniqueTokenMatching(label: "Save"))
     }
 }
