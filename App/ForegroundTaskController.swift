@@ -133,17 +133,6 @@ final class ForegroundTaskController: ObservableObject {
         activityStripState.apply(sessionState: state)
     }
 
-    @discardableResult
-    func transitionSession(_ operation: () throws -> Void) -> Bool {
-        do {
-            try operation()
-            return true
-        } catch {
-            hooks.setStatus("I stopped because something changed unexpectedly. Try again.")
-            return false
-        }
-    }
-
     func cancelInvocationIfCurrent(_ attemptID: UUID) {
         guard sessionController.isInvoking(attemptID) else { return }
         _ = try? sessionController.cancelInvocation(attemptID)
@@ -275,7 +264,7 @@ final class ForegroundTaskController: ObservableObject {
 
     func presentRunStart(_ execution: ExecutionSessionState, attemptID: UUID, bubble: String) -> Bool {
         guard sessionController.beginInvokingIfNeeded(attemptID: attemptID),
-              transitionSession({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
+              sessionController.transition({ try sessionController.startExecution(execution, attemptID: attemptID) }) else {
             return false
         }
         hooks.setTranscriptPreview(execution.goal)
@@ -351,7 +340,7 @@ final class ForegroundTaskController: ObservableObject {
             lifecycle: .starting
         )
         guard presentRunStart(execution, attemptID: attemptID, bubble: "Working on \(goal)…"),
-              transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return nil }
+              sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return nil }
         hooks.setStatus("Working…")
 
         let threadID = conversationID ?? UUID()
@@ -385,7 +374,7 @@ final class ForegroundTaskController: ObservableObject {
                 hooks.setStatus(summary)
                 guard !coordinator.toolIsReadOnly(named: call.name) else { break }
                 actionCalls[call.id] = summary
-                transitionSession {
+                sessionController.transition {
                     try sessionController.recordExecutionStep(
                         id: call.id,
                         summary: summary,
@@ -467,7 +456,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     func pause() {
-        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard let activeRun, sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         hooks.setStatus("Pausing before the next step.")
         activeRun.pause()
     }
@@ -477,14 +466,14 @@ final class ForegroundTaskController: ObservableObject {
             continueFromHuman()
             return
         }
-        guard let activeRun, transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+        guard let activeRun, sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
         hooks.setStatus("Resuming the task.")
         activeRun.resume()
     }
 
     func takeOver() {
         guard let activeRun, !handoffToHuman else { return }
-        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         if case .executing(let execution) = sessionController.state {
             handoffGoal = execution.goal
         }
@@ -501,7 +490,7 @@ final class ForegroundTaskController: ObservableObject {
         handoffGoal = nil
         activityStripState.handedToHuman = false
         if activeRun.continuesInPlace {
-            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard sessionController.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
             hooks.setStatus("Continuing. I’ll check what you did.")
             activeRun.resume()
             activeRun.steer("The user took over and did the current step themselves. Verify the result on screen, then continue the goal.")
@@ -545,7 +534,7 @@ final class ForegroundTaskController: ObservableObject {
             hooks.setStatus("Steering: \(trimmed)")
             return
         }
-        guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
+        guard sessionController.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
         handoffGoal = "\(execution.goal) — user steered: \(trimmed)"
         handoffToHuman = true
         hooks.setStatus("Replanning with your instruction…")
@@ -564,7 +553,7 @@ final class ForegroundTaskController: ObservableObject {
         }
         let attemptID = UUID()
         var goal: String?
-        guard transitionSession({ goal = try sessionController.retry(attemptID: attemptID) }),
+        guard sessionController.transition({ goal = try sessionController.retry(attemptID: attemptID) }),
               let goal else { return }
         foregroundActivityGeneration = UUID()
         startGoal(goal, attemptID: attemptID, threadID: nil, targetHint: nil)
@@ -627,13 +616,13 @@ final class ForegroundTaskController: ObservableObject {
         overlayState.buddyState = completion.outcome == .failed || !finalization.historySaved ? .blocked : .success
         hooks.setStatus(summary)
         if completion.outcome == .failed || !finalization.historySaved {
-            transitionSession {
+            sessionController.transition {
                 try sessionController.fail(
                     SessionFailure(taskID: execution.taskID, goal: execution.goal, message: summary)
                 )
             }
         } else {
-            transitionSession {
+            sessionController.transition {
                 try sessionController.report(summary: summary, outcome: finalizationOutcome.isCompleted ? .completed : .stopped)
             }
         }
@@ -661,7 +650,7 @@ final class ForegroundTaskController: ObservableObject {
             }
             self.activityStripState.isExpanded = false
             NotchPresentation.shared.remove(self.activityStripID)
-            self.transitionSession { try self.sessionController.completeDismissal() }
+            self.sessionController.transition { try self.sessionController.completeDismissal() }
         }
     }
 

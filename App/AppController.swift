@@ -212,18 +212,10 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         return false
     }
 
-    @discardableResult
-    private func transitionSession(_ operation: () throws -> Void) -> Bool {
-        do {
-            try operation()
-            return true
-        } catch {
-            sessionStatus = "I stopped because something changed unexpectedly. Try again."
-            return false
-        }
-    }
-
     private func observeSessionState() {
+        sessionController.onTransitionRejected = { [weak self] in
+            self?.sessionStatus = "I stopped because something changed unexpectedly. Try again."
+        }
         runtimeChoicesObservation = runtimes.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -413,7 +405,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func wake(cue: Bool = true) {
-        guard isIdle, transitionSession({ try sessionController.wake() }) else { return }
+        guard isIdle, sessionController.transition({ try sessionController.wake() }) else { return }
         voice.refreshWakeWordListener()
         sessionStatus = "Listening for a request."
         transcriptPreview = ""

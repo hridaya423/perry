@@ -285,6 +285,18 @@ struct IllegalSessionTransitionError: Error, Equatable {
 @MainActor
 final class SessionController: ObservableObject {
     @Published private(set) var state: SessionState = .idle
+    var onTransitionRejected: (() -> Void)?
+
+    @discardableResult
+    func transition(_ operation: () throws -> Void) -> Bool {
+        do {
+            try operation()
+            return true
+        } catch {
+            onTransitionRejected?()
+            return false
+        }
+    }
 
 #if DEBUG
     func debugSet(_ state: SessionState) {

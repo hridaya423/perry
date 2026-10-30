@@ -110,7 +110,7 @@ final class GuideSessionCoordinator {
     func startGuiding(goal: String, threadID: UUID = UUID(), targetHint: CuaTargetHint? = nil, full: Bool = false, waitingInput: PerryThread.WaitingInput? = nil) -> Task<AgentFinish, Never>? {
         guard guideAdmissionOpen else { return nil }
         let attemptID = sessionController.currentOrFreshAttemptID
-        guard beginInvokingIfNeeded(attemptID: attemptID) else {
+        guard sessionController.beginInvokingIfNeeded(attemptID: attemptID) else {
             output?.guideSetStatus("Finish or stop what I’m doing first.")
             return nil
         }
@@ -219,7 +219,7 @@ final class GuideSessionCoordinator {
             }
             let handoff = GuideHandoff(threadID: guide.threadID, goal: guide.goal, target: target)
             let attemptID = UUID()
-            guard self.dismissIfActive(), self.beginInvokingIfNeeded(attemptID: attemptID) else { return }
+            guard self.dismissIfActive(), self.sessionController.beginInvokingIfNeeded(attemptID: attemptID) else { return }
             self.output?.guideSetStatus("Saving the guide before continuing…")
             await scope.scopeTask?.value
             guard self.guideAdmissionOpen,
@@ -265,16 +265,6 @@ final class GuideSessionCoordinator {
         )
     }
 
-    func transitionSession(_ operation: () throws -> Void) -> Bool {
-        do {
-            try operation()
-            return true
-        } catch {
-            output?.guideSetStatus("I stopped because something changed unexpectedly. Try again.")
-            return false
-        }
-    }
-
     func schedule(_ slot: GuideWorkerSession.Slot, after delay: Duration, _ body: @escaping @MainActor (GuideSessionCoordinator, UUID) async -> Void) {
         guard let guideID = activeGuideID, let scope = currentGuideScope else { return }
         scope.start(slot) { [weak self] in
@@ -295,7 +285,7 @@ final class GuideSessionCoordinator {
         guideControlsState.targetLabel = nil
         guideControlsState.hasPostcondition = step.postcondition != nil
         showGuideControls()
-        _ = transitionSession { try sessionController.recordGuideStep(id: step.id, instruction: step.instruction, actionable: !step.target.isVerbal) }
+        _ = sessionController.transition { try sessionController.recordGuideStep(id: step.id, instruction: step.instruction, actionable: !step.target.isVerbal) }
         let guideID = scope.id
         scope.start(.presentation) { [weak self] in
             guard let self, let presentation = await engine.currentPresentation(), presentation.step.id == step.id, self.activeGuideID == guideID else { return }
@@ -317,7 +307,7 @@ final class GuideSessionCoordinator {
         output?.guideSetStatus(isComplete ? "Guide complete." : finalSummary)
         output?.guidePlay(isComplete ? .done : .fail)
         output?.guideSetBuddyState(isComplete ? .success : (outcome == .stopped ? .idle : .blocked))
-        guard transitionSession({ try sessionController.finishGuide(summary: finalSummary, outcome: isComplete ? .completed : .stopped) }) else { return }
+        guard sessionController.transition({ try sessionController.finishGuide(summary: finalSummary, outcome: isComplete ? .completed : .stopped) }) else { return }
         scope?.finishContinuation.finish()
         _ = sessionController.requestDismissal()
         output?.guideClearPresentation()
@@ -464,14 +454,6 @@ final class GuideSessionCoordinator {
         }
     }
 
-    private func beginInvokingIfNeeded(attemptID: UUID) -> Bool {
-        switch sessionController.state {
-        case .idle: transitionSession { try sessionController.wake(attemptID: attemptID) }
-        case .invoking(let invocation): invocation.id == attemptID
-        default: false
-        }
-    }
-
     private func startGuideSession(goal: String, full: Bool, threadID: UUID, targetHint: CuaTargetHint?, attemptID: UUID, waitingInput: PerryThread.WaitingInput?) -> GuideWorkerSession? {
         guard guideAdmissionOpen, case .invoking(let invocation) = sessionController.state,
               invocation.id == attemptID else { return nil }
@@ -480,7 +462,7 @@ final class GuideSessionCoordinator {
         let targetHint = targetHint ?? context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
         let appBundleID = context?.guideAppBundleID(for: targetHint)
         let guide = GuideSessionState(id: waitingInput?.id ?? UUID(), threadID: threadID, goal: goal, startedAt: Date(), appBundleID: appBundleID)
-        guard transitionSession({ try sessionController.startGuide(guide, attemptID: attemptID) }) else { return nil }
+        guard sessionController.transition({ try sessionController.startGuide(guide, attemptID: attemptID) }) else { return nil }
         let scope = GuideWorkerSession(id: guide.id)
         guideScopes[scope.id] = scope
         currentGuideScopeID = scope.id
