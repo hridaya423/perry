@@ -151,7 +151,7 @@ struct YouSettingsPage: View {
     }
 
     private var canImport: Bool {
-        controller.brain.hasSavedChoice || controller.brain.onDeviceRouteAvailable
+        controller.subsystems.brain.hasSavedChoice || controller.subsystems.brain.onDeviceRouteAvailable
     }
 
     private func saveProfile(_ field: String) {
@@ -168,7 +168,7 @@ struct YouSettingsPage: View {
         Task {
             defer { importing = false }
             let known = Set(records.map { $0.summary.lowercased() })
-            let reply = try? await controller.brain.completeOnDevice(MemoryExtraction.importPrompt(pasted))
+            let reply = try? await controller.subsystems.brain.completeOnDevice(MemoryExtraction.importPrompt(pasted))
             let facts = (reply.map(MemoryExtraction.decodeImport) ?? []).filter { !known.contains($0.text.lowercased()) }
             guard reply != nil else {
                 error = "I couldn’t read those notes. Check the brain in Brain settings, then try again."

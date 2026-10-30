@@ -60,7 +60,7 @@ struct DictationSettingsPage: View {
                         Spacer()
                         Button("Remove") {
                             do {
-                                try controller.voice.removeVoiceDictionaryEntry(spoken: spoken)
+                                try controller.subsystems.voice.removeVoiceDictionaryEntry(spoken: spoken)
                                 reload()
                                 update()
                             } catch {
@@ -101,7 +101,7 @@ struct DictationSettingsPage: View {
 
     private func add() {
         do {
-            try controller.voice.saveVoiceDictionaryEntry(spoken: trimmed(newSpoken), replacement: trimmed(newReplacement))
+            try controller.subsystems.voice.saveVoiceDictionaryEntry(spoken: trimmed(newSpoken), replacement: trimmed(newReplacement))
             reload()
             newSpoken = ""
             newReplacement = ""
@@ -113,7 +113,7 @@ struct DictationSettingsPage: View {
 
     private func reload() {
         do {
-            entries = try controller.voice.voiceDictionaryEntries()
+            entries = try controller.subsystems.voice.voiceDictionaryEntries()
         } catch {
             entries = [:]
             self.error = error.localizedDescription
@@ -124,12 +124,12 @@ struct DictationSettingsPage: View {
         let language: DictationLanguageMode = languageRaw == "automatic" ? .automatic : .fixed(identifier: languageRaw)
         let current: [String: String]
         do {
-            current = try controller.voice.voiceDictionaryEntries()
+            current = try controller.subsystems.voice.voiceDictionaryEntries()
         } catch {
             self.error = error.localizedDescription
             return
         }
-        controller.voice.updateDictationPreferences(
+        controller.subsystems.voice.updateDictationPreferences(
             DictationPreferences(
                 language: language,
                 customWords: Array(current.keys) + Array(current.values),

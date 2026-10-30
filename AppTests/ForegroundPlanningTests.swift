@@ -36,20 +36,20 @@ final class ForegroundPlanningTests: XCTestCase {
             host: PerryToolHost(executors: []), threads: store,
             consent: ToolConsentStore(directory: nil)
         )
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         await controller.showEverything(goal: "Save the fixture")
-        let presented = await waitUntil { controller.guideCoordinator.debugGuideSpeechIdentity != nil }
+        let presented = await waitUntil { controller.subsystems.guideCoordinator.debugGuideSpeechIdentity != nil }
         XCTAssertTrue(presented)
         guard case .guiding(let guide) = controller.sessionState else { return XCTFail("Guide did not start") }
-        controller.guideCoordinator.takeOverGuide()
-        controller.guideCoordinator.takeOverGuide()
+        controller.subsystems.guideCoordinator.takeOverGuide()
+        controller.subsystems.guideCoordinator.takeOverGuide()
         let finished = await waitUntil(timeout: .seconds(10)) {
             let conversations = await store.list()
             return conversations.first?.turns.count == 2 && coordinator.runningThreads.isEmpty
         }
         XCTAssertTrue(finished)
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
         let conversations = await ThreadStore(directory: directory.appendingPathComponent("handoff-threads")).list()
         XCTAssertEqual(conversations.count, 1)
         XCTAssertEqual(conversations.first?.id, guide.threadID)
@@ -59,8 +59,8 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(conversations.first?.turns.last?.answer, "The fixture answer.")
         XCTAssertNil(conversations.first?.pendingTurn)
         controller.dismiss()
-        controller.guideCoordinator.prepareForTermination()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        controller.subsystems.guideCoordinator.prepareForTermination()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
     }
 
     func testGuideTakeoverSaveFailurePreventsDo() async throws {
@@ -86,15 +86,15 @@ final class ForegroundPlanningTests: XCTestCase {
             }, host: PerryToolHost(executors: []), threads: ThreadStore(directory: threadDirectory),
             consent: ToolConsentStore(directory: nil)
         )
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         await controller.showEverything(goal: "Save the fixture")
-        let presented = await waitUntil { controller.guideCoordinator.debugGuideSpeechIdentity != nil }
+        let presented = await waitUntil { controller.subsystems.guideCoordinator.debugGuideSpeechIdentity != nil }
         XCTAssertTrue(presented)
         let backup = directory.appendingPathComponent("recoverable-threads")
         try FileManager.default.moveItem(at: threadDirectory, to: backup)
         try Data("blocked storage".utf8).write(to: threadDirectory)
-        controller.guideCoordinator.takeOverGuide()
+        controller.subsystems.guideCoordinator.takeOverGuide()
         let failed = await waitUntil { controller.sessionStatus.contains("couldn’t be saved") }
         XCTAssertTrue(failed)
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
@@ -102,8 +102,8 @@ final class ForegroundPlanningTests: XCTestCase {
         let recoverable = await ThreadStore(directory: backup).list()
         XCTAssertEqual(recoverable.first?.pendingTurn?.question, "Save the fixture")
         XCTAssertTrue(recoverable.first?.turns.isEmpty == true)
-        controller.guideCoordinator.prepareForTermination()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        controller.subsystems.guideCoordinator.prepareForTermination()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
     }
 
     func testDismissedTakeoverCannotStartAfterGuideRetires() async throws {
@@ -130,11 +130,11 @@ final class ForegroundPlanningTests: XCTestCase {
             }, host: PerryToolHost(executors: []), threads: store,
             consent: ToolConsentStore(directory: nil)
         )
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         await controller.showEverything(goal: "Save the fixture")
         await gate.waitForFirstEntry()
-        controller.guideCoordinator.takeOverGuide()
+        controller.subsystems.guideCoordinator.takeOverGuide()
         let reserved = await waitUntil {
             if case .invoking = controller.sessionState { return true }
             return false
@@ -144,14 +144,14 @@ final class ForegroundPlanningTests: XCTestCase {
         await gate.releaseFirst()
         let retired = await waitUntil { coordinator.runningThreads.isEmpty }
         XCTAssertTrue(retired)
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
         let conversations = await store.list()
         XCTAssertEqual(conversations.count, 1)
         XCTAssertEqual(conversations.first?.turns.count, 1)
         XCTAssertEqual(conversations.first?.turns.first?.outcome, .interrupted)
         XCTAssertEqual(controller.sessionState, .idle)
-        controller.guideCoordinator.prepareForTermination()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        controller.subsystems.guideCoordinator.prepareForTermination()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
     }
 
     func testProductionAgentRouteConsumesAnswerAndTerminalOutcome() async throws {
@@ -166,8 +166,8 @@ final class ForegroundPlanningTests: XCTestCase {
                 provider: { _ in provider }, host: PerryToolHost(executors: []),
                 threads: store, consent: ToolConsentStore(directory: nil)
             )
-            controller.foreground.agentCoordinator = coordinator
-            let outcome = try await controller.foreground.debugRun(goal: "Read the synthetic fixture")
+            controller.subsystems.foreground.agentCoordinator = coordinator
+            let outcome = try await controller.subsystems.foreground.debugRun(goal: "Read the synthetic fixture")
             XCTAssertEqual(controller.transcriptPreview, "The fixture answer.")
             let history = await TranscriptStore(directory: directory).snapshot()
             let conversations = await store.list()
@@ -199,12 +199,12 @@ final class ForegroundPlanningTests: XCTestCase {
             provider: { _ in provider }, host: PerryToolHost(executors: []),
             threads: store, consent: ToolConsentStore(directory: nil)
         )
-        controller.foreground.agentCoordinator = coordinator
-        let run = Task { try await controller.foreground.debugRun(goal: "Read the synthetic fixture") }
+        controller.subsystems.foreground.agentCoordinator = coordinator
+        let run = Task { try await controller.subsystems.foreground.debugRun(goal: "Read the synthetic fixture") }
         await gate.waitForEntry()
         let displayed = await waitUntil { controller.transcriptPreview == "The fixture " }
         XCTAssertTrue(displayed)
-        controller.foreground.cancel()
+        controller.subsystems.foreground.cancel()
         await gate.release()
         let outcome = try await run.value
         guard case .blocked = outcome else { return XCTFail("Stopped execution must not complete") }
@@ -216,7 +216,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(conversations.first?.draft, "Read the synthetic fixture")
         XCTAssertNil(conversations.first?.pendingTurn)
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
-        XCTAssertFalse(controller.foreground.supervisorActive)
+        XCTAssertFalse(controller.subsystems.foreground.supervisorActive)
         controller.dismiss()
     }
 
@@ -232,8 +232,8 @@ final class ForegroundPlanningTests: XCTestCase {
             threads: ThreadStore(directory: directory.appendingPathComponent("agent-threads")),
             consent: ToolConsentStore(directory: nil)
         )
-        controller.foreground.agentCoordinator = coordinator
-        let run = Task { try await controller.foreground.debugRun(goal: "Old fixture") }
+        controller.subsystems.foreground.agentCoordinator = coordinator
+        let run = Task { try await controller.subsystems.foreground.debugRun(goal: "Old fixture") }
         defer {
             run.cancel()
             Task { await gate.release() }
@@ -281,18 +281,18 @@ final class ForegroundPlanningTests: XCTestCase {
                     throw FullGuidePlannerError.failed
                 }
             )
-            controller.homeController.homeModel.sidebarSelection = .thread(threadID)
-            controller.homeController.homeModel.conversationTargets[threadID] = remembered
+            controller.subsystems.homeController.homeModel.sidebarSelection = .thread(threadID)
+            controller.subsystems.homeController.homeModel.conversationTargets[threadID] = remembered
             await controller.showEverything(goal: "Show me where to save it", targetHint: override)
-            let settled = await waitUntil { controller.guideCoordinator.debugGuideScopeCount == 0 }
+            let settled = await waitUntil { controller.subsystems.guideCoordinator.debugGuideScopeCount == 0 }
             XCTAssertTrue(settled)
             XCTAssertTrue(captured)
             let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: threadID)
             XCTAssertEqual(saved?.turns.first?.question, "Show me where to save it")
             XCTAssertEqual(saved?.turns.first?.outcome, .failed)
             XCTAssertNil(saved?.pendingTurn)
-            XCTAssertEqual(controller.homeController.homeModel.sidebarSelection, .thread(threadID))
-            XCTAssertEqual(controller.homeController.homeModel.conversationTargets[threadID], expected)
+            XCTAssertEqual(controller.subsystems.homeController.homeModel.sidebarSelection, .thread(threadID))
+            XCTAssertEqual(controller.subsystems.homeController.homeModel.conversationTargets[threadID], expected)
         }
     }
 
@@ -312,13 +312,13 @@ final class ForegroundPlanningTests: XCTestCase {
                 throw FullGuidePlannerError.failed
             }, session: session
         )
-        controller.homeController.homeModel.conversationTargets[thread.id] = target
-        controller.homeController.homeModel.newConversationDraft = "Preserve this separate draft"
-        controller.homeController.homeModel.sidebarSelection = .thread(UUID())
+        controller.subsystems.homeController.homeModel.conversationTargets[thread.id] = target
+        controller.subsystems.homeController.homeModel.newConversationDraft = "Preserve this separate draft"
+        controller.subsystems.homeController.homeModel.sidebarSelection = .thread(UUID())
         try session.wake()
         try session.startAsk(AskSessionState(id: UUID(), threadID: thread.id, startedAt: Date(), question: "Explain saving"))
         controller.debugDispatch("show me everything save document")
-        let settled = await waitUntil { captured && controller.guideCoordinator.debugGuideScopeCount == 0 }
+        let settled = await waitUntil { captured && controller.subsystems.guideCoordinator.debugGuideScopeCount == 0 }
         XCTAssertTrue(settled)
         let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: thread.id)
         XCTAssertEqual(saved?.turns.count, 2)
@@ -326,16 +326,16 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(saved?.waitingInputs?.isEmpty == true)
         XCTAssertEqual(saved?.draft, "Unrelated conversation draft")
         XCTAssertEqual(saved?.turns.last?.outcome, .failed)
-        XCTAssertEqual(controller.homeController.homeModel.sidebarSelection, .thread(thread.id))
-        XCTAssertNil(controller.homeController.homeModel.drafts[thread.id])
-        XCTAssertEqual(controller.homeController.homeModel.newConversationDraft, "Preserve this separate draft")
+        XCTAssertEqual(controller.subsystems.homeController.homeModel.sidebarSelection, .thread(thread.id))
+        XCTAssertNil(controller.subsystems.homeController.homeModel.drafts[thread.id])
+        XCTAssertEqual(controller.subsystems.homeController.homeModel.newConversationDraft, "Preserve this separate draft")
     }
 
     func testRenderCompactWithUnsavedRequestRecovery() throws {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = makeController(directory: directory)
-        controller.homeController.homeModel.unsavedInputs = [
+        controller.subsystems.homeController.homeModel.unsavedInputs = [
             .init(threadID: UUID(), request: .init(text: "Explain this document, keeping the original names and dates."), error: "The disk is full.")
         ]
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
@@ -374,12 +374,12 @@ final class ForegroundPlanningTests: XCTestCase {
         try session.startAsk(AskSessionState(id: UUID(), startedAt: Date(), question: "Explain this"))
         let request = "show me everything save document"
         controller.debugDispatch(request)
-        let failed = await waitUntil { controller.homeController.homeModel.unsavedInputs.contains { $0.request.text == request } }
+        let failed = await waitUntil { controller.subsystems.homeController.homeModel.unsavedInputs.contains { $0.request.text == request } }
         XCTAssertTrue(failed)
         guard case .asking(let ask) = session.state else { return XCTFail("Lost the unsaved request") }
         XCTAssertEqual(ask.pendingGuideRequest?.text, request)
         XCTAssertFalse(captured)
-        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+        XCTAssertEqual(controller.subsystems.guideCoordinator.debugGuideScopeCount, 0)
     }
 
     func testGuideDismissedBeforeScheduledStartDoesNotCapture() async throws {
@@ -390,12 +390,12 @@ final class ForegroundPlanningTests: XCTestCase {
             captured = true
             throw FullGuidePlannerError.failed
         })
-        controller.guideCoordinator.startGuiding(goal: "Save", full: true)
+        controller.subsystems.guideCoordinator.startGuiding(goal: "Save", full: true)
         controller.dismiss()
         await Task.yield()
         XCTAssertFalse(captured)
         XCTAssertEqual(controller.sessionState, .idle)
-        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+        XCTAssertEqual(controller.subsystems.guideCoordinator.debugGuideScopeCount, 0)
     }
 
     func testHomeGuidePersistsFailureInOriginatingConversation() async throws {
@@ -411,7 +411,7 @@ final class ForegroundPlanningTests: XCTestCase {
             captures += 1
             throw FullGuidePlannerError.failed
         })
-        let model = controller.homeController.homeModel
+        let model = controller.subsystems.homeController.homeModel
         model.threads = [thread]
         model.conversationTargets[thread.id] = target
         model.send(threadID: thread.id, text: prompt)
@@ -424,7 +424,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(saved?.draft, prompt)
         XCTAssertNil(saved?.pendingTurn)
         XCTAssertNotNil(model.threadErrors[thread.id])
-        XCTAssertTrue(controller.agentCoordinator.runningThreads.isEmpty)
+        XCTAssertTrue(controller.subsystems.agentCoordinator.runningThreads.isEmpty)
     }
 
     func testHomeStopWaitsForGuideRetirementAndPreservesInput() async throws {
@@ -446,22 +446,22 @@ final class ForegroundPlanningTests: XCTestCase {
                 try await gate.plan(goal: goal, observation: observation, context: context)
             }
         )
-        let model = controller.homeController.homeModel
+        let model = controller.subsystems.homeController.homeModel
         model.threads = [thread]
         model.send(threadID: thread.id, text: prompt)
         await gate.waitForFirstEntry()
-        XCTAssertTrue(controller.agentCoordinator.runningThreads.contains(thread.id))
+        XCTAssertTrue(controller.subsystems.agentCoordinator.runningThreads.contains(thread.id))
         model.onStop?(thread.id)
         XCTAssertTrue(model.stoppingThreads.contains(thread.id))
         await gate.releaseFirst()
-        let settled = await waitUntil { model.pendingQuestions.isEmpty && controller.agentCoordinator.runningThreads.isEmpty }
+        let settled = await waitUntil { model.pendingQuestions.isEmpty && controller.subsystems.agentCoordinator.runningThreads.isEmpty }
         XCTAssertTrue(settled)
         let saved = await ThreadStore(directory: directory.appendingPathComponent("Threads")).thread(id: thread.id)
         XCTAssertEqual(saved?.turns.count, 1)
         XCTAssertEqual(saved?.turns.first?.outcome, .interrupted)
         XCTAssertEqual(saved?.draft, prompt)
         XCTAssertNil(saved?.pendingTurn)
-        XCTAssertNil(controller.guideCoordinator.debugGuideSpeechIdentity)
+        XCTAssertNil(controller.subsystems.guideCoordinator.debugGuideSpeechIdentity)
         XCTAssertTrue(model.stoppingThreads.isEmpty)
     }
 
@@ -478,10 +478,10 @@ final class ForegroundPlanningTests: XCTestCase {
             $0.notifier = ForegroundNotifier()
         }
         await controller.showEverything(goal: "Save the fixture")
-        let settled = await waitUntil { controller.guideCoordinator.debugGuideScopeCount == 0 }
+        let settled = await waitUntil { controller.subsystems.guideCoordinator.debugGuideScopeCount == 0 }
         XCTAssertTrue(settled)
         XCTAssertFalse(captured)
-        XCTAssertTrue(controller.agentCoordinator.runningThreads.isEmpty)
+        XCTAssertTrue(controller.subsystems.agentCoordinator.runningThreads.isEmpty)
         XCTAssertTrue(controller.sessionStatus.contains("Couldn’t save your message"))
         XCTAssertEqual(controller.sessionState, .idle)
     }
@@ -526,13 +526,13 @@ final class ForegroundPlanningTests: XCTestCase {
         // Hotkey wake leaves the session .invoking; a Do submission must
         // adopt that invocation instead of dropping on a mismatched id.
         try session.wake()
-        controller.foreground.start(goal: "describe the screen")
+        controller.subsystems.foreground.start(goal: "describe the screen")
 
         let finished = await waitUntil(timeout: .seconds(10)) {
             controller.transcriptPreview == "The fixture answer."
         }
         XCTAssertTrue(finished, "Do goal submitted while .invoking never ran — state: \(controller.sessionState), status: \(controller.sessionStatus)")
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testDoModeChipSendsTheComposerTextToTheForegroundAgent() async throws {
@@ -541,7 +541,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let session = SessionController()
         let controller = makeWakingController(directory: directory, session: session)
         installAgentRunner(on: controller, directory: directory)
-        let model = controller.homeController.homeModel
+        let model = controller.subsystems.homeController.homeModel
         try session.wake()
         model.composerMode = .task
         model.updateNewDraft("describe the screen")
@@ -554,7 +554,7 @@ final class ForegroundPlanningTests: XCTestCase {
             controller.transcriptPreview == "The fixture answer."
         }
         XCTAssertTrue(finished, "Do mode never reached the foreground agent — state: \(controller.sessionState), status: \(controller.sessionStatus)")
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testGuideStartDuringPendingInvocationAdoptsIt() async throws {
@@ -615,7 +615,7 @@ final class ForegroundPlanningTests: XCTestCase {
             return XCTFail("dictated intent left Ask — state: \(controller.sessionState)")
         }
         XCTAssertEqual(ask.question, "what does this button do")
-        XCTAssertFalse(controller.foreground.startIsInFlight)
+        XCTAssertFalse(controller.subsystems.foreground.startIsInFlight)
         controller.dismiss()
     }
 
@@ -637,7 +637,7 @@ final class ForegroundPlanningTests: XCTestCase {
         )
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "hold at the prompt")
+        controller.subsystems.foreground.start(goal: "hold at the prompt")
         let running = await waitUntil(timeout: .seconds(10)) {
             guard case .executing(let execution) = controller.sessionState else { return false }
             return execution.lifecycle == .running
@@ -659,7 +659,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testDispatchDismissDuringAskingDismisses() async throws {
@@ -694,19 +694,19 @@ final class ForegroundPlanningTests: XCTestCase {
         )
         installAgentRunner(on: controller, directory: directory, provider: provider)
 
-        let firstOutcome = try await controller.foreground.debugRun(goal: "retry this task")
+        let firstOutcome = try await controller.subsystems.foreground.debugRun(goal: "retry this task")
         guard case .failed = firstOutcome else {
             return XCTFail("expected the first attempt to fail, got \(firstOutcome)")
         }
 
-        controller.foreground.retry()
+        controller.subsystems.foreground.retry()
         let retried = await waitUntil(timeout: .seconds(10)) {
             provider.callCount == 2
         }
 
         XCTAssertTrue(retried, "session state after retry: \(controller.sessionState), status: \(controller.sessionStatus)")
         XCTAssertEqual(provider.callCount, 2)
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testStoppedForegroundReportProjectsAsStopped() throws {
@@ -735,8 +735,8 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = AppController.testing(directory: directory, session: session)
-        XCTAssertEqual(controller.foreground.debugActivityState.phase, .reporting)
-        XCTAssertEqual(controller.foreground.debugActivityState.title, "Stopped")
+        XCTAssertEqual(controller.subsystems.foreground.debugActivityState.phase, .reporting)
+        XCTAssertEqual(controller.subsystems.foreground.debugActivityState.title, "Stopped")
     }
 
     func testStoppingDuringForegroundFinalizationReportsStopped() async throws {
@@ -751,10 +751,10 @@ final class ForegroundPlanningTests: XCTestCase {
         installAgentRunner(on: controller, directory: directory)
 
         let operation = Task {
-            try await controller.foreground.debugRun(goal: "stop during finalization")
+            try await controller.subsystems.foreground.debugRun(goal: "stop during finalization")
         }
         await gate.waitForEntry()
-        controller.foreground.debugInvokeActivityStop()
+        controller.subsystems.foreground.debugInvokeActivityStop()
         await gate.release()
 
         let outcome = try await operation.value
@@ -766,7 +766,7 @@ final class ForegroundPlanningTests: XCTestCase {
             return XCTFail("expected a stopped report")
         }
         XCTAssertEqual(report.outcome, .stopped)
-        XCTAssertEqual(controller.foreground.debugActivityState.title, "Stopped")
+        XCTAssertEqual(controller.subsystems.foreground.debugActivityState.title, "Stopped")
     }
 
     func testStopDuringFinalizationPersistenceKeepsCommittedCompletion() async throws {
@@ -781,10 +781,10 @@ final class ForegroundPlanningTests: XCTestCase {
         installAgentRunner(on: controller, directory: directory)
 
         let operation = Task {
-            try await controller.foreground.debugRun(goal: "stop during persistence")
+            try await controller.subsystems.foreground.debugRun(goal: "stop during persistence")
         }
         await gate.waitForEntry()
-        controller.foreground.cancel()
+        controller.subsystems.foreground.cancel()
         await gate.release()
 
         let outcome = try await operation.value
@@ -850,8 +850,8 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await replacementRun.value
-        controller.guideCoordinator.prepareForTermination()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        controller.subsystems.guideCoordinator.prepareForTermination()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
     }
 
     func testThrowingFullGuidePlannerFinalizesFailedGuideAfterWorkerRelease() async throws {
@@ -884,11 +884,11 @@ final class ForegroundPlanningTests: XCTestCase {
 
         let finished = await waitUntil {
             if case .idle = controller.sessionState {
-                return controller.guideCoordinator.debugGuideScopeID == nil
+                return controller.subsystems.guideCoordinator.debugGuideScopeID == nil
             }
             return false
         }
-        XCTAssertTrue(finished, "failed full guide state: \(controller.sessionState), scope: \(String(describing: controller.guideCoordinator.debugGuideScopeID))")
+        XCTAssertTrue(finished, "failed full guide state: \(controller.sessionState), scope: \(String(describing: controller.subsystems.guideCoordinator.debugGuideScopeID))")
         let history = await TranscriptStore(directory: directory).snapshot()
         XCTAssertEqual(history.count, 1)
         XCTAssertEqual(history.first?.outcome, .failed)
@@ -1013,14 +1013,14 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertTrue(replacementStarted)
 
         let erasure = Task { @MainActor in
-            await controller.guideCoordinator.stopForErasure()
+            await controller.subsystems.guideCoordinator.stopForErasure()
         }
         await gate.releaseFirst()
         await erasure.value
         await firstRun.value
         await replacementRun.value
 
-        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+        XCTAssertEqual(controller.subsystems.guideCoordinator.debugGuideScopeCount, 0)
         let history = await TranscriptStore(directory: directory).snapshot()
         XCTAssertEqual(history.count, 0)
     }
@@ -1055,12 +1055,12 @@ final class ForegroundPlanningTests: XCTestCase {
             await controller.showEverything(goal: "termination")
         }
         await gate.waitForFirstEntry()
-        controller.guideCoordinator.prepareForTermination()
+        controller.subsystems.guideCoordinator.prepareForTermination()
         await gate.releaseFirst()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
         await run.value
 
-        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+        XCTAssertEqual(controller.subsystems.guideCoordinator.debugGuideScopeCount, 0)
     }
 
     func testTerminationJoinsReplacedGuideScopes() async throws {
@@ -1103,13 +1103,13 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         XCTAssertTrue(replacementStarted)
 
-        controller.guideCoordinator.prepareForTermination()
+        controller.subsystems.guideCoordinator.prepareForTermination()
         await gate.releaseFirst()
-        await controller.guideCoordinator.joinAfterWorkerShutdown()
+        await controller.subsystems.guideCoordinator.joinAfterWorkerShutdown()
         await firstRun.value
         await replacementRun.value
 
-        XCTAssertEqual(controller.guideCoordinator.debugGuideScopeCount, 0)
+        XCTAssertEqual(controller.subsystems.guideCoordinator.debugGuideScopeCount, 0)
     }
 
     func testStaleStartupErrorCannotOverwriteReplacementAttempt() async throws {
@@ -1118,26 +1118,26 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = StartupStreamGate()
         let provider = StaleErrorProvider(gate: gate)
         let controller = makeController(directory: directory)
-        controller.foreground.agentCoordinator = AgentCoordinator(
+        controller.subsystems.foreground.agentCoordinator = AgentCoordinator(
             provider: { _ in provider },
             host: PerryToolHost(executors: []),
             threads: ThreadStore(directory: directory.appendingPathComponent("Threads")),
             consent: ToolConsentStore(directory: nil)
         )
-        controller.foreground.start(goal: "old attempt")
+        controller.subsystems.foreground.start(goal: "old attempt")
         let firstCalled = await waitUntil { await gate.calls >= 1 }
         XCTAssertTrue(firstCalled, "old attempt never streamed: \(controller.sessionState)")
         controller.dismiss()
         // The old run's teardown is async — a start that races it bounces off
         // `supervisorActive` or the in-flight start, so wait for both to clear.
-        let tornDown = await waitUntil { !controller.foreground.supervisorActive && !controller.foreground.startIsInFlight }
+        let tornDown = await waitUntil { !controller.subsystems.foreground.supervisorActive && !controller.subsystems.foreground.startIsInFlight }
         XCTAssertTrue(tornDown, "old attempt's supervisor did not clear: \(controller.sessionState)")
-        controller.foreground.start(goal: "replacement attempt")
+        controller.subsystems.foreground.start(goal: "replacement attempt")
         let replacementCalled = await waitUntil { await gate.calls >= 2 }
         guard replacementCalled else {
             await gate.releaseFirst()
             await gate.releaseSecond()
-            return XCTFail("replacement never streamed: \(controller.sessionState), supervisor active: \(controller.foreground.supervisorActive)")
+            return XCTFail("replacement never streamed: \(controller.sessionState), supervisor active: \(controller.subsystems.foreground.supervisorActive)")
         }
         let replacementStatus = controller.sessionStatus
         await gate.releaseFirst()
@@ -1184,8 +1184,8 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         let controller = AppController.testing(directory: directory, session: session)
-        let oldGeneration = controller.foreground.debugForegroundActivityGeneration
-        controller.foreground.debugScheduleActivityRetirement(taskID: taskID, generation: oldGeneration, after: 0.02)
+        let oldGeneration = controller.subsystems.foreground.debugForegroundActivityGeneration
+        controller.subsystems.foreground.debugScheduleActivityRetirement(taskID: taskID, generation: oldGeneration, after: 0.02)
         try session.completeDismissal()
         try session.wake()
         try session.startExecution(
@@ -1214,11 +1214,11 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FinalizationGate()
         let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
         let controller = makeController(directory: directory)
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "rename the downloads")
+        controller.subsystems.foreground.start(goal: "rename the downloads")
         let execution = try await waitForRunningExecution(controller)
 
         controller.debugDispatch("skip the second file", voiceTaskScope: execution.taskID)
@@ -1232,7 +1232,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(steered.taskID, execution.taskID)
         XCTAssertEqual(steered.lifecycle, .running)
 
-        controller.foreground.pause()
+        controller.subsystems.foreground.pause()
         controller.debugDispatch("continue carefully", voiceTaskScope: execution.taskID)
         XCTAssertTrue(controller.sessionStatus.contains("Steering: continue carefully"))
         guard case .executing(let paused) = controller.sessionState else {
@@ -1240,11 +1240,11 @@ final class ForegroundPlanningTests: XCTestCase {
         }
         XCTAssertEqual(paused.lifecycle, .paused)
         XCTAssertEqual(coordinator.runningThreads.count, 1)
-        XCTAssertTrue(controller.foreground.startIsInFlight)
+        XCTAssertTrue(controller.subsystems.foreground.startIsInFlight)
 
         controller.dismiss()
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testVoiceDispatchRejectsStaleTaskScope() async throws {
@@ -1253,11 +1253,11 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FinalizationGate()
         let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
         let controller = makeController(directory: directory)
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "rename the downloads")
+        controller.subsystems.foreground.start(goal: "rename the downloads")
         let first = try await waitForRunningExecution(controller)
 
         controller.debugDispatch("speech begun before this task")
@@ -1277,10 +1277,10 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
         controller.dismiss()
 
-        controller.foreground.start(goal: "rename the uploads")
+        controller.subsystems.foreground.start(goal: "rename the uploads")
         let second = try await waitForRunningExecution(controller)
         XCTAssertNotEqual(second.taskID, first.taskID)
 
@@ -1296,7 +1296,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     func testVoiceDispatchStopStopsTheTask() async throws {
@@ -1305,11 +1305,11 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FinalizationGate()
         let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
         let controller = makeController(directory: directory)
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "rename the downloads")
+        controller.subsystems.foreground.start(goal: "rename the downloads")
         let execution = try await waitForRunningExecution(controller)
 
         controller.debugDispatch("stop", voiceTaskScope: execution.taskID)
@@ -1320,7 +1320,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertFalse(controller.sessionStatus.contains("Steering"), "stop was steered into the run instead of stopping it")
 
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
         if case .executing = controller.sessionState {
             XCTFail("run never settled after spoken stop — state: \(controller.sessionState)")
         }
@@ -1334,11 +1334,11 @@ final class ForegroundPlanningTests: XCTestCase {
         let session = SessionController()
         let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
         let controller = makeController(directory: directory, session: session)
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "perform the fixture task")
+        controller.subsystems.foreground.start(goal: "perform the fixture task")
         let execution = try await waitForRunningExecution(controller)
         try session.awaitApproval(UUID(), actionSummary: "Send the report")
 
@@ -1359,7 +1359,7 @@ final class ForegroundPlanningTests: XCTestCase {
         }
 
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
         controller.dismiss()
     }
 
@@ -1369,14 +1369,14 @@ final class ForegroundPlanningTests: XCTestCase {
         let gate = FinalizationGate()
         let coordinator = makeHeldRunCoordinator(directory: directory, gate: gate)
         let controller = makeController(directory: directory)
-        controller.agentCoordinator = coordinator
-        controller.foreground.agentCoordinator = coordinator
+        controller.subsystems.agentCoordinator = coordinator
+        controller.subsystems.foreground.agentCoordinator = coordinator
         defer { Task { await gate.release() } }
 
-        controller.foreground.start(goal: "rename the downloads")
+        controller.subsystems.foreground.start(goal: "rename the downloads")
         let execution = try await waitForRunningExecution(controller)
 
-        controller.foreground.steer("rename it final-report instead")
+        controller.subsystems.foreground.steer("rename it final-report instead")
         XCTAssertTrue(controller.sessionStatus.contains("Steering: rename it final-report instead"))
         guard case .executing(let steered) = controller.sessionState else {
             return XCTFail("typed steering dropped the run — state: \(controller.sessionState)")
@@ -1385,7 +1385,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
         controller.dismiss()
         await gate.release()
-        await controller.foreground.joinStartTask()
+        await controller.subsystems.foreground.joinStartTask()
     }
 
     private func makeHeldRunCoordinator(directory: URL, gate: FinalizationGate) -> AgentCoordinator {
@@ -1539,7 +1539,7 @@ final class ForegroundPlanningTests: XCTestCase {
         directory: URL,
         provider: any ModelProvider = ForegroundAnswerProvider(reason: .endTurn)
     ) {
-        controller.foreground.agentCoordinator = AgentCoordinator(
+        controller.subsystems.foreground.agentCoordinator = AgentCoordinator(
             provider: { _ in provider },
             host: PerryToolHost(executors: []),
             threads: ThreadStore(directory: directory.appendingPathComponent("agent-threads")),

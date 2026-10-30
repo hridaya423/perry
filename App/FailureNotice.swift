@@ -56,7 +56,7 @@ extension AppController {
         case .privacy(let pane):
             pane.open()
         case .thread(let id):
-            homeController.homeModel.sidebarSelection = .thread(id)
+            subsystems.homeController.homeModel.sidebarSelection = .thread(id)
             showPanel(activate: true)
         }
     }

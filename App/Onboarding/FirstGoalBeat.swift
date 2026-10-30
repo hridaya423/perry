@@ -140,7 +140,7 @@ struct FirstGoalBeat: View {
     }
 
     private func say(_ line: String) async {
-        await model.deps.controller?.voice.speakAndWait(line)
+        await model.deps.controller?.subsystems.voice.speakAndWait(line)
     }
 
     private func hear(_ text: String) {

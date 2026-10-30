@@ -11,7 +11,7 @@ final class SettingsPagesRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        defer { controller.notchPresence.stop() }
+        defer { controller.subsystems.notchPresence.stop() }
         let previous = PerryPreferences.settingsTab
         defer { PerryPreferences.settingsTab = previous }
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -100,7 +100,7 @@ final class SettingsPagesRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        defer { controller.notchPresence.stop() }
+        defer { controller.subsystems.notchPresence.stop() }
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build/settings-pages")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -145,13 +145,13 @@ final class SettingsPagesRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        defer { controller.notchPresence.stop() }
+        defer { controller.subsystems.notchPresence.stop() }
         let local = LocalBrain(engine: nil, modelsDirectory: directory, benchURL: directory.appendingPathComponent("bench.json"))
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build/settings-pages")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         for (name, profile) in [("local-8gb", BrainChoiceTests.profile(gb: 8, chip: "Apple M2", appleIntelligence: false)), ("local-48gb", BrainChoiceTests.profile(gb: 48, chip: "Apple M4 Pro"))] {
-            let view = SettingsScroll { LocalBrainView(brain: controller.brain, local: local, profile: profile) }
+            let view = SettingsScroll { LocalBrainView(brain: controller.subsystems.brain, local: local, profile: profile) }
                 .background(PerryTheme.Colors.canvas)
                 .toggleStyle(InkSwitchStyle())
                 .buttonStyle(InkButtonStyle(.secondary))

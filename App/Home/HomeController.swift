@@ -231,8 +231,8 @@ final class HomeController {
                 self.homeModel.updateNewDraft("")
                 switch mode {
                 case .guide: controller.startGuiding(goal: goal)
-                case .task: controller.foreground.start(goal: goal)
-                case .background: controller.backgroundTasks.queue(goal: goal)
+                case .task: controller.subsystems.foreground.start(goal: goal)
+                case .background: controller.subsystems.backgroundTasks.queue(goal: goal)
                 case .ask: break
                 }
                 return

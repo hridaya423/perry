@@ -17,14 +17,14 @@ struct HomeOnboardingView: View {
                 name: OnboardingDirector.suggestedName(saved: model.deps.controller?.memoryFiles?.profileField("Name"), fullName: NSFullUserName())
             )
             .task {
-                guard let brain, let catalog = model.deps.controller?.runtimes else { return }
+                guard let brain, let catalog = model.deps.controller?.subsystems.runtimes else { return }
                 await brain.refreshSetupStates(using: catalog)
             }
         case .brain:
             if let brain, let controller = model.deps.controller {
-                SetupBeat(director: director, brain: brain, voice: controller.voice, local: controller.localBrain,
+                SetupBeat(director: director, brain: brain, voice: controller.subsystems.voice, local: controller.subsystems.localBrain,
                           name: controller.memoryFiles?.profileField("Name") ?? SetupFactsProbe.firstName,
-                          catalog: controller.runtimes)
+                          catalog: controller.subsystems.runtimes)
             }
         case .access:
             AccessBeat(director: director)
@@ -35,16 +35,16 @@ struct HomeOnboardingView: View {
                     model: InterviewModel(
                         name: controller.memoryFiles?.profileField("Name") ?? OnboardingDirector.suggestedName(saved: nil, fullName: NSFullUserName()),
                         effects: .init(
-                            complete: controller.brain.hasSavedChoice || controller.brain.onDeviceRouteAvailable
-                                ? { try await controller.brain.completeText($0) } : nil,
+                            complete: controller.subsystems.brain.hasSavedChoice || controller.subsystems.brain.onDeviceRouteAvailable
+                                ? { try await controller.subsystems.brain.completeText($0) } : nil,
                             save: { facts in Task { await controller.saveInterview(facts) } },
                             saveNotes: { facts in Task { await controller.saveImportedFacts(facts) } },
-                            sayName: { controller.voice.speak($0) },
-                            say: { await controller.voice.speakAndWait($0) },
+                            sayName: { controller.subsystems.voice.speak($0) },
+                            say: { await controller.subsystems.voice.speakAndWait($0) },
                             importMemory: { await controller.importMemory(from: $0) }
                         )
                     ),
-                    cloudLine: InterviewModel.cloudLine(choice: controller.brain.modelChoice, hasSavedChoice: controller.brain.hasSavedChoice),
+                    cloudLine: InterviewModel.cloudLine(choice: controller.subsystems.brain.modelChoice, hasSavedChoice: controller.subsystems.brain.hasSavedChoice),
                     appChips: InterviewModel.appChips()
                 )
             }

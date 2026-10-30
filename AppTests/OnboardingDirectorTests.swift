@@ -16,7 +16,7 @@ final class OnboardingDirectorTests: XCTestCase {
         director.start()
         defer {
             director.stop()
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
         }
         let destination = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("build/living-ink-evidence")
@@ -29,7 +29,7 @@ final class OnboardingDirectorTests: XCTestCase {
             let window = NSWindow(contentRect: frame, styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: appearance)
-            let host = NSHostingView(rootView: OnboardingNotchView(director: director, model: controller.homeController.homeModel)
+            let host = NSHostingView(rootView: OnboardingNotchView(director: director, model: controller.subsystems.homeController.homeModel)
                 .environment(\.colorScheme, scheme))
             window.contentView = host
             host.frame = frame

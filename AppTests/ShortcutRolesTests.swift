@@ -165,7 +165,7 @@ final class ShortcutRolesTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        defer { controller.notchPresence.stop() }
+        defer { controller.subsystems.notchPresence.stop() }
 
         let first = Gesture.chord([.control, .option, .shift, .command], keyCode: 105)
         try controller.updateWakeShortcut(first)

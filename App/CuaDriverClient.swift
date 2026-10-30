@@ -905,14 +905,14 @@ actor CuaDriverClient {
 
 extension AppController {
     func reloadCuaDriverConfiguration() {
-        guard isIdle, !foreground.supervisorActive, !backgroundTasks.hasRunningTasks, !foreground.startIsInFlight else {
+        guard isIdle, !subsystems.foreground.supervisorActive, !subsystems.backgroundTasks.hasRunningTasks, !subsystems.foreground.startIsInFlight else {
             sessionStatus = "Finish your running tasks before changing screen control."
             return
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await workers.reloadConfiguration()
+                try await subsystems.workers.reloadConfiguration()
                 sessionStatus = "Screen control updated."
             } catch {
                 sessionStatus = "I couldn’t update screen control. Try again."

@@ -55,7 +55,7 @@ final class OnboardingCoordinator {
             }
         }
         effects.say = { [weak self] text in
-            await self?.home().homeModel.deps.controller?.voice.speakAndWait(text)
+            await self?.home().homeModel.deps.controller?.subsystems.voice.speakAndWait(text)
         }
         effects.saveName = { [weak self] name in
             try? self?.home().homeModel.deps.controller?.memoryFiles?.setProfileField("Name", name)

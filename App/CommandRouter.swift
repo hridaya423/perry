@@ -29,13 +29,13 @@ final class CommandRouter {
         switch Self.decide(commandText, state: host.sessionController.state, voiceTaskScope: voiceTaskScope) {
         case .showPanel: host.showPanel()
         case .status(let status): host.sessionStatus = status
-        case .steer(let text): host.foreground.steer(text)
+        case .steer(let text): host.subsystems.foreground.steer(text)
         case .dismiss: host.dismiss()
         case .askInGuide(let request, let full): continueAskInGuide(request: request, full: full)
         case .ask(let question): host.ask(question: question)
         case .guide(let goal): host.startGuiding(goal: goal)
         case .showEverything(let goal): Task { await host.showEverything(goal: goal, targetHint: nil) }
-        case .doTask(let goal): host.foreground.start(goal: goal)
+        case .doTask(let goal): host.subsystems.foreground.start(goal: goal)
         case .offerTask(let goal): offerTask(goal: goal)
         }
     }
@@ -81,7 +81,7 @@ final class CommandRouter {
         onPartial: @MainActor @Sendable (String) -> Void
     ) async -> AgentFinish {
         guard let host,
-              let task = host.guideCoordinator.startGuiding(
+              let task = host.subsystems.guideCoordinator.startGuiding(
                   goal: input.request.text, threadID: input.threadID,
                   targetHint: target, full: full, waitingInput: input.request
               ) else {
@@ -112,7 +112,7 @@ final class CommandRouter {
                   case .asking(let ask) = host.sessionController.state,
                   !host.isUnderMaintenance else { return }
             host.dismiss()
-            host.foreground.start(goal: goal, threadID: ask.threadID)
+            host.subsystems.foreground.start(goal: goal, threadID: ask.threadID)
         }
     }
 
@@ -120,7 +120,7 @@ final class CommandRouter {
         guard let host,
               case .asking(let ask) = host.sessionController.state,
               !host.isUnderMaintenance else { return }
-        let accepted = host.homeController.acceptInput(request, threadID: ask.threadID ?? UUID())
+        let accepted = host.subsystems.homeController.acceptInput(request, threadID: ask.threadID ?? UUID())
         let input = accepted.request
         let threadID = accepted.threadID
         host.sessionController.updateAsk {
@@ -128,23 +128,23 @@ final class CommandRouter {
             $0.pendingGuideRequest = input
         }
         host.sessionStatus = "Saving your request while this answer finishes…"
-        host.talkSession.afterCurrentAnswer(prepare: { [weak host] in
+        host.subsystems.talkSession.afterCurrentAnswer(prepare: { [weak host] in
             guard let host else { return false }
             do {
                 try await accepted.saved.value
                 return !host.isUnderMaintenance
             } catch {
-                host.homeController.homeModel.storageError = error.localizedDescription
+                host.subsystems.homeController.homeModel.storageError = error.localizedDescription
                 host.sessionStatus = "Couldn’t save your Guide request. Your text is still here."
                 return false
             }
         }) { [weak host] current in
             guard let host, !host.isUnderMaintenance,
                   current.pendingGuideRequest?.id == input.id else { return }
-            let target = host.homeController.homeModel.conversationTargets[threadID]
+            let target = host.subsystems.homeController.homeModel.conversationTargets[threadID]
             host.dismiss()
-            host.homeController.homeModel.sidebarSelection = .thread(threadID)
-            host.guideCoordinator.startGuiding(
+            host.subsystems.homeController.homeModel.sidebarSelection = .thread(threadID)
+            host.subsystems.guideCoordinator.startGuiding(
                 goal: input.text, threadID: threadID, targetHint: target, full: full, waitingInput: input
             )
         }

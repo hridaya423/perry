@@ -67,13 +67,13 @@ struct VoiceSettingsPage: View {
             keyCapture.onSaved = { service in
                 engineRaw = SpeechEngineChoice.cloud(service).rawValue
                 Task { await loadVoices(service) }
-                controller.voice.preview(sample, engine: .cloud(service))
+                controller.subsystems.voice.preview(sample, engine: .cloud(service))
             }
         }
         .onDisappear { keyCapture.stop() }
         .onChange(of: installer.downloading) { _, downloading in
             guard !downloading else { return }
-            if let failure = installer.failure { error = failure } else { controller.voice.preview(sample, engine: .kokoro) }
+            if let failure = installer.failure { error = failure } else { controller.subsystems.voice.preview(sample, engine: .kokoro) }
             refresh += 1
         }
         .onReceive(NotificationCenter.default.publisher(for: AVSpeechSynthesizer.availableVoicesDidChangeNotification)) { _ in refresh += 1 }
@@ -103,7 +103,7 @@ struct VoiceSettingsPage: View {
                                        UserDefaults.standard.set(option.id, forKey: KokoroVoice.voicePreferenceKey)
                                        refresh += 1
                                    },
-                                   preview: { controller.voice.preview(sample, engine: .kokoro, voiceID: option.id) })
+                                   preview: { controller.subsystems.voice.preview(sample, engine: .kokoro, voiceID: option.id) })
                 }
                 .id(refresh)
             } else {
@@ -133,7 +133,7 @@ struct VoiceSettingsPage: View {
                                        speechVoiceIdentifier = voice.identifier
                                        save()
                                    },
-                                   preview: { controller.voice.previewSpeechVoice(voice) })
+                                   preview: { controller.subsystems.voice.previewSpeechVoice(voice) })
                 }
                 .id(refresh)
                 SettingsDivider()
@@ -151,7 +151,7 @@ struct VoiceSettingsPage: View {
                                        UserDefaults.standard.set(option.id, forKey: service.voicePreferenceKey)
                                        refresh += 1
                                    },
-                                   preview: { controller.voice.preview(sample, engine: .cloud(service), voiceID: option.id) })
+                                   preview: { controller.subsystems.voice.preview(sample, engine: .cloud(service), voiceID: option.id) })
                 }
                 .id(refresh)
                 SettingsDivider()
@@ -209,7 +209,7 @@ struct VoiceSettingsPage: View {
     }
 
     private func save() {
-        controller.voice.updateSpeechPreferences(
+        controller.subsystems.voice.updateSpeechPreferences(
             SpeechPreferences(
                 outputEnabled: speechOutputEnabled,
                 rateMultiplier: speechRate,
@@ -266,13 +266,13 @@ private struct PronunciationsCard: View {
     @State private var written = ""
     @State private var spoken = ""
 
-    private var store: PronunciationStore { PronunciationStore(directory: controller.storageDirectory) }
+    private var store: PronunciationStore { PronunciationStore(directory: controller.subsystems.storageDirectory) }
 
     var body: some View {
         SettingsCard(title: "Pronunciations", footer: "Perry says these names your way and hears them better too.") {
             ForEach(entries) { entry in
                 HStack(spacing: 10) {
-                    Button { controller.voice.speak(entry.written) } label: {
+                    Button { controller.subsystems.voice.speak(entry.written) } label: {
                         Image(systemName: "play.fill")
                             .font(PerryTheme.Icon.utility).imageScale(.small)
                             .frame(width: 24, height: 24)
@@ -309,7 +309,7 @@ private struct PronunciationsCard: View {
     private func add() {
         try? store.set(Pronunciation(written: written, spoken: spoken))
         entries = store.entries()
-        controller.voice.speak(written)
+        controller.subsystems.voice.speak(written)
         written = ""
         spoken = ""
     }

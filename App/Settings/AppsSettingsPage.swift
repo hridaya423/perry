@@ -15,14 +15,14 @@ struct AppsSettingsPage: View {
                     .settingsRowPadding()
                 SettingsDivider()
                 ForEach(RemoteIntegrationDefinition.catalog) { definition in
-                    IntegrationRow(definition: definition, connections: controller.integrationConnections)
+                    IntegrationRow(definition: definition, connections: controller.subsystems.integrationConnections)
                         .settingsRowPadding()
                     if definition.id != RemoteIntegrationDefinition.catalog.last?.id {
                         SettingsDivider()
                     }
                 }
             }
-            CustomConnectorsSection(connectors: controller.customConnectors)
+            CustomConnectorsSection(connectors: controller.subsystems.customConnectors)
             SettingsCard(title: "App skills", footer: "Skills are notes Perry reads when you use the matching app.") {
                 SettingsRow(title: "Skills folder") {
                     Button("Open", action: openSkillsFolder)

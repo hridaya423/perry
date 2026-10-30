@@ -54,7 +54,7 @@ extension AppController {
     func debugShowHistoryFixture() {
         Task { @MainActor in
             for entry in PerryDebugLaunchSurface.historyEntries() {
-                await transcriptStore.append(entry)
+                await subsystems.transcriptStore.append(entry)
             }
             showHistory()
             NSApp.activate(ignoringOtherApps: true)
@@ -116,12 +116,12 @@ extension AppController {
         } else if debugSurface == .activity {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.foreground.debugShowActivityFixture()
+                self.subsystems.foreground.debugShowActivityFixture()
             }
         } else if debugSurface == .guideControls {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.guideCoordinator.debugShowGuideControlsFixture()
+                self.subsystems.guideCoordinator.debugShowGuideControlsFixture()
             }
         } else if debugSurface == .history {
             DispatchQueue.main.async { [weak self] in
@@ -133,7 +133,7 @@ extension AppController {
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                self?.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
+                self?.subsystems.notchStatus.update(isRecording: true, backgroundCount: 2, awaitingApproval: 1)
             }
         } else if debugSurface == .backgroundTasksStorageError {
             DispatchQueue.main.async { [weak self] in
@@ -150,24 +150,24 @@ extension AppController {
     func runFailureDrill(_ drill: FailureDrill) {
         switch drill {
         case .routeFlip:
-            voice.speak("The audio route drill is speaking now.")
+            subsystems.voice.speak("The audio route drill is speaking now.")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.voice.debugSimulateAudioRouteChange("simulated AirPods")
+                self?.subsystems.voice.debugSimulateAudioRouteChange("simulated AirPods")
             }
         case .microphoneWedge:
-            voice.debugSimulateDictationFailure()
+            subsystems.voice.debugSimulateDictationFailure()
         case .mutedOutput:
             let message = "This reply is from the muted-output recovery drill."
-            voice.speak(message)
+            subsystems.voice.speak(message)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.voice.copyReplyToClipboard(
+                self?.subsystems.voice.copyReplyToClipboard(
                     message,
                     status: "Muted-output drill passed; the reply is on your clipboard."
                 )
             }
         case .runtimeMissing:
             runOnboarding(force: true)
-            voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
+            subsystems.voice.speak("The runtime precheck drill stopped here honestly. Install Codex or Claude Code, then try again.")
         }
     }
 
@@ -181,11 +181,11 @@ extension AppController {
             let now = ProcessInfo.processInfo.systemUptime
             switch note.userInfo?["phase"] as? String {
             case "down":
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control, .option], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control, .option], isFlagsChanged: true, tapDisabled: false)
             case "up":
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
-                self.modifierHoldMonitor.handle(timestamp: now, modifiers: [], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [.control], isFlagsChanged: true, tapDisabled: false)
+                self.subsystems.modifierHoldMonitor.handle(timestamp: now, modifiers: [], isFlagsChanged: true, tapDisabled: false)
             default:
                 break
             }
@@ -203,7 +203,7 @@ extension AppController {
             guard let self,
                   let goal = note.userInfo?["goal"] as? String,
                   !goal.isEmpty else { return }
-            _ = self.guideCoordinator.startGuiding(goal: goal)
+            _ = self.subsystems.guideCoordinator.startGuiding(goal: goal)
         }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill-click"),
@@ -214,7 +214,7 @@ extension AppController {
                   let x = (note.userInfo?["x"] as? NSNumber)?.doubleValue,
                   let y = (note.userInfo?["y"] as? NSNumber)?.doubleValue else { return }
             guard note.userInfo?["real"] as? Bool == true else {
-                self.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
+                self.subsystems.guideCoordinator.debugGuideDrillClick(axX: x, axY: y)
                 return
             }
             let point = CGPoint(x: x, y: y)
@@ -228,7 +228,7 @@ extension AppController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.guideCoordinator.dismissIfActive()
+            self?.subsystems.guideCoordinator.dismissIfActive()
         }
         // A postcondition-less step parks at .stillWaiting after a real hit —
         // the shipped UX resolves that with the controls' Done button, which
@@ -239,14 +239,14 @@ extension AppController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.guideCoordinator.advanceGuide()
+            self?.subsystems.guideCoordinator.advanceGuide()
         }
     }
 
     func installOverlayDump() {
         guard let path = ProcessInfo.processInfo.environment["PERRY_OVERLAY_DUMP"] else { return }
         FileManager.default.createFile(atPath: path, contents: nil)
-        overlayDump = overlayState.$visualGuidanceOverlays.sink { overlays in
+        overlayDump = subsystems.overlayState.$visualGuidanceOverlays.sink { overlays in
             let row: [String: Any] = [
                 "at": Date().timeIntervalSince1970,
                 "overlays": overlays.compactMap { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode($0))) },
@@ -271,7 +271,7 @@ extension AppController {
     }
 
     func showDebugBackgroundTasksStorageError() {
-        homeController.openHome(selection: .tasks)
+        subsystems.homeController.openHome(selection: .tasks)
     }
 }
 #endif

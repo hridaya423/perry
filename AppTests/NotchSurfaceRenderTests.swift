@@ -25,7 +25,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         defer {
             asking.cancel()
             presentation.onPresent = previousOnPresent
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         for _ in 0..<100 where presentation.current == nil { await Task.yield() }
@@ -50,7 +50,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let id = UUID()
         defer {
             presentation.remove(id)
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let guide = GuideControlsState()
@@ -100,7 +100,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         var id = UUID()
         defer {
             presentation.remove(id)
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let size = NSSize(width: 592, height: 420)
@@ -164,8 +164,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
             NotchPresentation.shared.remove(entry.id)
         }
         let controller = AppController.testing(directory: directory)
-        let model = controller.homeController.homeModel
-        defer { controller.notchPresence.stop() }
+        let model = controller.subsystems.homeController.homeModel
+        defer { controller.subsystems.notchPresence.stop() }
         let selections: [(String, HomeModel.Selection?)] = [
             ("workspace", nil), ("settings", .settings), ("routines", .routines),
             ("files", .files), ("tasks", .tasks), ("history", .history),
@@ -195,9 +195,9 @@ final class NotchSurfaceRenderTests: XCTestCase {
         await controller.setMemoryEnabled(true)
         try controller.memoryFiles?.setProfileField("Name", "Ada")
         try controller.memoryFiles?.setProfileField("Work", "Chemistry teacher")
-        _ = await controller.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Teaches year 10 chemistry", subject: "job"))
-        _ = await controller.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Is preparing for a school trip on Friday", subject: "trip", expiresAt: Date().addingTimeInterval(4 * 86_400)))
-        _ = await controller.memoryStore.remember(MemoryRecord(category: .preference, summary: "Likes answers as short bullet lists"))
+        _ = await controller.subsystems.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Teaches year 10 chemistry", subject: "job"))
+        _ = await controller.subsystems.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: "Is preparing for a school trip on Friday", subject: "trip", expiresAt: Date().addingTimeInterval(4 * 86_400)))
+        _ = await controller.subsystems.memoryStore.remember(MemoryRecord(category: .preference, summary: "Likes answers as short bullet lists"))
         try await render(
             YouSettingsPage(controller: controller)
                 .frame(width: 560, height: 1100)
@@ -225,8 +225,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
             NotchPresentation.shared.remove(entry.id)
         }
         let controller = AppController.testing(directory: directory)
-        let model = controller.homeController.homeModel
-        defer { controller.notchPresence.stop() }
+        let model = controller.subsystems.homeController.homeModel
+        defer { controller.subsystems.notchPresence.stop() }
         var snapshot = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { snapshot }
@@ -275,7 +275,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         defer {
             presentation.remove(id)
             controller.collapseNotch()
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         var shortHeight: CGFloat = 0
@@ -338,11 +338,11 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        await controller.homeController.joinAll()
-        let model = controller.homeController.homeModel
-        defer { controller.notchPresence.stop() }
+        await controller.subsystems.homeController.joinAll()
+        let model = controller.subsystems.homeController.homeModel
+        defer { controller.subsystems.notchPresence.stop() }
         let thread = PerryThread(title: "Review the launch plan and summarize the remaining decisions before Friday", turns: [.init(question: "What remains?", answer: "Review the outline and share the open questions.")])
-        let store = try XCTUnwrap(controller.homeController.threadStore)
+        let store = try XCTUnwrap(controller.subsystems.homeController.threadStore)
         try await store.upsert(thread)
         model.threads = [thread]
         model.sidebarSelection = .thread(thread.id)
@@ -384,8 +384,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
             NotchPresentation.shared.remove(entry.id)
         }
         let controller = AppController.testing(directory: directory)
-        let model = controller.homeController.homeModel
-        defer { controller.notchPresence.stop() }
+        let model = controller.subsystems.homeController.homeModel
+        defer { controller.subsystems.notchPresence.stop() }
         var effects = OnboardingDirector.Effects()
         effects.permissionProbe = { PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied) }
         let director = OnboardingDirector(effects: effects)
@@ -437,16 +437,16 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let controller = AppController.testing(directory: directory)
-        let model = controller.homeController.homeModel
+        let model = controller.subsystems.homeController.homeModel
         defer {
             controller.clearFailure()
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let size = NSSize(width: 892, height: 552)
         model.sidebarSelection = .perryEditor(nil)
         try await render(openNotch(controller), name: "perry-editor-new", size: size)
-        let store = try XCTUnwrap(controller.perryStore)
+        let store = try XCTUnwrap(controller.subsystems.perryStore)
         let perry = try await store.create(job: "Summarize my unread newsletters every morning", schedule: RoutineSchedule(kind: .daily(hour: 8, minute: 30)))
         model.perrys = await store.list()
         model.sidebarSelection = .perryEditor(perry.id)
@@ -500,7 +500,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let id = UUID()
         defer {
             presentation.remove(id)
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         presentation.present(id: id, priority: .approval, content: Rectangle().fill(Color(red: 1, green: 0, blue: 0)).frame(height: 100), reveal: false)
@@ -524,7 +524,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         defer {
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let expansion = controller.sessionPanel.expansion
@@ -540,7 +540,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(1000))
         XCTAssertFalse(window.isVisible)
         XCTAssertFalse(expansion.open)
-        XCTAssertEqual(controller.notchPresence.surface, .resting)
+        XCTAssertEqual(controller.subsystems.notchPresence.surface, .resting)
 
         controller.showPanel(activate: false)
         try await Task.sleep(for: .milliseconds(600))
@@ -562,7 +562,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let id = UUID()
         defer {
             presentation.remove(id)
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         let card = IntentCard(title: "Move two files into Archive", detail: "Both files keep their contents; nothing else changes.", tier: .orange, targetSummary: "draft-a.txt, draft-b.txt → Archive")
@@ -614,10 +614,10 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let controller = AppController.testing(directory: directory)
-        let model = controller.homeController.homeModel
+        let model = controller.subsystems.homeController.homeModel
         defer {
             for entry in presentation.entries { presentation.remove(entry.id) }
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         func shot(_ name: String) async throws {
@@ -667,19 +667,19 @@ final class NotchSurfaceRenderTests: XCTestCase {
         for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
         let controller = AppController.testing(directory: directory)
         defer {
-            controller.overlayState.voiceState = .idle
-            controller.overlayState.buddyState = .idle
-            controller.notchPresence.stop()
+            controller.subsystems.overlayState.voiceState = .idle
+            controller.subsystems.overlayState.buddyState = .idle
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
-        controller.homeController.homeModel.sidebarSelection = nil
+        controller.subsystems.homeController.homeModel.sidebarSelection = nil
         let moods: [(String, PerryVoicePhase, PerryBuddyState)] = [
             ("resting", .idle, .idle), ("listening", .listening, .idle),
             ("working", .idle, .acting), ("needs-you", .idle, .awaitingApproval)
         ]
         for (name, voice, buddy) in moods {
-            controller.overlayState.voiceState = voice
-            controller.overlayState.buddyState = buddy
+            controller.subsystems.overlayState.voiceState = voice
+            controller.subsystems.overlayState.buddyState = buddy
             try await render(openNotch(controller), name: "mascot-\(name)", size: NSSize(width: 892, height: 552), wait: 0.6)
         }
     }
@@ -703,8 +703,8 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let controller = AppController.testing(directory: directory)
         defer {
             for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
-            controller.overlayState.voiceState = .idle
-            controller.notchPresence.stop()
+            controller.subsystems.overlayState.voiceState = .idle
+            controller.subsystems.notchPresence.stop()
             try? FileManager.default.removeItem(at: directory)
         }
         var inputs: [Input] = []
@@ -739,7 +739,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
             for _ in 0..<10 { await Task.yield() }
         }
         NotchPresentation.shared.present(id: AppController.voiceEntryID, priority: .voice, content: NotchListeningView(voice: voice))
-        controller.overlayState.voiceState = .listening
+        controller.subsystems.overlayState.voiceState = .listening
 
         voice.startClick()
         for _ in 0..<50 where voice.clickState != .listening { try await Task.sleep(for: .milliseconds(10)) }
@@ -752,14 +752,14 @@ final class NotchSurfaceRenderTests: XCTestCase {
         await hear(0.6, rms: 0.001)
         try await render(openNotch(controller), name: "listening-ending", size: NSSize(width: 592, height: 360), wait: 0.3)
         voice.sendNow()
-        controller.overlayState.voiceState = .processing
+        controller.subsystems.overlayState.voiceState = .processing
         try await render(openNotch(controller), name: "listening-thinking", size: NSSize(width: 592, height: 360), wait: 0.3)
 
         voice.cancelClick()
         voice.startClick()
         for _ in 0..<50 where voice.clickState != .listening { try await Task.sleep(for: .milliseconds(10)) }
         await hear(8.1, rms: 0.001)
-        controller.overlayState.voiceState = .idle
+        controller.subsystems.overlayState.voiceState = .idle
         try await render(openNotch(controller), name: "listening-failed", size: NSSize(width: 592, height: 360), wait: 0.3)
     }
 

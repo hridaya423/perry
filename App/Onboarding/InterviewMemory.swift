@@ -11,7 +11,7 @@ extension AppController {
             try? files.setProfileField(field, value)
         }
         if !facts.name.isEmpty, !facts.spoken.isEmpty {
-            try? PronunciationStore(directory: storageDirectory).set(Pronunciation(written: facts.name, spoken: facts.spoken))
+            try? PronunciationStore(directory: subsystems.storageDirectory).set(Pronunciation(written: facts.name, spoken: facts.spoken))
         }
         await setMemoryEnabled(true)
     }
@@ -38,14 +38,14 @@ extension AppController {
         }
         for attempt in 0..<3 {
             if attempt > 0 {
-                voice.speak("Sign in to \(service.rawValue), and I’ll try again.")
+                subsystems.voice.speak("Sign in to \(service.rawValue), and I’ll try again.")
                 try? await Task.sleep(for: .seconds(20))
                 guard !Task.isCancelled else { return nil }
             }
             NSWorkspace.shared.open(page)
             try? await Task.sleep(for: .seconds(3))
             let target = bundleID.map { CuaTargetHint(bundleID: $0) }
-            let answer = await agentCoordinator.runToEnd(threadID: UUID(), goal: goal, kind: .doTask, target: target).answer
+            let answer = await subsystems.agentCoordinator.runToEnd(threadID: UUID(), goal: goal, kind: .doTask, target: target).answer
             let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             if reply.contains("SIGNED_OUT") { continue }
             return reply.isEmpty ? nil : reply
@@ -57,7 +57,7 @@ extension AppController {
         guard !facts.isEmpty else { return }
         await setMemoryEnabled(true)
         for fact in facts {
-            _ = await memoryStore.remember(MemoryRecord(category: .aboutYou, summary: fact.text, subject: fact.subject))
+            _ = await subsystems.memoryStore.remember(MemoryRecord(category: .aboutYou, summary: fact.text, subject: fact.subject))
         }
     }
 }

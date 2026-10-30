@@ -207,7 +207,7 @@ final class InterviewModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let controller = AppController.testing(directory: directory)
-        defer { controller.notchPresence.stop() }
+        defer { controller.subsystems.notchPresence.stop() }
         let before = await controller.currentMemoryConfiguration()
         XCTAssertFalse(before.enabled)
         await controller.saveInterview(.init(name: "Ada", work: "Designer", apps: "Figma, Notion", goal: "", spoken: "Ay-da", style: "Short and direct"))

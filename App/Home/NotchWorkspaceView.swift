@@ -354,7 +354,7 @@ struct NotchWorkspaceView: View {
                         ),
                         canSend: !model.isCreatingConversation,
                         focusOnAppear: focusComposer,
-                        onVoice: model.deps.controller.map { controller in { controller.talkSession.startClick() } }
+                        onVoice: model.deps.controller.map { controller in { controller.subsystems.talkSession.startClick() } }
                     ) {
                         model.onStartConversation?(model.newConversationDraft)
                     }
@@ -565,7 +565,7 @@ struct NotchWorkspaceView: View {
         case .whatsNew:
             WhatsNewView(onDone: { model.sidebarSelection = nil })
         case .perryEditor(let id):
-            if let store = model.deps.controller?.perryStore {
+            if let store = model.deps.controller?.subsystems.perryStore {
                 PerryEditorView(perry: id.flatMap { id in model.perrys.first { $0.id == id } }, model: model, store: store)
                     .id(id)
             } else {

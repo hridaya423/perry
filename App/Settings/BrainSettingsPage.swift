@@ -12,8 +12,8 @@ struct BrainSettingsPage: View {
     init(controller: AppController) {
         self.controller = controller
         _runtimeSettings = StateObject(wrappedValue: RuntimeSettingsState {
-            async let setup = controller.runtimes.currentSetup()
-            async let driverStatus = controller.probe.cuaHealth().summary
+            async let setup = controller.subsystems.runtimes.currentSetup()
+            async let driverStatus = controller.subsystems.probe.cuaHealth().summary
             return await RuntimeSettingsState.Status(setup: setup, cuaStatus: driverStatus)
         })
     }
@@ -22,7 +22,7 @@ struct BrainSettingsPage: View {
 
     var body: some View {
         SettingsScroll {
-            BrainChoiceSection(brain: controller.brain, local: controller.localBrain, catalog: controller.runtimes)
+            BrainChoiceSection(brain: controller.subsystems.brain, local: controller.subsystems.localBrain, catalog: controller.subsystems.runtimes)
             SettingsCard(title: "Coding agents", footer: setup.records.contains(where: { $0.status == setup.summary }) ? nil : setup.summary) {
                 ForEach(setup.records) { runtime in
                     HStack(alignment: .firstTextBaseline, spacing: PerryTheme.Spacing.inline) {

@@ -72,7 +72,7 @@ struct InteractiveConfirmer: Confirmer {
             reversible: request.reversible
         )
         SoundPlayer.play(.receive)
-        await MainActor.run { controller.voice.speak(card.spokenLine) }
+        await MainActor.run { controller.subsystems.voice.speak(card.spokenLine) }
         return await controller.requestIntentApproval(id: request.id, card: card)
     }
 
@@ -88,7 +88,7 @@ struct InteractiveConfirmer: Confirmer {
             reversible: request.reversible
         )
         SoundPlayer.play(.receive)
-        await MainActor.run { controller.voice.speak(card.spokenLine) }
+        await MainActor.run { controller.subsystems.voice.speak(card.spokenLine) }
         let decision = await controller.requestPlanDecision(id: request.id, card: card)
         if decision == .edit {
             await controller.presentPrompt(prefill: request.actionSummary, mode: .task)

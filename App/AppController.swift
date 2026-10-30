@@ -15,64 +15,13 @@ import PerryRuntimes
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     private(set) var hotkey: HotkeyController?
-    // Subsystem forwards; the composition graph lives in `subsystems`.
-    var overlayState: PerryCursorState { subsystems.overlayState }
-    var brain: BrainController { subsystems.brain }
-    var foregroundWorkerLease: ForegroundWorkerLease { subsystems.foregroundWorkerLease }
-    var toolHost: PerryToolHost { subsystems.toolHost }
-    var perryStore: PerryStore? { subsystems.perryStore }
-    var suggestionController: SuggestionController { subsystems.suggestionController }
-    var customConnectors: CustomConnectors { subsystems.customConnectors }
-    var perryScheduler: PerrySchedulerController? { subsystems.perryScheduler }
-    var mcp: MCPSocketLifecycle { subsystems.mcp }
-    var overlaySampleLog: PerformanceSampleLog? { subsystems.overlaySampleLog }
-    var overlayManager: OverlayWindowManager { subsystems.overlayManager }
-    var workers: CuaWorkerService { subsystems.workers }
-    var spatial: SpatialSelectionController { subsystems.spatial }
-    var storageDirectory: URL? { subsystems.storageDirectory }
-    var activityLog: ActivityLog { subsystems.activityLog }
-    var memoryStore: MemoryStore { subsystems.memoryStore }
-    var transcriptStore: TranscriptStore { subsystems.transcriptStore }
-    var guideCoordinator: GuideSessionCoordinator { subsystems.guideCoordinator }
-    var talkCapture: TalkObservationCapture { subsystems.talkCapture }
-    var talkSkillLibrary: AppSkillLibrary { subsystems.talkSkillLibrary }
-    var talkSession: TalkSession { subsystems.talkSession }
-    var modifierHoldMonitor: ModifierHoldMonitor { subsystems.modifierHoldMonitor }
-    var shortcutCheck: ShortcutCheck { subsystems.shortcutCheck }
-    var localBrain: LocalBrain { subsystems.localBrain }
-    var voice: VoiceController { subsystems.voice }
-    var oauthCoordinator: OAuthCoordinator { subsystems.oauthCoordinator }
-    var remoteIntegrationPermissions: RemoteIntegrationPermissionStore { subsystems.remoteIntegrationPermissions }
-    var integrationClient: RemoteIntegrationClient { subsystems.integrationClient }
-    var integrationConnections: IntegrationConnections { subsystems.integrationConnections }
-    var remoteIntegrationExecutor: RemoteIntegrationActionRuntime { subsystems.remoteIntegrationExecutor }
-    var executionFinalizer: ExecutionFinalizer { subsystems.executionFinalizer }
-    var runtimes: RuntimeCatalog { subsystems.runtimes }
-    var probe: EnvironmentProbe { subsystems.probe }
-    var foreground: ForegroundTaskController { subsystems.foreground }
-    var backgroundTaskCoordinator: TaskCoordinator {
-        get { subsystems.backgroundTaskCoordinator }
-        set { subsystems.backgroundTaskCoordinator = newValue }
-    }
-    var notchStatus: NotchStatusController { subsystems.notchStatus }
-    var agentCoordinator: AgentCoordinator {
-        get { subsystems.agentCoordinator }
-        set { subsystems.agentCoordinator = newValue }
-    }
-    var homeController: HomeController { subsystems.homeController }
-    var notchPresence: NotchPresence { subsystems.notchPresence }
     var conversationVoiceObservation: AnyCancellable?
     var markObservation: AnyCancellable?
     var markClickMonitor: Any?
 #if DEBUG
     var overlayDump: AnyCancellable?
 #endif
-    var routineLibrary: RoutineLibraryController { subsystems.routineLibrary }
-    var routineOffer: RoutineOffer { subsystems.routineOffer }
-    var backgroundTaskContextStore: BackgroundTaskContextStore { subsystems.backgroundTaskContextStore }
-    var backgroundTasks: BackgroundTaskController { subsystems.backgroundTasks }
-    var completeErasure: CompleteErasureCoordinator { subsystems.completeErasure }
-    private lazy var subsystems = AppSubsystems(app: self)
+    lazy var subsystems = AppSubsystems(app: self)
     lazy var maintenance = MaintenanceCoordinator(host: self)
     lazy var statusMenu = StatusMenuController(host: self)
     lazy var sessionPanel = SessionPanelPresenter { [unowned self] in
@@ -89,7 +38,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     let intentCards = IntentCardPresenter.shared
     lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },
-        onSpeak: { [weak self] text in self?.voice.speak(text) }
+        onSpeak: { [weak self] text in self?.subsystems.voice.speak(text) }
     )
 
     let notifier: any AppNotificationClient
@@ -102,7 +51,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     var lastBackgroundCount = 0
     var lastAwaitingApprovalCount = 0
     lazy var onboarding = OnboardingCoordinator(
-        home: { [unowned self] in homeController },
+        home: { [unowned self] in subsystems.homeController },
         showNotch: { [unowned self] in showPanel() }
     )
     var persistenceTasks: [UUID: Task<Void, Never>] = [:]
@@ -158,14 +107,14 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionController.onTransitionRejected = { [weak self] in
             self?.sessionStatus = "I stopped because something changed unexpectedly. Try again."
         }
-        runtimeChoicesObservation = runtimes.objectWillChange.sink { [weak self] _ in
+        runtimeChoicesObservation = subsystems.runtimes.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
         sessionStateObservation = sessionController.$state.sink { [weak self] state in
             guard let self else { return }
-            self.foreground.handleSessionState(state)
+            self.subsystems.foreground.handleSessionState(state)
             if self.talkSessionStarted, !state.isTalkingSession {
-                self.talkSession.cancel()
+                self.subsystems.talkSession.cancel()
             }
             if let cue = SoundPlayer.cue(from: self.sessionController.state, to: state) {
                 SoundPlayer.play(cue)
@@ -189,7 +138,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        homeController.openHome()
+        subsystems.homeController.openHome()
         return false
     }
 
@@ -205,19 +154,19 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 #if DEBUG
         if debugHandleEarlyLaunchSurface() { return }
 #endif
-        if let support = storageDirectory {
+        if let support = subsystems.storageDirectory {
             do {
                 try FileManager.default.createDirectory(at: support.appendingPathComponent("workspace", isDirectory: true), withIntermediateDirectories: true)
             } catch {
-                homeController.homeModel.storageError = "Couldn’t prepare Perry’s file workspace. \(error.localizedDescription)"
+                subsystems.homeController.homeModel.storageError = "Couldn’t prepare Perry’s file workspace. \(error.localizedDescription)"
             }
         }
         notifier.configure(
             onApprove: { [weak self] taskID, actionID, revision in
-                self?.backgroundTasks.approve(taskID, expectedActionID: actionID, expectedRevision: revision)
+                self?.subsystems.backgroundTasks.approve(taskID, expectedActionID: actionID, expectedRevision: revision)
             },
             onDeny: { [weak self] taskID, revision in
-                self?.backgroundTasks.deny(taskID, expectedRevision: revision)
+                self?.subsystems.backgroundTasks.deny(taskID, expectedRevision: revision)
             },
             onOpen: { [weak self] in
                 self?.showBackgroundTasks()
@@ -225,9 +174,9 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         )
         ensureSupportDirectory()
         installHotkey()
-        voice.startInputListeners()
-        modifierHoldMonitor.interceptHold = { [weak self] in self?.subsystems.shortcutCheck.intercept() ?? false }
-        modifierHoldMonitor.start()
+        subsystems.voice.startInputListeners()
+        subsystems.modifierHoldMonitor.interceptHold = { [weak self] in self?.subsystems.shortcutCheck.intercept() ?? false }
+        subsystems.modifierHoldMonitor.start()
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--perry-talk-drill") {
             installTalkDrillTrigger()
@@ -241,20 +190,20 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         installOverlayDump()
 #endif
         DispatchQueue.main.async { [weak self] in self?.warmSessionSurfaces() }
-        markObservation = overlayState.$visualGuidanceOverlays
+        markObservation = subsystems.overlayState.$visualGuidanceOverlays
             .scan(([PerryGuidanceOverlay](), [PerryGuidanceOverlay]())) { ($0.1, $1) }
             .filter { $0.1.count > $0.0.count }
             .sink { [weak self] _ in self?.showOverlayForMarks() }
         markClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
             let point = NSEvent.mouseLocation
-            Task { @MainActor in self?.overlayState.dismissMarks(at: point) }
+            Task { @MainActor in self?.subsystems.overlayState.dismissMarks(at: point) }
         }
-        notchPresence.start()
-        perryScheduler?.start()
-        suggestionController.start()
-        if let dir = storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            mcp.startAfterLaunch(directory: dir)
-            customConnectors.connectAll()
+        subsystems.notchPresence.start()
+        subsystems.perryScheduler?.start()
+        subsystems.suggestionController.start()
+        if let dir = subsystems.storageDirectory, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            subsystems.mcp.startAfterLaunch(directory: dir)
+            subsystems.customConnectors.connectAll()
         }
         if PerryPreferences.speechEngine.isEmpty, VoiceController.naturalVoices().isEmpty {
             PerryPreferences.speechEngine = SpeechEngineChoice.kokoro.rawValue
@@ -270,18 +219,18 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         DictationController.warmPermissionCache()
         subsystems.talkSpeechInput.warmUp()
         subsystems.realtimeTalkVoice()?.warmUp()
-        Task { [brain] in
+        Task { [brain = subsystems.brain] in
             guard let decision = try? await brain.route(RouteRequirement(capabilities: [.vision, .streaming], tier: .fast)) else { return }
             await decision.provider.warm()
         }
-        voice.refreshWakeWordListener()
-        notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled)
+        subsystems.voice.refreshWakeWordListener()
+        subsystems.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled)
         Task { @MainActor [weak self] in
-            await self?.backgroundTasks.recoverInterruptedAndStartQueued()
+            await self?.subsystems.backgroundTasks.recoverInterruptedAndStartQueued()
         }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let health = await workers.health()
+            let health = await subsystems.workers.health()
             if !health.ready {
                 sessionStatus = health.summary
             }
@@ -348,61 +297,61 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
     func wake(cue: Bool = true) {
         guard isIdle, sessionController.transition({ try sessionController.wake() }) else { return }
-        voice.refreshWakeWordListener()
+        subsystems.voice.refreshWakeWordListener()
         sessionStatus = "Listening for a request."
         transcriptPreview = ""
-        spatial.clearSelection()
-        probe.pinInvocationTarget()
+        subsystems.spatial.clearSelection()
+        subsystems.probe.pinInvocationTarget()
         PerfMark.mark("wake.pinned")
-        overlayState.voiceState = .idle
-        overlayState.taskBubbleText = nil
-        overlayState.circleSelectSnappedRect = nil
-        overlayState.circleSelectSnapLabel = nil
-        overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
+        subsystems.overlayState.voiceState = .idle
+        subsystems.overlayState.taskBubbleText = nil
+        subsystems.overlayState.circleSelectSnappedRect = nil
+        subsystems.overlayState.circleSelectSnapLabel = nil
+        subsystems.overlayManager.showOverlay(onScreens: NSScreen.screens, state: subsystems.overlayState)
         PerfMark.mark("wake.overlay")
-        spatial.startMonitoring()
+        subsystems.spatial.startMonitoring()
         showPanel()
         if cue { SoundPlayer.play(.wake) }
     }
 
     func dismiss() {
-        if guideCoordinator.dismissIfActive() { return }
+        if subsystems.guideCoordinator.dismissIfActive() { return }
         if sessionController.requestDismissal() == .stopExecution {
             sessionStatus = "Stopping safely…"
-            voice.cancelInput()
+            subsystems.voice.cancelInput()
             intentCards.dismiss()
-            Task { await self.foreground.cancelActiveSupervisor() }
+            Task { await self.subsystems.foreground.cancelActiveSupervisor() }
             hidePanel()
             return
         }
-        foreground.cancelStartTask()
+        subsystems.foreground.cancelStartTask()
         if case .invoking(let invocation) = sessionState {
-            foreground.cancelInvocationIfCurrent(invocation.id)
+            subsystems.foreground.cancelInvocationIfCurrent(invocation.id)
         }
         sessionStatus = "Ready when you are."
-        probe.clearInvocationTarget()
-        guideCoordinator.stopClickObservation()
-        spatial.stopMonitoring()
-        voice.cancelInput()
+        subsystems.probe.clearInvocationTarget()
+        subsystems.guideCoordinator.stopClickObservation()
+        subsystems.spatial.stopMonitoring()
+        subsystems.voice.cancelInput()
         intentCards.dismiss()
-        Task { await self.foreground.cancelActiveSupervisor() }
+        Task { await self.subsystems.foreground.cancelActiveSupervisor() }
         clearSessionSurfaces()
     }
 
     /// Marks drawn from any surface (Home, a routine, a Do run) need the
     /// overlay window, which only wake and Guide used to show.
     func showOverlayForMarks() {
-        guard !overlayManager.isShowingOverlay() else { return }
-        overlayManager.showOverlay(onScreens: NSScreen.screens, state: overlayState)
+        guard !subsystems.overlayManager.isShowingOverlay() else { return }
+        subsystems.overlayManager.showOverlay(onScreens: NSScreen.screens, state: subsystems.overlayState)
     }
 
     /// Takes every session mark off the overlay, hides the overlay and panel,
     /// and lets the wake word listen again.
     func clearSessionSurfaces() {
-        overlayState.clearGuideOverlays()
-        overlayManager.fadeOutAndHideOverlay()
+        subsystems.overlayState.clearGuideOverlays()
+        subsystems.overlayManager.fadeOutAndHideOverlay()
         hidePanel()
-        voice.refreshWakeWordListener()
+        subsystems.voice.refreshWakeWordListener()
     }
 
     // MARK: Status item
@@ -411,13 +360,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     /// control to the user — after wake, Continue replans against whatever
     /// the screen became rather than trusting pre-sleep observations.
     @objc private func handleSystemSleep() {
-        foreground.takeOver()
+        subsystems.foreground.takeOver()
     }
 
     /// Onboarding's post-demo offer: starts a Watch & Learn recording once
 
     func showWhatsNew() {
-        homeController.openHome(selection: .whatsNew)
+        subsystems.homeController.openHome(selection: .whatsNew)
     }
 
     func schedulePersistence(_ operation: @escaping @Sendable () async -> Void) {

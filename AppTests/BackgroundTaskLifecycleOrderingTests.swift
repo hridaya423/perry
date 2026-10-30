@@ -25,7 +25,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         }
         defer {
             presentation.onPresent = originalOnPresent
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
         }
         let previousIDs = Set(presentation.entries.map(\.id))
         controller.debugInvokeWipeDataAction()
@@ -50,11 +50,11 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         presentation.onPresent = nil
         defer {
             presentation.onPresent = originalOnPresent
-            controller.notchPresence.stop()
-            controller.homeController.closeHome()
+            controller.subsystems.notchPresence.stop()
+            controller.subsystems.homeController.closeHome()
         }
-        controller.homeController.threadStore = nil
-        let input = controller.homeController.acceptInput("Preserve this request when quitting is cancelled")
+        controller.subsystems.homeController.threadStore = nil
+        let input = controller.subsystems.homeController.acceptInput("Preserve this request when quitting is cancelled")
         let previousIDs = Set(presentation.entries.map(\.id))
         XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateLater)
         let shown = await waitUntil { presentation.entries.contains { !previousIDs.contains($0.id) } }
@@ -62,8 +62,8 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         controller.collapseNotch()
         let reopened = await waitUntil { !controller.debugMaintenanceOwnerHeld }
         XCTAssertTrue(reopened)
-        XCTAssertTrue(controller.backgroundTasks.acceptsControls)
-        XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.acceptsControls)
+        XCTAssertEqual(controller.subsystems.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
         XCTAssertEqual(Set(presentation.entries.map(\.id)), previousIDs)
     }
 
@@ -71,23 +71,23 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
         let controller = AppController.testing(directory: directory)
-        controller.homeController.threadStore = nil
-        let input = controller.homeController.acceptInput("Keep this unsaved request")
+        controller.subsystems.homeController.threadStore = nil
+        let input = controller.subsystems.homeController.acceptInput("Keep this unsaved request")
         var asked = false
         controller.debugUnsavedQuitDecision = {
             asked = true
-            XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.map(\.request.text), [input.request.text])
+            XCTAssertEqual(controller.subsystems.homeController.homeModel.unsavedInputs.map(\.request.text), [input.request.text])
             XCTAssertTrue(controller.debugMaintenanceOwnerHeld)
             return false
         }
         XCTAssertEqual(controller.applicationShouldTerminate(NSApplication.shared), .terminateLater)
         let reopened = await waitUntil { asked && !controller.debugMaintenanceOwnerHeld }
         XCTAssertTrue(reopened)
-        XCTAssertTrue(controller.backgroundTasks.acceptsControls)
-        XCTAssertEqual(controller.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.acceptsControls)
+        XCTAssertEqual(controller.subsystems.homeController.homeModel.unsavedInputs.first?.request.id, input.request.id)
         XCTAssertTrue(NSApp.windows.contains { $0.identifier == SessionPanelPresenter.panelIdentifier })
-        controller.notchPresence.stop()
-        controller.homeController.closeHome()
+        controller.subsystems.notchPresence.stop()
+        controller.subsystems.homeController.closeHome()
     }
 
     func testRenderUnsavedQuitConfirmation() async throws {
@@ -101,7 +101,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         defer {
             confirmation.cancel()
             presentation.onPresent = originalOnPresent
-            controller.notchPresence.stop()
+            controller.subsystems.notchPresence.stop()
         }
         let waiting = Task { await confirmation.confirm() }
         for _ in 0..<100 where !presentation.contains(confirmation.requestID) { await Task.yield() }
@@ -146,8 +146,8 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         )
         let queued = try await coordinator.enqueue(executablePlan: plan)
         let controller = AppController.testing(directory: directory) { $0.taskCoordinator = coordinator }
-        await controller.backgroundTasks.reloadRecords()
-        let visible = try XCTUnwrap(controller.backgroundTasks.records.first)
+        await controller.subsystems.backgroundTasks.reloadRecords()
+        let visible = try XCTUnwrap(controller.subsystems.backgroundTasks.records.first)
         XCTAssertEqual(visible.revision, queued.revision)
         XCTAssertEqual(visible.workspaceActionToApprove?.id, actions[0].id)
 
@@ -164,22 +164,22 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertNotEqual(newer.revision, visible.revision)
         XCTAssertEqual(newer.workspaceActionToApprove?.id, actions[1].id)
 
-        controller.backgroundTasks.approve(
+        controller.subsystems.backgroundTasks.approve(
             taskID,
             expectedActionID: actions[0].id.rawValue,
             expectedRevision: visible.revision
         )
         let settled = await waitUntil {
-            controller.backgroundTasks.message(for: taskID) == "That approval request is no longer current"
+            controller.subsystems.backgroundTasks.message(for: taskID) == "That approval request is no longer current"
         }
         XCTAssertTrue(settled)
         let retained = await coordinator.record(id: taskID)
         XCTAssertEqual(retained, newer)
-        XCTAssertFalse(controller.backgroundTasks.isRunning(taskID))
+        XCTAssertFalse(controller.subsystems.backgroundTasks.isRunning(taskID))
         XCTAssertFalse(FileManager.default.fileExists(
             atPath: workspace.appendingPathComponent("second.txt").path
         ))
-        let metadata = await controller.backgroundTasks.debugMetadata(taskID)
+        let metadata = await controller.subsystems.backgroundTasks.debugMetadata(taskID)
         XCTAssertNil(metadata)
     }
 
@@ -198,43 +198,43 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let plan = try PerryRuntimes.ExecutionPlan(taskID: "two-file-app-task", goal: "Create two files", actions: actions, requestedScopes: [.workspaceWrite])
         let metadata = BackgroundTaskMetadata(workspacePath: workspace.path)
         let controller = AppController.testing(directory: directory)
-        try await controller.backgroundTasks.debugSeed(record: TaskRecord(executablePlan: plan), metadata: metadata)
-        let initial = await controller.backgroundTasks.debugRecord(plan.taskID)
-        controller.backgroundTasks.approveWorkspace(try XCTUnwrap(initial))
+        try await controller.subsystems.backgroundTasks.debugSeed(record: TaskRecord(executablePlan: plan), metadata: metadata)
+        let initial = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
+        controller.subsystems.backgroundTasks.approveWorkspace(try XCTUnwrap(initial))
         let awaitingSecond = await waitUntil {
-            let current = await controller.backgroundTasks.debugRecord(plan.taskID)
+            let current = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
             return current?.workspaceActionToApprove?.id == actions[1].id
-                && !controller.backgroundTasks.isRunning(plan.taskID)
-                && controller.backgroundTasks.awaitingApprovalCount == 1
+                && !controller.subsystems.backgroundTasks.isRunning(plan.taskID)
+                && controller.subsystems.backgroundTasks.awaitingApprovalCount == 1
         }
         XCTAssertTrue(awaitingSecond)
-        XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 1)
-        let retainedMetadata = await controller.backgroundTasks.debugMetadata(plan.taskID)
+        XCTAssertEqual(controller.subsystems.backgroundTasks.awaitingApprovalCount, 1)
+        let retainedMetadata = await controller.subsystems.backgroundTasks.debugMetadata(plan.taskID)
         XCTAssertEqual(retainedMetadata, metadata)
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("first.txt"), encoding: .utf8), "first")
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.appendingPathComponent("second.txt").path))
         let partialHistory = await TranscriptStore(directory: directory).snapshot()
         XCTAssertTrue(partialHistory.isEmpty)
 
-        let pending = await controller.backgroundTasks.debugRecord(plan.taskID)
+        let pending = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
         let secondApproval = try XCTUnwrap(pending)
         let staleRevision = try XCTUnwrap(initial).revision
-        controller.backgroundTasks.approve(plan.taskID, expectedActionID: actions[1].id.rawValue, expectedRevision: staleRevision)
-        controller.backgroundTasks.deny(plan.taskID, expectedRevision: staleRevision)
-        let afterStaleNotifications = await controller.backgroundTasks.debugRecord(plan.taskID)
+        controller.subsystems.backgroundTasks.approve(plan.taskID, expectedActionID: actions[1].id.rawValue, expectedRevision: staleRevision)
+        controller.subsystems.backgroundTasks.deny(plan.taskID, expectedRevision: staleRevision)
+        let afterStaleNotifications = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
         XCTAssertEqual(afterStaleNotifications, secondApproval)
-        XCTAssertFalse(controller.backgroundTasks.isRunning(plan.taskID))
-        XCTAssertEqual(controller.backgroundTasks.message(for: plan.taskID), "That approval request is no longer current")
-        controller.backgroundTasks.approve(plan.taskID, expectedActionID: actions[1].id.rawValue, expectedRevision: secondApproval.revision)
+        XCTAssertFalse(controller.subsystems.backgroundTasks.isRunning(plan.taskID))
+        XCTAssertEqual(controller.subsystems.backgroundTasks.message(for: plan.taskID), "That approval request is no longer current")
+        controller.subsystems.backgroundTasks.approve(plan.taskID, expectedActionID: actions[1].id.rawValue, expectedRevision: secondApproval.revision)
         let reported = await waitUntil {
-            let current = await controller.backgroundTasks.debugRecord(plan.taskID)
-            let context = await controller.backgroundTasks.debugMetadata(plan.taskID)
+            let current = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
+            let context = await controller.subsystems.backgroundTasks.debugMetadata(plan.taskID)
             // A retained terminal row is the durable receipt — the task is done.
-            return (current?.isTerminal ?? true) && context == nil && !controller.backgroundTasks.isRunning(plan.taskID)
-                && controller.backgroundTasks.awaitingApprovalCount == 0
+            return (current?.isTerminal ?? true) && context == nil && !controller.subsystems.backgroundTasks.isRunning(plan.taskID)
+                && controller.subsystems.backgroundTasks.awaitingApprovalCount == 0
         }
         XCTAssertTrue(reported)
-        XCTAssertEqual(controller.backgroundTasks.awaitingApprovalCount, 0)
+        XCTAssertEqual(controller.subsystems.backgroundTasks.awaitingApprovalCount, 0)
         XCTAssertEqual(try String(contentsOf: workspace.appendingPathComponent("second.txt"), encoding: .utf8), "second")
         let history = await TranscriptStore(directory: directory).snapshot()
         XCTAssertEqual(history.count, 1)
@@ -266,13 +266,13 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         try FileManager.default.moveItem(at: workspace, to: moved)
 
         let controller = AppController.testing(directory: directory)
-        await controller.backgroundTasks.reloadRecords()
-        controller.backgroundTasks.cancel(plan.taskID)
+        await controller.subsystems.backgroundTasks.reloadRecords()
+        controller.subsystems.backgroundTasks.cancel(plan.taskID)
         let reported = await waitUntil {
-            let record = await controller.backgroundTasks.debugRecord(plan.taskID)
-            let metadata = await controller.backgroundTasks.debugMetadata(plan.taskID)
+            let record = await controller.subsystems.backgroundTasks.debugRecord(plan.taskID)
+            let metadata = await controller.subsystems.backgroundTasks.debugMetadata(plan.taskID)
             // Terminal retention keeps the cancelled run's receipts on record.
-            return (record?.isTerminal ?? true) && metadata == nil && !controller.backgroundTasks.isRunning(plan.taskID)
+            return (record?.isTerminal ?? true) && metadata == nil && !controller.subsystems.backgroundTasks.isRunning(plan.taskID)
         }
         XCTAssertTrue(reported)
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.path))
@@ -313,21 +313,21 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         try await BackgroundTaskContextStore(storageDirectory: directory).save(metadata, for: queued.id)
 
         let controller = AppController.testing(directory: directory)
-        await controller.backgroundTasks.reloadRecords()
-        controller.backgroundTasks.resume(queued.id)
+        await controller.subsystems.backgroundTasks.reloadRecords()
+        controller.subsystems.backgroundTasks.resume(queued.id)
         let paused = await waitUntil {
-            let current = await controller.backgroundTasks.debugRecord(queued.id)
-            return current?.state == .paused && !controller.backgroundTasks.isRunning(queued.id)
+            let current = await controller.subsystems.backgroundTasks.debugRecord(queued.id)
+            return current?.state == .paused && !controller.subsystems.backgroundTasks.isRunning(queued.id)
         }
         XCTAssertTrue(paused)
-        let message = try XCTUnwrap(controller.backgroundTasks.message(for: queued.id))
+        let message = try XCTUnwrap(controller.subsystems.backgroundTasks.message(for: queued.id))
         XCTAssertTrue(message.contains(historyObstruction.path))
-        let retained = await controller.backgroundTasks.debugRecord(queued.id)
+        let retained = await controller.subsystems.backgroundTasks.debugRecord(queued.id)
         XCTAssertEqual(retained?.intent, .cancel)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         XCTAssertEqual(try encoder.encode(retained?.workspaceJournal), try encoder.encode(ready.workspaceJournal))
-        let retainedMetadata = await controller.backgroundTasks.debugMetadata(queued.id)
+        let retainedMetadata = await controller.subsystems.backgroundTasks.debugMetadata(queued.id)
         XCTAssertEqual(retainedMetadata, metadata)
         XCTAssertFalse(FileManager.default.fileExists(atPath: workspace.path))
         XCTAssertEqual(try String(contentsOf: movedWorkspace.appendingPathComponent("report.txt"), encoding: .utf8), "saved report")
@@ -342,12 +342,12 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let future = Data(#"{"version":9001,"tasks":[]}"#.utf8)
         try future.write(to: fileURL)
         let controller = AppController.testing(directory: directory)
-        await controller.backgroundTasks.reloadRecords()
+        await controller.subsystems.backgroundTasks.reloadRecords()
         XCTAssertTrue(controller.sessionStatus.contains("9001"))
         XCTAssertTrue(controller.sessionStatus.contains("compatible Perry version"))
-        XCTAssertNotNil(controller.backgroundTasks.persistenceError)
+        XCTAssertNotNil(controller.subsystems.backgroundTasks.persistenceError)
         XCTAssertEqual(try Data(contentsOf: fileURL), future)
-        XCTAssertTrue(controller.backgroundTasks.records.isEmpty)
+        XCTAssertTrue(controller.subsystems.backgroundTasks.records.isEmpty)
     }
 
     func testCancelWaitsForSetupWriterBeforeFinalization() async throws {
@@ -359,14 +359,14 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let id = TaskID("cancel-waits-for-writer")
         let record = TaskRecord(executablePlan: try executablePlan(taskID: id, workspace: directory))
         let initialMetadata = BackgroundTaskMetadata(targetWindowTitle: "before writer")
-        try await controller.backgroundTasks.debugSeed(record: record, metadata: initialMetadata)
+        try await controller.subsystems.backgroundTasks.debugSeed(record: record, metadata: initialMetadata)
 
         let gate = AsyncGate()
         let probe = FixtureProbe()
-        let writer = controller.backgroundTasks.debugInstallSetupTask(for: id) {
+        let writer = controller.subsystems.backgroundTasks.debugInstallSetupTask(for: id) {
             await gate.wait()
             do {
-                try await controller.backgroundTasks.debugSaveMetadata(
+                try await controller.subsystems.backgroundTasks.debugSaveMetadata(
                     BackgroundTaskMetadata(targetWindowTitle: "after writer"),
                     for: id
                 )
@@ -380,18 +380,18 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             await gate.release()
             try await self.finishFixtureTask(writer, probe: probe)
             _ = await self.waitUntil {
-                let record = await controller.backgroundTasks.debugRecord(id)
-                let metadata = await controller.backgroundTasks.debugMetadata(id)
+                let record = await controller.subsystems.backgroundTasks.debugRecord(id)
+                let metadata = await controller.subsystems.backgroundTasks.debugMetadata(id)
                 return record == nil && metadata == nil
             }
         }
 
-        controller.backgroundTasks.cancel(id)
+        controller.subsystems.backgroundTasks.cancel(id)
         let cancellationPersisted = await waitUntil {
-            await controller.backgroundTasks.debugRecord(id)?.intent == .cancel
+            await controller.subsystems.backgroundTasks.debugRecord(id)?.intent == .cancel
         }
         XCTAssertTrue(cancellationPersisted)
-        let metadataBeforeWriter = await controller.backgroundTasks.debugMetadata(id)
+        let metadataBeforeWriter = await controller.subsystems.backgroundTasks.debugMetadata(id)
         XCTAssertEqual(metadataBeforeWriter, initialMetadata)
         let probeBeforeWriter = await probe.snapshot()
         XCTAssertFalse(probeBeforeWriter.finished)
@@ -402,8 +402,8 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         XCTAssertTrue(probeAfterWriter.finished)
         XCTAssertNil(probeAfterWriter.failure)
         let finalized = await waitUntil {
-            let record = await controller.backgroundTasks.debugRecord(id)
-            let metadata = await controller.backgroundTasks.debugMetadata(id)
+            let record = await controller.subsystems.backgroundTasks.debugRecord(id)
+            let metadata = await controller.subsystems.backgroundTasks.debugMetadata(id)
             return record == nil && metadata == nil
         }
         XCTAssertTrue(finalized)
@@ -418,14 +418,14 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let id = TaskID("uncooperative-writer")
         let record = TaskRecord(executablePlan: try executablePlan(taskID: id, workspace: directory))
         let initialMetadata = BackgroundTaskMetadata(targetWindowTitle: "retained")
-        try await controller.backgroundTasks.debugSeed(record: record, metadata: initialMetadata)
+        try await controller.subsystems.backgroundTasks.debugSeed(record: record, metadata: initialMetadata)
 
         let gate = AsyncGate()
         let probe = FixtureProbe()
-        let writer = controller.backgroundTasks.debugInstallSetupTask(for: id) {
+        let writer = controller.subsystems.backgroundTasks.debugInstallSetupTask(for: id) {
             await gate.wait()
             do {
-                try await controller.backgroundTasks.debugSaveMetadata(
+                try await controller.subsystems.backgroundTasks.debugSaveMetadata(
                     BackgroundTaskMetadata(targetWindowTitle: "late writer"),
                     for: id
                 )
@@ -439,36 +439,36 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             await gate.release()
             try await self.finishFixtureTask(writer, probe: probe)
             _ = await self.waitUntil {
-                let record = await controller.backgroundTasks.debugRecord(id)
-                let metadata = await controller.backgroundTasks.debugMetadata(id)
+                let record = await controller.subsystems.backgroundTasks.debugRecord(id)
+                let metadata = await controller.subsystems.backgroundTasks.debugMetadata(id)
                 return record == nil && metadata == nil
             }
         }
 
-        controller.backgroundTasks.cancel(id)
+        controller.subsystems.backgroundTasks.cancel(id)
         let cancellationPersisted = await waitUntil {
-            await controller.backgroundTasks.debugRecord(id)?.intent == .cancel
+            await controller.subsystems.backgroundTasks.debugRecord(id)?.intent == .cancel
         }
         XCTAssertTrue(cancellationPersisted)
         try await Task.sleep(for: .milliseconds(750))
 
-        let retainedRecord = await controller.backgroundTasks.debugRecord(id)
-        let retainedMetadata = await controller.backgroundTasks.debugMetadata(id)
+        let retainedRecord = await controller.subsystems.backgroundTasks.debugRecord(id)
+        let retainedMetadata = await controller.subsystems.backgroundTasks.debugMetadata(id)
         let probeBeforeRelease = await probe.snapshot()
         XCTAssertEqual(retainedRecord?.intent, .cancel)
         XCTAssertEqual(retainedMetadata, initialMetadata)
         XCTAssertFalse(probeBeforeRelease.finished)
-        XCTAssertTrue(controller.backgroundTasks.isRunning(id))
+        XCTAssertTrue(controller.subsystems.backgroundTasks.isRunning(id))
 
         await gate.release()
         try await finishFixtureTask(writer, probe: probe)
         let probeAfterRelease = await probe.snapshot()
         XCTAssertTrue(probeAfterRelease.finished)
         XCTAssertNil(probeAfterRelease.failure)
-        controller.backgroundTasks.cancel(id)
+        controller.subsystems.backgroundTasks.cancel(id)
         let finalized = await waitUntil {
-            let record = await controller.backgroundTasks.debugRecord(id)
-            let metadata = await controller.backgroundTasks.debugMetadata(id)
+            let record = await controller.subsystems.backgroundTasks.debugRecord(id)
+            let metadata = await controller.subsystems.backgroundTasks.debugMetadata(id)
             return record == nil && metadata == nil
         }
         XCTAssertTrue(finalized)
@@ -485,46 +485,46 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let plan = try executablePlan(taskID: id, workspace: directory)
         let queued = try await coordinator.enqueue(executablePlan: plan)
         _ = try await coordinator.approveWorkspaceAction(id: id, expectedRevision: queued.revision)
-        try await controller.backgroundTasks.debugSaveMetadata(
+        try await controller.subsystems.backgroundTasks.debugSaveMetadata(
             BackgroundTaskMetadata(targetWindowTitle: "queued"), for: id
         )
-        await controller.backgroundTasks.reloadRecords()
+        await controller.subsystems.backgroundTasks.reloadRecords()
 
         let launchGate = AsyncGate()
         let probe = FixtureProbe()
-        controller.backgroundTasks.debugSetLaunchBarrier {
+        controller.subsystems.backgroundTasks.debugSetLaunchBarrier {
             await probe.markEntered()
             await launchGate.wait()
         }
         addTeardownBlock {
             await MainActor.run {
-                controller.backgroundTasks.debugSetLaunchBarrier(nil)
+                controller.subsystems.backgroundTasks.debugSetLaunchBarrier(nil)
             }
             await launchGate.release()
             _ = await self.waitUntil {
-                !controller.backgroundTasks.isRunning(id)
+                !controller.subsystems.backgroundTasks.isRunning(id)
             }
         }
 
-        controller.backgroundTasks.resume(id)
+        controller.subsystems.backgroundTasks.resume(id)
         let launchEntered = await waitUntil {
             let snapshot = await probe.snapshot()
             return snapshot.entered
         }
         XCTAssertTrue(launchEntered)
-        controller.backgroundTasks.pause(id)
+        controller.subsystems.backgroundTasks.pause(id)
         let paused = await waitUntil {
-            let current = await controller.backgroundTasks.debugRecord(id)
+            let current = await controller.subsystems.backgroundTasks.debugRecord(id)
             return current?.state == .paused && current?.intent == .pause
         }
         XCTAssertTrue(paused)
 
         await launchGate.release()
         let launchStopped = await waitUntil {
-            !controller.backgroundTasks.isRunning(id)
+            !controller.subsystems.backgroundTasks.isRunning(id)
         }
         XCTAssertTrue(launchStopped)
-        let finalRecord = await controller.backgroundTasks.debugRecord(id)
+        let finalRecord = await controller.subsystems.backgroundTasks.debugRecord(id)
         XCTAssertEqual(finalRecord?.state, .paused)
         XCTAssertEqual(finalRecord?.intent, .pause)
         XCTAssertFalse(FileManager.default.fileExists(
@@ -549,7 +549,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             await gate.release()
             _ = await self.waitUntil {
                 !controller.debugMaintenanceOwnerHeld
-                    && controller.backgroundTasks.acceptsControls
+                    && controller.subsystems.backgroundTasks.acceptsControls
             }
             await MainActor.run {
                 controller.debugSetMaintenanceFixture(skipEraseConfirmation: false, barrier: nil)
@@ -563,12 +563,12 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         }
         XCTAssertTrue(eraseEntered)
         XCTAssertTrue(controller.debugMaintenanceOwnerHeld)
-        XCTAssertFalse(controller.backgroundTasks.acceptsControls)
-        let blockedInput = controller.homeController.acceptInput("Do not save during erasure")
+        XCTAssertFalse(controller.subsystems.backgroundTasks.acceptsControls)
+        let blockedInput = controller.subsystems.homeController.acceptInput("Do not save during erasure")
         do { try await blockedInput.saved.value; XCTFail("Maintenance accepted new input") }
         catch is CancellationError {}
         var blockedRun: AgentFinish?
-        for await event in controller.agentCoordinator.run(threadID: UUID(), goal: "Do not execute during erasure") {
+        for await event in controller.subsystems.agentCoordinator.run(threadID: UUID(), goal: "Do not execute during erasure") {
             if case .finished(let finish) = event { blockedRun = finish }
         }
         guard case .failed = blockedRun else { return XCTFail("Maintenance accepted a new run") }
@@ -576,17 +576,17 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let reply = controller.applicationShouldTerminate(NSApplication.shared)
         XCTAssertEqual(reply, .terminateLater)
         XCTAssertEqual(controller.sessionStatus, "I’m finishing a data erase.")
-        XCTAssertFalse(controller.backgroundTasks.acceptsControls)
+        XCTAssertFalse(controller.subsystems.backgroundTasks.acceptsControls)
 
         await gate.release()
         let recovered = await waitUntil {
             !controller.debugMaintenanceOwnerHeld
-                && controller.backgroundTasks.acceptsControls
+                && controller.subsystems.backgroundTasks.acceptsControls
         }
         XCTAssertTrue(recovered)
-        let reopened = controller.homeController.acceptInput("Keep this after maintenance failed")
+        let reopened = controller.subsystems.homeController.acceptInput("Keep this after maintenance failed")
         try await reopened.saved.value
-        let saved = await controller.homeController.threadStore?.thread(id: reopened.threadID)
+        let saved = await controller.subsystems.homeController.threadStore?.thread(id: reopened.threadID)
         XCTAssertEqual(saved?.waitingInputs?.first?.text, "Keep this after maintenance failed")
     }
 
