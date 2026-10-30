@@ -14,11 +14,6 @@ protocol VoiceConversationInput: AnyObject {
 
 extension DictationController: VoiceConversationInput {}
 
-/// The Talk loop: hold ⌃⌥ → listen + trace + capture in parallel → release →
-/// deixis-bound prompt → streamed answer, spoken by sentence and drawn as ink.
-/// Talk acts on request with the agent's tools; every model tool call passes
-/// `ToolGate.check` before dispatch.
-/// All side effects are injected so the loop is unit-testable with stubs.
 @MainActor
 final class TalkSession: ObservableObject {
     enum Phase: Equatable {
@@ -107,18 +102,11 @@ final class TalkSession: ObservableObject {
     private var firstInkMarked = false
     private var firstAudioMarked = false
 
-    /// 10 Hz reanchor (§5): while this turn's marks are shown, poll the
-    /// captured window's CG bounds and translate our overlays by the delta —
-    /// marks follow a moved window at ~zero cost. Element reflow inside a
-    /// static window isn't tracked: AX elements are cross-process snapshot
-    /// values with no live handle on this side.
     private var reanchorTimer: Timer?
     private var markOverlayIDs: Set<UUID> = []
     private var markWindowID: CGWindowID?
     private var markWindowBL = CGRect.zero
 
-    /// Fired after a turn's stream completes — onboarding listens for the
-    /// "first real talk" moment without polling session state.
     var onTurnCompleted: (() -> Void)?
 
     private var primaryMaxY: CGFloat { NSScreen.screens.first?.frame.maxY ?? 0 }
@@ -137,12 +125,6 @@ final class TalkSession: ObservableObject {
         self.tracer = tracer ?? .live()
     }
 
-    // MARK: Hold lifecycle
-
-    /// Key-down: listening cue within the ≤50 ms budget. No real work yet —
-    /// the monitor commits the hold after its chord threshold, which is when
-    /// mic, trace, capture and warm-up start. A stray ⌃⌥ shortcut never gets
-    /// this far.
     func keyDown() {
         output?.guideClearFailure()
         if phase != .idle {
@@ -183,8 +165,6 @@ final class TalkSession: ObservableObject {
         PerfMark.mark("talk.listening")
     }
 
-    /// Commit: the hold survived the monitor's chord threshold — start the
-    /// real work in parallel: STT, pointer trace, capture, provider warm-up.
     func holdCommitted() {
         guard phase == .listening, input == nil else { return }
         PerfMark.mark("talk.hold_commit")
@@ -193,8 +173,6 @@ final class TalkSession: ObservableObject {
         input = speech
         let startedSynchronously: Bool
         do {
-            // Mic warm (permission cached + engine reusable): start the
-            // engine inline on key-down instead of behind a Task hop.
             startedSynchronously = try speech.startIfReady()
         } catch {
             inputFailed(error)
@@ -213,7 +191,6 @@ final class TalkSession: ObservableObject {
         warmTask = Task { @MainActor in await services.warm() }
     }
 
-    /// Key-up: freeze the trace, finalize STT, resolve deixis, run the turn.
     func keyUp() {
         guard phase == .listening else { return }
         phase = .thinking
@@ -226,16 +203,12 @@ final class TalkSession: ObservableObject {
         }
     }
 
-    /// Barge-in: key press during a turn cancels provider output and speech.
     func bargeIn() {
         PerfMark.mark("talk.bargein")
         abortActiveWork()
         PerfMark.mark("bargein.silence")
     }
 
-    /// A hold the monitor cancelled — a chorded key, a release before commit,
-    /// or a dead event tap. Discard everything without submitting and let the
-    /// session go back to sleep; there is no utterance to answer.
     func holdCancelled() {
         guard phase == .listening else { return }
         PerfMark.mark("talk.cancel.hold")
@@ -245,7 +218,6 @@ final class TalkSession: ObservableObject {
         _ = sessionController.requestDismissal()
     }
 
-    /// Session teardown: stop everything; SessionController owns the transition.
     func cancel() {
         PerfMark.mark("talk.cancel.session")
         cancelAsk()
@@ -274,8 +246,6 @@ final class TalkSession: ObservableObject {
 
     private func inputFailed(_ error: Error) {
         PerfMark.mark("talk.input_failed")
-        // Settle the input even when the turn is already underway — otherwise
-        // a start() failure after key-up would hang `finalize()` forever.
         input?.cancel()
         input = nil
         guard phase == .listening else { return }
@@ -289,8 +259,6 @@ final class TalkSession: ObservableObject {
         phase = .idle
     }
 
-    // MARK: Turn
-
     private func run(trace: [TraceSample]) async {
         do {
             try Task.checkCancellation()
@@ -298,8 +266,6 @@ final class TalkSession: ObservableObject {
             try await Task.sleep(for: .milliseconds(250))
             let (transcript, words) = await speech.finalize()
             PerfMark.mark("talk.stt.final")
-            // The utterance's job ends at finalize — clear so the next hold
-            // builds a fresh input instead of re-finalizing this one.
             input = nil
             try Task.checkCancellation()
             sessionController.updateTalk { $0.transcript = transcript }
@@ -313,8 +279,6 @@ final class TalkSession: ObservableObject {
             }
             try Task.checkCancellation()
             guard case .talking(let original) = sessionController.state else { throw CancellationError() }
-            // The keypress-time hint keys the per-window conversation map —
-            // the same hint the in-flight capture resolved from.
             let hint = services.targetHint()
             let contextKey: TalkContextKey?
             if let processID = hint.processID, let windowID = hint.windowID {
@@ -482,9 +446,6 @@ final class TalkSession: ObservableObject {
             speak(remainder)
         }
         sessionController.updateTalk { $0.isWorking = false; $0.turnCount += 1 }
-        // The turn stays active while queued utterances still play — going
-        // idle now would make a key press mid-sentence start a new hold over
-        // the old audio instead of cutting it.
         while services.output.isSpeaking {
             try Task.checkCancellation()
             try await Task.sleep(for: .milliseconds(25))
@@ -505,8 +466,6 @@ final class TalkSession: ObservableObject {
         services.output.speak(sentence)
     }
 
-    // MARK: Drawing
-
     func draw(_ command: DrawCommand, observation: GuideObservation) {
         switch command.verb {
         case .clear:
@@ -525,8 +484,6 @@ final class TalkSession: ObservableObject {
             height: frame.height,
             primaryScreenMaxY: primaryMaxY
         )
-        // Luminance-adaptive ink (§5): sample the in-memory capture patch
-        // under the mark; nil keeps the default mint accent.
         let accentHex = observation.screenshotData.flatMap { data in
             InkAccentSampler.accentHex(
                 imageJPEG: data,
@@ -607,7 +564,6 @@ final class TalkSession: ObservableObject {
             x: topLeft.minX, y: primaryMaxY - topLeft.maxY,
             width: topLeft.width, height: topLeft.height
         )
-        // First successful read after a nil windowBounds sets the baseline.
         if markWindowBL == .zero {
             markWindowBL = bottomLeft
             return
@@ -623,11 +579,8 @@ final class TalkSession: ObservableObject {
         }
     }
 
-    // MARK: Click to talk
-
     private var clickSpeech: any TalkSpeechOutput { services.clickOutput ?? services.output }
 
-    /// A spoken answer that ends by asking the user something opens the mic.
     static func asksForReply(_ answer: String) -> Bool {
         answer.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?")
     }

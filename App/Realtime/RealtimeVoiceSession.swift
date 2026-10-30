@@ -60,9 +60,6 @@ final class RealtimeVoiceSession {
     var meteredIdleTimeout: Duration = .seconds(30)
     var isShutDown: Bool { shutdownRequested }
 
-    /// Whether uncommitted microphone audio is buffered — a silent hold
-    /// should settle empty rather than commit nothing and fail the
-    /// session on `emptyInput` (§1.5 transcribe-only input path).
     var hasPendingInputAudio: Bool { inputHasAudio }
 
     init(
@@ -333,9 +330,6 @@ final class RealtimeVoiceSession {
         finishInput(createsResponse: true)
     }
 
-    /// Commit for transcription only: the buffered utterance is committed
-    /// without `response.create`, so the provider transcribes and stays
-    /// silent — Talk's own brain answers (§1.5 `RealtimeInput`).
     func finishInputTranscribing() {
         finishInput(createsResponse: false)
     }

@@ -3,15 +3,7 @@ import Foundation
 import ImageIO
 import PerryOverlay
 
-/// Picks an ink accent by sampling a ~24 pt patch of the turn's in-memory
-/// screenshot at the marked element's center — never a fresh capture (§5:
-/// marks must read on whatever is behind them). Returns nil when the patch
-/// cannot be mapped, so callers keep the default accent.
 enum InkAccentSampler {
-    /// - Parameters:
-    ///   - imageJPEG: the observation's screenshot bytes (target-window capture).
-    ///   - elementCenterAX: marked element center, AX top-left screen points.
-    ///   - windowBoundsAX: captured window bounds, AX top-left screen points.
     static func accentHex(
         imageJPEG: Data,
         elementCenterAX: CGPoint,
@@ -35,7 +27,6 @@ enum InkAccentSampler {
         guard !patch.isNull, patch.width >= 4, patch.height >= 4,
               let crop = image.cropping(to: patch) else { return nil }
 
-        // Downscale to 4×4 RGBA and take the mean luma.
         let w = 4, h = 4
         var pixels = [UInt8](repeating: 0, count: w * h * 4)
         let drew = pixels.withUnsafeMutableBytes { raw -> Bool in

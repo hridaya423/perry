@@ -5,9 +5,6 @@ struct TalkContextKey: Hashable {
     var windowID: Int64
 }
 
-/// Follow-up context for Talk: one conversation thread per app window, kept for
-/// ten minutes after its last use (plan §7 Phase 2.5). "New topic" resets it.
-/// Memory only — nothing is persisted.
 @MainActor
 final class TalkContextStore {
     nonisolated static let defaultTTL: TimeInterval = 600
@@ -27,8 +24,6 @@ final class TalkContextStore {
         self.ttl = ttl
     }
 
-    /// The window's live thread, or nil when none exists or the last turn is
-    /// older than the TTL. A hit refreshes `lastUsedAt`.
     func thread(for key: TalkContextKey) -> UUID? {
         guard let entry = entries[key], now() - entry.lastUsedAt <= ttl else {
             entries.removeValue(forKey: key)
@@ -51,7 +46,6 @@ final class TalkContextStore {
         entries.removeAll()
     }
 
-    /// Phrases that discard the window's follow-up context.
     static func isResetPhrase(_ text: String) -> Bool {
         let lowered = text.lowercased()
         return ["new topic", "new subject", "different question", "forget that"]

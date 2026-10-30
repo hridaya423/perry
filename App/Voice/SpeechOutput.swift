@@ -10,13 +10,7 @@ import PerryOverlay
 import PerryRuntimes
 
 extension VoiceController {
-    // MARK: Speech out
-
-    /// Resolution enumerates every installed voice — cache per
-    /// (identifier, language) pair so a per-utterance lookup stays cheap;
-    /// a preference change produces a new key and re-resolves (H6).
     private static var voiceCache: [String: AVSpeechSynthesisVoice?] = [:]
-    /// A voice downloaded while Perry runs must win over the cached compact one.
     private static let voiceCacheInvalidation: NSObjectProtocol = NotificationCenter.default.addObserver(
         forName: AVSpeechSynthesizer.availableVoicesDidChangeNotification, object: nil, queue: .main
     ) { _ in
@@ -191,8 +185,6 @@ extension VoiceController {
         return Float(0.42 + ((clamped - 0.5) / 1.0) * 0.24)
     }
 
-    /// Whether the shared speech engine is mid-utterance — Talk barge-in and
-    /// the output adapter read this so every feature's speech is observed.
     var isSpeaking: Bool { synthesizer.isSpeaking || neuralSpeech.isSpeaking }
 
     func shutUp() {
@@ -228,8 +220,6 @@ extension VoiceController {
         play(cleaned, route: Self.speechRoute(for: lastDictationLanguageIdentifier), rate: preferences.rateMultiplier)
     }
 
-    /// Speaks `text` and returns when it has been said (or after `limit`),
-    /// so a listener can open the mic without hearing Perry.
     func speakAndWait(_ text: String, limit: Duration = .seconds(15)) async {
         speak(text)
         let clock = ContinuousClock()

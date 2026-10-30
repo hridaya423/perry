@@ -3,16 +3,7 @@ import PerryBrain
 import PerryGuide
 import PerryOverlay
 
-/// The typed Ask surface, folded into TalkSession: a composer question runs
-/// the same accept → capture → run → stream pipeline as a spoken turn, on
-/// `SessionState.asking` instead of `.talking`. Ask never acts — the same
-/// draw/observe-only request shape the spoken path builds.
 extension TalkSession {
-
-    /// Ask-mode entry point. A first question opens a new session; while a
-    /// session is live the same call is a follow-up that keeps its bounded
-    /// conversation. Any other session kind must finish first — Ask never
-    /// preempts Guide or Do.
     func submitComposer(question rawQuestion: String) {
         let question = rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
@@ -55,9 +46,6 @@ extension TalkSession {
         }
     }
 
-    /// Stops pending capture/run work and drops follow-up context. The
-    /// session-state transition itself belongs to SessionController.dismiss.
-    /// `cancel()` calls this; it is also safe to call alone during `.asking`.
     func cancelAsk() {
         askTransitionTask?.cancel()
         askTransitionTask = nil
@@ -67,8 +55,6 @@ extension TalkSession {
         overlayState.visualGuidanceOverlays = []
     }
 
-    /// Maintenance drains in-flight input persistence through here before
-    /// erasure or shutdown.
     func joinInputSaves() async {
         _ = await askInputSaveTask?.value
     }

@@ -4,17 +4,10 @@ import PerryBrain
 import PerryCore
 import Speech
 
-/// Word-timestamped speech input for a Talk hold. Implementations produce
-/// `SpokenWord`s whose `start` is seconds since `start()` — the same epoch
-/// PointerTraceRecorder samples use, so DeixisResolver can align them.
 @MainActor
 protocol TalkSpeechInput: AnyObject {
-    /// Starts synchronously when the mic path is already warm (permission
-    /// cached, engine reusable) so key-down never suspends on async setup —
-    /// plan Phase-1 H7. Returns false when `start()` is still required.
     func startIfReady() throws -> Bool
     func start() async throws
-    /// Stops capture and returns the final transcript plus word segments.
     func finalize() async -> (transcript: String, words: [SpokenWord])
     func cancel()
 }
@@ -23,8 +16,6 @@ extension TalkSpeechInput {
     func startIfReady() throws -> Bool { false }
 }
 
-/// Sentence-level speech output. `shutUp()` is the barge-in path and must
-/// reach silence within ~150 ms (§8 budget).
 @MainActor
 protocol TalkSpeechOutput: AnyObject {
     var isSpeaking: Bool { get }
@@ -32,15 +23,8 @@ protocol TalkSpeechOutput: AnyObject {
     func shutUp()
 }
 
-/// On-device SFSpeechRecognizer input: reuses DictationController's hardened
-/// audio engine (route fallback, buffering) and reads segment timestamps from
-/// each recognition event for deixis.
 @MainActor
 final class SFSpeechInput: TalkSpeechInput {
-    /// One engine + recognizer per Talk lifetime, re-armed per hold —
-    /// plan Phase-1 H7. Reuse is safe: start() aborts any in-flight
-    /// recognition before re-installing the tap, and the recognition gate
-    /// rejects callbacks from older generations.
     private lazy var dictation: DictationController = {
         let controller = DictationController(
             onTranscript: { [weak self] transcript in
@@ -66,8 +50,6 @@ final class SFSpeechInput: TalkSpeechInput {
     private var abandoned = false
     private var finalization: CheckedContinuation<Void, Never>?
 
-    /// Constructs the engine + recognizer at launch so the first hold only
-    /// pays re-arming (tap install + engine start), not audio setup.
     func warmUp() {
         _ = dictation
     }
@@ -162,10 +144,6 @@ final class SFSpeechInput: TalkSpeechInput {
     }
 }
 
-/// Talk output over VoiceController's one synthesizer — a single speech owner
-/// means Talk barge-in silences Guide instructions and announcements too, and
-/// `isSpeaking` reflects every feature's speech (plan Phase 2.3). Queued via
-/// `enqueueSpeech` so streamed sentences play back-to-back.
 @MainActor
 final class SharedTalkOutput: TalkSpeechOutput {
     private let voice: VoiceController
@@ -180,10 +158,6 @@ final class SharedTalkOutput: TalkSpeechOutput {
 }
 
 #if DEBUG
-/// Lab speech inputs for the talk drill, selected by launch arguments:
-/// `--perry-talk-script <text>` feeds a deterministic transcript (no Speech
-/// permission needed); `--perry-talk-audio <file>` runs a real
-/// SFSpeechURLRecognitionTask over a recording. Neither exists in release.
 enum TalkLabInput {
     @MainActor
     static func makeInput(arguments: [String]) -> (any TalkSpeechInput)? {
@@ -199,8 +173,6 @@ enum TalkLabInput {
     }
 }
 
-/// Deterministic transcript: one word per 400 ms from start(), the cadence
-/// PointerTraceRecorder's 60 Hz samples align against.
 @MainActor
 final class ScriptedSpeechInput: TalkSpeechInput {
     private let transcript: String
@@ -223,9 +195,6 @@ final class ScriptedSpeechInput: TalkSpeechInput {
     func cancel() {}
 }
 
-/// Real on-device recognition over a pre-recorded file: exercises
-/// SFSpeechURLRecognitionTask — the same API family SFSpeechInput drives
-/// through DictationController — without a live mic.
 @MainActor
 final class WAVSpeechInput: TalkSpeechInput {
     private let url: URL

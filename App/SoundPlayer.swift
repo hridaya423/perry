@@ -1,9 +1,6 @@
 import AppKit
 import Intents
 
-/// UI sound design: small crafted chimes, preloaded so first play is instant
-/// (the chime-warmer idea from HeyClicky's ClickyChimeWarmer). Respects the
-/// system mute of NSSound's own output routing; sounds are decorative only.
 enum SoundPlayer {
     enum Cue: String {
         case wake

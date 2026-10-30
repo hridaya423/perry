@@ -140,8 +140,6 @@ extension VoiceController {
         dictationWorkerTask = task
     }
 
-    /// Phase 8: every delivered dictation lands in the 7-day rolling backup
-    /// (text only — audio is never stored).
     private func recordDictationBackup(_ text: String, language: String?) {
         guard let support = supportDirectory() else { return }
         try? DictationBackupStore(
@@ -149,11 +147,6 @@ extension VoiceController {
         ).record(text: text, language: language)
     }
 
-    /// Learn-on-edit: re-read the target window ~8s and ~17s after insertion
-    /// and, if the field the text landed in has been edited, merge the
-    /// word substitutions into the voice dictionary. Token-count equality
-    /// inside `PersonalDictionaryLearner` keeps unrelated edits from
-    /// teaching anything.
     private func scheduleDictationLearnChecks(
         inserted text: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
     ) {
@@ -173,11 +166,6 @@ extension VoiceController {
         "AXTextArea", "AXTextField", "AXWebArea", "AXScrollArea", "AXStaticText", "AXComboBox",
     ]
 
-    /// Reads the focused text element's value in the target app via one
-    /// targeted AX attribute fetch — Phase 6: learn-on-edit must not take
-    /// a screenshot or capture the window's full tree. The element the
-    /// user is editing is already the right candidate, so this replaces
-    /// the ranked full-tree scan.
     private func focusedTextValue(target: CuaTargetHint, bundleID: String) -> String? {
         guard AXIsProcessTrusted() else { return nil }
         let pid = target.processID

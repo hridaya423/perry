@@ -2,11 +2,6 @@ import AppKit
 import PerryBrain
 import QuartzCore
 
-/// A 60 Hz memory-only ring buffer of pointer positions for a Talk hold.
-/// Samples live in AX space (top-left origin) to match ObservedElement frames;
-/// `t` is seconds since `start()` — the same epoch the STT word timestamps use.
-/// Samples over Perry's own windows are flagged `overPerry` so the resolver
-/// ignores them instead of binding to our overlay.
 @MainActor
 final class PointerTraceRecorder {
     typealias PointProvider = @MainActor () -> CGPoint
@@ -40,8 +35,6 @@ final class PointerTraceRecorder {
         self.now = now
     }
 
-    /// Live-app recorder: real mouse position, Perry window frames for the
-    /// overPerry flag, topmost on-screen layer-0 non-Perry window for windowID.
     static func live() -> PointerTraceRecorder {
         PointerTraceRecorder(
             point: { Self.mouseLocationInAXSpace() },
@@ -88,17 +81,11 @@ final class PointerTraceRecorder {
         return CGPoint(x: location.x, y: maxY - location.y)
     }
 
-    /// Perry-owned window frames converted to AX space — the set the resolver
-    /// must treat as "over our own UI".
     static func perryWindowFramesInAXSpace() -> [CGRect] {
         let maxY = NSScreen.screens.first?.frame.maxY ?? 0
         return perryInteractiveFrames(of: NSApp.windows, primaryMaxY: maxY)
     }
 
-    /// Only Perry windows the user can actually point at count as "over
-    /// Perry": the Talk overlay and cursor follower are full-screen and
-    /// click-through, so including them would flag every sample overPerry and
-    /// deixis could never bind.
     static func perryInteractiveFrames(of windows: [NSWindow], primaryMaxY maxY: CGFloat) -> [CGRect] {
         windows
             .filter { $0.isVisible && !$0.ignoresMouseEvents && $0.alphaValue > 0.01 }
@@ -108,8 +95,6 @@ final class PointerTraceRecorder {
             }
     }
 
-    /// Topmost on-screen layer-0 window under the AX-space point, skipping
-    /// Perry's own windows (a Perry hit is reported via `overPerry` instead).
     static func onScreenWindow(under axPoint: CGPoint) -> Int? {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
             return nil

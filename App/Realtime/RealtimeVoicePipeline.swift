@@ -6,9 +6,6 @@ protocol RealtimeVoiceTransport: Sendable {
     func connect() async throws
     func sendAudio(_ data: Data) async throws
     func finishInput(tag: RealtimeVoicePacketTag, request: RealtimeVoiceResponseRequest) async throws
-    /// Commits the buffered utterance for transcription only — no
-    /// response.create. Talk's input path needs the transcript without a
-    /// provider-generated reply (§1.5).
     func commitInput(tag: RealtimeVoicePacketTag) async throws
     func cancelResponse() async throws
     func sendText(_ text: String, request: RealtimeVoiceResponseRequest) async throws
@@ -238,7 +235,6 @@ final class RealtimeVoicePipeline {
         ))
     }
 
-    /// Commit for transcription only — no `response.create` (§1.5 Talk input).
     func commitTranscribing(
         sessionID: Int,
         utteranceGeneration: Int
