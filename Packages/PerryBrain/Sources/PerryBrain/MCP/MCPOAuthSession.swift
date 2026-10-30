@@ -1,56 +1,23 @@
 import Foundation
 import PerryCore
 
-struct MCPTokenGrant {
-    var accessToken: String
-    var refreshToken: String?
-    var expiresAt: Date?
-    var scope: String?
-}
-
 enum MCPTokenEndpoint {
-    private struct Response: Decodable {
-        var accessToken: String
-        var tokenType: String
-        var expiresIn: Double?
-        var refreshToken: String?
-        var scope: String?
-    }
-
-    private static let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
-
-    static func formEncoded(_ pairs: [(String, String)]) -> String {
-        pairs.map { name, value in
-            "\(name.addingPercentEncoding(withAllowedCharacters: unreserved) ?? name)=\(value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value)"
-        }.joined(separator: "&")
-    }
-
     static func request(
         _ fields: [(String, String)],
+        clientID: String,
         to endpoint: URL,
         rejectedAs rejection: MCPAuthError,
         performer: any MCPHTTPPerforming,
         now: @Sendable () -> Date
-    ) async throws -> MCPTokenGrant {
+    ) async throws -> OAuthGrant {
         try NetworkEndpointPolicy.requireSafe(endpoint)
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 20
-        request.httpBody = Data(formEncoded(fields).utf8)
+        let request = OAuthTokenRequest.make(to: endpoint, auth: .pkce, clientID: clientID, clientSecret: nil, fields: fields)
         let (response, data) = try await performer.data(for: request)
         switch response.statusCode {
         case 200:
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            guard let reply = try? decoder.decode(Response.self, from: data),
-                  reply.tokenType.caseInsensitiveCompare("bearer") == .orderedSame,
-                  !reply.accessToken.isEmpty else { throw MCPAuthError.tokenExchangeFailed }
-            return MCPTokenGrant(
-                accessToken: reply.accessToken, refreshToken: reply.refreshToken,
-                expiresAt: reply.expiresIn.map { now().addingTimeInterval($0) }, scope: reply.scope
-            )
+            guard let grant = try? OAuthGrant.parse(data, now: now()),
+                  grant.tokenType?.caseInsensitiveCompare("bearer") == .orderedSame else { throw MCPAuthError.tokenExchangeFailed }
+            return grant
         case 400..<500:
             throw rejection
         default:
@@ -111,9 +78,8 @@ public actor MCPOAuthSession {
     private static func refresh(_ credential: MCPOAuthCredential, performer: any MCPHTTPPerforming, now: @Sendable () -> Date) async throws -> MCPOAuthCredential {
         guard let refreshToken = credential.refreshToken else { throw MCPAuthError.signInRequired }
         let grant = try await MCPTokenEndpoint.request([
-            ("grant_type", "refresh_token"), ("refresh_token", refreshToken),
-            ("client_id", credential.clientID), ("resource", credential.resource),
-        ], to: credential.tokenEndpoint, rejectedAs: .signInRequired, performer: performer, now: now)
+            ("grant_type", "refresh_token"), ("refresh_token", refreshToken), ("resource", credential.resource),
+        ], clientID: credential.clientID, to: credential.tokenEndpoint, rejectedAs: .signInRequired, performer: performer, now: now)
         var updated = credential
         updated.accessToken = grant.accessToken
         updated.refreshToken = grant.refreshToken ?? refreshToken

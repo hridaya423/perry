@@ -78,17 +78,9 @@ struct AppIntegrationBackend: IntegrationBackend {
         action: RemoteIntegrationQuickAction,
         arguments: JSONValue
     ) async throws -> String {
-        // Notion search takes a query; every other quick action is a fixed
-        // read — extra arguments are ignored rather than merged into a body
-        // the provider hasn't vetted.
         var action = action
-        if definition.id == "notion", action.id == "search",
-           let query = arguments["query"]?.stringValue, !query.isEmpty {
-            action = RemoteIntegrationQuickAction(
-                id: action.id, title: action.title, method: action.method,
-                path: action.path, body: #"{"query":""# + Self.jsonEscaped(query) + #","page_size":10}"#,
-                readOnly: action.readOnly
-            )
+        if action.searchField != nil, let query = arguments["query"]?.stringValue, !query.isEmpty {
+            action = action.searching(query)
         }
         return try await client.preview(definition: definition, action: action)
     }
@@ -127,12 +119,5 @@ struct AppIntegrationBackend: IntegrationBackend {
         )
         let data = try await client.request(definition: definition, write: request, approval: approval)
         return await client.summarizedResponse(for: definition, data: data)
-    }
-
-    private static func jsonEscaped(_ string: String) -> String {
-        (try? JSONSerialization.data(withJSONObject: ["v": string]))
-            .flatMap { String(data: $0, encoding: .utf8) }
-            .flatMap { $0.dropFirst(6).dropLast(1) }  // {"v":"…"} → …
-            .map(String.init) ?? ""
     }
 }

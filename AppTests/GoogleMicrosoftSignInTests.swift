@@ -219,24 +219,24 @@ final class GoogleMicrosoftSignInTests: XCTestCase {
         let drive = catalog("google-drive")
         let gmail = catalog("google-gmail")
 
-        XCTAssertTrue(calendar.allowsRemoteRequest(path: "/calendar/v3/calendars/primary/events?maxResults=10", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(calendar.allowsRemoteRequest(path: "/drive/v3/files", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertTrue(drive.allowsRemoteRequest(path: "/drive/v3/files?pageSize=10", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(drive.allowsRemoteRequest(path: "/gmail/v1/users/me/messages", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertTrue(gmail.allowsRemoteRequest(path: "/gmail/v1/users/me/messages?maxResults=10", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(gmail.allowsRemoteRequest(path: "/calendar/v3/calendars/primary", method: "GET", body: nil, readOnlyRequest: true))
+        XCTAssertTrue(calendar.allowsRead(path: "/calendar/v3/calendars/primary/events?maxResults=10"))
+        XCTAssertFalse(calendar.allowsRead(path: "/drive/v3/files"))
+        XCTAssertTrue(drive.allowsRead(path: "/drive/v3/files?pageSize=10"))
+        XCTAssertFalse(drive.allowsRead(path: "/gmail/v1/users/me/messages"))
+        XCTAssertTrue(gmail.allowsRead(path: "/gmail/v1/users/me/messages?maxResults=10"))
+        XCTAssertFalse(gmail.allowsRead(path: "/calendar/v3/calendars/primary"))
         for definition in [calendar, drive, gmail] {
-            XCTAssertFalse(definition.allowsRemoteRequest(path: definition.testPath, method: "POST", body: Data("{}".utf8), readOnlyRequest: false), definition.id)
+            XCTAssertTrue(definition.allowedWriteOperations.isEmpty && definition.allowedWritePathPrefixes.isEmpty, definition.id)
         }
     }
 
     func testMicrosoftReadsAreScopedToTheSignedInUser() {
         let microsoft = catalog("microsoft")
 
-        XCTAssertTrue(microsoft.allowsRemoteRequest(path: "/v1.0/me/messages?$top=10&$select=subject,from", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertTrue(microsoft.allowsRemoteRequest(path: "/v1.0/me", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(microsoft.allowsRemoteRequest(path: "/v1.0/users", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(microsoft.allowsRemoteRequest(path: "/v1.0/me/sendMail", method: "POST", body: Data("{}".utf8), readOnlyRequest: false))
+        XCTAssertTrue(microsoft.allowsRead(path: "/v1.0/me/messages?$top=10&$select=subject,from"))
+        XCTAssertTrue(microsoft.allowsRead(path: "/v1.0/me"))
+        XCTAssertFalse(microsoft.allowsRead(path: "/v1.0/users"))
+        XCTAssertTrue(microsoft.allowedWriteOperations.isEmpty && microsoft.allowedWritePathPrefixes.isEmpty)
     }
 
     func testEveryDefinitionKeepsItsEndpointsSafe() throws {

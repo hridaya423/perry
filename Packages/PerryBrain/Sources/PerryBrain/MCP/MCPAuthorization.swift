@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import PerryCore
 
@@ -139,8 +138,8 @@ public struct MCPAuthorizer: Sendable {
         let usesMetadataDocument = clientMetadataURL != nil && server.clientIdMetadataDocumentSupported == true
         guard usesMetadataDocument || server.registrationEndpoint != nil else { throw MCPAuthError.noClientRegistration }
 
-        let verifier = Self.randomToken(byteCount: 32)
-        let state = Self.randomToken(byteCount: 24)
+        let verifier = OAuthPKCE.randomToken()
+        let state = OAuthPKCE.randomToken(byteCount: 24)
         let scope = Self.scope(challenge: challenge, resource: protectedResource, server: server)
         let registration = PendingRegistration()
 
@@ -151,13 +150,13 @@ public struct MCPAuthorizer: Sendable {
             registration.set(clientID: clientID, redirectURI: redirectURI)
             var items = [
                 ("response_type", "code"), ("client_id", clientID), ("redirect_uri", redirectURI.absoluteString),
-                ("code_challenge", Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))),
+                ("code_challenge", OAuthPKCE.challenge(for: verifier)),
                 ("code_challenge_method", "S256"), ("state", state), ("resource", protectedResource.resource),
             ]
             if let scope { items.append(("scope", scope)) }
             guard var parts = URLComponents(url: server.authorizationEndpoint, resolvingAgainstBaseURL: false) else { throw MCPAuthError.discoveryFailed }
             let existing = parts.percentEncodedQuery
-            parts.percentEncodedQuery = [existing, MCPTokenEndpoint.formEncoded(items)].compactMap { $0 }.joined(separator: "&")
+            parts.percentEncodedQuery = [existing, OAuthForm.encode(items)].compactMap { $0 }.joined(separator: "&")
             guard let url = parts.url else { throw MCPAuthError.discoveryFailed }
             return url
         }
@@ -169,8 +168,8 @@ public struct MCPAuthorizer: Sendable {
         )
         let grant = try await MCPTokenEndpoint.request([
             ("grant_type", "authorization_code"), ("code", code), ("redirect_uri", registered.redirectURI.absoluteString),
-            ("client_id", registered.clientID), ("code_verifier", verifier), ("resource", protectedResource.resource),
-        ], to: server.tokenEndpoint, rejectedAs: .tokenExchangeFailed, performer: performer, now: now)
+            ("code_verifier", verifier), ("resource", protectedResource.resource),
+        ], clientID: registered.clientID, to: server.tokenEndpoint, rejectedAs: .tokenExchangeFailed, performer: performer, now: now)
         return MCPOAuthCredential(
             accessToken: grant.accessToken, refreshToken: grant.refreshToken, expiresAt: grant.expiresAt,
             clientID: registered.clientID, issuer: server.issuer, tokenEndpoint: server.tokenEndpoint,
@@ -288,16 +287,5 @@ public struct MCPAuthorizer: Sendable {
         var path = url.path
         while path.hasSuffix("/") { path.removeLast() }
         return origin + path
-    }
-
-    private static func randomToken(byteCount: Int) -> String {
-        base64URL(Data((0..<byteCount).map { _ in UInt8.random(in: .min ... .max) }))
-    }
-
-    private static func base64URL(_ data: Data) -> String {
-        data.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
     }
 }
