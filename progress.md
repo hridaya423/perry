@@ -1,3 +1,23 @@
+# Current: architecture cleanup (2026-10-30)
+
+Owner: "clear out all the slop in this codebase... lean & nice." Brief: `docs/plans/2026-10-30-architecture-cleanup-brief.md`; per-area findings: `docs/plans/2026-10-30-cleanup-findings/`.
+
+Owner decisions: delete truly useless code outright; delete the `.legacy` background plan path; keep `document.read` only if it gives unique value (kept, reads sanitized element details), delete `browser.read` (duplicated `screen.observe`).
+
+Branch `cleanup/architecture` from 189de81. Seven Sonnet 5.5 worktree agents (task runs, Guide, voice, computer use, brain + integrations, UI, then composition) merged in, plus integration fixes.
+
+Result: production Swift 72,957 → 67,079 lines; comment lines ~2,000 → 389; `#if DEBUG` blocks 81 → 47; RemoteIntegrations.swift (2,230) split into five files; CuaDriverClient 1,758 → 905 on PerryBrain's JSON-RPC connection; GuideSessionCoordinator 1,237 → 616; TaskCoordinator 1,439 → 652; AppController forwards gone; PerryCapture package deleted; one RunKind/RunHandle; one HTTP model provider; one OAuth layer; one NotchPresentation.ask; one PerryPanel; one theme; one mic capture with the exception-safe tap; one key-event source.
+
+Behaviour changes: background budget limits end as blocked (was failed); PKCE strings are base64url; form bodies escape `+` and `/`; Slack/Linear-style error checks apply to every integration; Google Drive's connection label drops the email; worker-failure reset also hides the guide controls; legacy (v1/v2) task records are dropped on load.
+
+Evidence (mini, Xcode 27): app builds. Packages: PerryCore, PerryBrain, PerryOverlay, PerryRuntimes green; PerryGuide green except `testKeychainRoundTrip` (locked keychain over ssh). App suite before the composition merge: 905 run, 1 failure, fixed (agent stop had become async, so a stopped run kept streaming; `7fad89b`). After the composition merge: 886 passed, 0 assertion failures, 7 tests hit the 60 s allowance: 6 hang in `AVAudioEngine.inputNode` because CoreAudio on the mini is wedged (a three-line standalone script hangs the same way; restarting coreaudiod needs sudo), 1 passes alone. Render diff against 189de81: 293 identical; static differences checked by eye are environment (calendar permission state, 22 installed skills, brand icons loaded, random helper tints, timestamps).
+
+Not verified: the 7 audio-bound tests (rerun once coreaudiod on the mini is restarted); onboarding reel renders; a live drive of the app.
+
+Left on purpose: the two realtime voice stacks (Talk's warm session vs steering's per-hold session need a session-lifetime redesign); RealtimeTaskLedger (perf tooling reads it); NotchStatusController stays AppKit; OAuth credential storage types stay separate (keychain migration); CopyLintTests still lists its paths; `HardwareAndKeysTests.testKeychainRoundTrip` still lives in PerryGuide though KeychainStore moved to PerryCore.
+
+Surprise: around 12:00 on 2026-10-30 something on the mini deleted the old `~/Honey/perry-*` snapshot folders, `build/tools`, all DerivedData and a scratch folder (free space 8.7 → 87 GB). No command in this session did it.
+
 # Current: crash root cause (2026-10-29)
 
 Owner: Perry sometimes gets stuck and crashes.
