@@ -45,6 +45,19 @@ public enum DoOutcome: Equatable, Sendable {
     case completed(stepsRun: Int)
     case blocked(reason: String)
     case failed(stepSummary: String, reason: String)
+
+    public var isCompleted: Bool {
+        if case .completed = self { return true }
+        return false
+    }
+
+    public var transcriptOutcome: TranscriptEntry.Outcome {
+        switch self {
+        case .completed: .completed
+        case .blocked: .stopped
+        case .failed: .failed
+        }
+    }
 }
 
 private enum ActionExecutionError: Error, CustomStringConvertible, LocalizedError {

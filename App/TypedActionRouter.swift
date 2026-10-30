@@ -3,20 +3,12 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// App-owned typed execution boundary. Routes each approved executable action
-/// to the subsystem that owns its effect: Cua for GUI actions, the workspace
-/// file runtime for transforms, the remote-integration client for service
-/// writes, a sandboxed coding runtime for delegated tasks, and the ask-user
-/// surface for questions. Provider runtimes never execute directly.
 struct TypedActionRouter: ExecutableActionExecutor {
     let worker: CuaWorkerHandle?
     let workspace: URL?
     let remoteIntegrations: RemoteIntegrationActionRuntime?
     let askUser: (@Sendable (String, [String]) async throws -> Void)?
     let runCodingTask: (@Sendable (String, URL, String) async throws -> Void)?
-    /// When bound, workspace transforms run through the shared write-ahead
-    /// journal so the run lands durable receipts. Bound means journaling is
-    /// mandatory — there is no silent unjournaled fallback.
     var journaledTransforms: (@Sendable (ExecutableAction) async throws -> WorkspaceFileExecutionReceipt)? = nil
     var bindComputerCommand: (@Sendable (ExecutableAction) async throws -> RoutineStepBinding?)? = nil
 

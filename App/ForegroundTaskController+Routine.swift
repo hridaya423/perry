@@ -1,8 +1,6 @@
-import AppKit
 import Foundation
 import PerryCore
 import PerryGuide
-import PerryOverlay
 import PerryRuntimes
 
 enum RoutineOutcome {
@@ -11,68 +9,30 @@ enum RoutineOutcome {
 }
 
 @MainActor
-final class RoutineRunner {
-    struct Links {
-        var isCurrent: (UUID) -> Bool
-        var transition: (() throws -> Void) -> Bool
-        var beginExecution: (ExecutionSessionState, UUID) -> Bool
-        var showActivityStrip: () -> Void
-        var speak: (String) -> Void
+private final class RoutineRunTrace {
+    var lastStartedStep: Int?
+    var lastBindingError: RoutineReplayError?
+
+    func noteBindingFailure(_ error: RoutineReplayError) {
+        lastBindingError = error
     }
+}
 
-    private let sessionController: SessionController
-    private let probe: EnvironmentProbe
-    private let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
-    private let activityLog: ActivityLog
-    private let overlayState: PerryCursorState
-    private let workspaceCoordinator: TaskCoordinator?
-    private let hooks: ForegroundTaskController.Hooks
-    private let links: Links
-
-    var activeSupervisor: DoSupervisor?
-    private var lastStartedStep: Int?
-    private var lastBindingError: RoutineReplayError?
-
-#if DEBUG
-    var debugConfirmer: (any Confirmer)?
-    var debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
-    var debugTypedVerifier: (any TypedActionVerifier)?
-#endif
-
-    init(
-        sessionController: SessionController,
-        probe: EnvironmentProbe,
-        remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
-        activityLog: ActivityLog,
-        overlayState: PerryCursorState,
-        workspaceCoordinator: TaskCoordinator?,
-        hooks: ForegroundTaskController.Hooks,
-        links: Links
-    ) {
-        self.sessionController = sessionController
-        self.probe = probe
-        self.remoteIntegrationExecutor = remoteIntegrationExecutor
-        self.activityLog = activityLog
-        self.overlayState = overlayState
-        self.workspaceCoordinator = workspaceCoordinator
-        self.hooks = hooks
-        self.links = links
-    }
-
-    func run(
+extension ForegroundTaskController {
+    func runRoutine(
         _ routine: LearnedRoutine,
         parameters: [String: String],
         attemptID: UUID,
         worker: CuaWorkerHandle
     ) async throws -> RoutineOutcome {
-        guard links.isCurrent(attemptID) else { return .notStarted }
+        guard taskStartIsCurrent(attemptID) else { return .notStarted }
         let workspace = try WorkspaceScope.makeTaskDirectory()
         try await worker.claimResources([.workspace(workspace.standardizedFileURL.path)])
         let captured = await probe.captureScreenContext(worker: worker)
-        guard links.isCurrent(attemptID) else { return .notStarted }
+        guard taskStartIsCurrent(attemptID) else { return .notStarted }
         guard EnvironmentProbe.captureIsUsable(captured.context) else {
             hooks.setStatus("I couldn’t capture that window, so I stopped before replaying.")
-            links.speak("I couldn’t capture that window, so I stopped before replaying.")
+            voice.speak("I couldn’t capture that window, so I stopped before replaying.")
             return .notStarted
         }
         let targetStore = CuaGuideTargetStore()
@@ -92,128 +52,88 @@ final class RoutineRunner {
             appBundleID: routine.bundleID,
             title: title.isEmpty ? "Routine target" : title
         )
-        return try await execute(
-            plan: plan,
-            elements: observation.snapshot.elements,
-            routine: routine,
-            observe: observe,
-            goal: routine.name,
-            attemptID: attemptID,
-            context: captured.context,
-            targetWindow: targetWindow,
-            worker: worker,
-            workspace: workspace,
-            sandboxLabel: "learned routine “\(routine.name)”"
-        )
-    }
-
-    private func execute(
-        plan: ExecutionPlan,
-        elements: [AXElement],
-        routine: LearnedRoutine,
-        observe: @escaping @Sendable () async throws -> GuideObservation,
-        goal: String,
-        attemptID: UUID,
-        context: ScreenContext,
-        targetWindow: WindowContext?,
-        worker: CuaWorkerHandle,
-        workspace: URL,
-        sandboxLabel: String
-    ) async throws -> RoutineOutcome {
-        let taskUUID = UUID(uuidString: plan.taskID.rawValue) ?? UUID()
-        lastStartedStep = nil
-        lastBindingError = nil
+        let executionPlan = (try? plan.maskingSensitiveInputs(in: observation.snapshot.elements)) ?? plan
+        let workspaceURL = workspace
+        let sandboxLabel = "learned routine “\(routine.name)”"
+        let trace = RoutineRunTrace()
         try ExecutionPlanValidator.validate(
             plan,
             capabilities: ExecutionPlanValidator.Capabilities(
                 supportedOperations: Set(ExecutableAction.Operation.Kind.allCases),
-                workspace: workspace,
+                workspace: workspaceURL,
                 integrationAccounts: remoteIntegrationExecutor.executableAccountIDs
             )
         )
-        guard links.isCurrent(attemptID) else { return .notStarted }
-        try await worker.claimResources(typedTaskResources(plan: plan, workspaceURL: workspace))
-        guard links.isCurrent(attemptID) else { return .notStarted }
+        guard taskStartIsCurrent(attemptID) else { return .notStarted }
+        try await worker.claimResources(typedTaskResources(plan: plan, workspaceURL: workspaceURL))
+        guard taskStartIsCurrent(attemptID) else { return .notStarted }
         let execution = ExecutionSessionState(
-            taskID: taskUUID,
-            goal: goal,
+            taskID: UUID(uuidString: plan.taskID.rawValue) ?? UUID(),
+            goal: routine.name,
             startedAt: Date(),
-            appBundleID: targetWindow?.appBundleID,
+            appBundleID: targetWindow.appBundleID,
             providerRoute: sandboxLabel,
-            workspace: workspace,
-            lifecycle: .starting,
-            initialWarnings: []
+            workspace: workspaceURL,
+            lifecycle: .starting
         )
-        guard links.beginExecution(execution, attemptID) else { return .notStarted }
+        guard presentRunStart(execution, attemptID: attemptID, bubble: "Preparing \(routine.name)…") else { return .notStarted }
         hooks.setStatus("Getting ready with \(sandboxLabel).")
-        hooks.setTranscriptPreview(goal)
-        hooks.stopSpatialMonitoring()
-        hooks.stopGuideObservation()
-        hooks.hidePanel()
-        SoundPlayer.play(.send)
-        overlayState.buddyState = .acting
-        overlayState.agentTaskBubbleText = "Preparing \(goal)…"
-        links.showActivityStrip()
 #if DEBUG
         let confirmer = debugConfirmer ?? hooks.makeConfirmer()
-        let typedVerifier = debugTypedVerifier ?? CompositeActionVerifier(workspace: workspace, worker: worker)
+        let typedVerifier = debugTypedVerifier ?? CompositeActionVerifier(workspace: workspaceURL, worker: worker)
 #else
         let confirmer = hooks.makeConfirmer()
-        let typedVerifier: any TypedActionVerifier = CompositeActionVerifier(workspace: workspace, worker: worker)
+        let typedVerifier: any TypedActionVerifier = CompositeActionVerifier(workspace: workspaceURL, worker: worker)
 #endif
+        let taskID = execution.taskID
         let supervisor = DoSupervisor(
             activityLog: activityLog,
             confirmer: confirmer,
             typedVerifier: typedVerifier,
             onEvent: { [weak self] event in
-                await self?.handleDoEvent(event, taskID: execution.taskID)
+                await self?.handleDoEvent(event, taskID: taskID)
             },
             onTypedEvent: { [weak self] event in
-                await self?.handleTypedDoEvent(event, taskID: execution.taskID)
+                await self?.handleTypedDoEvent(event, taskID: taskID, trace: trace)
             }
         )
-        activeSupervisor = supervisor
-        let executionPlan = (try? plan.maskingSensitiveInputs(in: elements)) ?? plan
         let runJournal = try executionPlan.workspaceEffectsPlan().flatMap { effectsPlan -> WorkspaceRunJournal? in
             guard let coordinator = workspaceCoordinator else { return nil }
-            return WorkspaceRunJournal(plan: effectsPlan, workspace: workspace, coordinator: coordinator)
+            return WorkspaceRunJournal(plan: effectsPlan, workspace: workspaceURL, coordinator: coordinator)
         }
         let typedExecutor = typedActionRouter(
             worker: worker,
-            workspace: workspace,
+            workspace: workspaceURL,
             journal: runJournal,
-            bindComputerCommand: { [weak self] action in
+            bindComputerCommand: { action in
                 do {
                     return try RoutineReplay.binding(for: action, of: routine, in: try await observe())
                 } catch let error as RoutineReplayError {
-                    await self?.noteBindingFailure(error)
+                    await trace.noteBindingFailure(error)
                     throw error
                 }
             }
         )
+        activeRun = SupervisorRunHandle(supervisor: supervisor)
         let outcome = await supervisor.run(
             plan: executionPlan,
-            context: context,
+            context: captured.context,
             targetWindow: targetWindow,
             typedExecutor: typedExecutor
         )
         await runJournal?.settle()
-        return .finished(outcome, headline: headline(for: outcome, routine: routine))
+        return .finished(outcome, headline: headline(for: outcome, routine: routine, trace: trace))
     }
 
-    private func noteBindingFailure(_ error: RoutineReplayError) {
-        lastBindingError = error
-    }
-
-    private func headline(for outcome: DoOutcome, routine: LearnedRoutine) -> String? {
+    private func headline(for outcome: DoOutcome, routine: LearnedRoutine, trace: RoutineRunTrace) -> String? {
         switch outcome {
         case .completed:
             return RoutineRunCopy.success(priorVerifiedRuns: routine.verifiedRuns)
         case .failed(_, let reason):
             return RoutineRunCopy.stopped(
                 routine: routine,
-                step: lastBindingError.flatMap(RoutineRunCopy.step(of:)) ?? lastStartedStep,
-                error: lastBindingError,
+                step: trace.lastBindingError.flatMap(RoutineRunCopy.step(of:)) ?? trace.lastStartedStep,
+                error: trace.lastBindingError,
                 reason: reason
             )
         case .blocked:
@@ -278,27 +198,26 @@ final class RoutineRunner {
         return resources
     }
 
-
     private func handleDoEvent(_ event: DoEvent, taskID: UUID) {
         guard case .executing(let execution) = sessionController.state,
               execution.taskID == taskID,
               !execution.isFinalized else { return }
         switch event {
         case .planned(let steps):
-            guard links.transition({ try sessionController.setPlannedStepCount(steps) }) else { return }
+            guard transitionSession({ try sessionController.setPlannedStepCount(steps) }) else { return }
         case .started:
-            guard links.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
             hooks.setStatus("Working…")
         case .paused:
-            guard links.transition({ try sessionController.setExecutionPhase(.paused) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.paused) }) else { return }
             hooks.setStatus("Paused before the next step.")
         case .resumed:
-            guard links.transition({ try sessionController.setExecutionPhase(.running) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.running) }) else { return }
         case .steered(let instruction):
             guard execution.lifecycle == .running || execution.lifecycle == .paused else { return }
             hooks.setStatus("Steering: \(instruction)")
         case .confirmationRequested(let request):
-            guard links.transition({
+            guard transitionSession({
                 try sessionController.awaitApproval(
                     request.id,
                     actionSummary: request.actionSummary,
@@ -308,28 +227,28 @@ final class RoutineRunner {
             overlayState.buddyState = .awaitingApproval
             hooks.setStatus("Waiting for your OK.")
         case .confirmationAccepted(let approvalID):
-            guard links.transition({ try sessionController.acceptApproval(approvalID) }) else { return }
+            guard transitionSession({ try sessionController.acceptApproval(approvalID) }) else { return }
             overlayState.buddyState = .acting
             hooks.setStatus("Continuing the approved task.")
         case .completed:
-            guard links.transition({ try sessionController.setExecutionPhase(.verifying) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.verifying) }) else { return }
         case .stopped(let reason):
-            guard links.transition({ try sessionController.setExecutionPhase(.stopping) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.stopping) }) else { return }
             hooks.setStatus(reason)
         case .failed(let stepSummary, _):
-            guard links.transition({ try sessionController.setExecutionPhase(.stopping) }) else { return }
+            guard transitionSession({ try sessionController.setExecutionPhase(.stopping) }) else { return }
             hooks.setStatus("I stopped at \(stepSummary).")
         }
     }
 
-    private func handleTypedDoEvent(_ event: TypedDoEvent, taskID: UUID) {
+    private func handleTypedDoEvent(_ event: TypedDoEvent, taskID: UUID, trace: RoutineRunTrace) {
         guard case .executing(let execution) = sessionController.state,
               execution.taskID == taskID,
               !execution.isFinalized else { return }
         switch event {
         case .actionStarted(let index, let action, let tier):
-            lastStartedStep = RoutineReplay.stepIndex(of: action)
-            guard links.transition({
+            trace.lastStartedStep = RoutineReplay.stepIndex(of: action)
+            guard transitionSession({
                 try sessionController.recordExecutionStep(
                     id: action.id.rawValue,
                     summary: action.summary,
@@ -343,7 +262,7 @@ final class RoutineRunner {
         case .verification(let action, let status):
             switch status {
             case .verified(let evidence):
-                guard links.transition({
+                guard transitionSession({
                     try sessionController.recordVerification(
                         stepID: action.id.rawValue,
                         verified: true,
@@ -351,7 +270,7 @@ final class RoutineRunner {
                     )
                 }) else { return }
             case .unverified(let reason):
-                guard links.transition({
+                guard transitionSession({
                     try sessionController.recordVerification(
                         stepID: action.id.rawValue,
                         verified: false,
@@ -359,7 +278,7 @@ final class RoutineRunner {
                     )
                 }) else { return }
             case .notRequired:
-                guard links.transition({
+                guard transitionSession({
                     try sessionController.recordVerificationNote(
                         stepID: action.id.rawValue,
                         note: "No read-back required"

@@ -2,9 +2,6 @@ import Foundation
 import PerryBrain
 import PerryGuide
 
-/// One funnel for typed and dictated commands — the panel's submit, the
-/// voice dispatch hook, and the debug seam all end here. Parsing decides the
-/// session; the router performs it.
 @MainActor
 final class CommandRouter {
     private weak var host: AppController?
@@ -43,9 +40,6 @@ final class CommandRouter {
         }
     }
 
-    /// `voiceTaskScope` is the task a dictation hold began against: steering
-    /// goes to that task only, so speech never redirects a task that started
-    /// or changed while the user was talking.
     nonisolated static func decide(_ commandText: String?, state: SessionState, voiceTaskScope: UUID?) -> Route {
         guard let text = commandText, !text.isEmpty else { return .showPanel }
         let intent = GuideIntentParser.parse(text)

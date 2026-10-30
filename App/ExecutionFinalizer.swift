@@ -73,19 +73,15 @@ struct ExecutionFinalizer: Sendable {
         finishedAt: Date,
         headline: String? = nil
     ) -> ExecutionCompletion {
-        let transcriptOutcome: TranscriptEntry.Outcome
         let summary: String
         switch outcome {
         case .completed(let steps):
-            transcriptOutcome = .completed
             summary = execution.warnings.isEmpty
                 ? headline ?? "Done. I ran \(steps) step\(steps == 1 ? "" : "s")."
                 : "Done, but I couldn’t confirm it worked: \(execution.warnings.joined(separator: "; "))."
         case .blocked(let reason):
-            transcriptOutcome = .stopped
             summary = recoverySummary(headline: "I stopped: \(reason).", execution: execution, pendingMayHaveApplied: false)
         case .failed(let step, let reason):
-            transcriptOutcome = .failed
             summary = recoverySummary(headline: headline ?? "I stopped at \(step): \(reason).", execution: execution, pendingMayHaveApplied: true)
         }
 
@@ -104,7 +100,7 @@ struct ExecutionFinalizer: Sendable {
             request: execution.goal,
             appBundleID: execution.appBundleID,
             summary: summary,
-            outcome: transcriptOutcome,
+            outcome: outcome.transcriptOutcome,
             startedAt: execution.startedAt,
             finishedAt: finishedAt,
             steps: execution.steps,
@@ -117,7 +113,7 @@ struct ExecutionFinalizer: Sendable {
             summary: summary,
             createdAt: finishedAt
         )
-        let notificationKind: TaskNotification.Kind = transcriptOutcome == .completed ? .completed : .stopped
+        let notificationKind: TaskNotification.Kind = outcome.isCompleted ? .completed : .stopped
         let notification = TaskNotification(
             kind: notificationKind,
             title: execution.goal,
@@ -130,8 +126,6 @@ struct ExecutionFinalizer: Sendable {
         )
     }
 
-    /// Recovery-oriented failure copy: what happened, what changed, what did
-    /// not change, and the one safe next action.
     private static func recoverySummary(headline: String, execution: ExecutionSessionState, pendingMayHaveApplied: Bool) -> String {
         let finished = execution.steps.count
         guard finished > 0 else {

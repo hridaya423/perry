@@ -3,20 +3,11 @@ import Foundation
 import Network
 import PerryBrain
 
-/// Phase 9: fires scheduled Perrys. A 60-second tick evaluates
-/// `RoutineDecisions.shouldRun` for each Perry's schedule — due routines run
-/// the Perry's job as an agent turn on its bound thread, and the outcome is
-/// recorded back (missed slots catch up on the next tick, failures back off
-/// after three consecutive misses). The store's Perry list is republished on
-/// every tick so Home's sidebar stays current.
 @MainActor
 final class PerrySchedulerController {
     private let store: PerryStore
     private let coordinator: AgentCoordinator
-    /// A foreground Do run owns the user's attention — scheduled work waits.
     private let isBusy: @MainActor () -> Bool
-    /// Republished every tick (and once at start) so Home's sidebar sees
-    /// Perry creates/removes without reopening the window.
     var onPerrysChanged: (@MainActor ([Perry]) -> Void)?
 
     private var timer: Timer?
@@ -44,9 +35,6 @@ final class PerrySchedulerController {
             }
         }
         networkMonitor.start(queue: .global(qos: .utility))
-        // ponytail: a repeating Timer can be coalesced under App Nap while
-        // Perry is idle — an overdue slot still runs on the first post-wake
-        // tick (RoutineDecisions.isDue stays due until recorded).
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.requestTick() }
         }
@@ -76,8 +64,7 @@ final class PerrySchedulerController {
 
     private var sessionIsUnlocked: Bool {
         guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
-        // kCGSSessionScreenIsLocked isn't exported to Swift — the key itself
-        // has been stable since 10.6.
+        // kCGSSessionScreenIsLocked isn't exported to Swift
         return (session["CGSSessionScreenIsLocked"] as? Bool) != true
     }
 
@@ -94,15 +81,12 @@ final class PerrySchedulerController {
             else { continue }
             runs[perry.id] = Task {
                 defer { runs[perry.id] = nil }
-                var succeeded = false
-                for await event in coordinator.run(
+                let result = await coordinator.runToEnd(
                     threadID: threadID,
                     goal: perry.job,
-                    perryID: perry.id.uuidString,
-                    unattended: true
-                ) {
-                    if case .finished(.completed) = event { succeeded = true }
-                }
+                    kind: .unattended(perryID: perry.id.uuidString)
+                )
+                let succeeded = result.finish == .completed
                 var updated = perry
                 updated.schedule = RoutineDecisions.record(schedule, succeeded: succeeded, ranAt: Date())
                 try? await store.update(updated)

@@ -2,20 +2,13 @@ import CoreGraphics
 import Foundation
 import PerryBrain
 
-/// Phase 9 morning suggestions: once per calendar day (after 6am), runs one
-/// read-only researcher turn per *connected* integration, each proposing up
-/// to `SuggestionRules.maxCards` cards as JSON. Cards are ranked with the
-/// ignore-backoff rules — a morning that replaces un-acted cards raises
-/// tomorrow's bar. Quiet when Focus is on or the screen is being shared.
 @MainActor
 final class SuggestionController {
     private let coordinator: AgentCoordinator
     private let backend: any IntegrationBackend
-    /// A foreground Do run owns the user's attention — generation waits.
     private let isBusy: @MainActor () -> Bool
     var onSuggestionsChanged: (@MainActor ([SuggestionCard]) -> Void)?
 
-    /// Fixed thread so research turns stay inspectable in Home.
     private let threadID = UUID(uuidString: "A6E11C7E-0000-4A00-9E00-000000000009")!
     private var timer: Timer?
     private var generationTask: Task<Void, Never>?
@@ -74,10 +67,6 @@ final class SuggestionController {
         }
     }
 
-    // MARK: - Card actions
-
-    /// "Do it" — the card becomes a goal on its own thread; the card leaves
-    /// the pending set and the ignore streak resets.
     func act(on card: SuggestionCard, perform: (SuggestionCard) -> Void) {
         cards.removeAll { $0.id == card.id }
         persistPending()
@@ -99,8 +88,6 @@ final class SuggestionController {
         publish()
     }
 
-    // MARK: - Generation
-
     private func maybeGenerate(at now: Date) async {
         guard !Task.isCancelled, defaults.bool(forKey: PerryPreferences.$suggestionsEnabled.key) else { return }
         let cal = Calendar.current
@@ -113,7 +100,6 @@ final class SuggestionController {
         let connected = (try? await backend.services().filter { $0.connected }) ?? []
         guard !Task.isCancelled, !connected.isEmpty else { return }
 
-        // Un-acted cards from the last run count as ignored → higher bar.
         if !cards.isEmpty {
             let ignoredDays = defaults.integer(forKey: PerryPreferences.$suggestionsIgnoredDays.key)
             defaults.set(ignoredDays + 1, forKey: PerryPreferences.$suggestionsIgnoredDays.key)
@@ -144,11 +130,8 @@ final class SuggestionController {
         [{"title": "…", "body": "one-sentence rationale + proposed action", "score": 0.0-1.0}]
         Empty array if nothing merits attention.
         """
-        var text = ""
-        for await event in coordinator.run(threadID: threadID, goal: prompt, surface: .suggestions) {
-            if case .textDelta(let delta) = event { text += delta }
-        }
-        return Self.parseCards(text, serviceID: nil).map { card in
+        let result = await coordinator.runToEnd(threadID: threadID, goal: prompt, kind: .suggestion)
+        return Self.parseCards(result.answer, serviceID: nil).map { card in
             var card = card
             card.sourceServiceID = service.id
             card.sourceServiceName = service.name
@@ -156,7 +139,6 @@ final class SuggestionController {
         }
     }
 
-    /// First JSON array in the reply → cards, scored as given and validated.
     static func parseCards(_ text: String, serviceID: UUID?) -> [SuggestionCard] {
         guard let start = text.firstIndex(of: "["),
               let end = text[start...].lastIndex(of: "]") else { return [] }
@@ -180,8 +162,6 @@ final class SuggestionController {
         let body: String
         let score: Double
     }
-
-    // MARK: - Persistence
 
     private func persistPending() {
         let data = try? JSONEncoder().encode(cards)

@@ -234,8 +234,6 @@ public actor TranscriptStore {
         return true
     }
 
-    /// Atomically rewrites index.json (with backup rotation). Shared by
-    /// append and delete so the index never points at removed day files.
     private func persistIndex(_ entries: [TranscriptEntry]) -> Bool {
         guard let directory else {
             persistenceIssue = nil

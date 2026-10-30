@@ -3,8 +3,6 @@ import PerryCore
 
 public enum ActionExecutionEvidence: Sendable, Equatable {
     case workspaceFile(WorkspaceFileExecutionReceipt)
-    /// Raw service response body from a remote-integration write; the
-    /// verifier checks the postcondition's expected text is echoed back.
     case integrationResponse(Data)
     case windowBaseline(String)
 }

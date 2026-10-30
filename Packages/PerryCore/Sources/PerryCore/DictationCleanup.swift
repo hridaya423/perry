@@ -7,8 +7,6 @@ public enum DictationCleanupGuard {
     public static func isAcceptable(raw: String, cleaned: String) -> Bool {
         if cleaned.contains("—") && !raw.contains("—") { return false }
         if cleaned.contains("…") && !raw.contains("…") { return false }
-        // Fillers are the point of cleanup — strip them from the raw side so
-        // removing "um, like, you know" doesn't count against the budget.
         let rawWords = tokens(raw).filter { !fillers.contains($0) }
         let cleanedWords = tokens(cleaned)
         let budget = max(2, Int(ceil(Double(rawWords.count) * 0.2)))
@@ -27,7 +25,6 @@ public enum DictationCleanupGuard {
             .filter { !$0.isEmpty }
     }
 
-    /// Same segmentation as `tokens` but preserving case.
     static func caseSensitiveTokens(_ text: String) -> [String] {
         var separators = CharacterSet.alphanumerics.inverted
         separators.remove(charactersIn: "'’")

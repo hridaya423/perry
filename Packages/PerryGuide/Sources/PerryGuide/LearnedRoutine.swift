@@ -240,8 +240,6 @@ public enum RecordedEvent: Equatable, Sendable {
     case click(RoutineTarget)
     case doubleClick(RoutineTarget)
     case typed(text: String, into: RoutineTarget?)
-    /// Typing into a field that might hold a secret: the text is never kept,
-    /// and the routine asks for it on every run.
     case typedWithheld(into: RoutineTarget?)
     case keyPress(String)
     case chord(key: String, modifiers: [String])
@@ -261,8 +259,6 @@ public enum RoutineInference {
         while index < events.count {
             switch events[index] {
             case .click(let target):
-                // Click-to-focus folds into the type step that follows on the
-                // same target.
                 if index + 1 < events.count, case .typed(let text, let typedTarget) = events[index + 1],
                    (typedTarget ?? target) == target {
                     steps.append(typeStep(text: text, target: target))
@@ -279,7 +275,6 @@ public enum RoutineInference {
             case .doubleClick(let target):
                 steps.append(RoutineStep(summary: "Double-click \(target.label ?? target.role)", target: target, action: .doubleClick))
             case .typed(let text, let target):
-                // Merge a run of typed events aimed at the same target.
                 var merged = text
                 var next = index + 1
                 while next < events.count, case .typed(let more, let moreTarget) = events[next], moreTarget == target {
@@ -324,10 +319,6 @@ public enum RoutineInference {
 /// editable Markdown. The metadata is authoritative — the body is for humans
 /// and is ignored on decode.
 public enum RoutineDocument {
-    /// Keys the metadata block may carry. Anything else rejects the document —
-    /// imported content is inert and untrusted, so smuggled fields never
-    /// decode. Duplicate-key detection isn't available through Foundation's
-    /// JSON parsers; the decoded-and-revalidated model is the only artifact.
     private static let allowedKeys: Set<String> = [
         "schemaVersion", "id", "revision", "name", "appBundleIDs", "bundleID",
         "parameters", "steps", "provenance", "verifiedRuns", "createdAt"

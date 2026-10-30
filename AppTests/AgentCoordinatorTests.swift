@@ -373,7 +373,7 @@ final class AgentCoordinatorTests: XCTestCase {
             AXElement(stableID: "project", role: .button, label: "Orchid-73", frame: AXElementFrame(x: 100, y: 100, width: 120, height: 30), isActionable: true)
         ]), screenshotData: Data([1, 2, 3]))
         let events = await collect(coordinator.run(
-            threadID: UUID(), goal: "What is this button?", spatialContext: .init(observation: observation, bindings: [], skill: nil)
+            threadID: UUID(), goal: "What is this button?", kind: .talk(.init(observation: observation, bindings: [], skill: nil))
         ))
         XCTAssertEqual(events.last, .finished(.completed))
         let messages = try XCTUnwrap(provider.requests.first?.messages)
@@ -433,8 +433,8 @@ final class AgentCoordinatorTests: XCTestCase {
             consent: ToolConsentStore(directory: nil), observations: observations
         )
         let first = await collect(coordinator.run(
-            threadID: id, goal: "Remember Cedar", surface: .talk, runID: runID,
-            spatialContext: .init(observation: observation, bindings: [], skill: "Read the current page before explaining.")
+            threadID: id, goal: "Remember Cedar",
+            kind: .talk(.init(observation: observation, bindings: [], skill: "Read the current page before explaining.")), runID: runID
         ))
         XCTAssertEqual(first.last, .finished(.completed))
         guard case .user(let contextParts)? = provider.requests[0].messages.dropLast().last else {

@@ -108,7 +108,7 @@ final class SessionExitAuditTests: XCTestCase {
             appBundleID: "com.apple.finder",
             workspace: URL(fileURLWithPath: "/tmp/perry-exit-audit"),
             lifecycle: lifecycle,
-            stopIntent: outcome == nil && lifecycle == .stopping ? .requested : nil,
+            stopRequested: outcome == nil && lifecycle == .stopping,
             finalizationOutcome: outcome
         )
     }

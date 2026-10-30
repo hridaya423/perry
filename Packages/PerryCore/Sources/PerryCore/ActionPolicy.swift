@@ -40,9 +40,6 @@ public enum ApprovalScope: Codable, Equatable, Hashable, Sendable, Comparable {
     case action
     case plan
 
-    /// Strictness order: `.none` grants nothing, `.plan` authorizes the whole
-    /// plan once, `.action` authorizes each action individually. A requirement
-    /// satisfies a floor when it is at least as strict as the floor.
     private var strictnessRank: Int {
         switch self {
         case .none: return 0

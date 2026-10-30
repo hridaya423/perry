@@ -27,7 +27,6 @@ public enum WorkspaceActionJournal: Codable, Sendable {
             actionIndex = try fields.decode(Int.self, "actionIndex")
             grant = try fields.decode(ExecutionApprovalGrant.self, "grant")
         }
-
     }
 
     case prepared(Attempt)

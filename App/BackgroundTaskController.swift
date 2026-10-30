@@ -5,15 +5,6 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Owns durable background work end to end: task creation (enqueue → persist
-/// → launch), the launch gate and control scope, per-task task handles,
-/// approval/cancel/pause/resume/discard/replan controls, workspace
-/// directories, recovery after relaunch, and the records/messages the
-/// Background tasks window renders. Open-ended goals run as unattended agent
-/// turns (`.agent` records); typed workspace plans (`.executable` records)
-/// remain for routine replay and already-persisted work. Durable records stay
-/// in `TaskCoordinator`; this controller owns the live control plane around
-/// it.
 @MainActor
 final class BackgroundTaskController: ObservableObject {
     static func undoGoal(for goal: String) -> String {
@@ -25,8 +16,6 @@ final class BackgroundTaskController: ObservableObject {
         var setStatus: (String) -> Void = { _ in }
         var isErasureInProgress: () -> Bool = { false }
         var requestOnboarding: () -> Void = {}
-        /// Fired with the visible record count after each reload — the shell
-        /// uses it for the status-item menu label.
         var statusCountsChanged: (_ total: Int, _ active: Int, _ awaitingApproval: Int) -> Void = { _, _, _ in }
     }
 
@@ -40,9 +29,15 @@ final class BackgroundTaskController: ObservableObject {
     private let storageDirectory: () -> URL?
     private let hooks: Hooks
 
-    private var runTasks: [TaskID: Task<Void, Never>] = [:]
-    private var setupTasks: [TaskID: Task<Void, Never>] = [:]
-    private var launchTasks: [TaskID: Task<Void, Never>] = [:]
+    private struct Handles {
+        var setup: Task<Void, Never>?
+        var launch: Task<Void, Never>?
+        var run: Task<Void, Never>?
+
+        var all: [Task<Void, Never>] { [setup, launch, run].compactMap { $0 } }
+    }
+
+    private var owned: [TaskID: Handles] = [:]
     private let controlScope = BackgroundTaskControlScope()
     private let launchGate = BackgroundTaskLaunchGate()
     private var messages: [TaskID: String] = [:]
@@ -50,8 +45,6 @@ final class BackgroundTaskController: ObservableObject {
     @Published private(set) var records: [TaskRecord] = []
     @Published private(set) var persistenceError: PersistenceError?
     @Published private(set) var runningCount = 0
-    /// Records with an undo pass in flight — re-entry is refused so a
-    /// double-click or late callback cannot dispatch the inverses twice.
     @Published private(set) var undoingIDs: Set<TaskID> = []
 
     private static let maximumConcurrentTasks = 3
@@ -59,8 +52,6 @@ final class BackgroundTaskController: ObservableObject {
 
 #if DEBUG
     private var debugLaunchBarrier: (@MainActor () async -> Void)?
-    /// Overrides the Undo Trash root so tests never touch the user's real
-    /// Trash; nil keeps the system default.
     var debugTrashURL: URL?
 #endif
 
@@ -87,21 +78,26 @@ final class BackgroundTaskController: ObservableObject {
     }
 
     var acceptsControls: Bool { controlScope.acceptsControls }
-    var hasRunningTasks: Bool { !runTasks.isEmpty }
+    var hasRunningTasks: Bool { runCount > 0 }
+
+    private var runCount: Int { owned.values.filter { $0.run != nil }.count }
+
+    private var canStartWork: Bool { controlScope.acceptsControls && !hooks.isErasureInProgress() }
+
+    private func setHandle(_ id: TaskID, _ slot: WritableKeyPath<Handles, Task<Void, Never>?>, _ task: Task<Void, Never>?) {
+        var handles = owned[id] ?? Handles()
+        handles[keyPath: slot] = task
+        owned[id] = handles.all.isEmpty ? nil : handles
+    }
 
     func isRunning(_ id: TaskID) -> Bool {
-        runTasks[id] != nil || setupTasks[id] != nil || launchTasks[id] != nil
+        owned[id] != nil
     }
 
     func message(for id: TaskID) -> String? {
         messages[id]
     }
 
-    // MARK: Undo
-
-    /// The receipt-derived inverses a terminal task still supports, in the
-    /// order Undo would apply them (last change first). Empty means nothing
-    /// reversible is on record — the row shows no Undo control.
     func undoableDescriptions(for record: TaskRecord) -> [String] {
         guard let workspace = undoWorkspace(for: record),
               let journal = record.workspaceJournal else { return [] }
@@ -109,11 +105,6 @@ final class BackgroundTaskController: ObservableObject {
         return journal.completed.reversed().compactMap { engine.inverseDescription(for: $0.receipt) }
     }
 
-    /// Reverses a terminal task's completed workspace effects, last change
-    /// first, stopping at the first conflict so intervening user work is
-    /// never touched. The inverses run as approved typed actions through the
-    /// shared write-ahead journal, so an undo lands its own durable receipts —
-    /// and is itself undoable.
     func isUndoing(_ id: TaskID) -> Bool {
         undoingIDs.contains(id)
     }
@@ -190,8 +181,6 @@ final class BackgroundTaskController: ObservableObject {
         }.first
     }
 
-    // MARK: Records
-
     func refreshRecords() {
         Task { @MainActor [weak self] in
             await self?.reloadRecords()
@@ -206,7 +195,7 @@ final class BackgroundTaskController: ObservableObject {
         }
         let metadata = await contextStore.snapshot()
         self.records = records
-        runningCount = runTasks.count
+        runningCount = runCount
         let liveIDs = Set(records.map(\.id))
         messages = messages.filter { liveIDs.contains($0.key) }
         for record in records where messages[record.id] == nil {
@@ -219,14 +208,10 @@ final class BackgroundTaskController: ObservableObject {
         )
     }
 
-    /// Records parked on an approval-gated action — the signal the notch pill
-    /// and status surfaces count as "needs review" rather than just running.
     var awaitingApprovalCount: Int {
         records.filter { $0.workspaceActionToApprove != nil }.count
     }
 
-    /// Called once after launch: recovers interrupted runs, reloads the visible
-    /// records, then starts anything the queue allows.
     func recoverInterruptedAndStartQueued() async {
         do {
             _ = try await coordinator.recoverInterruptedRuns()
@@ -238,8 +223,6 @@ final class BackgroundTaskController: ObservableObject {
         await reloadRecords()
         startQueuedTasks()
     }
-
-    // MARK: Creation
 
     func queue(goal: String) {
         guard !hooks.isErasureInProgress() else {
@@ -255,13 +238,9 @@ final class BackgroundTaskController: ObservableObject {
         let id = TaskID()
         let setupTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.setupTasks[id] = nil }
+            defer { self.setHandle(id, \.setup, nil) }
             _ = await self.notifier.requestAuthorization()
             do {
-                // Open-ended goals run as unattended agent turns — the same
-                // pipeline as a foreground Do. No worker or workspace is
-                // claimed at queue time; the run gets a background worker
-                // through the shared lease when it starts.
                 let record = try await self.coordinator.enqueue(
                     agentPlan: AgentTaskPlan(goal: trimmed, threadID: UUID()),
                     taskID: id
@@ -295,7 +274,7 @@ final class BackgroundTaskController: ObservableObject {
                 }
             }
         }
-        setupTasks[id] = setupTask
+        setHandle(id, \.setup, setupTask)
     }
 
     private func rollbackCreation(for id: TaskID) async throws {
@@ -308,14 +287,10 @@ final class BackgroundTaskController: ObservableObject {
         try Self.removeWorkspace(for: id, root: workspaceRoot())
     }
 
-    // MARK: Controls
-
     func pause(_ id: TaskID) {
         guard let record = records.first(where: { $0.id == id }) else { return }
         guard controlScope.acceptsControls else { return }
         launchGate.cancel(id)
-        // Agent turns have no mid-run safe point: pause interrupts the turn,
-        // and resume reruns the goal on the same thread.
         if case .agent(let agentPlan) = record.plan {
             agentCoordinator.stop(threadID: agentPlan.threadID)
         }
@@ -329,10 +304,6 @@ final class BackgroundTaskController: ObservableObject {
             }
             self.refreshRecords()
         }
-    }
-
-    func resume(_ id: TaskID) {
-        launch(id)
     }
 
     func approveWorkspace(_ record: TaskRecord) {
@@ -376,7 +347,7 @@ final class BackgroundTaskController: ObservableObject {
         cancel(id, expectedRevision: expectedRevision)
     }
 
-    private func launch(_ id: TaskID, expectedRevision: UUID? = nil) {
+    func resume(_ id: TaskID) {
         guard controlScope.acceptsControls else { return }
         guard let visibleRecord = records.first(where: { $0.id == id }) else { return }
         if let message = BackgroundTaskLaunchGate.blocker(record: visibleRecord) {
@@ -388,7 +359,7 @@ final class BackgroundTaskController: ObservableObject {
             return
         }
         let launchTask = Task { @MainActor [weak self] in
-            defer { self?.launchTasks[id] = nil }
+            defer { self?.setHandle(id, \.launch, nil) }
             guard let self else { return }
 #if DEBUG
             if let barrier = self.debugLaunchBarrier {
@@ -398,13 +369,7 @@ final class BackgroundTaskController: ObservableObject {
             guard let record = await self.runner.records().first(where: { $0.id == id }),
                   self.launchGate.contains(launchLease),
                   !Task.isCancelled,
-                  !self.hooks.isErasureInProgress(),
-                  self.controlScope.acceptsControls else {
-                self.launchGate.release(launchLease)
-                return
-            }
-            if let expectedRevision, record.revision != expectedRevision {
-                self.messages[id] = "That approval request is no longer current"
+                  self.canStartWork else {
                 self.launchGate.release(launchLease)
                 return
             }
@@ -422,7 +387,7 @@ final class BackgroundTaskController: ObservableObject {
             }
             self.refreshRecords()
         }
-        launchTasks[id] = launchTask
+        setHandle(id, \.launch, launchTask)
         guard controlScope.start({ @MainActor in
             await launchTask.value
         }) else {
@@ -442,11 +407,11 @@ final class BackgroundTaskController: ObservableObject {
     }
 
     func cancel(_ id: TaskID, expectedRevision: UUID? = nil) {
-        guard setupTasks[id] != nil
+        guard owned[id]?.setup != nil
             || records.contains(where: { $0.id == id }) else { return }
         guard controlScope.acceptsControls else { return }
         if expectedRevision == nil {
-            setupTasks[id]?.cancel()
+            owned[id]?.setup?.cancel()
         }
         messages[id] = "Stopping"
         _ = controlScope.start { @MainActor [weak self] in
@@ -454,8 +419,6 @@ final class BackgroundTaskController: ObservableObject {
             do {
                 try await self.runner.cancel(id: id, expectedRevision: expectedRevision)
             } catch {
-                // Gone or already terminal — either way the task is finished
-                // and there is nothing left to cancel.
                 if await self.coordinator.record(id: id).map(\.isTerminal) ?? true {
                     self.cancelOwnedWork(id)
                     _ = await self.waitForOwnershipToEnd(id)
@@ -511,16 +474,12 @@ final class BackgroundTaskController: ObservableObject {
 
     private func cancelOwnedWork(_ id: TaskID) {
         launchGate.cancel(id)
-        setupTasks[id]?.cancel()
-        launchTasks[id]?.cancel()
-        runTasks[id]?.cancel()
+        owned[id]?.all.forEach { $0.cancel() }
     }
 
     private func waitForOwnershipToEnd(_ id: TaskID) async -> Bool {
         let deadline = ContinuousClock.now.advanced(by: Self.joinTimeout)
-        while setupTasks[id] != nil
-            || launchTasks[id] != nil
-            || runTasks[id] != nil {
+        while owned[id] != nil {
             guard ContinuousClock.now < deadline else { return false }
             do {
                 try await Task.sleep(
@@ -535,7 +494,7 @@ final class BackgroundTaskController: ObservableObject {
     }
 
     func discard(_ id: TaskID) {
-        guard runTasks[id] == nil else { return }
+        guard owned[id]?.run == nil else { return }
         guard controlScope.acceptsControls else { return }
         launchGate.cancel(id)
         _ = controlScope.start { @MainActor [weak self] in
@@ -563,9 +522,7 @@ final class BackgroundTaskController: ObservableObject {
         record: TaskRecord,
         launchLease: BackgroundTaskLaunchLease? = nil
     ) -> Bool {
-        guard controlScope.acceptsControls,
-              !hooks.isErasureInProgress(),
-              runTasks[record.id] == nil else { return false }
+        guard canStartWork, owned[record.id]?.run == nil else { return false }
         switch record.plan {
         case .executable:
             return startWorkspaceTask(record: record, launchLease: launchLease)
@@ -579,203 +536,157 @@ final class BackgroundTaskController: ObservableObject {
         return launchGate.contains(lease)
     }
 
+    private func beginRun(_ record: TaskRecord, message: String, body: @escaping @MainActor (BackgroundTaskController) async -> Void) -> Bool {
+        guard runCount < Self.maximumConcurrentTasks else {
+            messages[record.id] = "Queued until another background task finishes"
+            return false
+        }
+        messages[record.id] = message
+        setHandle(record.id, \.run, Task { @MainActor [weak self] in
+            guard let self else { return }
+            await body(self)
+        })
+        runningCount = runCount
+        return true
+    }
+
+    private func finishRun(_ id: TaskID, lease: BackgroundTaskLaunchLease?, advanceQueue: Bool = true) async {
+        if let lease { launchGate.release(lease) }
+        setHandle(id, \.run, nil)
+        await reloadRecords()
+        if advanceQueue { startQueuedTasks() }
+    }
+
     private func startWorkspaceTask(record: TaskRecord, launchLease: BackgroundTaskLaunchLease?) -> Bool {
         guard record.canResumeWorkspaceTask, case .executable(let plan) = record.plan else {
             messages[record.id] = "Review the file and approve its creation before running."
             return false
         }
-        guard runTasks.count < Self.maximumConcurrentTasks else {
-            messages[record.id] = "Queued until another background task finishes"
-            return false
-        }
-        messages[record.id] = "Running approved file task"
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
+        return beginRun(record, message: "Running approved file task") { controller in
             var reported = false
             var canAdvanceQueue = true
             do {
                 try Task.checkCancellation()
-                guard self.launchIsCurrent(launchLease), self.controlScope.acceptsControls, !self.hooks.isErasureInProgress() else { throw CancellationError() }
-                let metadata = await self.contextStore.metadata(for: record.id)
+                guard controller.launchIsCurrent(launchLease), controller.canStartWork else { throw CancellationError() }
+                let metadata = await controller.contextStore.metadata(for: record.id)
                 let progress: WorkspaceTaskProgress
                 if record.canReportWorkspaceTask {
-                    self.messages[record.id] = "Saving verified task report"
-                    progress = .reported(try await self.runner.reportWorkspaceTask(record: record, history: self.transcriptStore, startedAt: metadata?.createdAt ?? Date()))
+                    controller.messages[record.id] = "Saving verified task report"
+                    progress = .reported(try await controller.runner.reportWorkspaceTask(record: record, history: controller.transcriptStore, startedAt: metadata?.createdAt ?? Date()))
                 } else {
-                    let workspace = try self.workspaceURL(for: record.id, metadata: metadata)
-                    progress = try await self.workers.withWorker(scope: .background, resources: [.workspace(workspace.standardizedFileURL.path)]) { _ in
-                        try await self.runner.runWorkspaceTask(record: record, runtime: WorkspaceFileRuntime(baseURL: workspace), history: self.transcriptStore, startedAt: metadata?.createdAt ?? Date())
+                    let workspace = try controller.workspaceURL(for: record.id, metadata: metadata)
+                    progress = try await controller.workers.withWorker(scope: .background, resources: [.workspace(workspace.standardizedFileURL.path)]) { _ in
+                        try await controller.runner.runWorkspaceTask(record: record, runtime: WorkspaceFileRuntime(baseURL: workspace), history: controller.transcriptStore, startedAt: metadata?.createdAt ?? Date())
                     }
                 }
                 switch progress {
                 case .awaitingApproval:
-                    self.messages[record.id] = "Action verified. Review and approve the next action."
+                    controller.messages[record.id] = "Action verified. Review and approve the next action."
                 case .reported:
                     reported = true
-                    _ = await self.runner.takeReportedWorkspaceOutcome(for: plan.planID)
-                    self.messages[record.id] = "Report saved to history"
-                    try await self.contextStore.remove(for: record.id)
+                    _ = await controller.runner.takeReportedWorkspaceOutcome(for: plan.planID)
+                    controller.messages[record.id] = "Report saved to history"
+                    try await controller.contextStore.remove(for: record.id)
                 }
             } catch {
-                // A retained terminal record means the report already landed —
-                // finishWorkspaceTask keeps evidence rows instead of removing
-                // them, so "reported" is terminal-or-gone, not just gone.
-                let recordIsFinished = await self.coordinator.record(id: record.id).map(\.isTerminal) ?? true
+                let recordIsFinished = await controller.coordinator.record(id: record.id).map(\.isTerminal) ?? true
                 if !reported, recordIsFinished,
-                   await self.runner.takeReportedWorkspaceOutcome(for: plan.planID) != nil {
+                   await controller.runner.takeReportedWorkspaceOutcome(for: plan.planID) != nil {
                     reported = true
                     do {
-                        try await self.contextStore.remove(for: record.id)
-                        self.messages[record.id] = "Report saved to history"
+                        try await controller.contextStore.remove(for: record.id)
+                        controller.messages[record.id] = "Report saved to history"
                     } catch {
-                        self.messages[record.id] = "History saved, but metadata cleanup failed: \(error.localizedDescription)"
+                        controller.messages[record.id] = "History saved, but metadata cleanup failed: \(error.localizedDescription)"
                     }
                 } else {
-                    self.messages[record.id] = reported
+                    controller.messages[record.id] = reported
                         ? "History saved, but metadata cleanup failed: \(error.localizedDescription)"
                         : "Task stopped: \(error.localizedDescription). Review its saved state before retrying."
                 }
-                if !reported, let current = await self.coordinator.record(id: record.id),
+                if !reported, let current = await controller.coordinator.record(id: record.id),
                    current.revision == record.revision,
                    !current.cancellationRequested || current.canResumeWorkspaceTask {
                     do {
-                        _ = try await self.coordinator.pause(id: record.id, expectedRevision: current.revision)
+                        _ = try await controller.coordinator.pause(id: record.id, expectedRevision: current.revision)
                     } catch TaskCoordinatorError.invalidTransition {
                     } catch {
                         canAdvanceQueue = false
-                        self.messages[record.id] = "Could not save the paused task: \(error.localizedDescription). The queue is stopped until storage recovers."
+                        controller.messages[record.id] = "Could not save the paused task: \(error.localizedDescription). The queue is stopped until storage recovers."
                     }
                 }
-                if await self.coordinator.lastPersistenceError != nil {
+                if await controller.coordinator.lastPersistenceError != nil {
                     canAdvanceQueue = false
                 }
             }
-            if let launchLease { self.launchGate.release(launchLease) }
-            self.runTasks[record.id] = nil
-            self.runningCount = self.runTasks.count
-            await self.reloadRecords()
-            if canAdvanceQueue { self.startQueuedTasks() }
+            await controller.finishRun(record.id, lease: launchLease, advanceQueue: canAdvanceQueue)
         }
-        runTasks[record.id] = task
-        runningCount = runTasks.count
-        return true
     }
 
-    /// Runs an open-ended goal as an unattended agent turn on the task's
-    /// thread. Approval-bound tool calls fail closed — nobody is present to
-    /// grant them — so a background task can never silently take a risky
-    /// action. Relaunching reuses the same thread, so an interrupted run
-    /// resumes with the model aware of its earlier attempt.
     private func startAgentTask(record: TaskRecord, launchLease: BackgroundTaskLaunchLease?) -> Bool {
         guard case .agent(let agentPlan) = record.plan, record.canResumeAgentTask else {
             messages[record.id] = "This task cannot resume."
             return false
         }
-        guard runTasks.count < Self.maximumConcurrentTasks else {
-            messages[record.id] = "Queued until another background task finishes"
-            return false
-        }
-        messages[record.id] = "Running in the background"
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let metadata = await self.contextStore.metadata(for: record.id)
+        return beginRun(record, message: "Running in the background") { controller in
+            let metadata = await controller.contextStore.metadata(for: record.id)
             var outcome: DoOutcome?
-            var completedRun = false
             do {
                 try Task.checkCancellation()
-                guard self.launchIsCurrent(launchLease), self.controlScope.acceptsControls,
-                      !self.hooks.isErasureInProgress() else { throw CancellationError() }
-                _ = try await self.coordinator.beginAgentRun(id: record.id, expectedRevision: record.revision)
-                self.refreshRecords()
-                var finish: AgentFinish = .interrupted
-                for await event in self.agentCoordinator.run(
+                guard controller.launchIsCurrent(launchLease), controller.canStartWork else { throw CancellationError() }
+                _ = try await controller.coordinator.beginAgentRun(id: record.id, expectedRevision: record.revision)
+                controller.refreshRecords()
+                let result = await controller.agentCoordinator.runToEnd(
                     threadID: agentPlan.threadID,
                     goal: record.goal,
-                    unattended: true
-                ) {
+                    kind: .unattended(perryID: nil)
+                ) { event in
                     switch event {
                     case .toolCallStarted(let call):
-                        self.messages[record.id] = "Running \(call.name)"
+                        controller.messages[record.id] = "Running \(call.name)"
                     case .toolCallFinished(let result) where result.isError:
-                        self.messages[record.id] = "A tool call failed"
+                        controller.messages[record.id] = "A tool call failed"
                     case .note(let note):
-                        self.messages[record.id] = note
-                    case .finished(let reason):
-                        finish = reason
-                    case .textDelta, .toolCallFinished, .draw:
+                        controller.messages[record.id] = note
+                    case .textDelta, .toolCallFinished, .draw, .finished:
                         break
                     }
                 }
-                // Paused or already-finished records are the control path's
-                // business, not this run's: leave them alone.
-                if await self.coordinator.record(id: record.id)?.state == .paused || Task.isCancelled {
+                if await controller.coordinator.record(id: record.id)?.state == .paused || Task.isCancelled {
                     throw CancellationError()
                 }
-                let resolved: DoOutcome
-                switch finish {
-                case .completed:
-                    resolved = .completed(stepsRun: 0)
-                    completedRun = true
-                case .interrupted, .paused:
-                    resolved = .blocked(reason: "stopped before finishing")
-                case .budgetToolCalls:
-                    resolved = .failed(stepSummary: "the agent run", reason: "the task used its tool-call budget")
-                case .budgetTime:
-                    resolved = .failed(stepSummary: "the agent run", reason: "the task ran out of time")
-                case .providerError(let reason), .failed(let reason):
-                    resolved = .failed(stepSummary: "the agent run", reason: reason)
-                }
-                _ = try await self.coordinator.finish(id: record.id, outcome: resolved)
-                outcome = resolved
+                outcome = try await controller.coordinator.finish(id: record.id, outcome: result.finish.doOutcome(stepsRun: 0))
             } catch is CancellationError {
-                // fall through: handleOutcome finishes the cancellation the
-                // control path already persisted.
             } catch {
                 let resolved = DoOutcome.failed(stepSummary: "the agent run", reason: error.localizedDescription)
                 outcome = resolved
-                if let current = await self.coordinator.record(id: record.id), !current.isTerminal {
-                    _ = try? await self.coordinator.finish(id: record.id, outcome: resolved)
+                if let current = await controller.coordinator.record(id: record.id), !current.isTerminal {
+                    _ = try? await controller.coordinator.finish(id: record.id, outcome: resolved)
                 }
             }
-            // A paused record stays queued: the user asked to stop the run,
-            // and resume continues the goal on the same thread.
-            if await self.coordinator.record(id: record.id)?.state == .paused {
-                self.messages[record.id] = "Paused. Resume continues the task on the same thread."
-                self.runTasks[record.id] = nil
-                self.runningCount = self.runTasks.count
-                if let launchLease { self.launchGate.release(launchLease) }
-                await self.reloadRecords()
-                self.startQueuedTasks()
+            if await controller.coordinator.record(id: record.id)?.state == .paused {
+                controller.messages[record.id] = "Paused. Resume continues the task on the same thread."
+                await controller.finishRun(record.id, lease: launchLease)
                 return
             }
-            await self.handleOutcome(record: record, metadata: metadata, outcome: outcome)
-            if outcome != nil {
-                await self.notifier.deliver(TaskNotification(
-                    kind: completedRun ? .completed : .stopped,
-                    title: completedRun ? "Background task finished" : "Background task stopped",
+            await controller.handleOutcome(record: record, metadata: metadata, outcome: outcome)
+            if let outcome {
+                let completed = outcome.isCompleted
+                await controller.notifier.deliver(TaskNotification(
+                    kind: completed ? .completed : .stopped,
+                    title: completed ? "Background task finished" : "Background task stopped",
                     body: record.goal,
                     taskID: record.id
                 ))
             }
-            self.runTasks[record.id] = nil
-            self.runningCount = self.runTasks.count
-            if let launchLease { self.launchGate.release(launchLease) }
-            await self.reloadRecords()
-            self.startQueuedTasks()
+            await controller.finishRun(record.id, lease: launchLease)
         }
-        runTasks[record.id] = task
-        runningCount = runTasks.count
-        return true
     }
 
     private func startQueuedTasks() {
-        guard controlScope.acceptsControls else { return }
-        guard runTasks.count < Self.maximumConcurrentTasks else { return }
+        guard controlScope.acceptsControls, runCount < Self.maximumConcurrentTasks else { return }
         records
-            .filter {
-                ($0.canStartAutomatically || $0.canResumeAgentTask)
-                    && runTasks[$0.id] == nil
-            }
+            .filter { ($0.canStartAutomatically || $0.canResumeAgentTask) && owned[$0.id]?.run == nil }
             .forEach { resume($0.id) }
     }
 
@@ -790,7 +701,6 @@ final class BackgroundTaskController: ObservableObject {
         } else {
             guard let currentRecord = await coordinator.record(id: record.id),
                   !currentRecord.isTerminal else {
-                // Terminal records are retained receipts — already reported.
                 refreshRecords()
                 return
             }
@@ -813,41 +723,25 @@ final class BackgroundTaskController: ObservableObject {
                 return
             }
         }
-        // "Persisted" means a live record the user can still act on; retained
-        // terminal receipts don't count — the task is done, its evidence stays.
         let persisted = await runner.records().contains { $0.id == record.id && !$0.isTerminal }
+        let cleanupFailure: String
         switch outcome {
         case .completed:
             messages[record.id] = "Finished"
+            cleanupFailure = "Finished, but cleanup failed"
+        case .blocked(let reason):
+            messages[record.id] = persisted ? "Paused: \(reason)" : "Stopped: \(reason)"
+            cleanupFailure = "Stopped, but cleanup failed"
+        case .failed(let step, let reason):
+            messages[record.id] = persisted ? "Paused after \(step): \(reason)" : "Failed at \(step): \(reason)"
+            cleanupFailure = "Failed, and cleanup also failed"
+        }
+        if outcome.isCompleted || !persisted {
             await recordToTranscript(record: record, metadata: metadata, outcome: outcome)
             do {
                 try await contextStore.remove(for: record.id)
             } catch {
-                messages[record.id] = "Finished, but cleanup failed: \(error.localizedDescription)"
-            }
-        case .blocked(let reason):
-            if persisted {
-                messages[record.id] = "Paused: \(reason)"
-            } else {
-                messages[record.id] = "Stopped: \(reason)"
-                await recordToTranscript(record: record, metadata: metadata, outcome: outcome)
-                do {
-                    try await contextStore.remove(for: record.id)
-                } catch {
-                    messages[record.id] = "Stopped, but cleanup failed: \(error.localizedDescription)"
-                }
-            }
-        case .failed(let step, let reason):
-            messages[record.id] = persisted
-                ? "Paused after \(step): \(reason)"
-                : "Failed at \(step): \(reason)"
-            if !persisted {
-                await recordToTranscript(record: record, metadata: metadata, outcome: outcome)
-                do {
-                    try await contextStore.remove(for: record.id)
-                } catch {
-                    messages[record.id] = "Failed, and cleanup also failed: \(error.localizedDescription)"
-                }
+                messages[record.id] = "\(cleanupFailure): \(error.localizedDescription)"
             }
         }
         hooks.setStatus("Background task \(record.goal) \(messages[record.id]?.lowercased() ?? "updated").")
@@ -858,39 +752,32 @@ final class BackgroundTaskController: ObservableObject {
         metadata: BackgroundTaskMetadata?,
         outcome: DoOutcome
     ) async {
-        let transcriptOutcome: TranscriptEntry.Outcome
         let summary: String
-        let steps: [String]
+        let stepCount: Int
         switch outcome {
         case .completed(let stepsRun):
-            transcriptOutcome = .completed
             summary = "Finished \(stepsRun) step\(stepsRun == 1 ? "" : "s") in the background."
-            steps = Array(record.plan.actionSummaries.prefix(stepsRun))
+            stepCount = stepsRun
         case .blocked(let reason):
-            transcriptOutcome = .stopped
             summary = "Stopped safely in the background: \(reason)."
-            steps = Array(record.plan.actionSummaries.prefix(record.checkpoint.nextStepIndex))
+            stepCount = record.checkpoint.nextStepIndex
         case .failed(let step, let reason):
-            transcriptOutcome = .failed
             summary = "Stopped in the background at \(step): \(reason)."
-            steps = Array(record.plan.actionSummaries.prefix(record.checkpoint.nextStepIndex))
+            stepCount = record.checkpoint.nextStepIndex
         }
-        let startedAt = metadata?.createdAt ?? Date()
         await transcriptStore.append(
             TranscriptEntry(
                 request: record.goal,
                 appBundleID: metadata?.targetAppBundleID,
                 summary: summary,
-                outcome: transcriptOutcome,
-                startedAt: startedAt,
+                outcome: outcome.transcriptOutcome,
+                startedAt: metadata?.createdAt ?? Date(),
                 finishedAt: Date(),
-                steps: steps,
+                steps: Array(record.plan.actionSummaries.prefix(stepCount)),
                 verified: nil
             )
         )
     }
-
-    // MARK: Workspaces
 
     private func makeWorkspace(for id: TaskID) throws -> URL {
         let directory = workspaceRoot().appendingPathComponent(id.rawValue, isDirectory: true)
@@ -934,8 +821,6 @@ final class BackgroundTaskController: ObservableObject {
         try fileManager.removeItem(at: workspace)
     }
 
-    // MARK: Shutdown and erasure lifecycle
-
     func closeControls() {
         controlScope.close()
     }
@@ -944,15 +829,10 @@ final class BackgroundTaskController: ObservableObject {
         controlScope.reopen()
     }
 
-    /// Pauses every owned record that can still be resumed, then cancels all
-    /// live task handles. Runs before workers stop for erasure or termination.
     func pauseAllOwnedForWorkerStop() async throws {
         try await controlScope.closeAndDrain()
         let records = await runner.records()
-        let ownedIDs = Set(runTasks.keys)
-            .union(setupTasks.keys)
-            .union(launchTasks.keys)
-        for record in records where ownedIDs.contains(record.id) && !record.isTerminal && !record.cancellationRequested {
+        for record in records where owned[record.id] != nil && !record.isTerminal && !record.cancellationRequested {
             do {
                 try await coordinator.pause(id: record.id)
             } catch {
@@ -963,31 +843,20 @@ final class BackgroundTaskController: ObservableObject {
                 throw error
             }
         }
-        for task in setupTasks.values { task.cancel() }
-        for task in launchTasks.values { task.cancel() }
-        for task in runTasks.values { task.cancel() }
+        owned.values.flatMap(\.all).forEach { $0.cancel() }
     }
 
-    /// Cancels every owned handle and the launch gate. Used on the erasure path.
     func cancelAllOwned() {
-        for task in setupTasks.values { task.cancel() }
-        for task in launchTasks.values { task.cancel() }
-        for task in runTasks.values { task.cancel() }
+        owned.values.flatMap(\.all).forEach { $0.cancel() }
         launchGate.cancelAll()
     }
 
-    /// Awaits every owned handle; used after workers shut down.
     func joinAll() async {
-        for task in Array(setupTasks.values) { await task.value }
-        for task in Array(launchTasks.values) { await task.value }
-        for task in Array(runTasks.values) { await task.value }
+        for task in owned.values.flatMap(\.all) { await task.value }
     }
 
-    /// Drops all handles and clears the running count after a full stop.
     func resetTasks() {
-        setupTasks.removeAll()
-        launchTasks.removeAll()
-        runTasks.removeAll()
+        owned.removeAll()
         runningCount = 0
     }
 
@@ -1025,10 +894,10 @@ final class BackgroundTaskController: ObservableObject {
         operation: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
         let task = Task { @MainActor [weak self] in
-            defer { self?.setupTasks[id] = nil }
+            defer { self?.setHandle(id, \.setup, nil) }
             await operation()
         }
-        setupTasks[id] = task
+        setHandle(id, \.setup, task)
         return task
     }
 #endif
