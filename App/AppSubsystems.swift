@@ -199,11 +199,13 @@ final class AppSubsystems {
         if let realtimeTalkVoiceInstance { return realtimeTalkVoiceInstance }
         guard let built = RealtimeTalkVoice.configured(
             fallbackInput: talkSpeechInput,
-            fallbackOutput: SharedTalkOutput(voice: voice)
+            fallbackOutput: talkOutput
         ) else { return nil }
         realtimeTalkVoiceInstance = built
         return built
     }
+
+    lazy var talkOutput = SharedTalkOutput(voice: self.voice)
 
     lazy var talkSession: TalkSession = {
         let session = TalkSession(
@@ -222,7 +224,7 @@ final class AppSubsystems {
                 },
                 output: TalkSpeechOutputRouter(
                     realtime: { self.realtimeTalkVoice()?.output },
-                    fallback: SharedTalkOutput(voice: self.voice)
+                    fallback: self.talkOutput
                 ),
                 capture: { [unowned self] in try await self.talkCapture.capture() },
                 acceptInput: { [unowned self] in self.homeController.acceptInput($0, threadID: $1, contextKey: $2) },
@@ -252,7 +254,7 @@ final class AppSubsystems {
                     return input
                 },
                 stop: { [unowned self] threadID in self.agentCoordinator.stop(threadID: threadID) },
-                clickOutput: SharedTalkOutput(voice: self.voice)
+                clickOutput: self.talkOutput
             )
         )
         app.conversationVoiceObservation = session.$clickState.removeDuplicates().dropFirst()
@@ -384,7 +386,7 @@ final class AppSubsystems {
             routineVerified: { [unowned self] id in self.routineLibrary.recordVerifiedRun(id) },
             guiTaskCompleted: { [unowned self] in self.routineOffer.taskFinished(usedGUI: true) }
         )
-        let controller = ForegroundTaskController(
+        return ForegroundTaskController(
             sessionController: app.sessionController,
             workers: self.workers,
             probe: self.probe,
@@ -395,16 +397,13 @@ final class AppSubsystems {
             overlayState: self.overlayState,
             workspaceCoordinator: self.backgroundTaskCoordinator,
             hooks: hooks,
+            agentCoordinator: self.agentCoordinator,
+            workerLease: self.foregroundWorkerLease,
             finalizationBarrier: app.overrides.finalizationBarrier,
             confirmer: app.overrides.confirmer,
             askUser: app.overrides.askUser,
             typedVerifier: app.overrides.typedVerifier
         )
-        // Open-ended Do goals route through the agent loop; its tools run on
-        // the session's claimed worker, not a competing background one.
-        controller.agentCoordinator = agentCoordinator
-        controller.workerLease = self.foregroundWorkerLease
-        return controller
     }()
 
     lazy var backgroundTaskCoordinator = app.overrides.taskCoordinator ?? TaskCoordinator(storageDirectory: self.storageDirectory)

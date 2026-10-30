@@ -35,8 +35,8 @@ final class ForegroundTaskController: ObservableObject {
     let hooks: Hooks
     private let executionFinalizer: ExecutionFinalizer
 
-    var agentCoordinator: AgentCoordinator?
-    var workerLease: ForegroundWorkerLease?
+    var agentCoordinator: AgentCoordinator
+    let workerLease: ForegroundWorkerLease
     var activeRun: (any RunHandle)?
     private var handoffToHuman = false
     private var handoffGoal: String?
@@ -67,6 +67,8 @@ final class ForegroundTaskController: ObservableObject {
         overlayState: PerryCursorState,
         workspaceCoordinator: TaskCoordinator?,
         hooks: Hooks,
+        agentCoordinator: AgentCoordinator,
+        workerLease: ForegroundWorkerLease,
         finalizationBarrier: FinalizationBarrier? = nil,
         confirmer: (any Confirmer)? = nil,
         askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
@@ -82,6 +84,8 @@ final class ForegroundTaskController: ObservableObject {
         self.overlayState = overlayState
         self.workspaceCoordinator = workspaceCoordinator
         self.hooks = hooks
+        self.agentCoordinator = agentCoordinator
+        self.workerLease = workerLease
         self.finalizationBarrier = finalizationBarrier
         confirmerOverride = confirmer
         askUserOverride = askUser
@@ -272,11 +276,6 @@ final class ForegroundTaskController: ObservableObject {
                 title: $0.title.isEmpty ? "Frontmost window" : $0.title
             )
         } ?? probe.targetWindow(for: captured.context)
-        guard let coordinator = agentCoordinator else {
-            hooks.setStatus("I can’t run tasks right now. Restart Perry.")
-            voice.speak("I can’t run tasks right now. Restart Perry.")
-            return nil
-        }
         return try await executeAgentRun(
             goal: goal,
             attemptID: attemptID,
@@ -284,8 +283,7 @@ final class ForegroundTaskController: ObservableObject {
             target: captured.target?.hint ?? targetHint,
             conversationID: threadID,
             worker: worker,
-            workspace: workspace,
-            coordinator: coordinator
+            workspace: workspace
         )
     }
 
@@ -296,9 +294,9 @@ final class ForegroundTaskController: ObservableObject {
         target: CuaTargetHint?,
         conversationID: UUID?,
         worker: CuaWorkerHandle,
-        workspace: URL,
-        coordinator: AgentCoordinator
+        workspace: URL
     ) async throws -> DoOutcome? {
+        let coordinator = agentCoordinator
         let taskUUID = UUID()
         let execution = ExecutionSessionState(
             taskID: taskUUID,
@@ -316,10 +314,10 @@ final class ForegroundTaskController: ObservableObject {
         let threadID = conversationID ?? UUID()
         activeRun = AgentRunHandle(coordinator: coordinator, threadID: threadID)
         let runID = UUID()
-        workerLease?.set(worker, for: runID)
+        workerLease.set(worker, for: runID)
         defer {
             activeRun = nil
-            workerLease?.set(nil, for: runID)
+            workerLease.set(nil, for: runID)
         }
 
         var answer = ""
