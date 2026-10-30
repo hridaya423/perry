@@ -554,7 +554,6 @@ final class AppSubsystems {
                 })
             },
             backgroundTasks: self.backgroundTasks,
-            runtimes: self.runtimes,
             fileRoots: (self.storageDirectory.map { [$0.appendingPathComponent("workspace", isDirectory: true)] } ?? [])
         ))
         return controller

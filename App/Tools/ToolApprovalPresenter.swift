@@ -33,19 +33,15 @@ enum ToolApprovalPresenter {
             requiredPhrase: spec.tier >= .red ? (target ?? call.name) : nil,
             approveLabel: "Approve"
         )
-        let decision = await IntentCardPresenter.shared.present(
+        let approved = await IntentCardPresenter.shared.present(
             card: card,
             alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always approve" : nil,
             onAlwaysAllow: consentScope.map { scope in
                 { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
             }
         )
-        switch decision {
-        case .run, .stepThrough:
-            return spec.tier >= .red ? .approvedTyped : .approvedOnce
-        default:
-            return .denied
-        }
+        guard approved else { return .denied }
+        return spec.tier >= .red ? .approvedTyped : .approvedOnce
     }
 
     static func headline(_ call: ToolCall, target: String?) -> String {

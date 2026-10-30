@@ -547,8 +547,8 @@ struct NotchWorkspaceView: View {
                 pagePlaceholder("Couldn’t load History. Reopen Perry.")
             }
         case .tasks:
-            if let tasks = model.deps.backgroundTasks, let runtimes = model.deps.runtimes {
-                BackgroundTasksView(backgroundTasks: tasks, runtimes: runtimes, askPerry: { model.sidebarSelection = nil })
+            if let tasks = model.deps.backgroundTasks {
+                BackgroundTasksView(backgroundTasks: tasks, askPerry: { model.sidebarSelection = nil })
             } else {
                 pagePlaceholder("Couldn’t load Tasks. Reopen Perry.")
             }

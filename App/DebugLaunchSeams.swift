@@ -129,7 +129,7 @@ extension AppController {
             }
         } else if debugSurface == .intentCard {
             DispatchQueue.main.async {
-                Task { @MainActor in _ = await IntentCardPresenter.shared.present(card: PerryDebugLaunchSurface.intentCardFixture, allowsStepThrough: true) }
+                Task { @MainActor in _ = await IntentCardPresenter.shared.present(card: PerryDebugLaunchSurface.intentCardFixture) }
             }
         } else if debugSurface == .notch {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
