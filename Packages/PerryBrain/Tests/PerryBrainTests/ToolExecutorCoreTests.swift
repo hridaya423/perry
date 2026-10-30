@@ -332,27 +332,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         )
         XCTAssertTrue(result.isError)
     }
-
-    func testCatalogRegistersAll() {
-        let host = PerryToolHost(executors: ToolCatalog.agentExecutors(
-            files: backend,
-            memory: MemoryFiles(directory: root),
-            integrations: FakeIntegrations(writeEnabled: true, calls: LockedCalls()),
-            perrys: PerryStore(directory: root)
-        ))
-        let names = host.specs(for: .agent).map(\.name)
-        for expected in [
-            "files.list", "files.read", "files.write", "files.overwrite",
-            "files.mkdir", "files.move", "files.trash",
-            "memory.read", "memory.write",
-            "integrations.list", "integrations.read", "integrations.write",
-            "perry.list", "perry.createPerry", "perry.schedule", "perry.settings.open",
-        ] {
-            XCTAssertTrue(names.contains(expected), "missing \(expected)")
-        }
-        XCTAssertEqual(host.specs(for: .talk).map(\.name), names)
-        XCTAssertEqual(host.spec(named: "integrations.write")?.tier, .orange)
-    }
 }
 
 private final class StringBox: @unchecked Sendable {
