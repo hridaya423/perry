@@ -3,11 +3,6 @@ import PerryBrain
 import PerryGuide
 import PerryOverlay
 
-/// Model→world dispatch. Executors bind the app's real services (Cua workers,
-/// overlay ink, memory, Perrys); package-level executor cores
-/// (file/memory/integration/perry) plug in alongside these. The active
-/// foreground Do run lends its worker to tool executors so agent calls share
-/// the session's app lock instead of colliding with it.
 @MainActor
 enum AppToolHost {
     static func make(
@@ -34,7 +29,6 @@ enum AppToolHost {
                 },
                 locate: locate
             ).executors
-            + BrowserTools(workers: workers, lease: lease, observations: observations).executors
             + DocumentTools(workers: workers, lease: lease, observations: observations).executors
             + AppTools().executors
             + packageExecutors(
@@ -46,10 +40,6 @@ enum AppToolHost {
         )
     }
 
-    /// Package-level executor cores (Phase 7c): workspace files, memory files,
-    /// integrations, and Perrys. `files:`/support-dir pieces are skipped when
-    /// the support directory is unavailable rather than silently rooted
-    /// somewhere else.
     private static func packageExecutors(
         supportDirectory: URL?,
         integrationBackend: AppIntegrationBackend,
@@ -58,8 +48,6 @@ enum AppToolHost {
     ) -> [any ToolExecutor] {
         guard let support = supportDirectory else { return [] }
         var executors: [any ToolExecutor] = []
-        // LocalWorkspaceFiles requires an existing root — the workspace is
-        // created on first launch, empty until an agent writes to it.
         let workspace = support.appendingPathComponent("workspace", isDirectory: true)
         if let files = try? LocalWorkspaceFiles(root: workspace) {
             executors += FileToolExecutors.make(backend: files)
@@ -81,8 +69,6 @@ enum AppToolHost {
     }
 }
 
-/// Ghost cursor for agent work: a Perry cursor tracks each ui.* actuation
-/// point so the user can watch without their real pointer ever moving.
 @MainActor
 private struct AgentGhostCursor {
     private static let id = UUID(uuidString: "A6E11C7E-0000-4A00-9E00-000000000007")!
