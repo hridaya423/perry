@@ -44,13 +44,13 @@ enum DrawVerb: String {
         var overlay: PerryGuidanceOverlay
         switch self {
         case .point:
-            overlay = .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .pointMark(center: CGPoint(x: appKitRect.midX, y: appKitRect.midY), accentHex: "#9CCBB6", caption: label, duration: duration)
         case .arrow:
-            overlay = .arrowMark(to: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .arrowMark(to: appKitRect, accentHex: "#9CCBB6", caption: label, duration: duration)
         case .underline:
-            overlay = .underlineMark(below: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .underlineMark(below: appKitRect, accentHex: "#9CCBB6", caption: label, duration: duration)
         case .ring, .caption:
-            overlay = .ringMark(around: appKitRect, accentHex: "#34D399", caption: label, duration: duration)
+            overlay = .ringMark(around: appKitRect, accentHex: "#9CCBB6", caption: label, duration: duration)
         }
         overlay.nearbyControls = controls.map(appKit)
         return overlay
@@ -155,7 +155,7 @@ private struct PathDrawExecutor: ToolExecutor {
         }
         let overlay = PerryGuidanceOverlay.scribble(
             points: points,
-            accentHex: "#34D399",
+            accentHex: "#9CCBB6",
             lineWidth: 4,
             caption: call.arguments["label"]?.stringValue,
             duration: call.arguments["duration"]?.doubleValue ?? 15

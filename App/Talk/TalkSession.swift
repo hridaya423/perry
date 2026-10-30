@@ -535,7 +535,7 @@ final class TalkSession: ObservableObject {
                     CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
                 } ?? .zero
             )
-        } ?? "#34D399"
+        } ?? "#9CCBB6"
         var overlay: PerryGuidanceOverlay
         switch command.verb {
         case .point:

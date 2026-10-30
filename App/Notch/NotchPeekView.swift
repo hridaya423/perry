@@ -202,8 +202,8 @@ private struct PeekRowView: View {
     private var lead: some View {
         switch row.kind {
         case .needsYou: face(PerryTheme.Colors.caution, face: .wide)
-        case .task(working: true): face(PerryCharacterView.fern, face: .focused)
-        case .task(working: false), .setup: face(PerryCharacterView.fern, face: .happy)
+        case .task(working: true): face(PerryCharacterView.sage, face: .focused)
+        case .task(working: false), .setup: face(PerryCharacterView.sage, face: .happy)
         case .perry: face(PeekRow.helperTint(row.id), face: .open)
         case .suggestion:
             if let brand = row.brand {

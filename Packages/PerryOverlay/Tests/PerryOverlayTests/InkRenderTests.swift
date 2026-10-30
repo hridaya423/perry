@@ -32,8 +32,8 @@ final class InkRenderTests: XCTestCase {
 
         XCTAssertEqual(try inkedPixels(in: view), 0)
         state.visualGuidanceOverlays = [
-            .ringMark(around: target, accentHex: "#34D399"),
-            .arrowMark(to: target.offsetBy(dx: 0, dy: 120), accentHex: "#34D399"),
+            .ringMark(around: target, accentHex: "#9CCBB6"),
+            .arrowMark(to: target.offsetBy(dx: 0, dy: 120), accentHex: "#9CCBB6"),
         ]
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
 
@@ -43,7 +43,7 @@ final class InkRenderTests: XCTestCase {
     func testAMarkCaptionSitsBesideItsMarkWithoutCoveringIt() throws {
         let state = PerryCursorState()
         let view = showOverlay(state)
-        state.visualGuidanceOverlays = [.ringMark(around: target, accentHex: "#34D399", caption: "Per cent")]
+        state.visualGuidanceOverlays = [.ringMark(around: target, accentHex: "#9CCBB6", caption: "Per cent")]
         RunLoop.main.run(until: Date().addingTimeInterval(1.0))
 
         let ring = PerryOverlaySpace.localRect(target.insetBy(dx: -8, dy: -8), in: frame)
@@ -69,7 +69,7 @@ final class InkRenderTests: XCTestCase {
     func testAPointMarkIsBigEnoughToSee() throws {
         let state = PerryCursorState()
         let view = showOverlay(state)
-        state.visualGuidanceOverlays = [.pointMark(center: CGPoint(x: target.midX, y: target.midY), accentHex: "#34D399")]
+        state.visualGuidanceOverlays = [.pointMark(center: CGPoint(x: target.midX, y: target.midY), accentHex: "#9CCBB6")]
         RunLoop.main.run(until: Date().addingTimeInterval(1.5))
 
         let ink = try XCTUnwrap(try pixelBounds(in: view, where: Self.isInk))
@@ -78,7 +78,7 @@ final class InkRenderTests: XCTestCase {
     }
 
     private static func isInk(_ color: NSColor) -> Bool {
-        color.alphaComponent > 0.5 && color.greenComponent > 0.6 && color.redComponent < 0.5
+        color.alphaComponent > 0.5 && color.greenComponent > 0.6 && color.greenComponent > color.redComponent + 0.1
     }
 
     private static func isCaption(_ color: NSColor) -> Bool {

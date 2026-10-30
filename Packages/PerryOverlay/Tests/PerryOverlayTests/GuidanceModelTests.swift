@@ -75,7 +75,7 @@ struct PerryGuidanceOverlayTests {
     }
 
     @Test func hexColorParsingAcceptsDynamicModelOutput() {
-        #expect(Color(optionalHex: "#34D399") != nil)
+        #expect(Color(optionalHex: "#9CCBB6") != nil)
         #expect(Color(optionalHex: "F59E0B") != nil)
         #expect(Color(optionalHex: "#3AF") != nil)
         #expect(Color(optionalHex: "not-a-color") == nil)

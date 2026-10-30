@@ -78,7 +78,7 @@ struct NotchListeningView: View {
         pose.face = voice.clickState == .failed ? .worried : listening ? .open : .focused
         return PerryCharacterView(pose: pose, size: 26)
             .frame(width: 44, height: 44)
-            .background(PerryCharacterView.fern.opacity(listening ? 0.14 + 0.22 * voice.level : 0.12),
+            .background(PerryCharacterView.sage.opacity(listening ? 0.14 + 0.22 * voice.level : 0.12),
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: voice.level)
             .accessibilityHidden(true)

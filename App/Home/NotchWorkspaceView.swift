@@ -132,7 +132,7 @@ struct NotchWorkspaceView: View {
             .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 1) {
-                railLink("Tasks", systemImage: "bolt.fill", tint: PerryCharacterView.fern, selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
+                railLink("Tasks", systemImage: "bolt.fill", tint: PerryCharacterView.sage, selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
                 railLink("Routines", systemImage: "repeat", tint: TileTint.blue, selection: .routines, shortcut: "2")
                 railLink("Files", systemImage: "folder.fill", tint: TileTint.teal, selection: .files, shortcut: "3")
                 railLink("Suggestions", systemImage: "lightbulb.fill", tint: TileTint.peach, selection: .suggestions, shortcut: "4", count: model.suggestions.count)

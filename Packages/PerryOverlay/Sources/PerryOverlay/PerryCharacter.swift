@@ -320,13 +320,13 @@ public struct PerryCharacterView: View {
     public var size: CGFloat
     public var tint: Color
 
-    public init(pose: PerryCharacterPose, size: CGFloat = 40, tint: Color = PerryCharacterView.fern) {
+    public init(pose: PerryCharacterPose, size: CGFloat = 40, tint: Color = PerryCharacterView.sage) {
         self.pose = pose
         self.size = size
         self.tint = tint
     }
 
-    public static let fern = Color(red: 0.369, green: 0.859, blue: 0.506)
+    public static let sage = Color(red: 0.612, green: 0.796, blue: 0.714)
     static let carbon = Color(red: 0.047, green: 0.051, blue: 0.055)
     static let amber = Color(red: 0.98, green: 0.70, blue: 0.20)
 

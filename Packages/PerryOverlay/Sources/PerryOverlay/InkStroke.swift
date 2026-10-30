@@ -224,13 +224,13 @@ public struct InkStrokeShape: Shape {
 
 /// Luminance-adaptive ink color: sample a small patch of the screen capture
 /// already held in memory for the turn (never a fresh capture) and pick the
-/// ink that reads on it — mint on dark, deep teal on light (§5).
+/// ink that reads on it — sage on dark, deep green on light (§5).
 public enum InkColor {
-    /// Mint accent — the existing theme accent, on dark backgrounds.
-    public static let onDarkHex = "34D399"
-    /// Deep teal on light backgrounds.
-    public static let onLightHex = "0B7285"
-    /// Rec. 601 midpoint where mint stops being legible.
+    /// Sage, the theme accent on dark backgrounds.
+    public static let onDarkHex = "9CCBB6"
+    /// Deep green on light backgrounds.
+    public static let onLightHex = "3C7765"
+    /// Rec. 601 midpoint where sage stops being legible.
     public static let threshold: Double = 0.45
 
     /// Mean luma (0–1) of an RGBA/BGRA pixel patch (4 bytes per pixel).

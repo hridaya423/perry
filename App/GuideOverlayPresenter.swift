@@ -38,7 +38,7 @@ struct GuideOverlayPresenter {
             )
             return PerryGuidanceOverlay.pointMark(
                 center: center,
-                accentHex: "#34D399",
+                accentHex: "#9CCBB6",
                 caption: "\(marker.number). \(marker.caption)",
                 duration: 20
             )

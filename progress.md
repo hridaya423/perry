@@ -982,3 +982,14 @@ Remaining:
 - The idle-probe check and Retina verification have not run.
 - The MacBook copy of `App/Resources/CuaDriver` is 0.22.1, and the mini has 0.38.0. Exclude that folder from rsync.
 - ssh to the mini resets on long sessions, so run long jobs detached with `nohup`.
+
+## 9.12 One green, two shades (2026-10-30)
+
+Done:
+- The app's greens are now deep green `#3C7765` on light surfaces and sage `#9CCBB6` on dark ones. This covers the theme accent, success, overlay ink, draw-tool marks and the Perry character (`fern` is renamed `sage`).
+- `InkColor` keeps its luminance switch: sage on dark content, deep green on light.
+- The website (`~/Honey/perry-website`, not a git repo) dropped red and marigold. Its backup is in `backups/2026-10-30-before-green/`. Guide ink is deep green on paper and sage over the dark stage window, and the finale is sage.
+
+Evidence:
+- Mini: PerryTests 932 (7 skipped, 0 failures). PerryOverlay 40, PerryRuntimes 107 and PerryBrain 441 pass. The ink-pixel test predicate now accepts sage.
+- Renders: ring, arrow and character on dark and light backgrounds. Site screenshots of the hero, statement, stage and finale, taken in headless Chrome.

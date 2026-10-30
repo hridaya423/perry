@@ -92,7 +92,7 @@ private struct AgentGhostCursor {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         let screenPoint = CGPoint(x: axPoint.x, y: primaryMaxY - axPoint.y)
         var cursor = overlayState.externalSecondaryCursors.first { $0.id == Self.id }
-            ?? PerryExternalCursor(id: Self.id, screenLocation: screenPoint, caption: nil, accentHex: "#34D399")
+            ?? PerryExternalCursor(id: Self.id, screenLocation: screenPoint, caption: nil, accentHex: "#9CCBB6")
         cursor.screenLocation = screenPoint
         cursor.caption = label
         overlayState.externalSecondaryCursors.removeAll { $0.id == Self.id }

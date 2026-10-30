@@ -2,7 +2,7 @@ import SwiftUI
 
 public enum PerryOverlayTheme {
     public enum Colors {
-        public static let accent = Color(red: 0.204, green: 0.827, blue: 0.600)
+        public static let accent = Color(red: 0.612, green: 0.796, blue: 0.714)
         public static let ink = Color(white: 0.16)
         public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
         /// Amber hold — the §5 blocked morph. Distinct from failure red.

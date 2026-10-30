@@ -311,7 +311,7 @@ struct AgentActivityStripView: View {
         switch state.phase {
         case .failed, .confirming: PerryTheme.Colors.caution
         case .paused: PerryTheme.Colors.icon
-        default: PerryCharacterView.fern
+        default: PerryCharacterView.sage
         }
     }
 
