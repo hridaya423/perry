@@ -39,39 +39,26 @@ enum ToolApprovalPresenter {
         }
 #endif
         guard !unattended else { return .denied }
-        let presentation = ToolApprovalPresentation()
-        return await withTaskCancellationHandler {
-            guard !Task.isCancelled else { return .denied }
-            return await withCheckedContinuation { continuation in
-                let target = targetValue(call)
-                let card = IntentCard(
-                    title: headline(call, target: target),
-                    tier: spec.tier,
-                    targetSummary: "",
-                    requiredPhrase: spec.tier >= .red ? (target ?? call.name) : nil,
-                    approveLabel: "Approve"
-                )
-                let window = IntentCardWindow(
-                    card: card,
-                    allowsStepThrough: false,
-                    alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always approve" : nil,
-                    onAlwaysAllow: consentScope.map { scope in
-                        { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
-                    }
-                ) { decision in
-                    presentation.window = nil
-                    switch decision {
-                    case .run, .stepThrough:
-                        continuation.resume(returning: spec.tier >= .red ? .approvedTyped : .approvedOnce)
-                    default:
-                        continuation.resume(returning: .denied)
-                    }
-                }
-                presentation.window = window
-                window.show()
+        let target = targetValue(call)
+        let card = IntentCard(
+            title: headline(call, target: target),
+            tier: spec.tier,
+            targetSummary: "",
+            requiredPhrase: spec.tier >= .red ? (target ?? call.name) : nil,
+            approveLabel: "Approve"
+        )
+        let decision = await IntentCardPresenter.shared.present(
+            card: card,
+            alwaysAllowLabel: consentScope != nil && spec.tier < .red ? "Always approve" : nil,
+            onAlwaysAllow: consentScope.map { scope in
+                { Task { try? await consentStore.grantAlways(tool: spec.name, threadID: scope) } }
             }
-        } onCancel: {
-            Task { @MainActor in presentation.window?.cancel() }
+        )
+        switch decision {
+        case .run, .stepThrough:
+            return spec.tier >= .red ? .approvedTyped : .approvedOnce
+        default:
+            return .denied
         }
     }
 
@@ -114,9 +101,4 @@ enum ToolApprovalPresenter {
         }
         return nil
     }
-}
-
-@MainActor
-private final class ToolApprovalPresentation {
-    var window: IntentCardWindow?
 }

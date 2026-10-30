@@ -5,7 +5,7 @@ final class CopyLintTests: XCTestCase {
 
     private static let scope = [
         "App/Onboarding", "App/Notch", "App/Home", "App/Permissions", "App/Shortcuts", "App/Settings", "App/Brain", "App/Talk",
-        "App/AgentActivityStrip.swift", "App/IntentCardWindow.swift", "App/IntentCardPresenter.swift", "App/FailureNotice.swift",
+        "App/AgentActivityStrip.swift", "App/IntentCardView.swift", "App/IntentCardPresenter.swift", "App/FailureNotice.swift",
         "App/ExecutionFinalizer.swift", "App/RoutineRunCopy.swift", "App/RoutineOffer.swift", "App/GuideSessionCoordinator.swift",
         "App/GuideControlsWindow.swift", "App/StatusMenuController.swift", "App/HotkeyController.swift", "App/DictationController.swift",
         "App/VoiceController.swift", "App/Voice/DictationInsertion.swift", "App/BackgroundTaskRecoveryNotice.swift",

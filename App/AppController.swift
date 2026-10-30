@@ -87,7 +87,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         host.sizingOptions = []
         return host
     }
-    let intentCards = IntentCardPresenter()
+    let intentCards = IntentCardPresenter.shared
     private var guideOverlay: GuideOverlayPresenter { GuideOverlayPresenter(overlayState: overlayState) }
     lazy var updateNoticeController = UpdateNoticeController(
         onPresent: { [weak self] in self?.showWhatsNew() },

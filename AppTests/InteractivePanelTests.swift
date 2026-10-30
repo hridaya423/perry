@@ -49,8 +49,8 @@ final class InteractivePanelTests: XCTestCase {
             ("approval", AnyView(IntentCardView(card: card, onAnswer: { _ in }))),
             ("approval-step-through", AnyView(IntentCardView(card: card, allowsStepThrough: true, onAnswer: { _ in }))),
             ("guide", AnyView(GuideControlsView(state: guide, onDone: {}, onBack: {}, onSkip: {}, onRepoint: {}, onSelectMarker: { _ in }, onChooseInput: { _ in }, onTakeOver: {}, onStop: {}))),
-            ("activity", AnyView(AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {}))),
-            ("activity-long", AnyView(AgentActivityStripView(state: longActivity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}, onToggleExpanded: {})))
+            ("activity", AnyView(AgentActivityStripView(state: activity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {}))),
+            ("activity-long", AnyView(AgentActivityStripView(state: longActivity, onPause: {}, onResume: {}, onStop: {}, onRetry: {}, onSteer: { _ in }, onTakeOver: {})))
         ]
         for (name, content) in surfaces {
             for (appearanceName, appearance, scheme) in [("light", NSAppearance.Name.aqua, ColorScheme.light), ("dark", .darkAqua, .dark)] {

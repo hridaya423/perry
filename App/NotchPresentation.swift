@@ -20,6 +20,7 @@ final class NotchPresentation: ObservableObject {
     static let shared = NotchPresentation()
     @Published private(set) var entries: [Entry] = []
     @Published var showsInteraction = true
+    private var asking: [UUID: () -> Void] = [:]
     var onPresent: ((Priority) -> Void)?
     var frame: NSRect = .zero
 
@@ -56,6 +57,49 @@ final class NotchPresentation: ObservableObject {
 
     func contains(_ id: UUID) -> Bool {
         entries.contains { $0.id == id }
+    }
+
+    func ask<Answer, Content: View>(
+        id: UUID = UUID(),
+        priority: Priority,
+        title: String? = nil,
+        cancelled: Answer,
+        content: (_ answer: @escaping (Answer) -> Void) -> Content
+    ) async -> Answer {
+        let pending = PendingAnswer<Answer>()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Answer, Never>) in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: cancelled)
+                    return
+                }
+                pending.continuation = continuation
+                let finish: (Answer) -> Void = { [weak self] answer in
+                    guard pending.continuation != nil else { return }
+                    self?.asking[id] = nil
+                    self?.remove(id)
+                    pending.resolve(answer)
+                }
+                asking[id] = { finish(cancelled) }
+                present(id: id, priority: priority, title: title, content: content(finish), onDismiss: { finish(cancelled) })
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelAsk(id) }
+        }
+    }
+
+    func cancelAsk(_ id: UUID) {
+        asking[id]?()
+    }
+}
+
+@MainActor
+private final class PendingAnswer<Answer> {
+    var continuation: CheckedContinuation<Answer, Never>?
+
+    func resolve(_ answer: Answer) {
+        continuation?.resume(returning: answer)
+        continuation = nil
     }
 }
 
