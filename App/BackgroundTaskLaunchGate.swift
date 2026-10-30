@@ -50,26 +50,3 @@ enum BackgroundTaskResource: Hashable, Sendable {
     case workspace(String)
     case integration(String)
 }
-
-@MainActor
-final class BackgroundTaskResourceGate {
-    private var resourcesByTask: [TaskID: Set<BackgroundTaskResource>] = [:]
-
-    func reserve(_ resources: Set<BackgroundTaskResource>, for taskID: TaskID) -> Bool {
-        guard resourcesByTask[taskID] == nil else { return false }
-        let occupied = resourcesByTask.values.reduce(into: Set<BackgroundTaskResource>()) { result, resources in
-            result.formUnion(resources)
-        }
-        guard occupied.isDisjoint(with: resources) else { return false }
-        resourcesByTask[taskID] = resources
-        return true
-    }
-
-    func release(_ taskID: TaskID) {
-        resourcesByTask[taskID] = nil
-    }
-
-    func removeAll() {
-        resourcesByTask.removeAll()
-    }
-}
