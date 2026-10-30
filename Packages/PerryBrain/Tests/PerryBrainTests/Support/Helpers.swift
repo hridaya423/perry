@@ -4,8 +4,6 @@ import XCTest
 
 struct TestTimeout: Error {}
 
-/// Races `operation` against a deadline without waiting for it to honor cancellation,
-/// so a wedged subprocess test fails instead of hanging the whole suite.
 func withTimeout<T: Sendable>(
     _ seconds: Double = 15,
     _ operation: @escaping @Sendable () async throws -> T

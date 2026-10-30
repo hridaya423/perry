@@ -112,7 +112,6 @@ public struct SSEParser: Sendable {
 }
 
 enum BrainHTTP {
-    /// Runs `body` in a task tied to the stream's lifetime and always finishes the stream.
     static func eventStream(
         _ body: @escaping @Sendable (AsyncThrowingStream<ModelEvent, Error>.Continuation) async throws -> Void
     ) -> AsyncThrowingStream<ModelEvent, Error> {
@@ -179,10 +178,17 @@ enum BrainHTTP {
         return nil
     }
 
-    static func post(_ baseURL: URL, path: String, provider: ProviderID) throws -> URLRequest {
+    static func endpoint(_ baseURL: URL, path: String, query: [URLQueryItem] = []) throws -> URL {
         try NetworkEndpointPolicy.requireSafe(baseURL)
         let suffix = baseURL.lastPathComponent == "v1" && path.hasPrefix("v1/") ? String(path.dropFirst(3)) : path
-        var request = URLRequest(url: baseURL.appendingPathComponent(suffix))
+        let url = baseURL.appendingPathComponent(suffix)
+        guard !query.isEmpty, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.queryItems = query
+        return components.url ?? url
+    }
+
+    static func post(_ baseURL: URL, path: String, query: [URLQueryItem] = []) throws -> URLRequest {
+        var request = URLRequest(url: try endpoint(baseURL, path: path, query: query))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")

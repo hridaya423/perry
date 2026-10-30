@@ -4,6 +4,15 @@ import PerryCore
 public struct ProviderPreset: Sendable, Identifiable, Equatable {
     public enum Wire: Sendable, Equatable {
         case openAIResponses, anthropic, gemini, openAIChat
+
+        var format: any WireFormat {
+            switch self {
+            case .openAIResponses: OpenAIResponsesWire()
+            case .anthropic: AnthropicWire()
+            case .gemini: GeminiWire()
+            case .openAIChat: OpenAIChatWire()
+            }
+        }
     }
 
     public let id: String
@@ -13,7 +22,7 @@ public struct ProviderPreset: Sendable, Identifiable, Equatable {
     public let keyRequired: Bool
     public let suggested: BrainModelDefaults?
 
-    public var isLocal: Bool { baseURL.map(Self.isLoopback) ?? false }
+    public var isLocal: Bool { baseURL?.isLoopback ?? false }
 
     public static let custom = ProviderPreset(id: "custom", name: "Custom OpenAI-compatible", wire: .openAIChat, baseURL: nil, keyRequired: false, suggested: nil)
 
@@ -50,35 +59,17 @@ public struct ProviderPreset: Sendable, Identifiable, Equatable {
         models: BrainModelDefaults, capabilities: ModelCapabilities,
         transport: any HTTPLineStreaming
     ) -> any ModelProvider {
-        let keyProvider: @Sendable () -> String? = { key }
-        switch wire {
-        case .openAIResponses:
-            return OpenAIResponsesProvider(id: id, displayName: displayName, baseURL: baseURL, apiKeyProvider: keyProvider, models: models, transport: transport)
-        case .anthropic:
-            return AnthropicMessagesProvider(id: id, displayName: displayName, baseURL: baseURL, apiKeyProvider: keyProvider, models: models, transport: transport)
-        case .gemini:
-            return GeminiProvider(id: id, displayName: displayName, baseURL: baseURL, apiKeyProvider: keyProvider, models: models, transport: transport)
-        case .openAIChat:
-            return OpenAIChatCompatibleProvider(id: id, displayName: displayName, baseURL: baseURL, apiKeyProvider: keyProvider, models: models, capabilities: capabilities, transport: transport)
-        }
+        HTTPModelProvider(
+            wire: wire, id: id, displayName: displayName, baseURL: baseURL,
+            apiKeyProvider: { key }, models: models, capabilities: capabilities, transport: transport
+        )
     }
 
     public func modelsRequest(baseURL: URL, key: String?) throws -> URLRequest {
-        try NetworkEndpointPolicy.requireSafe(baseURL)
-        let path = wire == .gemini ? "v1beta/models" : "v1/models"
-        let suffix = baseURL.lastPathComponent == "v1" ? String(path.dropFirst(3)) : path
-        var request = URLRequest(url: baseURL.appendingPathComponent(suffix), timeoutInterval: 15)
+        var request = URLRequest(url: try BrainHTTP.endpoint(baseURL, path: wire.format.modelsPath), timeoutInterval: 15)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let key = key?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
-            switch wire {
-            case .anthropic:
-                request.setValue(key, forHTTPHeaderField: "x-api-key")
-                request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-            case .gemini:
-                request.setValue(key, forHTTPHeaderField: "x-goog-api-key")
-            case .openAIResponses, .openAIChat:
-                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-            }
+            wire.format.authorize(&request, key: key)
         }
         return request
     }
@@ -109,10 +100,5 @@ public struct ProviderPreset: Sendable, Identifiable, Equatable {
 
     private static func local(_ id: String, _ name: String, _ url: String) -> ProviderPreset {
         ProviderPreset(id: id, name: name, wire: .openAIChat, baseURL: URL(string: url)!, keyRequired: false, suggested: nil)
-    }
-
-    private static func isLoopback(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased() else { return false }
-        return host == "localhost" || host == "::1" || host.hasPrefix("127.")
     }
 }

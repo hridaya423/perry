@@ -3,8 +3,8 @@ import Foundation
 import XCTest
 
 final class GeminiProviderTests: XCTestCase {
-    private func provider(_ transport: FixtureLineStreaming) -> GeminiProvider {
-        GeminiProvider(apiKeyProvider: { "gm-test" }, transport: transport)
+    private func provider(_ transport: FixtureLineStreaming) -> HTTPModelProvider {
+        .preset("gemini", key: "gm-test", transport: transport)
     }
 
     func testTruncatedStreamDoesNotInventCompletion() async throws {

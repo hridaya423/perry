@@ -1,9 +1,5 @@
 import Foundation
 
-/// Maps observed elements to the compact ids ("e17") sent to the model, and back.
-/// Deterministic by observation order so prompts are stable across re-renders.
-/// Sensitive elements must be filtered by the caller before indexing —
-/// ObservedElement carries no sensitivity flag by design (Phase 2a spec).
 public struct ElementIndex: Sendable, Equatable {
     public struct Entry: Sendable, Equatable {
         public var compactID: String

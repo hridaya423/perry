@@ -1,11 +1,5 @@
 import Foundation
 
-/// Splits streamed text into speakable sentences. A boundary is a terminator
-/// (.?!…。！？) followed by whitespace, or a newline itself. Only text up to
-/// the last boundary in the buffer is emitted, so "3." isn't cut before a
-/// "3.5" continuation arrives; finish() flushes the remainder. The first
-/// chunk of a reply may also end at a clause boundary once it is long enough,
-/// so speech starts before the first full sentence arrives.
 public struct SentenceChunker: Sendable {
     private var buffer = ""
     private var started = false
@@ -58,7 +52,6 @@ public struct SentenceChunker: Sendable {
         return nil
     }
 
-    /// Index just past the last commit boundary, if any.
     private func lastBoundary(in text: String) -> String.Index? {
         var last: String.Index?
         var index = text.startIndex

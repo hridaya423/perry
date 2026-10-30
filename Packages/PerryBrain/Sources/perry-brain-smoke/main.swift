@@ -60,20 +60,28 @@ func env(_ name: String) -> String? {
     ProcessInfo.processInfo.environment[name]
 }
 
+func cloudProvider(_ presetID: String, key: String) -> any ModelProvider {
+    let preset = ProviderPreset.preset(id: presetID)!
+    return preset.makeProvider(
+        id: ProviderID(rawValue: presetID), displayName: preset.name, baseURL: preset.baseURL!, key: env(key),
+        models: preset.suggested!, capabilities: [], transport: URLSessionLineStreaming()
+    )
+}
+
 func makeProvider() throws -> any ModelProvider {
     let parts = providerName.split(separator: ":", maxSplits: 1).map(String.init)
     switch parts[0] {
     case "codex":
         return CodexAppServerProvider(process: codexProcess())
     case "openai":
-        return OpenAIResponsesProvider(apiKeyProvider: { env("OPENAI_API_KEY") })
+        return cloudProvider("openai", key: "OPENAI_API_KEY")
     case "anthropic":
-        return AnthropicMessagesProvider(apiKeyProvider: { env("ANTHROPIC_API_KEY") })
+        return cloudProvider("anthropic", key: "ANTHROPIC_API_KEY")
     case "gemini":
-        return GeminiProvider(apiKeyProvider: { env("GEMINI_API_KEY") })
+        return cloudProvider("gemini", key: "GEMINI_API_KEY")
     case "openrouter":
-        return OpenAIChatCompatibleProvider(
-            id: .openRouter, displayName: "OpenRouter",
+        return HTTPModelProvider(
+            wire: .openAIChat, id: .openRouter, displayName: "OpenRouter",
             baseURL: URL(string: "https://openrouter.ai/api")!,
             apiKeyProvider: { env("OPENROUTER_API_KEY") },
             models: BrainModelCatalog.openRouter,
@@ -85,8 +93,8 @@ func makeProvider() throws -> any ModelProvider {
             server: parts[0] == "ollama" ? .ollama : .lmStudio,
             baseURL: URL(string: parts[0] == "ollama" ? "http://127.0.0.1:11434" : "http://127.0.0.1:1234")!, name: parts[1]
         )
-        return OpenAIChatCompatibleProvider(
-            id: model.id, displayName: "\(model.server.rawValue) \(model.name)", baseURL: model.baseURL,
+        return HTTPModelProvider(
+            wire: .openAIChat, id: model.id, displayName: "\(model.server.rawValue) \(model.name)", baseURL: model.baseURL,
             models: BrainModelDefaults(fast: model.name, deep: model.name), capabilities: [.vision, .streaming],
             contextWindow: { _ in try await LocalServerDiscovery(timeout: 2).loadedContextWindow(for: model) }
         )
@@ -137,7 +145,7 @@ actor SmokeToolReceipt {
 }
 
 func checkToolCallback(provider: any ModelProvider) async throws -> Bool {
-    guard let provider = provider as? any ToolExecutingModelProvider else { return false }
+    guard provider.executesTools else { return false }
     let receipt = SmokeToolReceipt()
     let spec = ToolSpec(name: "fixture_read", description: "Read the synthetic fixture value.", inputSchema: .object(["type": .string("object"), "properties": .object([:])]), readOnly: true)
     let request = ModelRequest(system: "Use fixture_read exactly once. Return its value only. Use no other tools.", messages: [.user([.text("Read the synthetic fixture now.")])], tools: [spec], tier: .deep)

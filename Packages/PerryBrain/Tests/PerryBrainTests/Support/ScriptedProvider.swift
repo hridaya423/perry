@@ -1,7 +1,6 @@
 import Foundation
 @testable import PerryBrain
 
-/// Returns a queued list of events per stream() call; records every request.
 final class ScriptedProvider: ModelProvider, @unchecked Sendable {
     let id: ProviderID = "scripted"
     let displayName = "Scripted"
@@ -33,7 +32,6 @@ final class ScriptedProvider: ModelProvider, @unchecked Sendable {
     func contextWindow(for tier: ModelTier) async throws -> Int? { capacity }
 }
 
-/// Executor that counts invocations and returns a canned result.
 final class RecordingExecutor: ToolExecutor, @unchecked Sendable {
     let spec: ToolSpec
     private let lock = NSLock()

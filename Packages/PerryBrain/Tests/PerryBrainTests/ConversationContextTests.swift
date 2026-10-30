@@ -39,7 +39,6 @@ final class ConversationContextTests: XCTestCase {
         let prepared = try await ConversationContext().prepareDeferringSummary(
             thread: thread, question: "Continue", runID: runID, store: store, provider: provider, historyByteLimit: 2_048
         )
-        // Hot path untouched: no condensation round-trips happened inline.
         XCTAssertTrue(provider.requests.isEmpty)
         XCTAssertEqual(prepared.messages.last, .user([.text("Continue")]))
         let maintenance = try XCTUnwrap(prepared.maintenance)
@@ -48,7 +47,6 @@ final class ConversationContextTests: XCTestCase {
         let after = try XCTUnwrap(reloaded)
         XCTAssertNotNil(after.contextSummary?.text)
         XCTAssertGreaterThan(after.contextSummary?.sourceTurnCount ?? 0, 0)
-        // And the next prepare hits the saved summary with no provider work.
         let unused = ScriptedProvider(responses: [])
         let repeated = try await ConversationContext().prepareDeferringSummary(
             thread: after, question: "Again", runID: runID, store: store, provider: unused, historyByteLimit: 2_048
@@ -58,10 +56,6 @@ final class ConversationContextTests: XCTestCase {
         _ = root
     }
 
-    /// H5 regression: AgentCoordinator runs deferred maintenance *after*
-    /// finishTurn cleared pendingTurn — the summary save must land on a
-    /// quiescent thread. A write attributed to a different in-flight turn is
-    /// still rejected.
     func testSummarySaveAfterTurnCompletion() async throws {
         let (root, store) = try fixture()
         let original = longThread()
@@ -77,7 +71,6 @@ final class ConversationContextTests: XCTestCase {
         let saved = await store.thread(id: thread.id)
         XCTAssertEqual(saved?.contextSummary?.text, "Cedar")
 
-        // A stale run's write must not land while another turn is in flight.
         _ = try await store.beginTurn(to: thread.id, question: "Next")
         do {
             try await store.saveContextSummary("Stale Cedar", sourceTurns: covered, to: thread.id, runID: runID)

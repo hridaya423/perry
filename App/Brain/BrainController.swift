@@ -4,8 +4,6 @@ import PerryBrain
 import PerryGuide
 import PerryRuntimes
 
-/// Owns Perry's model providers: the bundled Codex brain (ChatGPT sign-in), any BYOK keys in
-/// Keychain, local model servers, and Apple Intelligence. Callers ask `router()` for a route.
 @MainActor
 final class BrainController: ObservableObject {
     enum ModelChoice: String, CaseIterable {
@@ -237,8 +235,7 @@ final class BrainController: ObservableObject {
                     id: profile.providerID, displayName: profile.displayName, baseURL: profile.baseURL, key: key,
                     models: profile.models, capabilities: [.streaming, .vision, .tools], transport: self.transport
                 )
-                let (png, digits) = try Self.probeImage()
-                let result = try await ModelCapabilityProbe(provider: provider).run(image: png, expectedImageText: digits)
+                let result = try await Self.probe(provider)
                 try Task.checkCancellation()
                 guard self.profiles.contains(profile) else { self.profileChecks[profile.id] = nil; return }
                 self.profileChecks[profile.id] = .checked(model: profile.model, result)
@@ -248,6 +245,11 @@ final class BrainController: ObservableObject {
                 self.profileChecks[profile.id] = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private static func probe(_ provider: any ModelProvider) async throws -> ModelCapabilityProbe.Result {
+        let (png, digits) = try probeImage()
+        return try await ModelCapabilityProbe(provider: provider).run(image: png, expectedImageText: digits)
     }
 
     private static func probeImage() throws -> (png: Data, digits: String) {
@@ -294,9 +296,7 @@ final class BrainController: ObservableObject {
             guard let self else { return }
             defer { self.localCheckTasks[model.id] = nil }
             do {
-                let (png, digits) = try Self.probeImage()
-                let provider = self.localProvider(model, capabilities: [.streaming, .vision, .tools])
-                let result = try await ModelCapabilityProbe(provider: provider).run(image: png, expectedImageText: digits)
+                let result = try await Self.probe(self.localProvider(model, capabilities: [.streaming, .vision, .tools]))
                 try Task.checkCancellation()
                 guard self.localModels.contains(model) else { self.localChecks[model.id] = nil; return }
                 self.localChecks[model.id] = .checked(model, result)
@@ -325,9 +325,6 @@ final class BrainController: ObservableObject {
         reloadProfiles()
     }
 
-    /// True when an on-device provider can answer — Apple Foundation Models
-    /// on macOS 26+, or a discovered local model whose capability check
-    /// passed. The router picks among them for `.local` scope.
     var onDeviceRouteAvailable: Bool {
         if bundledLocal() != nil { return true }
         if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable { return true }
@@ -433,8 +430,6 @@ final class BrainController: ObservableObject {
         return decision.hidingPersonalDetails(with: redactionVaults)
     }
 
-    /// Single fast text completion through whatever brain the user chose —
-    /// used for polish passes like routine naming.
     func completeOnDevice(_ prompt: String) async throws -> String {
         if #available(macOS 26, *), AppleFoundationModelProvider.isAvailable {
             return try await AppleFoundationModelProvider.respond(to: prompt)
@@ -645,8 +640,9 @@ final class BrainController: ObservableObject {
         return result
     }
 
-    private func localProvider(_ model: LocalModel, capabilities: ModelCapabilities) -> OpenAIChatCompatibleProvider {
-        OpenAIChatCompatibleProvider(
+    private func localProvider(_ model: LocalModel, capabilities: ModelCapabilities) -> HTTPModelProvider {
+        HTTPModelProvider(
+            wire: .openAIChat,
             id: model.id, displayName: "\(model.name) (on this Mac)", baseURL: model.baseURL,
             models: BrainModelDefaults(fast: model.name, deep: model.name),
             capabilities: capabilities, transport: transport,
@@ -692,7 +688,6 @@ final class BrainController: ObservableObject {
     }
 
 #if DEBUG
-    /// Routes a fast text turn and reports what answered and how quickly the first words came.
     func smokeTest(report: @escaping @MainActor (String) -> Void) {
         Task {
             await refresh()

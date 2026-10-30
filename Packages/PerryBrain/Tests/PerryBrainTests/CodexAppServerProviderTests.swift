@@ -45,8 +45,6 @@ final class CodexAppServerProviderTests: XCTestCase {
         )
     }
 
-    /// §6.2: a crash mid-turn leaves `perry-brain-images-<pid>-*` behind; the
-    /// launch sweep must remove only the directories whose owner is dead.
     func testTurnFailuresBecomePlainErrorKinds() {
         let raw = "unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses"
         XCTAssertEqual(CodexAppServerProvider.kind(of: raw.lowercased()), .unauthenticated)
@@ -436,15 +434,14 @@ final class CodexAppServerProviderTests: XCTestCase {
 
     func testDynamicToolCall() async throws {
         let process = try makeProcess(scenario: "c")
-        let provider = CodexAppServerProvider(
-            process: process,
-            toolHandler: { call in
+        let provider = CodexAppServerProvider(process: process)
+        let events = try await withTimeout {
+            try await drain(provider.stream(sampleRequest(tools: [sampleTool])) { call in
                 XCTAssertEqual(call.name, "get_weather")
                 XCTAssertEqual(call.arguments["city"], .string("Paris"))
-                return ToolCallResult(text: "sunny")
-            }
-        )
-        let events = try await withTimeout { try await drain(provider.stream(sampleRequest(tools: [sampleTool]))) }
+                return .text(call.id, "sunny")
+            })
+        }
         XCTAssertEqual(toolCalls(events).map(\.name), ["get_weather"])
         XCTAssertEqual(text(events), "It is sunny.")
         XCTAssertEqual(stopReason(events), .endTurn)
@@ -455,11 +452,13 @@ final class CodexAppServerProviderTests: XCTestCase {
         let log = tempDir().appendingPathComponent("names.jsonl")
         let process = try makeProcess(scenario: "c", log: log)
         let tool = ToolSpec(name: "get.weather", description: "Weather", inputSchema: sampleTool.inputSchema)
-        let provider = CodexAppServerProvider(process: process, toolHandler: { call in
-            XCTAssertEqual(call.name, "get.weather")
-            return ToolCallResult(text: "sunny")
-        })
-        let events = try await withTimeout { try await drain(provider.stream(sampleRequest(tools: [tool]))) }
+        let provider = CodexAppServerProvider(process: process)
+        let events = try await withTimeout {
+            try await drain(provider.stream(sampleRequest(tools: [tool])) { call in
+                XCTAssertEqual(call.name, "get.weather")
+                return .text(call.id, "sunny")
+            })
+        }
         XCTAssertEqual(toolCalls(events).map(\.name), ["get.weather"])
         let lines = try String(contentsOf: log, encoding: .utf8).split(separator: "\n")
         let line = try XCTUnwrap(lines.first { $0.contains(#""thread/start""#) })

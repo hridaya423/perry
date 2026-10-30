@@ -40,9 +40,6 @@ public struct ConversationContext {
         ).messages
     }
 
-    /// Same context, but when the saved summary needs new turns condensed the
-    /// turn answers with last-N verbatim plus the stale summary, and the
-    /// condensation work comes back as `maintenance` for after the turn (H5).
     public func prepareDeferringSummary(
         thread: PerryThread,
         question: String,
@@ -110,24 +107,13 @@ public struct ConversationContext {
             covered = 0
             summary = ""
         }
-        // The verbatim/summary boundary jitters as turns append: a saved
-        // summary may already cover turns now counted as recent. Replaying
-        // from the covered edge keeps it instead of discarding and
-        // re-condensing on every turn.
         if covered > firstRecent { firstRecent = covered }
         var maintenance: (@Sendable () async throws -> Void)?
         if covered < firstRecent {
             if deferSummarization {
-                // Answer now with the stale summary; fold the uncovered prefix
-                // in after the turn so first-token latency never waits on a
-                // condensation pass.
                 let threadID = thread.id
                 maintenance = { [provider, store] in
                     guard let fresh = await store.thread(id: threadID), fresh.turns.count >= firstRecent else { return }
-                    // A faster maintenance pass (or an inline prepare) may have
-                    // already covered part of this range — resume from the
-                    // freshest saved state rather than the captured one, so a
-                    // duplicate run can't overwrite a richer summary.
                     let freshCovered = max(covered, fresh.contextSummary?.sourceTurnCount ?? 0)
                     guard freshCovered < firstRecent else { return }
                     let base = freshCovered > covered ? (fresh.contextSummary?.text ?? summary) : summary
@@ -152,8 +138,6 @@ public struct ConversationContext {
         if !sources.isEmpty { messages.append(.user([.text(sources)])) }
         for turn in thread.turns.dropFirst(firstRecent) {
             messages.append(.user([.text(turn.question)]))
-            // Failed turns (e.g. fabricated tool transcripts) are untrusted —
-            // replaying them teaches the model to repeat the failure.
             if turn.outcome != .failed, !turn.answer.isEmpty {
                 messages.append(.assistant(text: turn.answer, toolCalls: []))
             }
@@ -162,9 +146,6 @@ public struct ConversationContext {
         return PreparedConversation(messages: messages, maintenance: maintenance)
     }
 
-    /// Condenses `turns[from..<through]` into the saved summary, persisting
-    /// each batch's coverage so a crash mid-pass loses at most one batch.
-    /// Returns the updated summary text.
     private func condensePrefix(
         turns: [PerryThread.Turn], from covered: Int, through firstRecent: Int,
         existing summary: String, limit summaryLimit: Int, historyByteLimit: Int,

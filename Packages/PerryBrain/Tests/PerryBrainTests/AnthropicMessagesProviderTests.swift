@@ -3,8 +3,8 @@ import Foundation
 import XCTest
 
 final class AnthropicMessagesProviderTests: XCTestCase {
-    private func provider(_ transport: FixtureLineStreaming) -> AnthropicMessagesProvider {
-        AnthropicMessagesProvider(apiKeyProvider: { "sk-ant-test" }, transport: transport)
+    private func provider(_ transport: FixtureLineStreaming) -> HTTPModelProvider {
+        .preset("anthropic", key: "sk-ant-test", transport: transport)
     }
 
     func testTruncatedStreamDoesNotInventCompletion() async throws {

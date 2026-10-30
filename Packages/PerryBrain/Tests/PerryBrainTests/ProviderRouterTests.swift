@@ -49,7 +49,8 @@ private struct HangingProvider: ModelProvider {
     func warm() async {}
 }
 
-private struct ScriptableToolProvider: ToolExecutingModelProvider {
+private struct ScriptableToolProvider: ModelProvider {
+    let executesTools = true
     let id: ProviderID
     let displayName = "Scriptable tools"
     let capabilities: ModelCapabilities
@@ -145,7 +146,6 @@ final class ProviderRouterTests: XCTestCase {
         ])
         let request = ModelRequest(messages: [.user([.text("hi")])], tier: .fast)
 
-        // First failure: counted but still routable.
         var decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
         XCTAssertEqual(decision.provider.id, .openAI)
         do {
@@ -153,7 +153,6 @@ final class ProviderRouterTests: XCTestCase {
             XCTFail("fixture must throw")
         } catch {}
 
-        // Second failure: two strikes marks it down for the window.
         decision = try await router.route(RouteRequirement(capabilities: [.vision], tier: .fast))
         XCTAssertEqual(decision.provider.id, .openAI)
         do {
@@ -164,8 +163,6 @@ final class ProviderRouterTests: XCTestCase {
         XCTAssertEqual(decision.provider.id, .gemini)
         XCTAssertTrue(decision.explanation.contains("openai(down)"))
 
-        // After the window a successful stream resets the failure count:
-        // one fresh failure alone is not enough to be skipped again.
         now = now.addingTimeInterval(61)
         flaky.error = nil
         flaky.events = [.done(.endTurn)]
@@ -205,7 +202,7 @@ final class ProviderRouterTests: XCTestCase {
             ScriptableToolProvider(id: .openAI, capabilities: [.vision, .tools, .streaming]),
         ])
         let decision = try await router.route(RouteRequirement(capabilities: [.vision, .tools], tier: .fast))
-        XCTAssertTrue(decision.provider is any ToolExecutingModelProvider)
+        XCTAssertTrue(decision.provider.executesTools)
     }
 
     func testNoQualifyingProviderThrows() async throws {

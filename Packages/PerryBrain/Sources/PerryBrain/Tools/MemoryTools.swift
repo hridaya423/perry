@@ -1,6 +1,5 @@
 import Foundation
 
-/// `memory.read` / `memory.write` over `MemoryFiles` (PROFILE.md/CONTEXT.md).
 public enum MemoryToolExecutors {
     public static func make(files: MemoryFiles, pronunciations: PronunciationStore? = nil) -> [any ToolExecutor] {
         [ReadTool(files: files), WriteTool(files: files)] + (pronunciations.map { [PronunciationTool(store: $0)] } ?? [])

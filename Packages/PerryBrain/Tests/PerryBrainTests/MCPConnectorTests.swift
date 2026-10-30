@@ -2,8 +2,6 @@ import XCTest
 import PerryCore
 @testable import PerryBrain
 
-/// Scriptable in-memory MCPTransport: each method maps to a canned result
-/// (or a closure for echo-style responses). Requests are recorded.
 private final class FakeTransport: MCPTransport, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var requests: [(method: String, params: JSONValue?)] = []
@@ -90,7 +88,6 @@ final class MCPConnectorTests: XCTestCase {
         XCTAssertEqual(tools.map(\.name), ["search", "mutate"])
         XCTAssertEqual(tools.first?.readOnlyHint, true)
         XCTAssertEqual(tools.last?.readOnlyHint, nil)
-        // page 2 was requested with the cursor
         let listCalls = transport.requests.filter { $0.method == "tools/list" }
         XCTAssertEqual(listCalls.count, 2)
         XCTAssertEqual(listCalls.last?.params?["cursor"]?.stringValue, "page2")
@@ -133,14 +130,12 @@ final class MCPConnectorTests: XCTestCase {
         let names = host.specs(for: .agent).map(\.name)
         XCTAssertEqual(names, ["mcp.fake-tools.mutate", "mcp.fake-tools.search"])
 
-        // readOnlyHint → green read-only, runs without approval.
         let read = await host.handle(
             ToolCall(id: "c1", name: "mcp.fake-tools.search", arguments: .object([:])),
             context: ToolContext(surface: .agent)
         )
         XCTAssertFalse(read.isError)
 
-        // unknown effect → orange, fails closed without an approver.
         let denied = await host.handle(
             ToolCall(id: "c2", name: "mcp.fake-tools.mutate", arguments: .object([:])),
             context: ToolContext(surface: .agent)
@@ -168,8 +163,6 @@ final class MCPConnectorTests: XCTestCase {
         let executors = try await conn.makeExecutors(tierOverrides: ["mutate": .red])
         XCTAssertEqual(executors.first { $0.spec.name == "mcp.fake-tools.mutate" }?.spec.tier, .red)
     }
-
-    // MARK: - stdio transport against the python fixture
 
     private func fixtureServer() throws -> URL {
         try XCTUnwrap(
@@ -209,8 +202,6 @@ final class MCPConnectorTests: XCTestCase {
     }
 }
 
-/// Canned HTTP performer: each request gets the queued (contentType, body)
-/// response; requests are recorded.
 private final class FakeHTTPPerformer: MCPHTTPPerforming, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var requests: [URLRequest] = []
@@ -265,7 +256,6 @@ final class HTTPMCPTransportTests: XCTestCase {
         try await conn.initialize()
         _ = try await conn.listTools()
 
-        // Requests after initialize carry the captured session id.
         XCTAssertEqual(performer.requests.count, 3)
         let listRequest = performer.requests[2]
         XCTAssertEqual(listRequest.value(forHTTPHeaderField: "Mcp-Session-Id"), "sess-1")
@@ -277,7 +267,6 @@ final class HTTPMCPTransportTests: XCTestCase {
 
     func testSSEResponseEndsOnMatchingID() async throws {
         let performer = FakeHTTPPerformer()
-        // Server interleaves a notification before the real response.
         let sse = """
         event: message
         data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"n":1}}

@@ -181,24 +181,19 @@ final class ToolHostTests: XCTestCase {
 
     func testRedRequiresTypedConfirmationAndApproval() async {
         let (host, executors) = host([("files.emptyTrash", .red, [.agent])])
-        // Approver allows but no typed confirmation.
         let noTyped = await host.handle(call("files.emptyTrash"), context: ToolContext(
             surface: .agent, approve: { _, _ in .approvedOnce }
         ))
         XCTAssertTrue(noTyped.isError)
-        // Typed confirmation with no approver still fails closed.
         let noApprover = await host.handle(call("files.emptyTrash"), context: ToolContext(
             surface: .agent, redConfirmed: true
         ))
         XCTAssertTrue(noApprover.isError)
-        // Both present → runs.
         let ok = await host.handle(call("files.emptyTrash"), context: ToolContext(
             surface: .agent, redConfirmed: true, approve: { _, _ in .approvedOnce }
         ))
         XCTAssertFalse(ok.isError)
         XCTAssertEqual(executors[0].callCount, 1)
-        // A surface that collects the typed phrase itself (intent card)
-        // answers .approvedTyped and needs no preflighted flag.
         let cardPath = await host.handle(call("files.emptyTrash"), context: ToolContext(
             surface: .agent, approve: { _, _ in .approvedTyped }
         ))

@@ -46,7 +46,9 @@ public struct AcpAgent: Sendable, Equatable, Codable, Identifiable {
     }
 }
 
-public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Sendable {
+public final class AcpAgentProvider: ModelProvider, @unchecked Sendable {
+    public var executesTools: Bool { true }
+
     public let id: ProviderID
     public let displayName: String
     public let capabilities: ModelCapabilities = [.vision, .tools, .streaming]
@@ -80,17 +82,7 @@ public final class AcpAgentProvider: ToolExecutingModelProvider, @unchecked Send
     }
 
     private func run(_ request: ModelRequest, executeTool: ToolExecutionHandler?) -> AsyncThrowingStream<ModelEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await self.execute(request, executeTool: executeTool, continuation: continuation)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        BrainHTTP.eventStream { try await self.execute(request, executeTool: executeTool, continuation: $0) }
     }
 
     private func execute(

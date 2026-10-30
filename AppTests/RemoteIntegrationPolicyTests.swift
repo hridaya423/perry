@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import PerryBrain
 import PerryCore
 @testable import Perry
 
@@ -17,25 +18,32 @@ final class RemoteIntegrationPolicyTests: XCTestCase {
         XCTAssertEqual(OAuthConfiguration.defaultRedirectURI.absoluteString, "dev.perry.perry:/oauth/callback")
     }
 
-    func testReadOnlyRequestsCannotSmuggleMutationMethods() {
+    func testReadsStayInsideTheProvidersReadPaths() {
         let notion = definition(id: "notion")
-        let linear = definition(id: "linear")
 
-        XCTAssertFalse(notion.allowsRemoteRequest(path: "/v1/pages/123", method: "DELETE", body: nil, readOnlyRequest: true))
-        XCTAssertTrue(notion.allowsRemoteRequest(path: "/v1/search", method: "POST", body: Data(#"{"page_size":10}"#.utf8), readOnlyRequest: true))
-        XCTAssertFalse(notion.allowsRemoteRequest(path: "/v1/pages", method: "POST", body: Data(#"{"parent":{}}"#.utf8), readOnlyRequest: true))
-        XCTAssertFalse(linear.allowsRemoteRequest(path: "/graphql", method: "POST", body: Data(#"{"query":"mutation { deleteIssue }"}"#.utf8), readOnlyRequest: true))
+        XCTAssertTrue(notion.allowsRead(path: "/v1/search"))
+        XCTAssertTrue(notion.allowsRead(path: "/v1/pages/123"))
+        XCTAssertFalse(notion.allowsRead(path: "/v1/oauth/token"))
+        XCTAssertFalse(notion.allowsRead(path: "/v1/pages/../oauth/token"))
+        XCTAssertFalse(notion.allowsRead(path: "/v1/search?client_secret=leaked"))
     }
 
-    func testLinearUsesExplicitGraphQLOperationKinds() {
-        let linear = definition(id: "linear")
-        let queryWithMutationText = Data(#"{"query":"query { viewer(filter: \"mutation\") { id } }"}"#.utf8)
-        let unknownOperation = Data(#"{"query":"persisted { viewer { id } }"}"#.utf8)
-        let mutation = Data(#"{"query":"mutation { issueUpdate { success } }"}"#.utf8)
+    func testEveryQuickActionIsAllowedByItsOwnDefinition() {
+        for definition in RemoteIntegrationDefinition.catalog {
+            for action in definition.quickActions + [definition.connectionTest] {
+                XCTAssertTrue(definition.allowsRead(path: action.resolvedPath()), "\(definition.id).\(action.id)")
+            }
+        }
+    }
 
-        XCTAssertTrue(linear.allowsRemoteRequest(path: "/graphql", method: "POST", body: queryWithMutationText, readOnlyRequest: true))
-        XCTAssertFalse(linear.allowsRemoteRequest(path: "/graphql", method: "POST", body: unknownOperation, readOnlyRequest: true))
-        XCTAssertTrue(linear.allowsRemoteRequest(path: "/graphql", method: "POST", body: mutation, readOnlyRequest: false))
+    func testNotionSearchTextIsEncodedIntoTheBody() throws {
+        let search = try XCTUnwrap(definition(id: "notion").quickActions.first { $0.id == "search" })
+        let query = #"quote " and \ slash"#
+
+        let body = try JSONValue(parsing: XCTUnwrap(search.searching(query).bodyData))
+
+        XCTAssertEqual(body["query"], .string(query))
+        XCTAssertEqual(body["page_size"], .number(10))
     }
 
     func testUnknownProviderOperationsFailClosed() {
@@ -50,18 +58,19 @@ final class RemoteIntegrationPolicyTests: XCTestCase {
             authorizationParameters: [:]
         )
 
-        XCTAssertFalse(unknown.allowsRemoteRequest(path: "/anything", method: "GET", body: nil, readOnlyRequest: true))
-        XCTAssertFalse(unknown.allowsRemoteRequest(path: "/anything", method: "POST", body: Data(#"{}"#.utf8), readOnlyRequest: false))
+        XCTAssertFalse(unknown.allowsRead(path: "/anything"))
     }
 
-    func testWritePathsAndMethodsStayProviderScoped() {
+    func testWritesStayProviderScoped() throws {
         let slack = definition(id: "slack")
         let linear = definition(id: "linear")
+        let message = try XCTUnwrap(RemoteIntegrationWriteRequest(parameters: .slackSendMessage(channel: "C1", text: "hello")))
+        let issue = try XCTUnwrap(RemoteIntegrationWriteRequest(parameters: .linearUpdateIssue(issueID: "ENG-1", title: "Fix")))
 
-        XCTAssertTrue(slack.allowsRemoteRequest(path: "/chat.postMessage", method: "POST", body: Data(#"{"channel":"C1","text":"hello"}"#.utf8), readOnlyRequest: false))
-        XCTAssertFalse(slack.allowsRemoteRequest(path: "/conversations.list", method: "POST", body: Data(#"{}"#.utf8), readOnlyRequest: false))
-        XCTAssertTrue(linear.allowsRemoteRequest(path: "/graphql", method: "POST", body: Data(#"{"query":"mutation { issueUpdate }"}"#.utf8), readOnlyRequest: false))
-        XCTAssertFalse(linear.allowsRemoteRequest(path: "/graphql", method: "PUT", body: nil, readOnlyRequest: false))
+        XCTAssertTrue(slack.allowsRemoteWrite(message))
+        XCTAssertFalse(slack.allowsRemoteWrite(issue))
+        XCTAssertTrue(linear.allowsRemoteWrite(issue))
+        XCTAssertFalse(linear.allowsRemoteWrite(message))
     }
 
     func testSlackAlwaysUsesBearerAuthorization() {

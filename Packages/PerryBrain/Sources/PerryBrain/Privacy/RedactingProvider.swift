@@ -20,28 +20,23 @@ public final class RedactionVaults: @unchecked Sendable {
     }
 }
 
-public struct RedactingProvider: ModelProvider {
+struct RedactingProvider: ProviderDecorator {
     let base: any ModelProvider
     let vaults: RedactionVaults
 
-    public static func wrap(_ base: any ModelProvider, vaults: RedactionVaults) -> any ModelProvider {
-        if let native = base as? any ToolExecutingModelProvider {
-            return RedactingToolProvider(native: native, vaults: vaults)
-        }
-        return RedactingProvider(base: base, vaults: vaults)
-    }
-
-    public var id: ProviderID { base.id }
-    public var displayName: String { base.displayName }
-    public var capabilities: ModelCapabilities { base.capabilities }
-    public func warm() async { await base.warm() }
-    public func contextWindow(for tier: ModelTier) async throws -> Int? {
-        try await base.contextWindow(for: tier)
-    }
-
-    public func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
+    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
         let redactor = vaults.redactor(for: request.conversationKey)
         return Self.restoring(base.stream(Self.redacted(request, with: redactor)), with: redactor)
+    }
+
+    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
+        let redactor = vaults.redactor(for: request.conversationKey)
+        let events = base.stream(Self.redacted(request, with: redactor)) { call in
+            var result = try await executeTool(ToolCall(id: call.id, name: call.name, arguments: redactor.restore(call.arguments)))
+            result.content = result.content.map { Self.redact($0, with: redactor) }
+            return result
+        }
+        return Self.restoring(events, with: redactor)
     }
 
     static func redacted(_ request: ModelRequest, with redactor: Redactor) -> ModelRequest {
@@ -100,33 +95,6 @@ public struct RedactingProvider: ModelProvider {
 extension RouteDecision {
     public func hidingPersonalDetails(with vaults: RedactionVaults) -> RouteDecision {
         guard !provider.capabilities.contains(.local), provider.id != .apple else { return self }
-        return RouteDecision(provider: RedactingProvider.wrap(provider, vaults: vaults), explanation: explanation)
-    }
-}
-
-struct RedactingToolProvider: ToolExecutingModelProvider {
-    let native: any ToolExecutingModelProvider
-    let vaults: RedactionVaults
-
-    var id: ProviderID { native.id }
-    var displayName: String { native.displayName }
-    var capabilities: ModelCapabilities { native.capabilities }
-    func warm() async { await native.warm() }
-    func contextWindow(for tier: ModelTier) async throws -> Int? {
-        try await native.contextWindow(for: tier)
-    }
-
-    func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelEvent, Error> {
-        RedactingProvider(base: native, vaults: vaults).stream(request)
-    }
-
-    func stream(_ request: ModelRequest, executeTool: @escaping ToolExecutionHandler) -> AsyncThrowingStream<ModelEvent, Error> {
-        let redactor = vaults.redactor(for: request.conversationKey)
-        let events = native.stream(RedactingProvider.redacted(request, with: redactor)) { call in
-            var result = try await executeTool(ToolCall(id: call.id, name: call.name, arguments: redactor.restore(call.arguments)))
-            result.content = result.content.map { RedactingProvider.redact($0, with: redactor) }
-            return result
-        }
-        return RedactingProvider.restoring(events, with: redactor)
+        return RouteDecision(provider: RedactingProvider(base: provider, vaults: vaults), explanation: explanation)
     }
 }

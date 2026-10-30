@@ -3,8 +3,8 @@ import Foundation
 import XCTest
 
 final class OpenAIResponsesProviderTests: XCTestCase {
-    private func provider(_ transport: any HTTPLineStreaming) -> OpenAIResponsesProvider {
-        OpenAIResponsesProvider(apiKeyProvider: { "sk-test" }, transport: transport)
+    private func provider(_ transport: any HTTPLineStreaming) -> HTTPModelProvider {
+        .preset("openai", key: "sk-test", transport: transport)
     }
 
     func testTruncatedStreamDoesNotInventCompletion() async throws {
@@ -140,11 +140,7 @@ final class OpenAIResponsesProviderTests: XCTestCase {
 
     func testPlaintextNonLoopbackRejectedBeforeRequest() async throws {
         let transport = try FixtureLineStreaming(fixture: "openai-text")
-        let insecure = OpenAIResponsesProvider(
-            baseURL: URL(string: "http://example.com")!,
-            apiKeyProvider: { "sk-test" },
-            transport: transport
-        )
+        let insecure = HTTPModelProvider.preset("openai", baseURL: URL(string: "http://example.com")!, key: "sk-test", transport: transport)
         do {
             _ = try await drain(insecure.stream(sampleRequest()))
             XCTFail("expected endpoint rejection")
@@ -152,8 +148,6 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
-    /// Network drop mid-stream: the transport stops producing lines without closing.
-    /// Cancelling the consumer must settle the stream (and the transport task) within 2 s.
     func testStalledStreamSettlesAfterCancelWithinTwoSeconds() async throws {
         let transport = StallingLineStreaming(lines: [
             "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}",

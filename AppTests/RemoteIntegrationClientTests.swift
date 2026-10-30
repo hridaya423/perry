@@ -18,7 +18,7 @@ final class RemoteIntegrationClientTests: XCTestCase {
         )
 
         do {
-            _ = try await client.request(definition: definition, path: "/admin.users")
+            _ = try await client.read(definition: definition, path: "/admin.users")
             XCTFail("expected unsupported capability to fail")
         } catch let error as RemoteIntegrationError {
             XCTAssertEqual(error, .capabilityDenied)
@@ -42,44 +42,8 @@ final class RemoteIntegrationClientTests: XCTestCase {
         )
 
         do {
-            _ = try await client.request(definition: definition, path: "/auth.test?access_token=leaked")
+            _ = try await client.read(definition: definition, path: "/auth.test?access_token=leaked")
             XCTFail("expected credential-like query to fail")
-        } catch let error as RemoteIntegrationError {
-            XCTAssertEqual(error, .capabilityDenied)
-        } catch {
-            XCTFail("unexpected error: \(error)")
-        }
-
-        let requests = await capture.all()
-        XCTAssertTrue(requests.isEmpty)
-    }
-
-    func testMalformedGraphQLFailsClosedBeforeTransport() async throws {
-        let definition = RemoteIntegrationDefinition.catalog.first { $0.id == "linear" }!
-        let malformedBody = Data(#"{"query":"mutation { issueUpdate( }"}"#.utf8)
-        let capture = RequestCapture()
-        let client = RemoteIntegrationClient(
-            keychain: KeychainStore(service: "dev.perry.tests.integration.\(UUID().uuidString)"),
-            transport: { request in
-                await capture.append(request)
-                throw URLError(.cancelled)
-            }
-        )
-
-        XCTAssertFalse(definition.allowsRemoteRequest(
-            path: "/graphql",
-            method: "POST",
-            body: malformedBody,
-            readOnlyRequest: false
-        ))
-        do {
-            _ = try await client.request(
-                definition: definition,
-                path: "/graphql",
-                method: "POST",
-                body: malformedBody
-            )
-            XCTFail("expected malformed GraphQL to fail")
         } catch let error as RemoteIntegrationError {
             XCTAssertEqual(error, .capabilityDenied)
         } catch {
@@ -354,10 +318,7 @@ final class RemoteIntegrationClientTests: XCTestCase {
             }
         )
 
-        _ = try await client.request(
-            definition: definition,
-            path: "/conversations.list?limit=1&exclude_archived=true"
-        )
+        _ = try await client.read(definition: definition, path: "/conversations.list?limit=1&exclude_archived=true")
         let capturedRequest = await capture.last()
         let request = try XCTUnwrap(capturedRequest)
         XCTAssertEqual(request.url?.absoluteString, "https://slack.com/api/conversations.list?limit=1&exclude_archived=true")
@@ -398,7 +359,7 @@ final class RemoteIntegrationClientTests: XCTestCase {
             }
         )
 
-        _ = try await client.request(definition: definition, path: "/graphql", method: "POST", body: Data(#"{"query":"query { viewer { id name } }"}"#.utf8), readOnlyRequest: true)
+        _ = try await client.preview(definition: definition, action: definition.quickActions[0])
         let requests = await capture.all()
         XCTAssertEqual(requests.filter { $0.url == definition.tokenURL }.count, 1)
         XCTAssertEqual(requests.filter { $0.url?.path == "/graphql" }.count, 2)
@@ -425,7 +386,7 @@ final class RemoteIntegrationClientTests: XCTestCase {
         )
 
         do {
-            _ = try await client.request(definition: definition, path: "/auth.test")
+            _ = try await client.read(definition: definition, path: "/auth.test")
             XCTFail("expected unsafe endpoint to fail")
         } catch let error as NetworkEndpointError {
             XCTAssertEqual(error, .insecureRemoteEndpoint)
@@ -470,10 +431,7 @@ final class RemoteIntegrationClientTests: XCTestCase {
         )
 
         do {
-            _ = try await client.request(
-                definition: definition,
-                path: "/conversations.list?limit=1"
-            )
+            _ = try await client.read(definition: definition, path: "/conversations.list?limit=1")
             XCTFail("expected malformed credential to fail")
         } catch let error as OAuthCredentialStoreError {
             XCTAssertEqual(error, .malformedCredential(definition.credentialAccount))
@@ -530,5 +488,11 @@ private final class RecordingCredentialBackend: OAuthCredentialStoreBackend, @un
         defer { lock.unlock() }
         wasCalledOnMainThread = wasCalledOnMainThread || Thread.isMainThread
         values[account] = nil
+    }
+}
+
+private extension RemoteIntegrationClient {
+    func read(definition: RemoteIntegrationDefinition, path: String) async throws -> String {
+        try await preview(definition: definition, action: RemoteIntegrationQuickAction(id: "probe", title: "Probe", path: path))
     }
 }

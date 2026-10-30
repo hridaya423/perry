@@ -67,7 +67,6 @@ final class InlineMarkupParserTests: XCTestCase {
         let (text, commands) = p.feed("⟦" + inner)
         XCTAssertEqual(text, "⟦" + inner)
         XCTAssertTrue(commands.isEmpty)
-        // Parser recovered: subsequent text streams normally.
         let next = p.feed("more ⟦point a⟧")
         XCTAssertEqual(next.text, "more ")
         XCTAssertEqual(next.commands, [DrawCommand(verb: .point, elementID: "a")])

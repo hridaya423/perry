@@ -21,11 +21,9 @@ final class ToolConsentStoreTests: XCTestCase {
         let now = await store.isGranted(tool: "files.trash", threadID: "t1")
         XCTAssertTrue(now)
 
-        // A fresh instance reads the persisted grant.
         let reloaded = ToolConsentStore(directory: dir)
         let persisted = await reloaded.isGranted(tool: "files.trash", threadID: "t1")
         XCTAssertTrue(persisted)
-        // Other tools and other threads still need asking.
         let otherTool = await reloaded.isGranted(tool: "integrations.write", threadID: "t1")
         let otherThread = await reloaded.isGranted(tool: "files.trash", threadID: "t2")
         XCTAssertFalse(otherTool)

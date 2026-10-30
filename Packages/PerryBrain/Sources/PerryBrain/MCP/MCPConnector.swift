@@ -20,7 +20,6 @@ public struct MCPError: Error, Sendable, Equatable, LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// One tool advertised by a remote MCP server.
 public struct MCPTool: Sendable, Equatable {
     public var name: String
     public var description: String
@@ -36,10 +35,6 @@ public struct MCPTool: Sendable, Equatable {
     }
 }
 
-/// Client for a user-added MCP server (Phase 9 custom connectors). Speaks
-/// the same NDJSON dialect as `MCPServer`. Remote tools are bridged into
-/// `ToolExecutor`s on the `.agent` surface; unknown-effect tools default to
-/// `.orange` so every call passes the approval path.
 public actor MCPConnector {
     public struct Info: Sendable, Equatable {
         public var serverName: String
@@ -179,7 +174,6 @@ private struct MCPToolExecutor: ToolExecutor {
     }
 }
 
-/// What the HTTP transport needs from its network layer, so tests can fake it.
 public protocol MCPHTTPPerforming: Sendable {
     func data(for request: URLRequest) async throws -> (HTTPURLResponse, Data)
     func lines(for request: URLRequest) async throws -> (HTTPURLResponse, AsyncThrowingStream<String, Error>)
@@ -255,7 +249,6 @@ public actor HTTPMCPTransport: MCPTransport {
             "method": .string(method),
         ]
         if let params { fields["params"] = params }
-        // Notifications get a 202 (or a JSON response we discard).
         _ = try? await post(.object(fields))
     }
 
@@ -286,9 +279,6 @@ public actor HTTPMCPTransport: MCPTransport {
         return request
     }
 
-    /// POSTs one message and returns the response message. Handles both
-    /// `application/json` and `text/event-stream` bodies; in the SSE case the
-    /// matching `id` message ends the exchange per the MCP spec.
     private func post(_ message: JSONValue, mayRefresh: Bool = true) async throws -> JSONValue {
         let token: String?
         do {
@@ -301,8 +291,6 @@ public actor HTTPMCPTransport: MCPTransport {
         request.httpBody = try message.data()
         let wantsID = message["id"]?.doubleValue.map(Int.init)
 
-        // Peek at the content type with a streaming read; short JSON bodies
-        // still arrive fine as lines.
         let (response, lines) = try await performer.lines(for: request)
         if let session = response.value(forHTTPHeaderField: "Mcp-Session-Id"), !session.isEmpty {
             sessionID = session
@@ -368,12 +356,6 @@ public final class StdioMCPTransport: MCPTransport, @unchecked Sendable {
     private var finished = false
     private let logger = Logger(subsystem: "ai.perry.brain", category: "mcp-stdio")
 
-    /// `command` is an absolute executable path or a name resolved via PATH
-    /// through `/usr/bin/env`. Extra `environment` entries are merged onto the
-    /// inherited environment minus the usual host secrets are NOT filtered —
-    /// the caller chooses the command; keep that in mind for user-added
-    /// connectors. Perry sets this transport up only for explicitly added
-    /// connector commands.
     public init(command: String, arguments: [String] = [], environment: [String: String]? = nil, onExit: (@Sendable () -> Void)? = nil) throws {
         signal(SIGPIPE, SIG_IGN)
         let process = Process()

@@ -1,7 +1,5 @@
 import Foundation
 
-/// What Settings needs to connect, check, preview, and disconnect a remote
-/// integration — and nothing else from the app.
 @MainActor
 final class IntegrationConnections {
     private let oauth: OAuthCoordinator
