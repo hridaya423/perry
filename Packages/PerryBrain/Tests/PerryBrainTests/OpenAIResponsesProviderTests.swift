@@ -148,8 +148,6 @@ final class OpenAIResponsesProviderTests: XCTestCase {
         XCTAssertTrue(transport.requests.isEmpty)
     }
 
-    /// Network drop mid-stream: the transport stops producing lines without closing.
-    /// Cancelling the consumer must settle the stream (and the transport task) within 2 s.
     func testStalledStreamSettlesAfterCancelWithinTwoSeconds() async throws {
         let transport = StallingLineStreaming(lines: [
             "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}",

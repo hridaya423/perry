@@ -18,10 +18,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
     private var turns: [String: TurnContext] = [:]
     private var conversations: [String: Conversation] = [:]
 
-    /// A `conversationKey`'s server-side thread plus what it already knows:
-    /// the system prompt and tool set are bound at thread/start, `consumed`
-    /// counts the request messages the server has accepted so a follow-up
-    /// turn sends only the new tail.
     private struct Conversation {
         var threadID: String
         var system: String
@@ -165,14 +161,11 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
             } ?? false
             if reuse, let existing = conversation {
                 threadID = existing.threadID
-                // The caller may compact history between turns; always leave
-                // at least the newest message to send.
                 consumed = min(existing.consumed, max(request.messages.count - 1, 0))
             } else {
                 threadID = try await startThread(request, connection: connection)
             }
-            // Register before turn/start: the server may emit notifications
-            // the instant it accepts the turn, and routing is by threadId.
+            // The server can notify the instant it accepts the turn, so register first.
             lock.withLock { turns[threadID] = context }
             do {
                 try Task.checkCancellation()
@@ -194,10 +187,8 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
                 registered = true
                 return
             } catch {
-                // A reused thread that errors at turn/start is one the server
-                // forgot (restart, eviction). Drop it once and replay on a
-                // fresh thread with the conversation as a transcript.
                 lock.withLock { turns[threadID] = nil }
+                // The server forgets threads on restart or eviction; retry once on a fresh thread.
                 guard reuse, mayRetry, !Task.isCancelled else { throw error }
                 mayRetry = false
                 conversation = nil
@@ -232,17 +223,11 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         return threadID
     }
 
-    /// Sends only what the server has not seen. On a reused thread that is
-    /// the new tail of `request.messages`; on a fresh thread the earlier
-    /// messages go in first as a labelled transcript so context survives
-    /// process restarts and recovered threads.
     private func startTurn(
         _ request: ModelRequest, threadID: String, consumed: Int,
         context: TurnContext, connection: JSONRPCConnection
     ) async throws -> String {
         var pending = Array(request.messages.dropFirst(consumed))
-        // A leading assistant message on a reused thread is this thread's own
-        // previous reply — the server already has it.
         if case .assistant = pending.first { pending.removeFirst() }
         let last = pending.last
         var input: [JSONValue] = []
@@ -303,8 +288,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         }
     }
 
-    /// Renders earlier messages as labelled context. Images become "[image]"
-    /// except on the final message, where they attach natively.
     private static func transcript(_ messages: [ModelMessage]) -> String {
         var lines = ["[Earlier conversation — context only]"]
         for message in messages {
@@ -346,7 +329,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         ]))
     }
 
-    /// Subscribes before returning so no notification sent after the next request can be missed.
     private func monitor(_ connection: JSONRPCConnection) async {
         if lock.withLock({ monitoredConnection === connection && monitorTask != nil }) { return }
         let events = await connection.events
@@ -376,9 +358,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         case .incomingRequest(let request):
             await handleServerRequest(request, on: connection)
         case .closed:
-            // The check and the purge must be one critical section: turns
-            // registered on a respawned connection between them must not be
-            // swept up with the dead connection's work.
             let stranded = lock.withLock { () -> [String: TurnContext]? in
                 guard monitoredConnection === connection else { return nil }
                 let stranded = turns
@@ -398,8 +377,6 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         lock.withLock { turns[threadID] }
     }
 
-    /// Codex turn failures arrive as free text — a rate-limit failure asks
-    /// `account/rateLimits/read` for the reset time so callers can name it.
     private func classify(_ message: String) async -> ModelProviderError {
         let lower = message.lowercased()
         guard lower.contains("rate limit") || lower.contains("rate_limit") || lower.contains("429") else {
@@ -545,15 +522,9 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         try await connection.respondError(to: request.id, message: message)
     }
 
-    /// Turn input images go by file path (data URLs are silently dropped by
-    /// the server — measured in the Phase 1.1 spike). Files live in a
-    /// per-launch directory so a crash mid-turn cannot leak them, and
-    /// directories left by dead processes are wiped at init.
     private let imageDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("perry-brain-images-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString.prefix(8))", isDirectory: true)
 
-    /// Internal (not private) so tests can prove a crash-simulated turn
-    /// leaves nothing behind — the launch call site stays inside init.
     static func pruneImageDirectories() {
         let temp = FileManager.default.temporaryDirectory
         let prefix = "perry-brain-images-"
@@ -570,10 +541,7 @@ public final class CodexAppServerProvider: ModelProvider, @unchecked Sendable {
         }
     }
 
-    /// The app-server decodes every attached image as PNG regardless of the
-    /// declared type — the wire log proved it ("Unknown filter method 255" is
-    /// JPEG's 0xFF read as a PNG filter byte). Transcode once at the boundary
-    /// so JPEG captures survive both turn inputs and tool results.
+    // The app-server decodes every attached image as PNG whatever the declared type.
     static func pngWireData(_ data: Data) -> Data {
         guard !data.starts(with: [0x89, 0x50, 0x4E, 0x47]),
               let source = CGImageSourceCreateWithData(data as CFData, nil),

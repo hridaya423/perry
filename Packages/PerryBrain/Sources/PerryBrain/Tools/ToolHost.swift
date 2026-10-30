@@ -145,9 +145,6 @@ public final class PerryToolHost: Sendable {
                 return fail(.approvalDenied(name: call.name))
             }
         case .red:
-            // Red needs typed confirmation: either the caller preflighted it
-            // (`redConfirmed`) plus an approve, or the approval surface
-            // collected the phrase itself and answered `.approvedTyped`.
             guard let approve = context.approve else {
                 return fail(.confirmationRequired(name: call.name, tier: spec.tier))
             }

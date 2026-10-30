@@ -45,8 +45,6 @@ final class CodexAppServerProviderTests: XCTestCase {
         )
     }
 
-    /// §6.2: a crash mid-turn leaves `perry-brain-images-<pid>-*` behind; the
-    /// launch sweep must remove only the directories whose owner is dead.
     func testTurnFailuresBecomePlainErrorKinds() {
         let raw = "unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, url: https://api.openai.com/v1/responses"
         XCTAssertEqual(CodexAppServerProvider.kind(of: raw.lowercased()), .unauthenticated)

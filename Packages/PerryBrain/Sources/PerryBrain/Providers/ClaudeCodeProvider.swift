@@ -32,17 +32,7 @@ public final class ClaudeCodeProvider: ModelProvider, @unchecked Sendable {
     }
 
     private func run(_ request: ModelRequest, executeTool: ToolExecutionHandler?) -> AsyncThrowingStream<ModelEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await self.execute(request, executeTool: executeTool, continuation: continuation)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        BrainHTTP.eventStream { try await self.execute(request, executeTool: executeTool, continuation: $0) }
     }
 
     private func execute(
@@ -127,7 +117,6 @@ public final class ClaudeCodeProvider: ModelProvider, @unchecked Sendable {
         }
     }
 
-    /// Quick turns answer at low effort; deep work keeps medium.
     static func effort(for tier: ModelTier) -> String {
         tier == .fast ? "low" : "medium"
     }

@@ -6,11 +6,6 @@ import ImageIO
 import PerryCore
 import UniformTypeIdentifiers
 
-/// Finds a described target in a window screenshot with a local grounding
-/// model (Holo-3.1, GUI-Owl-1.5) served over an OpenAI-compatible endpoint.
-/// A first pass reads the window at about 900 image tokens. Two sampled
-/// passes check it; when they scatter, one pass at up to 2000 tokens re-reads
-/// the half of the window around the first answer.
 public struct ClickGrounder: Sendable {
     public struct Endpoint: Sendable {
         public var baseURL: URL

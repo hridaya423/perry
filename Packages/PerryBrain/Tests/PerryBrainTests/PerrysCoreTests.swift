@@ -38,11 +38,9 @@ final class PerryStoreTests: XCTestCase {
         try await store.setMemory("prefers short pings", for: perry.id)
         let stored = await store.memory(for: perry.id)
         XCTAssertEqual(stored, "prefers short pings")
-        // A second Perry has its own memory file.
         let other = try await store.create(job: "sort downloads")
         let otherMemory = await store.memory(for: other.id)
         XCTAssertEqual(otherMemory, "")
-        // Removing a Perry removes its memory too.
         try await store.remove(id: perry.id)
         let afterRemove = await store.memory(for: perry.id)
         XCTAssertEqual(afterRemove, "")
@@ -92,7 +90,6 @@ final class RoutineDecisionsTests: XCTestCase {
         var s = RoutineSchedule(kind: .daily(hour: 9, minute: 0))
         s = RoutineDecisions.recordMissed(s, now: day(10))
         XCTAssertTrue(s.missedRunPending)
-        // Even past the slot, missedRunPending makes it due.
         XCTAssertTrue(RoutineDecisions.shouldRun(s, now: day(11), isAwake: true, hasNetwork: true))
         s = RoutineDecisions.record(s, succeeded: true, ranAt: day(11))
         XCTAssertFalse(s.missedRunPending)

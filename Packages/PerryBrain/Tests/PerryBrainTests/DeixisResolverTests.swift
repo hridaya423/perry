@@ -44,8 +44,6 @@ final class DeixisResolverTests: XCTestCase {
     }
 
     func testStillPointerOnElementBindsElement() {
-        // Holding the pointer steady on a control while saying "this" is the
-        // natural pointing gesture — it must bind the element, not the window.
         let trace = [
             TraceSample(t: 0, point: CGPoint(x: 100, y: 100), windowID: 42),
             TraceSample(t: 1, point: CGPoint(x: 102, y: 101), windowID: 42),
@@ -93,7 +91,6 @@ final class DeixisResolverTests: XCTestCase {
         let overlay = element("overlay", label: "Overlay", frame: CGRect(x: 200, y: 200, width: 50, height: 50))
         let trace = [
             TraceSample(t: 0, point: CGPoint(x: 25, y: 25), windowID: 42),
-            // Pointer over a Perry overlay window near the word — must be skipped.
             TraceSample(t: 1.0, point: CGPoint(x: 225, y: 225), windowID: 42, overPerry: true),
             TraceSample(t: 1.1, point: CGPoint(x: 25, y: 25), windowID: 42),
             TraceSample(t: 2.0, point: CGPoint(x: 300, y: 300), windowID: 42),
@@ -104,7 +101,6 @@ final class DeixisResolverTests: XCTestCase {
     }
 
     func testWindowOffsetsReResolveStaleElements() {
-        // Element observed at (100,100) in window 42, which has since moved +50/+40.
         let stale = element("stale", frame: CGRect(x: 100, y: 100, width: 50, height: 50))
         let trace = [
             TraceSample(t: 0, point: CGPoint(x: 10, y: 10), windowID: 42),
@@ -170,7 +166,6 @@ final class DeixisResolverTests: XCTestCase {
             TraceSample(t: 0, point: CGPoint(x: 10, y: 10), windowID: 42),
             TraceSample(t: 0.8, point: CGPoint(x: 140, y: 115), windowID: 42),
         ]
-        // Word at 1.0; window is [0.75, 1.2], so t=0.8 is inside the pointer lead.
         let words = [SpokenWord(text: "this", start: 1.0, duration: 0.2)]
         let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: [export])
         XCTAssertEqual(bindings[0].element?.id, "export")
@@ -183,7 +178,6 @@ final class DeixisResolverTests: XCTestCase {
             TraceSample(t: 0, point: CGPoint(x: 10, y: 10), windowID: 42),
             TraceSample(t: 0.6, point: CGPoint(x: 140, y: 115), windowID: 42),
         ]
-        // Word at 1.0; window is [0.75, 1.1], so t=0.6 is outside — latest-before wins.
         let words = [SpokenWord(text: "this", start: 1.0, duration: 0.1)]
         let bindings = DeixisResolver.resolve(words: words, trace: trace, elements: [export])
         XCTAssertEqual(bindings[0].element?.id, "export")

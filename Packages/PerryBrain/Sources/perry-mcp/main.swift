@@ -1,14 +1,6 @@
 import Foundation
 import PerryBrain
 
-// perry-mcp: a stdio proxy. MCP clients (Claude Code, OpenCode) speak
-// newline-delimited JSON-RPC on stdin/stdout; this forwards each line to
-// Perry's per-launch Unix socket after presenting the shared token, and
-// writes socket responses back to stdout.
-//
-// Socket handshake: the client sends `{"token": "<file token>"}` as the first
-// line; the app closes the connection unless it matches.
-
 let supportDir = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Application Support/Perry", isDirectory: true)
 let socketPath = ProcessInfo.processInfo.environment["PERRY_MCP_SOCKET"]
@@ -65,11 +57,9 @@ func trace(_ message: String) {
     if debug { FileHandle.standardError.write(Data("perry-mcp: \(message)\n".utf8)) }
 }
 
-// Hello: present the token.
 socketWrite(fd, "{\"token\":\"\(token)\"}\n")
 trace("sent hello, fd=\(fd)")
 
-// Socket → stdout, one JSON-RPC line per write.
 let pump = Thread {
     var pending = Data()
     var buffer = [UInt8](repeating: 0, count: 8192)
@@ -89,7 +79,6 @@ let pump = Thread {
 }
 pump.start()
 
-// stdin → socket.
 while let line = readLine() {
     trace("→ \(line.prefix(120))")
     socketWrite(fd, line + "\n")

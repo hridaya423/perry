@@ -1,8 +1,5 @@
 import Foundation
 
-/// A Home thread (Phase 5): a persisted conversation between you and Perry.
-/// Deliberately text-only — screenshots never persist beyond a turn, so a
-/// thread stores question, answer text, and element *labels* only.
 public struct PerryThread: Codable, Equatable, Sendable, Identifiable {
     public struct Turn: Codable, Equatable, Sendable {
         public enum Outcome: String, Codable, Sendable {
@@ -59,10 +56,8 @@ public struct PerryThread: Codable, Equatable, Sendable, Identifiable {
     public var title: String
     public var createdAt: Date
     public var updatedAt: Date
-    /// Set when the thread belongs to a persistent Perry (Phase 9).
     public var perryID: String?
     public var sourceServiceID: String?
-    /// Unsent composer text kept per thread (§4.7).
     public var draft: String
     public var turns: [Turn]
     public var pendingTurn: PendingTurn?
@@ -294,8 +289,6 @@ public actor ThreadStore {
         _ = try upsert(thread)
     }
 
-    /// Appends a turn, bumps `updatedAt`, and derives a title from the first
-    /// question when the thread is still untitled.
     @discardableResult
     public func appendTurn(
         to id: UUID,
@@ -316,11 +309,6 @@ public actor ThreadStore {
         return try upsert(t)
     }
 
-    /// Saves a condensation result. Accepted while the owning turn is in
-    /// flight (`pendingTurn.id == runID`) or once it has finished and the
-    /// thread is quiescent — deferred maintenance (H5) writes *after*
-    /// `finishTurn` cleared `pendingTurn`, still inside the owning run task.
-    /// The prefix-equality check below is the real staleness guard either way.
     public func saveContextSummary(_ text: String, sourceTurns: [PerryThread.Turn], to id: UUID, runID: UUID) throws {
         guard var thread = thread(id: id), thread.pendingTurn == nil || thread.pendingTurn?.id == runID else { throw ThreadStoreError.runMismatch }
         guard !sourceTurns.isEmpty, thread.turns.prefix(sourceTurns.count).elementsEqual(sourceTurns) else {
@@ -355,8 +343,6 @@ public actor ThreadStore {
         )
         cache?[id] = nil
     }
-
-    // MARK: - Internals
 
     /// First line of the question, trimmed to a sidebar-friendly length.
     public static func derivedTitle(from question: String) -> String {

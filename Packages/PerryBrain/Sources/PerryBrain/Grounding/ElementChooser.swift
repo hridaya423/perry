@@ -1,16 +1,10 @@
 import Foundation
 import PerryCore
 
-/// System-1 grounding chooser (Phase 9 experiment): ranks candidate elements
-/// for an intent. Implemented by the cua-s1 sidecar over loopback; only used
-/// if the benchmark says it beats the frontier model within 3 points.
 public protocol ElementChooser: Sendable {
-    /// Candidate ids, best first. May be empty; callers fall back to the
-    /// frontier-model chooser.
     func choose(intent: String, candidates: [ObservedElement]) async throws -> [String]
 }
 
-/// POST JSONValue → JSONValue against a fixed base URL.
 public protocol ChooserTransport: Sendable {
     func post(path: String, body: JSONValue) async throws -> JSONValue
 }

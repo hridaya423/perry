@@ -32,7 +32,6 @@ public final class MCPServer: Sendable {
               let method = request["method"]?.stringValue else { return nil }
         let id = request["id"]
 
-        // Notifications carry no id and never get a response.
         if method.hasPrefix("notifications/") || id == nil { return nil }
 
         return await respond(to: method, id: id!, params: request["params"])
@@ -124,13 +123,9 @@ public final class MCPServer: Sendable {
     }
 }
 
-/// Per-launch authenticated socket: a random 0600 token file in Perry's
-/// support directory. perry-mcp presents it; the app refuses anything else.
 public enum SocketAuth {
     public static let tokenFileName = "perry-mcp.token"
 
-    /// Loads the token, creating a fresh random 64-hex one with 0600 perms
-    /// when absent or unreadable.
     @discardableResult
     public static func ensureToken(in directory: URL) throws -> String {
         let url = directory.appendingPathComponent(tokenFileName)
@@ -141,11 +136,6 @@ public enum SocketAuth {
         return try mintToken(in: directory)
     }
 
-    /// Always mints a fresh token, replacing any existing file. Perry calls
-    /// this at each socket admission era (start/resume): a token captured
-    /// during one era stops working in the next, matching the per-launch
-    /// contract. Connected clients are unaffected — the token is checked
-    /// once at handshake, and connected fds close when admission ends.
     @discardableResult
     public static func mintToken(in directory: URL) throws -> String {
         let url = directory.appendingPathComponent(tokenFileName)

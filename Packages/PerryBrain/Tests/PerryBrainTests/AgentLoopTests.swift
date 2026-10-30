@@ -127,7 +127,6 @@ final class AgentLoopTests: XCTestCase {
         XCTAssertEqual(finishReason(events), .completed)
         XCTAssertEqual(executor.callCount, 1)
         XCTAssertEqual(provider.requests.count, 2)
-        // Second request must carry the assistant turn + tool result.
         let second = provider.requests[1].messages
         XCTAssertTrue(second.contains(.assistant(text: "Clicking.", toolCalls: [call])))
         XCTAssertTrue(second.contains(.toolResult(callID: "t1", content: [.text("ok")], isError: false)))
@@ -159,7 +158,6 @@ final class AgentLoopTests: XCTestCase {
         let loop = AgentLoop(provider: provider, host: host)
         let stream = loop.run(system: "s", messages: [], context: context)
         let task = Task { await collect(stream) }
-        // The tool is still running; the steer is drained before the next provider round.
         try? await Task.sleep(nanoseconds: 20_000_000)
         await loop.steer("also add pricing")
         let events = await task.value
@@ -169,7 +167,6 @@ final class AgentLoopTests: XCTestCase {
 
     func testInterruptDuringToolCalls() async {
         let call = ToolCall(id: "t1", name: "ui.click", arguments: .object([:]))
-        // Provider keeps issuing the same call forever; interrupt must stop the loop.
         var queue: [[ModelEvent]] = []
         for _ in 0..<100 { queue.append([.toolCall(call), .done(.toolUse)]) }
         let provider = ScriptedProvider(responses: queue)
@@ -212,8 +209,6 @@ final class AgentLoopTests: XCTestCase {
         let task = Task { await collect(loop.run(system: "s", messages: [], context: context)) }
         try? await Task.sleep(nanoseconds: 20_000_000)
         await loop.pause()
-        // Suspended, not finished: give the loop a moment, then resume —
-        // the run must complete the second call rather than end paused.
         try? await Task.sleep(nanoseconds: 50_000_000)
         await loop.resume()
         let events = await task.value
@@ -292,8 +287,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testFabricatedCallSyntaxFailsEvenWithoutToolCapability() async {
-        // A probed no-tools model still sees tool names in prior context and
-        // can write fake calls — detection can't rely on allowedTools.
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.list", description: "list", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(
             responses: [[.textDelta("files.list(\"/tmp\") — 5 files"), .done(.endTurn)]],
@@ -307,8 +300,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testFabricatedActionClaimFailsInsteadOfCompleting() async {
-        // qwen-style narration: "**Action completed:** File X created" with
-        // zero tool calls — a fabricated mutation claim, not a completion.
         let fabricated = """
             **Action completed:** File drill-proof.txt created in /tmp/workspace with content hello.
             """
@@ -323,8 +314,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testFabricatedDenialClaimFailsInsteadOfCompleting() async {
-        // Zero tools ran, so no approval card could ever have been shown —
-        // "not approved" fabricates an approval decision that never happened.
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(responses: [[.textDelta("Action not completed: The file creation action was not approved."), .done(.endTurn)]])
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
@@ -336,8 +325,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testCapitalizedParenlessToolLineFailsInsteadOfCompleting() async {
-        // Live qwen3 evasion: "Files.create drill-alpha.txt" — capitalized,
-        // no parens. Zero tools ran, so the transcript lines are fabricated.
         let fabricated = """
             Files.list files.list drill-alpha.txt drill-beta.txt
 
@@ -374,9 +361,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testMidSentenceToolMentionStillCompletes() async {
-        // Prose naming a tool is fine; quoting live call syntax is not —
-        // in a zero-call turn `files.create("x")` asserts a call that
-        // never ran. The boundary is call shape, not position.
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(responses: [[.textDelta("I cannot do that here — normally the files.create tool would do it."), .done(.endTurn)]])
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
@@ -385,8 +369,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testFakeListingWithReversedClaimFailsInsteadOfCompleting() async {
-        // Live qwen3 evasion: narrates a fake listing, then claims
-        // "Files created as requested." — object-first order.
         let fabricated = """
             /Users/x/Library/Application Support/Perry/workspace:
               drill-alpha.txt: "perry"
@@ -406,7 +388,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testPostconditionStateClaimFailsInsteadOfCompleting() async {
-        // "Each file now contains …" asserts a postcondition that never ran.
         let fabricated = "Done.\n\nEach file now contains the word perry."
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.create", description: "create", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(responses: [[.textDelta(fabricated), .done(.endTurn)]])
@@ -419,8 +400,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testBracketedToolLabelsAndMidlineCallsFailInsteadOfCompleting() async {
-        // Live qwen3 evasion #3: bracketed dotted labels and mid-line
-        // `list = files.list("…")` assignment-form fake calls.
         let fabricated = """
             [Files.list]
             list = files.list("/tmp/workspace")
@@ -441,8 +420,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testUnattendedAwaitingApprovalFailsInsteadOfParking() async {
-        // "Awaiting your approval" ends the turn waiting on a person who is
-        // not there — the same dead end as a literal question.
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(responses: [[.textDelta("The change is ready and awaiting your approval."), .done(.endTurn)]])
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))
@@ -461,8 +438,6 @@ final class AgentLoopTests: XCTestCase {
     }
 
     func testUnattendedQuestionTurnFailsInsteadOfParking() async {
-        // Scheduled Perrys have no one to answer "Do you want to proceed?" —
-        // recording completed would park the job and poison future context.
         let executor = RecordingExecutor(spec: ToolSpec(name: "files.write", description: "write", inputSchema: toolSchema([:])))
         let provider = ScriptedProvider(responses: [[.textDelta("Please confirm the following action: Create drill.txt. Do you want to proceed?"), .done(.endTurn)]])
         let loop = AgentLoop(provider: provider, host: PerryToolHost(executors: [executor]))

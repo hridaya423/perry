@@ -43,8 +43,6 @@ public struct LocalWorkspaceFiles: Sendable {
         self.rootPath = resolved.path.hasSuffix("/") ? resolved.path : resolved.path + "/"
     }
 
-    /// Resolves a relative path inside the root. For creation targets the
-    /// parent directory is resolved instead (it must exist).
     private func resolve(_ relative: String, create: Bool = false) throws -> URL {
         let trimmed = relative.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, trimmed != "/" else { return rootURL }
@@ -212,7 +210,6 @@ public struct LocalWorkspaceFiles: Sendable {
     }
 }
 
-/// `files.*` executors: schemas, tiers, and undo hints for the host.
 public enum FileToolExecutors {
     public static func make(backend: LocalWorkspaceFiles) -> [any ToolExecutor] {
         [

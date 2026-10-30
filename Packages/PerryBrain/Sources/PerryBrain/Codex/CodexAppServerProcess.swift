@@ -224,8 +224,6 @@ public actor CodexAppServerProcess {
         }
     }
 
-    /// Bounded appending: once the log passes half a megabyte, only the last
-    /// quarter is kept, so a noisy server cannot grow it without limit.
     private static func cappedLogHandle(for url: URL) -> FileHandle? {
         let limit = 512 * 1024, keep = 256 * 1024
         do {

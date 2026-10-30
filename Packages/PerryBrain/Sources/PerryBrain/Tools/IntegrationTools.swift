@@ -1,13 +1,10 @@
 import Foundation
 import PerryCore
 
-/// One callable operation on a connected service (e.g. "search pages").
 public struct IntegrationOperation: Sendable, Equatable {
     public var name: String
     public var description: String
-    /// True when the operation changes remote state.
     public var isWrite: Bool
-    /// JSON-schema object validated against the call's `arguments` field.
     public var inputSchema: JSONValue
 
     public init(name: String, description: String, isWrite: Bool, inputSchema: JSONValue = .object(["type": .string("object")])) {
@@ -44,15 +41,11 @@ public protocol IntegrationBackend: Sendable {
     func perform(service: String, operation: String, arguments: JSONValue) async throws -> JSONValue
 }
 
-/// `integrations.*` executors.
 public enum IntegrationToolExecutors {
     public static func make(backend: any IntegrationBackend) -> [any ToolExecutor] {
         [ListTool(backend: backend), ReadTool(backend: backend), WriteTool(backend: backend)]
     }
 
-    // `arguments` is declared without a type so the host's strict validator
-    // passes it through; the executor validates it against the operation's
-    // own inputSchema instead.
     private static let callSchema: JSONValue = .object([
         "type": .string("object"),
         "properties": .object([

@@ -82,17 +82,7 @@ public final class AcpAgentProvider: ModelProvider, @unchecked Sendable {
     }
 
     private func run(_ request: ModelRequest, executeTool: ToolExecutionHandler?) -> AsyncThrowingStream<ModelEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    try await self.execute(request, executeTool: executeTool, continuation: continuation)
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        BrainHTTP.eventStream { try await self.execute(request, executeTool: executeTool, continuation: $0) }
     }
 
     private func execute(

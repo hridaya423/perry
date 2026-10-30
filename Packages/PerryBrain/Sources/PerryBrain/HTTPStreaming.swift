@@ -112,7 +112,6 @@ public struct SSEParser: Sendable {
 }
 
 enum BrainHTTP {
-    /// Runs `body` in a task tied to the stream's lifetime and always finishes the stream.
     static func eventStream(
         _ body: @escaping @Sendable (AsyncThrowingStream<ModelEvent, Error>.Continuation) async throws -> Void
     ) -> AsyncThrowingStream<ModelEvent, Error> {

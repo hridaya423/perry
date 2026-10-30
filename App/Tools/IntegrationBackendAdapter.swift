@@ -1,12 +1,6 @@
 import Foundation
 import PerryBrain
 
-/// `IntegrationBackend` over the app's OAuth integration stack. Reads map to
-/// each definition's curated quick actions; writes map to the typed
-/// `RemoteIntegrationWriteParameters` set. `integrations.write` is orange at
-/// the host, so by the time `perform` sees a write the intent card already
-/// ran — the `RemoteIntegrationApproval` minted here is the credential-layer
-/// record of that approval (the client's `matches` requires it).
 private struct IntegrationBackendError: Error, LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }
@@ -107,8 +101,6 @@ struct AppIntegrationBackend: IntegrationBackend {
         guard let request = RemoteIntegrationWriteRequest(parameters: parameters) else {
             throw IntegrationBackendError("integrations.write: malformed arguments for \(operation.rawValue)")
         }
-        // stepID needs only be non-empty — the user-facing approval already
-        // happened in the host's intent card for this orange-tier call.
         let approval = RemoteIntegrationApproval(
             stepID: UUID().uuidString,
             integrationID: definition.id,

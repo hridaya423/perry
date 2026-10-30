@@ -33,8 +33,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         return try JSONValue(parsing: Data(text.utf8))
     }
 
-    // MARK: - LocalWorkspaceFiles
-
     func testWriteListReadRoundTrip() async throws {
         try await backend.write(path: "notes.txt", contents: "hello")
         let entries = try await backend.list(path: ".")
@@ -104,8 +102,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertEqual(result.byteCount, 100)
     }
 
-    // MARK: - files.* through the host
-
     func testFilesWriteThroughHostEmitsUndo() async throws {
         let host = fileHost()
         let result = await host.handle(
@@ -162,8 +158,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertTrue(result.isError)
     }
 
-    // MARK: - memory.*
-
     func testMemoryReadWrite() async throws {
         let files = MemoryFiles(directory: root)
         let host = PerryToolHost(executors: MemoryToolExecutors.make(files: files))
@@ -182,7 +176,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         guard case .text(let text)? = result.content.first else { return XCTFail() }
         XCTAssertEqual(text, "likes terse answers")
 
-        // append mode
         _ = await host.handle(
             call("memory.write", [
                 "section": .string("profile"), "text": .string(" +coffee"),
@@ -192,8 +185,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         )
         XCTAssertEqual(files.profile(), "likes terse answers +coffee")
     }
-
-    // MARK: - integrations.*
 
     private func integrationHost(
         writeEnabled: Bool = true,
@@ -237,7 +228,6 @@ final class ToolExecutorCoreTests: XCTestCase {
 
     func testIntegrationWriteNeedsApprovalAndEnabledFlag() async throws {
         let calls = LockedCalls()
-        // Remote writes off → even an approved call fails inside the executor.
         let offHost = integrationHost(writeEnabled: false, calls: calls)
         let off = await offHost.handle(
             call("integrations.write", [
@@ -248,7 +238,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertTrue(off.isError)
         XCTAssertEqual(calls.all.count, 0)
 
-        // Writes on, but orange tier still gates on the host approve hook.
         let onHost = integrationHost(writeEnabled: true, calls: calls)
         let noApprover = await onHost.handle(
             call("integrations.write", [
@@ -280,8 +269,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         )
         XCTAssertTrue(result.isError)
     }
-
-    // MARK: - perry.*
 
     func testPerryCreateListSchedule() async throws {
         let store = PerryStore(directory: root)
@@ -346,8 +333,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertTrue(result.isError)
     }
 
-    // MARK: - catalog
-
     func testCatalogRegistersAll() {
         let host = PerryToolHost(executors: ToolCatalog.agentExecutors(
             files: backend,
@@ -369,8 +354,6 @@ final class ToolExecutorCoreTests: XCTestCase {
         XCTAssertEqual(host.spec(named: "integrations.write")?.tier, .orange)
     }
 }
-
-// MARK: - fakes
 
 private final class StringBox: @unchecked Sendable {
     private let lock = NSLock()

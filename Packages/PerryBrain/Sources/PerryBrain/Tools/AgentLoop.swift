@@ -100,9 +100,6 @@ public actor AgentLoop {
         let tools = base.tools
         let system = base.system
         let allowedTools = Set(tools.map(\.name))
-        /// Fabrication detection runs against every tool on the surface, not
-        /// just the ones this provider may call — a no-tools model can still
-        /// write `files.list(…)` claims into its answer.
         let surfaceToolNames = Set(host.specs(for: context.surface).map(\.name))
 
         func finish(_ reason: AgentFinish) {
@@ -224,16 +221,10 @@ public actor AgentLoop {
         return trimmed
     }
 
-    /// Some models write a fake transcript into the answer — `files.list("…")`
-    /// or `[Observation: …]` — instead of emitting a real tool call. Others
-    /// narrate a completed action in prose ("Action completed", "file X
-    /// created") with no call at all. When no call ran in the whole turn,
-    /// those claims are fabricated.
     static func looksFabricatedToolTranscript(_ text: String, toolNames: Set<String>) -> Bool {
         if text.range(of: #"(?m)^\s*\[(Observation|Action)\s*:"#, options: .regularExpression) != nil {
             return true
         }
-        // [Files.list] / [UI.action] — a line that is only a bracketed dotted label.
         if text.range(of: #"(?im)^\s*\[\s*[A-Za-z]+\.[A-Za-z]+\s*\]\s*$"#, options: .regularExpression) != nil {
             return true
         }
@@ -256,8 +247,6 @@ public actor AgentLoop {
         return false
     }
 
-    /// A trailing question to the user ("Do you want to proceed?", "Which
-    /// folder should I use?") can never be answered on an unattended turn.
     static func looksLikeUserQuestion(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.hasSuffix("?") { return true }
@@ -298,8 +287,6 @@ public actor AgentLoop {
         return result
     }
 
-    /// Holds at a tool boundary until resumed or interrupted. Steers queued
-    /// while paused are delivered to the model on the next loop iteration.
     private func suspendUntilResumed() async {
         while pauseRequested, !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -312,8 +299,6 @@ public actor AgentLoop {
         return steers
     }
 
-    /// User-facing failure text — a rate limit names its reset time so the
-    /// voice line and status card both carry it, not a bare "429".
     private func separated(_ delta: String) -> String {
         guard let first = delta.first, let last = delta.last else { return delta }
         let afterTool = toolCallCount > toolCallsAtLastText && answerTail.map { !$0.isNewline } == true && !first.isNewline
