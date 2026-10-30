@@ -120,23 +120,25 @@ final class AgentObservationStore: @unchecked Sendable {
     }
 }
 
+extension ObservedElement {
+    init(_ element: AXElement, windowID: Int, detail: CuaElementDetail? = nil) {
+        self.init(
+            id: element.stableID,
+            role: element.rawRole ?? "AX\(element.role.rawValue)",
+            label: element.label ?? "",
+            frame: CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height),
+            windowID: windowID,
+            value: detail?.value,
+            pressable: detail?.pressable ?? true
+        )
+    }
+}
+
 extension GuideObservation {
     var observedElements: [ObservedElement] {
         let observedWindowID = Int(windowID ?? 0)
         return snapshot.elements
             .filter { $0.sensitivity != .secure }
-            .map { element in
-                ObservedElement(
-                    id: element.stableID,
-                    role: element.rawRole ?? "AX\(element.role.rawValue)",
-                    label: element.label ?? "",
-                    frame: CGRect(
-                        x: element.frame.x, y: element.frame.y,
-                        width: element.frame.width, height: element.frame.height
-                    ),
-                    windowID: observedWindowID
-                )
-            }
+            .map { ObservedElement($0, windowID: observedWindowID) }
     }
-
 }
