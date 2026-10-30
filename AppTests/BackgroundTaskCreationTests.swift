@@ -259,7 +259,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
             commandLineProviders: []
         )
         return AppController.testing(directory: directory) {
-            $0.runtimeInventoryLoader = { try await inspector.inspect() }
+            $0.runtimeSetupLoader = { try await inspector.inspect() }
             $0.permissionSnapshotLoader = {
                 probe.incrementPermission()
                 XCTFail("background task tests must not request desktop permissions")

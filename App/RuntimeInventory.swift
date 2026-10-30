@@ -6,20 +6,12 @@ struct ConfiguredDirectRuntime {
     let credential: String
 }
 
-/// What the runtime probe found for Settings. Nothing routes through
-/// providers — open-ended work runs on the built-in agent; this is
-/// install/auth bookkeeping only.
-struct RuntimeInventory {
-    let setup: RuntimeSetupSnapshot
-    let credentialFailure: String?
-}
-
 @MainActor
 struct RuntimeInventoryInspector {
     let readDirectProvider: () throws -> ConfiguredDirectRuntime?
     let commandLineProviders: [RuntimeCLIDefinition]
 
-    func inspect() async throws -> RuntimeInventory {
+    func inspect() async throws -> RuntimeSetupSnapshot {
         try Task.checkCancellation()
         var records: [RuntimeSetupRecord] = []
         var directSummary: String?
@@ -44,13 +36,10 @@ struct RuntimeInventoryInspector {
             records.append(record)
         }
         try Task.checkCancellation()
-        return RuntimeInventory(
-            setup: RuntimeSetupSnapshot(
-                summary: credentialFailure ?? directSummary ?? records.first?.status
-                    ?? "Perry handles open-ended work on its own. Install Codex to hand off coding tasks.",
-                records: records
-            ),
-            credentialFailure: credentialFailure
+        return RuntimeSetupSnapshot(
+            summary: credentialFailure ?? directSummary ?? records.first?.status
+                ?? "Perry handles open-ended work on its own. Install Codex to hand off coding tasks.",
+            records: records
         )
     }
 }

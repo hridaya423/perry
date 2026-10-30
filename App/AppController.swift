@@ -65,7 +65,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var transcriptPreview = ""
     let sessionController: SessionController
     private var sessionStateObservation: AnyCancellable?
-    private var runtimeChoicesObservation: AnyCancellable?
     var agentRunningObservation: AnyCancellable?
 
     init(sessionController: SessionController, overrides: LaunchOverrides) {
@@ -106,9 +105,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private func observeSessionState() {
         sessionController.onTransitionRejected = { [weak self] in
             self?.sessionStatus = "I stopped because something changed unexpectedly. Try again."
-        }
-        runtimeChoicesObservation = subsystems.runtimes.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
         }
         sessionStateObservation = sessionController.$state.sink { [weak self] state in
             guard let self else { return }

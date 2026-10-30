@@ -1425,10 +1425,7 @@ final class ForegroundPlanningTests: XCTestCase {
         session: SessionController? = nil,
         confirmer: (any Confirmer)? = nil
     ) -> AppController {
-        let inventory = RuntimeInventory(
-            setup: RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: []),
-            credentialFailure: nil
-        )
+        let setup = RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: [])
         let planner: any GuidePlanner
         if let fullGuidePlanner {
             planner = FixturePathPlanner(path: fullGuidePlanner)
@@ -1436,7 +1433,7 @@ final class ForegroundPlanningTests: XCTestCase {
             planner = AXGuidePlanner()
         }
         return AppController.testing(directory: directory, session: session) {
-            $0.runtimeInventoryLoader = { inventory }
+            $0.runtimeSetupLoader = { setup }
             $0.permissionSnapshotLoader = {
                 PerryPermissionSnapshot(
                     accessibility: true,
@@ -1503,7 +1500,7 @@ final class ForegroundPlanningTests: XCTestCase {
             commandLineProviders: []
         )
         return AppController.testing(directory: directory, session: session) {
-            $0.runtimeInventoryLoader = { try await inspector.inspect() }
+            $0.runtimeSetupLoader = { try await inspector.inspect() }
             $0.permissionSnapshotLoader = {
                 PerryPermissionSnapshot(
                     accessibility: true,

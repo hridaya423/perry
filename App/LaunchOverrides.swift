@@ -6,7 +6,7 @@ struct LaunchOverrides {
     var storageDirectory: URL?
     var taskCoordinator: TaskCoordinator?
     var notifier: (any AppNotificationClient)?
-    var runtimeInventoryLoader: RuntimeCatalog.InventoryLoader?
+    var runtimeSetupLoader: RuntimeCatalog.SetupLoader?
     var permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader?
     var cuaHealthLoader: EnvironmentProbe.CuaHealthLoader?
     var screenContextLoader: EnvironmentProbe.ScreenContextLoader?

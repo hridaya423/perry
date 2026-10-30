@@ -14,11 +14,11 @@ final class RuntimeInventoryTests: XCTestCase {
         try Data("fixture".utf8).write(to: executable)
         fixture.executable = directory.appendingPathComponent("alias")
         try FileManager.default.createSymbolicLink(at: fixture.executable, withDestinationURL: executable)
-        let inventory = try await fixture.inspector.inspect()
+        let setup = try await fixture.inspector.inspect()
 
         XCTAssertEqual(fixture.events, ["locate", "verify", "authenticate"])
         XCTAssertEqual(fixture.observedExecutables, Array(repeating: executable.resolvingSymlinksInPath(), count: 2))
-        let record = try XCTUnwrap(inventory.setup.records.first)
+        let record = try XCTUnwrap(setup.records.first)
         XCTAssertEqual(record.signInCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signOutCommand?.executable, executable.resolvingSymlinksInPath())
         XCTAssertEqual(record.signInCommand?.environment, ["CODEX_HOME": "/fixture/private-home"])
@@ -27,10 +27,10 @@ final class RuntimeInventoryTests: XCTestCase {
     func testRejectedInstallationHasNoAuthenticationCommands() async throws {
         let fixture = Fixture()
         fixture.installation = .unverified(reason: "checksum mismatch")
-        let inventory = try await fixture.inspector.inspect()
+        let setup = try await fixture.inspector.inspect()
 
         XCTAssertEqual(fixture.events, ["locate", "verify"])
-        let record = try XCTUnwrap(inventory.setup.records.first)
+        let record = try XCTUnwrap(setup.records.first)
         XCTAssertNil(record.authentication)
         XCTAssertNil(record.signInCommand)
         XCTAssertNil(record.signOutCommand)
@@ -39,8 +39,8 @@ final class RuntimeInventoryTests: XCTestCase {
 
     func testConfiguredCredentialsAllowRunningWithoutClaimingReadiness() async throws {
         let fixture = Fixture()
-        let inventory = try await fixture.inspector.inspect()
-        let record = try XCTUnwrap(inventory.setup.records.first)
+        let setup = try await fixture.inspector.inspect()
+        let record = try XCTUnwrap(setup.records.first)
 
         XCTAssertEqual(record.authentication, .configured)
         XCTAssertTrue(record.canRun)
@@ -54,7 +54,7 @@ final class RuntimeInventoryTests: XCTestCase {
             let task = Task { try await fixture.inspector.inspect() }
             do {
                 _ = try await task.value
-                XCTFail("Cancellation must prevent a completed inventory")
+                XCTFail("Cancellation must prevent a completed setup")
             } catch is CancellationError {
             } catch {
                 XCTFail("Expected cancellation, received \(error)")
@@ -69,12 +69,12 @@ final class RuntimeInventoryTests: XCTestCase {
         _ = try await inspector.inspect()
         fixture.executable = URL(fileURLWithPath: "/fixture/replacement")
         fixture.authentication = .missing
-        let inventory = try await inspector.inspect()
+        let setup = try await inspector.inspect()
 
         XCTAssertEqual(fixture.events.filter { $0 == "locate" }.count, 2)
         XCTAssertEqual(fixture.observedExecutables.last, fixture.executable)
-        XCTAssertEqual(inventory.setup.records.first?.authentication, .missing)
-        XCTAssertEqual(inventory.setup.records.first?.signInCommand?.executable, fixture.executable)
+        XCTAssertEqual(setup.records.first?.authentication, .missing)
+        XCTAssertEqual(setup.records.first?.signInCommand?.executable, fixture.executable)
     }
 
     func testOfficialAndCustomProvidersProduceSummaries() async throws {
@@ -92,27 +92,26 @@ final class RuntimeInventoryTests: XCTestCase {
                 readDirectProvider: { ConfiguredDirectRuntime(endpoint: endpoint, credential: "fixture-secret") },
                 commandLineProviders: [fixture.definition]
             )
-            let inventory = try await inspector.inspect()
-            XCTAssertEqual(inventory.setup.summary, "\(summaryName) key saved. I check it when a task starts.", url)
+            let setup = try await inspector.inspect()
+            XCTAssertEqual(setup.summary, "\(summaryName) key saved. I check it when a task starts.", url)
         }
     }
 
     func testCredentialFailureIsSanitized() async throws {
-        let inventory = try await RuntimeInventoryInspector(
+        let setup = try await RuntimeInventoryInspector(
             readDirectProvider: { throw FixtureError() }, commandLineProviders: []
         ).inspect()
 
-        XCTAssertEqual(inventory.setup.summary, "I couldn’t read your API key from the Keychain.")
-        XCTAssertEqual(inventory.credentialFailure, inventory.setup.summary)
-        XCTAssertFalse(inventory.setup.summary.contains("seeded-secret"))
+        XCTAssertEqual(setup.summary, "I couldn’t read your API key from the Keychain.")
+        XCTAssertFalse(setup.summary.contains("seeded-secret"))
     }
 
     func testOrdinaryProbeFailuresKeepRecordsAndSanitizeErrors() async throws {
         for stage in ["verify", "authenticate"] {
             let fixture = Fixture()
             fixture.failAt = stage
-            let inventory = try await fixture.inspector.inspect()
-            let record = try XCTUnwrap(inventory.setup.records.first)
+            let setup = try await fixture.inspector.inspect()
+            let record = try XCTUnwrap(setup.records.first)
             XCTAssertFalse(record.canRun)
             XCTAssertFalse(record.status.contains("seeded-secret"))
             if stage == "verify" {
@@ -142,8 +141,8 @@ final class RuntimeInventoryTests: XCTestCase {
         let fixture = Fixture()
         fixture.authenticatesInApp = true
         fixture.authentication = .missing
-        let inventory = try await fixture.inspector.inspect()
-        let record = try XCTUnwrap(inventory.setup.records.first)
+        let setup = try await fixture.inspector.inspect()
+        let record = try XCTUnwrap(setup.records.first)
 
         XCTAssertTrue(record.authenticatesInApp)
         XCTAssertEqual(record.authentication, .missing)
@@ -162,21 +161,6 @@ final class RuntimeInventoryTests: XCTestCase {
         XCTAssertFalse(record.canRun)
         XCTAssertNil(record.signInCommand)
         XCTAssertTrue(record.status.contains("Check storage and folder permissions"))
-    }
-
-    /// The inventory cache key leans on `fileStamp` — it must change when the
-    /// file does and report "missing" cleanly.
-    func testFileStampReflectsContentAndExistence() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        addTeardownBlock { try TestTempDirectory.remove(directory) }
-        let file = directory.appendingPathComponent("runtime")
-
-        XCTAssertEqual(RuntimeCatalog.fileStamp(file), "missing")
-        try Data("a".utf8).write(to: file)
-        let first = RuntimeCatalog.fileStamp(file)
-        try Data("much longer contents".utf8).write(to: file)
-        XCTAssertNotEqual(RuntimeCatalog.fileStamp(file), first)
     }
 
     private struct FixtureError: Error, CustomStringConvertible {

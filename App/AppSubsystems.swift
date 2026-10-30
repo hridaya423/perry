@@ -355,10 +355,7 @@ final class AppSubsystems {
         beforeTranscriptAppend: app.overrides.finalizationPersistenceBarrier
     )
 
-    lazy var runtimes = RuntimeCatalog(
-        setStatus: { [weak app = app] status in app?.sessionStatus = status },
-        inventoryLoader: app.overrides.runtimeInventoryLoader
-    )
+    lazy var runtimes = RuntimeCatalog(setupLoader: app.overrides.runtimeSetupLoader)
 
     lazy var probe = EnvironmentProbe(
         workers: self.workers,
