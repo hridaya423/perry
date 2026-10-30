@@ -54,14 +54,11 @@ final class AppSubsystems {
         return local
     }()
 
-    /// The shared Perry registry — agent tools, the scheduler, and Home's
-    /// sidebar all read the same directory.
     lazy var perryStore: PerryStore? = self.storageDirectory.map {
         PerryStore(directory: $0.appendingPathComponent("perrys", isDirectory: true))
     }
 
 
-    /// The integration tool backend, shared with the morning researcher.
     lazy var integrationBackend = AppIntegrationBackend(
         client: self.integrationClient,
         oauth: self.oauthCoordinator,
@@ -69,7 +66,6 @@ final class AppSubsystems {
     )
 
 
-    /// Phase 9: morning suggestion researcher over connected apps.
     lazy var suggestionController: SuggestionController = {
         let controller = SuggestionController(
             coordinator: self.agentCoordinator,
@@ -83,8 +79,6 @@ final class AppSubsystems {
     }()
 
 
-    /// Phase 9: fires scheduled Perrys into the agent loop and publishes the
-    /// Perry list for Home's sidebar.
     lazy var perryScheduler: PerrySchedulerController? = {
         guard let perryStore else { return nil }
         let scheduler = PerrySchedulerController(
@@ -182,18 +176,12 @@ final class AppSubsystems {
 
     lazy var talkSkillLibrary = AppSkillLibrary(storageDirectory: self.storageDirectory)
 
-    /// Shared Talk speech input: its DictationController carries the
-    /// engine + recognizer built once, so hold-to-talk re-arms them
-    /// instead of rebuilding audio infrastructure per key-down.
     lazy var talkSpeechInput: SFSpeechInput = {
         let input = SFSpeechInput()
         input.preferences = { [unowned self] in (try? self.voice.currentDictationPreferences()) ?? .default }
         return input
     }()
 
-    /// BYOK realtime Talk voice (§1.5), built once when configured and
-    /// reused per hold. Re-checked per makeInput so a Settings change can
-    /// engage it without relaunch; a failed session rebuilds inside.
     private var realtimeTalkVoiceInstance: RealtimeTalkVoice?
     func realtimeTalkVoice() -> RealtimeTalkVoice? {
         if let realtimeTalkVoiceInstance { return realtimeTalkVoiceInstance }

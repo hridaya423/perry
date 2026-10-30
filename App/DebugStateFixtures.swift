@@ -4,10 +4,6 @@ import Foundation
 import PerryCore
 import PerryGuide
 
-/// Deterministic product-state fixtures for design review, UI tests, and
-/// screenshot/AX captures. Opened via the `--perry-debug-state <name>` launch
-/// argument or the DEBUG "State fixtures" menu. This file compiles only in
-/// DEBUG; no production path depends on it.
 enum DebugStateFixture: String, CaseIterable, Identifiable {
     case loading
     case empty
@@ -45,8 +41,6 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Status text the session panel shows for this fixture. UI tests assert
-    /// on these strings; keep them honest rather than marketing copy.
     var statusText: String? {
         switch self {
         case .loading:
@@ -76,8 +70,6 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Session state to install for panel fixtures; nil for fixtures that
-    /// present their own window (approvals, onboarding).
     var sessionState: SessionState? {
         switch self {
         case .loading:
@@ -127,7 +119,6 @@ enum DebugStateFixture: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Intent card for approval fixtures.
     var intentCard: IntentCard? {
         switch self {
         case .approvalOrange:
@@ -225,8 +216,6 @@ extension PerryDebugLaunchSurface {
         reversible: true
     )
 
-    /// Three transcript entries across two days with mixed outcomes, so the
-    /// History capture shows a populated surface instead of an empty state.
     static func historyEntries() -> [TranscriptEntry] {
         let day = Calendar.current.startOfDay(for: Date())
         return [

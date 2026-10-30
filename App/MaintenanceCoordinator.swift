@@ -1,9 +1,5 @@
 import AppKit
 
-/// Quit and erase are Perry's two "own the whole app" operations: both close
-/// admission everywhere, run an ordered stop-and-join checklist, then hand
-/// control back — or out. The ordering is the behavior, so it lives in one
-/// place here rather than scattered across AppController's lifecycle methods.
 @MainActor
 final class MaintenanceCoordinator {
     private enum Operation { case termination, erasure }
@@ -14,9 +10,7 @@ final class MaintenanceCoordinator {
     private(set) var isErasureInProgress = false
     private var pendingConfirmation: NotchConfirmation?
 
-    /// Nothing held and no quit underway — safe to accept new work.
     var isIdle: Bool { owner == nil && !terminationPrepared }
-    /// A quit or erase currently owns the app.
     var isUnderMaintenance: Bool { owner != nil }
 
 #if DEBUG
@@ -105,7 +99,6 @@ final class MaintenanceCoordinator {
         }
     }
 
-    /// Collapsing the notch answers an open quit or erase question with No.
     func cancelConfirmation() {
         pendingConfirmation?.cancel()
     }

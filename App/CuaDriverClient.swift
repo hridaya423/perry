@@ -108,8 +108,6 @@ private enum CuaConfigurationSource {
 
 actor CuaDriverClient {
     private static let requestTimeout = Duration.seconds(15)
-    // A healthy read answers in ~1.5s and a wedged driver never answers, so reads give up
-    // well before the mutation deadline and the caller retries on a respawned driver.
     private static let readTimeout = Duration.seconds(6)
     private static let foregroundOnlyBundleIDs: Set<String> = ["com.apple.finder"]
 

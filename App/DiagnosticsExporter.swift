@@ -3,8 +3,6 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-/// Save-panel exports for support data: the activity log on its own, or the
-/// redacted diagnostics bundle. Gathers, asks, writes, reports.
 @MainActor
 struct DiagnosticsExporter {
     let activityLog: ActivityLog

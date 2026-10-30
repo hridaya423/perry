@@ -8,9 +8,6 @@ import PerryOverlay
 import PerryGuide
 import PerryRuntimes
 
-/// Owns the live session: hotkey → overlay + panel, Guide/Do flows, intent
-/// cards, notifications, memory. Everything the PRD's Session Orchestrator
-/// implies, bound to real UI.
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
 
@@ -136,8 +133,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.appearance = NSAppearance(named: .darkAqua)
         NSApp.setActivationPolicy(.accessory)
         NotchPresentation.shared.onPresent = { [weak self] priority in self?.showPanel(activate: priority == .approval || priority == .routine) }
-        // A companion that gets terminated mid-setup loses the user's trust
-        // (HeyClicky lost first-run setups to this). Opt out explicitly.
         ProcessInfo.processInfo.disableAutomaticTermination(
             "Perry is a session-ready companion"
         )
@@ -259,7 +254,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    // MARK: Wake / dismiss
 
     private func installHotkey() {
         let gesture = PerryPreferences.wakeGesture
@@ -328,15 +322,11 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         clearSessionSurfaces()
     }
 
-    /// Marks drawn from any surface (Home, a routine, a Do run) need the
-    /// overlay window, which only wake and Guide used to show.
     func showOverlayForMarks() {
         guard !subsystems.overlayManager.isShowingOverlay() else { return }
         subsystems.overlayManager.showOverlay(onScreens: NSScreen.screens, state: subsystems.overlayState)
     }
 
-    /// Takes every session mark off the overlay, hides the overlay and panel,
-    /// and lets the wake word listen again.
     func clearSessionSurfaces() {
         subsystems.overlayState.clearGuideOverlays()
         subsystems.overlayManager.fadeOutAndHideOverlay()
@@ -344,11 +334,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         subsystems.voice.refreshWakeWordListener()
     }
 
-    // MARK: Status item
 
-    /// System sleep settles an active run at a step boundary and hands
-    /// control to the user — after wake, Continue replans against whatever
-    /// the screen became rather than trusting pre-sleep observations.
     @objc private func handleSystemSleep() {
         subsystems.foreground.takeOver()
     }
@@ -357,7 +343,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         subsystems.homeController.openHome(selection: .whatsNew)
     }
 
-    // MARK: Onboarding
 
     func runOnboarding(force: Bool) {
         onboarding.run(force: force)

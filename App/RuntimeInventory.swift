@@ -56,8 +56,6 @@ struct RuntimeCLIDefinition {
     let signInArguments: [String]
     let signOutArguments: [String]
     let environment: [String: String]
-    /// When true, account sign-in happens inside the app and the setup record
-    /// carries no shell commands for Settings to copy into Terminal.
     var authenticatesInApp = false
 
     private enum Inspection {
@@ -173,8 +171,6 @@ struct RuntimeCLIDefinition {
                 id: "cli.codex",
                 signInArguments: ["login", "--device-auth"], signOutArguments: ["logout"],
                 environment: codexRuntimeHome.map { ["CODEX_HOME": $0.path] } ?? [:],
-                // ChatGPT sign-in goes through account/login/start in
-                // Conversation model — never a Terminal command (§5.4).
                 authenticatesInApp: true
             ),
             RuntimeCLIDefinition(

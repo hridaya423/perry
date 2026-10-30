@@ -44,13 +44,10 @@ extension AppController {
         maintenance.isUnderMaintenance
     }
 
-    /// Test seam for the dictated-command path — identical to what
-    /// VoiceController's dispatch hook delivers after wake word/dictation.
     func debugDispatch(_ text: String, voiceTaskScope: UUID? = nil) {
         commandRouter.route(commandText: text, voiceTaskScope: voiceTaskScope)
     }
 
-    /// Seeds the History fixture and opens History for the capture lane.
     func debugShowHistoryFixture() {
         Task { @MainActor in
             for entry in PerryDebugLaunchSurface.historyEntries() {
@@ -61,7 +58,6 @@ extension AppController {
         }
     }
 
-    /// Applies a deterministic `DebugStateFixture` — see DebugStateFixtures.swift.
     func applyDebugStateFixture(_ fixture: DebugStateFixture) {
         switch fixture {
         case .permissionDenied:
@@ -80,7 +76,6 @@ extension AppController {
         }
     }
 
-    /// True when an early-return debug surface consumed the launch path.
     func debugHandleEarlyLaunchSurface() -> Bool {
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == .backgroundTasksStorageError {
@@ -93,8 +88,6 @@ extension AppController {
         return false
     }
 
-    /// Presents the --perry-debug-* surface the launch arguments asked for
-    /// (or runs onboarding when none did), then applies any state fixture.
     func applyDebugLaunchSurface() {
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == nil {
@@ -191,9 +184,6 @@ extension AppController {
             }
         }
     }
-    /// Phase-3 lab seam: `app.perry.guide-drill` notifications carrying a
-    /// `goal` string start a real guide session on the frontmost app —
-    /// scripts/lab/guide-drill.sh drives Preview through it end to end.
     func installGuideDrillTrigger() {
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill"),
@@ -230,10 +220,6 @@ extension AppController {
         ) { [weak self] _ in
             self?.subsystems.guideCoordinator.dismissIfActive()
         }
-        // A postcondition-less step parks at .stillWaiting after a real hit —
-        // the shipped UX resolves that with the controls' Done button, which
-        // routes to advanceGuide()/engine.userActed(). The drill drives the
-        // identical path.
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("app.perry.guide-drill-done"),
             object: nil,

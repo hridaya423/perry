@@ -527,8 +527,6 @@ enum PerryLiveErasureErasers {
         return combined(category: .preferences, erasers: erasers)
     }
 
-    /// Learned routines, their provenance, and any draft material — the whole
-    /// Routines directory is Perry-owned and goes on selective erasure too.
     private static func routinesEraser(paths: PerryErasurePaths) -> any PerryDataEraser {
         let directory = paths.supportDirectory?.appendingPathComponent("Routines", isDirectory: true)
         return PerryClosureEraser(
