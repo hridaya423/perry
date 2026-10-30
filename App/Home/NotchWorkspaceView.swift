@@ -82,165 +82,90 @@ struct NotchWorkspaceView: View {
 
     private var rail: some View {
         VStack(alignment: .leading, spacing: 0) {
+            railHeader
+            railSearch
+            railLinks
+            railThreads
+            Rectangle()
+                .fill(PerryTheme.Colors.subtleSeparator)
+                .frame(height: 1)
+            railFooter
+        }
+    }
+
+    private var railHeader: some View {
+        Button {
+            searchFocused = false
+            model.sidebarSelection = nil
+        } label: {
+            HStack(spacing: 8) {
+                PerryCharacter(mood: .resting, size: 20)
+                Text("perry")
+                    .font(PerryTheme.Scale.wordmark)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityLabel("Home")
+        .help("Home (⌘[)")
+        .padding(.horizontal, 14)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var railSearch: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(PerryTheme.Icon.rail)
+                    .foregroundStyle(PerryTheme.Colors.icon)
+                    .accessibilityHidden(true)
+                TextField("Search…", text: $model.search)
+                    .textFieldStyle(.plain)
+                    .focused($searchFocused)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
             Button {
                 searchFocused = false
                 model.sidebarSelection = nil
+                focusComposer = true
             } label: {
-                HStack(spacing: 8) {
-                    PerryCharacter(mood: .resting, size: 20)
-                    Text("perry")
-                        .font(PerryTheme.Scale.wordmark)
-                }
-                .contentShape(Rectangle())
+                Image(systemName: "square.and.pencil")
+                    .font(PerryTheme.Icon.utility)
+                    .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.pressable)
-            .accessibilityLabel("Home")
-            .help("Home (⌘[)")
-            .padding(.horizontal, 14)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+            .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
+            .foregroundStyle(PerryTheme.Colors.icon)
+            .keyboardShortcut("n", modifiers: .command)
+            .accessibilityLabel("New conversation")
+            .help("New conversation (⌘N)")
+        }
+        .padding(.horizontal, 12)
+    }
 
-            HStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(PerryTheme.Icon.rail)
-                        .foregroundStyle(PerryTheme.Colors.icon)
-                        .accessibilityHidden(true)
-                    TextField("Search…", text: $model.search)
-                        .textFieldStyle(.plain)
-                        .focused($searchFocused)
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
-                Button {
-                    searchFocused = false
-                    model.sidebarSelection = nil
-                    focusComposer = true
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(PerryTheme.Icon.utility)
-                        .frame(width: PerryTheme.Icon.hit, height: PerryTheme.Icon.hit)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
-                .foregroundStyle(PerryTheme.Colors.icon)
-                .keyboardShortcut("n", modifiers: .command)
-                .accessibilityLabel("New conversation")
-                .help("New conversation (⌘N)")
-            }
-            .padding(.horizontal, 12)
+    private var railLinks: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            railLink("Tasks", systemImage: "bolt.fill", tint: PerryCharacterView.sage, selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
+            railLink("Routines", systemImage: "repeat", tint: TileTint.blue, selection: .routines, shortcut: "2")
+            railLink("Files", systemImage: "folder.fill", tint: TileTint.teal, selection: .files, shortcut: "3")
+            railLink("Suggestions", systemImage: "lightbulb.fill", tint: TileTint.peach, selection: .suggestions, shortcut: "4", count: model.suggestions.count)
+            railLink("History", systemImage: "clock.fill", tint: TileTint.lilac, selection: .history, shortcut: "5")
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 12)
+    }
 
-            VStack(alignment: .leading, spacing: 1) {
-                railLink("Tasks", systemImage: "bolt.fill", tint: PerryCharacterView.sage, selection: .tasks, shortcut: "1", count: model.deps.backgroundTasks?.runningCount ?? 0)
-                railLink("Routines", systemImage: "repeat", tint: TileTint.blue, selection: .routines, shortcut: "2")
-                railLink("Files", systemImage: "folder.fill", tint: TileTint.teal, selection: .files, shortcut: "3")
-                railLink("Suggestions", systemImage: "lightbulb.fill", tint: TileTint.peach, selection: .suggestions, shortcut: "4", count: model.suggestions.count)
-                railLink("History", systemImage: "clock.fill", tint: TileTint.lilac, selection: .history, shortcut: "5")
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 12)
-
-            ScrollViewReader { proxy in
+    private var railThreads: some View {
+        ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     if !model.threads.isEmpty {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            Text("Recent")
-                                .font(PerryTheme.Scale.meta)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                .padding(.horizontal, 8)
-                                .padding(.bottom, 2)
-                            ForEach(model.filteredThreads) { thread in
-                                Button {
-                                    model.sidebarSelection = .thread(thread.id)
-                                } label: {
-                                    Text(thread.title.isEmpty ? "Untitled" : thread.title)
-                                        .font(PerryTheme.Scale.body)
-                                        .lineLimit(1)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 5)
-                                        .background { selectionPill(model.sidebarSelection == .thread(thread.id)) }
-                                        .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
-                                }
-                                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
-                                .accessibilityAddTraits(model.sidebarSelection == .thread(thread.id) ? .isSelected : [])
-                                .help("\(thread.title.isEmpty ? "Untitled" : thread.title)\n\(thread.updatedAt.formatted(.relative(presentation: .named)))")
-                            }
-                            if !model.search.isEmpty, model.filteredThreads.isEmpty {
-                                Text("No matches for “\(model.search)”")
-                                    .font(PerryTheme.Scale.secondary)
-                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                    .padding(.horizontal, 8)
-                            }
-                        }
+                        recentThreads
                     }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text("Helpers")
-                                .font(PerryTheme.Scale.meta)
-                                .foregroundStyle(PerryTheme.Colors.textSecondary)
-                            Spacer()
-                            Button {
-                                searchFocused = false
-                                model.sidebarSelection = .perryEditor(nil)
-                            } label: {
-                                Image(systemName: "plus").font(PerryTheme.Icon.utility).imageScale(.small)
-                            }
-                            .buttonStyle(.pressable)
-                            .foregroundStyle(PerryTheme.Colors.icon)
-                            .accessibilityLabel("New helper")
-                            .help("New helper: its own job, schedule, and memory")
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 2)
-                        if model.perrys.isEmpty {
-                            Button {
-                                searchFocused = false
-                                model.sidebarSelection = .perryEditor(nil)
-                            } label: {
-                                Text("New helper")
-                                    .font(PerryTheme.Scale.secondary)
-                                    .lineLimit(1)
-                                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
-                            .help("Make a helper for a job you repeat")
-                        }
-                        ForEach(model.perrys) { perry in
-                            Button {
-                                model.onPerrySelected?(perry)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    PerryCharacterView(pose: PerryCharacterPose(), size: 22)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(perry.name)
-                                            .font(PerryTheme.Scale.chip)
-                                            .lineLimit(1)
-                                        Text(perry.job)
-                                            .font(PerryTheme.Scale.secondary)
-                                            .foregroundStyle(PerryTheme.Colors.textSecondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
-                            }
-                            .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
-                            .help("\(perry.name)\n\(perry.job)")
-                            .contextMenu {
-                                Button("Edit \(perry.name)…") { model.sidebarSelection = .perryEditor(perry.id) }
-                            }
-                        }
-                    }
+                    helpersSection
                 }
                 .padding(.horizontal, 4)
                 .padding(.vertical, 10)
@@ -254,46 +179,151 @@ struct NotchWorkspaceView: View {
             .onChange(of: model.sidebarSelection) { _, selection in
                 if case .thread(let id) = selection { proxy.scrollTo(id) }
             }
-            }
-            .background {
-                Button("Search conversations") { searchFocused = true }
-                    .keyboardShortcut("f", modifiers: .command)
-                    .hidden()
-            }
+        }
+        .background {
+            Button("Search conversations") { searchFocused = true }
+                .keyboardShortcut("f", modifiers: .command)
+                .hidden()
+        }
+    }
 
-            Rectangle()
-                .fill(PerryTheme.Colors.subtleSeparator)
-                .frame(height: 1)
+    private var recentThreads: some View {
+        LazyVStack(alignment: .leading, spacing: 2) {
+            Text("Recent")
+                .font(PerryTheme.Scale.meta)
+                .foregroundStyle(PerryTheme.Colors.textSecondary)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 2)
+            ForEach(model.filteredThreads) { thread in
+                threadRow(thread)
+            }
+            if !model.search.isEmpty, model.filteredThreads.isEmpty {
+                Text("No matches for “\(model.search)”")
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
+                    .padding(.horizontal, 8)
+            }
+        }
+    }
 
+    private func threadRow(_ thread: PerryThread) -> some View {
+        Button {
+            model.sidebarSelection = .thread(thread.id)
+        } label: {
+            Text(thread.title.isEmpty ? "Untitled" : thread.title)
+                .font(PerryTheme.Scale.body)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background { selectionPill(model.sidebarSelection == .thread(thread.id)) }
+                .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
+        }
+        .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
+        .accessibilityAddTraits(model.sidebarSelection == .thread(thread.id) ? .isSelected : [])
+        .help("\(thread.title.isEmpty ? "Untitled" : thread.title)\n\(thread.updatedAt.formatted(.relative(presentation: .named)))")
+    }
+
+    private var helpersSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Button {
-                    openSettings(.apps)
-                } label: {
-                    Label {
-                        Text("Apps")
-                    } icon: {
-                        SymbolTile(systemImage: "square.grid.2x2.fill", tint: TileTint.pink)
-                    }
-                    .font(PerryTheme.Scale.body)
-                }
-                .buttonStyle(.pressable)
-                .accessibilityHint("Open connected apps settings")
+                Text("Helpers")
+                    .font(PerryTheme.Scale.meta)
+                    .foregroundStyle(PerryTheme.Colors.textSecondary)
                 Spacer()
                 Button {
-                    model.sidebarSelection = .settings
+                    searchFocused = false
+                    model.sidebarSelection = .perryEditor(nil)
                 } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .labelStyle(.iconOnly)
-                        .font(PerryTheme.Icon.rail)
-                        .foregroundStyle(PerryTheme.Colors.icon)
+                    Image(systemName: "plus").font(PerryTheme.Icon.utility).imageScale(.small)
                 }
                 .buttonStyle(.pressable)
-                .help("Settings")
+                .foregroundStyle(PerryTheme.Colors.icon)
+                .accessibilityLabel("New helper")
+                .help("New helper: its own job, schedule, and memory")
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, NotchLayout.bottomInset)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 2)
+            if model.perrys.isEmpty {
+                Button {
+                    searchFocused = false
+                    model.sidebarSelection = .perryEditor(nil)
+                } label: {
+                    Text("New helper")
+                        .font(PerryTheme.Scale.secondary)
+                        .lineLimit(1)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
+                .help("Make a helper for a job you repeat")
+            }
+            ForEach(model.perrys) { perry in
+                helperRow(perry)
+            }
         }
+    }
+
+    private func helperRow(_ perry: Perry) -> some View {
+        Button {
+            model.onPerrySelected?(perry)
+        } label: {
+            HStack(spacing: 10) {
+                PerryCharacterView(pose: PerryCharacterPose(), size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(perry.name)
+                        .font(PerryTheme.Scale.chip)
+                        .lineLimit(1)
+                    Text(perry.job)
+                        .font(PerryTheme.Scale.secondary)
+                        .foregroundStyle(PerryTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .contentShape(RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
+        }
+        .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
+        .help("\(perry.name)\n\(perry.job)")
+        .contextMenu {
+            Button("Edit \(perry.name)…") { model.sidebarSelection = .perryEditor(perry.id) }
+        }
+    }
+
+    private var railFooter: some View {
+        HStack {
+            Button {
+                openSettings(.apps)
+            } label: {
+                Label {
+                    Text("Apps")
+                } icon: {
+                    SymbolTile(systemImage: "square.grid.2x2.fill", tint: TileTint.pink)
+                }
+                .font(PerryTheme.Scale.body)
+            }
+            .buttonStyle(.pressable)
+            .accessibilityHint("Open connected apps settings")
+            Spacer()
+            Button {
+                model.sidebarSelection = .settings
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+                    .font(PerryTheme.Icon.rail)
+                    .foregroundStyle(PerryTheme.Colors.icon)
+            }
+            .buttonStyle(.pressable)
+            .help("Settings")
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, NotchLayout.bottomInset)
     }
 
     private var resting: some View {
