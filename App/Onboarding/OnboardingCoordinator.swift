@@ -15,16 +15,12 @@ final class OnboardingCoordinator {
         self.showNotch = showNotch
     }
 
-    static func opensAtLaunch(completed: Bool, dismissed: Bool) -> Bool {
-        !completed && !dismissed
-    }
-
     nonisolated static var isParked: Bool {
         !PerryPreferences.onboardingCompleted && PerryPreferences.onboardingDismissed
     }
 
     func runIfNeeded() {
-        if Self.opensAtLaunch(completed: PerryPreferences.onboardingCompleted, dismissed: PerryPreferences.onboardingDismissed) {
+        if !PerryPreferences.onboardingCompleted, !PerryPreferences.onboardingDismissed {
             run(force: false)
         }
     }

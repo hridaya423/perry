@@ -56,37 +56,6 @@ final class NotchDialogTests: XCTestCase {
         XCTAssertFalse(presentation.contains(dialog.id))
     }
 
-    func testItemSnapshotSurvivesSourceClearing() {
-        let presentation = NotchPresentation()
-        let target = UUID()
-        var source: UUID? = target
-        var hit: UUID?
-        let dialog = NotchDialog(
-            title: "Discard this unsaved request?",
-            item: source,
-            actions: { id in [NotchDialog.Action("Discard", role: .destructive) { hit = id }] },
-            presentation: presentation,
-            onClearSource: { source = nil })
-        XCTAssertNotNil(dialog)
-        source = nil
-        dialog?.present()
-        dialog?.select(0)
-        XCTAssertEqual(hit, target)
-        XCTAssertNil(source)
-        XCTAssertFalse(presentation.contains(dialog?.id ?? UUID()))
-    }
-
-    func testNilItemNeverBuilds() {
-        let presentation = NotchPresentation()
-        let dialog = NotchDialog(
-            title: "Discard?",
-            item: Optional<UUID>.none,
-            actions: { _ in [NotchDialog.Action("Discard") {}] },
-            presentation: presentation)
-        XCTAssertNil(dialog)
-        XCTAssertNil(presentation.current)
-    }
-
     func testOKOnlyDialogResolvesThroughCancel() {
         let presentation = NotchPresentation()
         var clears = 0

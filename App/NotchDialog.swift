@@ -40,15 +40,6 @@ final class NotchDialog {
         self.clearSource = onClearSource
     }
 
-    convenience init?<Item>(title: String, message: String? = nil, cancelTitle: String = "Cancel",
-                            item: Item?, actions: (Item) -> [Action], id: UUID = UUID(),
-                            presentation: NotchPresentation = .shared,
-                            onClearSource: @escaping () -> Void = {}) {
-        guard let item else { return nil }
-        self.init(title: title, message: message, cancelTitle: cancelTitle,
-                  actions: actions(item), id: id, presentation: presentation, onClearSource: onClearSource)
-    }
-
     func present() {
         guard !resolved else { return }
         presentation.present(
@@ -214,14 +205,15 @@ extension View {
         actions: @escaping (Item) -> [NotchDialog.Action]
     ) -> some View {
         modifier(NotchDialogModifier(presented: item.wrappedValue != nil) {
-            NotchDialog(
-                title: title,
-                message: message,
-                cancelTitle: cancelTitle,
-                item: item.wrappedValue,
-                actions: actions,
-                presentation: presentation,
-                onClearSource: { item.wrappedValue = nil })
+            item.wrappedValue.map { value in
+                NotchDialog(
+                    title: title,
+                    message: message,
+                    cancelTitle: cancelTitle,
+                    actions: actions(value),
+                    presentation: presentation,
+                    onClearSource: { item.wrappedValue = nil })
+            }
         })
     }
 }
