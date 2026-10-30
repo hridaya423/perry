@@ -22,10 +22,7 @@ final class RealtimeTalkVoice {
         fallbackInput: (any TalkSpeechInput)? = nil,
         fallbackOutput: (any TalkSpeechOutput)? = nil,
         connectBudget: TimeInterval = 2,
-        finalizeBudget: TimeInterval = 5,
-        onPerformanceSample: @escaping (PerformanceSample) -> Void = { _ in },
-        onPerformanceMarker: @escaping (PerformanceMarker) -> Void = { _ in },
-        onTaskSnapshot: @escaping (RealtimeTaskSnapshot) -> Void = { _ in }
+        finalizeBudget: TimeInterval = 5
     ) {
         let input = RealtimeTalkInput(fallback: fallbackInput ?? SFSpeechInput())
         input.finalizeBudget = finalizeBudget
@@ -46,9 +43,6 @@ final class RealtimeTalkVoice {
                 configuration: talkConfiguration,
                 apiKey: apiKey,
                 transport: makeTransport?(),
-                onPerformanceSample: onPerformanceSample,
-                onPerformanceMarker: onPerformanceMarker,
-                onTaskSnapshot: onTaskSnapshot,
                 onEvent: { [weak input] event in input?.handle(event) }
             )
         }
@@ -65,10 +59,7 @@ final class RealtimeTalkVoice {
     static func configured(
         keychain: KeychainStore = KeychainStore(),
         fallbackInput: (any TalkSpeechInput)? = nil,
-        fallbackOutput: (any TalkSpeechOutput)? = nil,
-        onPerformanceSample: @escaping (PerformanceSample) -> Void = { _ in },
-        onPerformanceMarker: @escaping (PerformanceMarker) -> Void = { _ in },
-        onTaskSnapshot: @escaping (RealtimeTaskSnapshot) -> Void = { _ in }
+        fallbackOutput: (any TalkSpeechOutput)? = nil
     ) -> RealtimeTalkVoice? {
         guard let provider = RealtimeProvider.current,
               let configuration = provider.configuration(),
@@ -78,10 +69,7 @@ final class RealtimeTalkVoice {
             configuration: configuration,
             apiKey: apiKey,
             fallbackInput: fallbackInput,
-            fallbackOutput: fallbackOutput,
-            onPerformanceSample: onPerformanceSample,
-            onPerformanceMarker: onPerformanceMarker,
-            onTaskSnapshot: onTaskSnapshot
+            fallbackOutput: fallbackOutput
         )
     }
 

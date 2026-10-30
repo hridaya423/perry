@@ -1,4 +1,5 @@
 import AppKit
+import Speech
 @testable import Perry
 
 extension PushToTalkController {
