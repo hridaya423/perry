@@ -1,14 +1,5 @@
 import AppKit
 
-/// Talk's entry gesture: hold ⌃⌥ to talk, double-tap ⌃ for the typed composer
-/// (both are saved gestures; these are the defaults).
-/// The tap listens for keyDown as well as flagsChanged: a key pressed during
-/// a hold means a chorded shortcut (⌃⌥←, ⌃⌥⌘V…) — the hold cancels instead of
-/// submitting, and ⌃ chords typed normally (⌃A, ⌃E, ⌃C, ⌃V) can never fake a
-/// double-tap. The hold only commits after `commitDelay` with no key pressed:
-/// the listening cue is instant, but nothing heavy starts for a stray chord.
-/// A listen-only event tap — same shape as PushToTalkController, which stays
-/// for the ⌥⌘Space dictation path.
 enum TalkGesture {
     static var keys: String { PerryPreferences.talkGesture.keys }
     static var talk: String { "\(PerryPreferences.talkGesture.spoken) to talk" }
@@ -18,12 +9,6 @@ enum TalkGesture {
 
 @MainActor
 final class ModifierHoldMonitor {
-    static let eventTapMask =
-        (CGEventMask(1) &<< CGEventType.flagsChanged.rawValue)
-        | (CGEventMask(1) &<< CGEventType.keyDown.rawValue)
-        | (CGEventMask(1) &<< CGEventType.tapDisabledByTimeout.rawValue)
-        | (CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue)
-
     private let commitDelay: TimeInterval
     private let talkHold: () -> ModifierSet
     private let typeTap: () -> ModifierSet
@@ -33,15 +18,23 @@ final class ModifierHoldMonitor {
     private let onHoldCancel: () -> Void
     private let onHoldTap: () -> Void
     private let onComposer: () -> Void
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var fallbackGlobalMonitors: [Any] = []
-    private var fallbackLocalMonitors: [Any] = []
-    private var tapRetry: Timer?
+    private lazy var source = KeyEventSource { [weak self] event in
+        guard let self else { return }
+        switch event.kind {
+        case .keyDown:
+            handleKeyDown(keyCode: event.keyCode)
+        case .flagsChanged:
+            handle(timestamp: event.timestamp, modifiers: ModifierSet(event.flags), isFlagsChanged: true, tapDisabled: false)
+        case .tapDisabled:
+            handle(timestamp: event.timestamp, modifiers: [], isFlagsChanged: false, tapDisabled: true)
+        case .keyUp:
+            break
+        }
+    }
 
     private var holding = false
     private var swallowing = false
-    private(set) var captureMode: PushToTalkController.CaptureMode?
+    var captureMode: KeyEventSource.Capture? { source.capture }
     var interceptHold: () -> Bool = { false }
     private var holdStartedAt: TimeInterval = 0
     private var committed = false
@@ -76,122 +69,12 @@ final class ModifierHoldMonitor {
     }
 
     func start() {
-        guard eventTap == nil, fallbackGlobalMonitors.isEmpty else { return }
-        // Creating a tap without access makes macOS ask for Input Monitoring.
-        let mayListen = CGPreflightListenEventAccess() || AXIsProcessTrusted()
-        eventTap = mayListen ? CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: Self.eventTapMask,
-            callback: { _, type, event, refcon in
-                guard let refcon else { return Unmanaged.passUnretained(event) }
-                let monitor = Unmanaged<ModifierHoldMonitor>.fromOpaque(refcon).takeUnretainedValue()
-                // Read our own clock rather than CGEvent.timestamp — its unit
-                // is not guaranteed across releases, and this clock matches
-                // the NSEvent.timestamp used by the fallback monitors.
-                let timestamp = ProcessInfo.processInfo.systemUptime
-                Task { @MainActor [weak monitor] in
-                    guard let monitor else { return }
-                    switch type {
-                    case .keyDown:
-                        monitor.handleKeyDown(keyCode: event.getIntegerValueField(.keyboardEventKeycode))
-                    case .flagsChanged:
-                        monitor.handle(
-                            timestamp: timestamp,
-                            modifiers: ModifierSet(event.flags),
-                            isFlagsChanged: true,
-                            tapDisabled: false
-                        )
-                    case .tapDisabledByTimeout, .tapDisabledByUserInput:
-                        monitor.handle(
-                            timestamp: timestamp,
-                            modifiers: [],
-                            isFlagsChanged: false,
-                            tapDisabled: true
-                        )
-                    default:
-                        break
-                    }
-                }
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) : nil
-        if let eventTap {
-            runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-            if let runLoopSource {
-                CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-            }
-            captureMode = .eventTap
-            return
-        }
-        installFallbackMonitors()
-        captureMode = .fallbackMonitors
-        tapRetry = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.retryEventTap() }
-        }
-    }
-
-    private func retryEventTap() {
-        guard captureMode == .fallbackMonitors, CGPreflightListenEventAccess() || AXIsProcessTrusted() else { return }
-        stop()
-        start()
+        source.start()
     }
 
     func stop() {
-        tapRetry?.invalidate()
-        tapRetry = nil
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        }
-        if let eventTap {
-            CFMachPortInvalidate(eventTap)
-        }
-        runLoopSource = nil
-        eventTap = nil
-        for monitor in fallbackGlobalMonitors { NSEvent.removeMonitor(monitor) }
-        for monitor in fallbackLocalMonitors { NSEvent.removeMonitor(monitor) }
-        fallbackGlobalMonitors = []
-        fallbackLocalMonitors = []
-        captureMode = nil
+        source.stop()
         resetCaptureState()
-    }
-
-    private func installFallbackMonitors() {
-        let flagsChanged: (NSEvent) -> Void = { [weak self] event in
-            self?.handle(
-                timestamp: event.timestamp,
-                modifiers: ModifierSet(event.modifierFlags),
-                isFlagsChanged: true,
-                tapDisabled: false
-            )
-        }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: flagsChanged) {
-            fallbackGlobalMonitors.append(monitor)
-        }
-        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            self?.handleKeyDown(keyCode: Int64(event.keyCode))
-        }) {
-            fallbackGlobalMonitors.append(monitor)
-        }
-        if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
-            if event.type == .keyDown {
-                self?.handleKeyDown(keyCode: Int64(event.keyCode))
-            } else {
-                flagsChanged(event)
-            }
-            return event
-        } {
-            fallbackLocalMonitors.append(monitor)
-        }
-    }
-
-    func handle(timestamp: TimeInterval, control: Bool, option: Bool, isFlagsChanged: Bool, tapDisabled: Bool) {
-        var modifiers: ModifierSet = []
-        if control { modifiers.insert(.control) }
-        if option { modifiers.insert(.option) }
-        handle(timestamp: timestamp, modifiers: modifiers, isFlagsChanged: isFlagsChanged, tapDisabled: tapDisabled)
     }
 
     func handle(timestamp: TimeInterval, modifiers: ModifierSet, isFlagsChanged: Bool, tapDisabled: Bool) {
@@ -199,9 +82,7 @@ final class ModifierHoldMonitor {
         let typeHeld = modifiers.isSuperset(of: typeSet)
         if tapDisabled {
             resetCaptureState()
-            if let eventTap {
-                CGEvent.tapEnable(tap: eventTap, enable: true)
-            }
+            source.reenable()
             return
         }
         guard isFlagsChanged else { return }
@@ -249,8 +130,6 @@ final class ModifierHoldMonitor {
                 PerfMark.mark("talk.keyup")
                 onHoldEnd()
             } else {
-                // Released before commit (or a chord already killed it): the
-                // hold never became a real utterance — discard, don't submit.
                 PerfMark.mark("talk.cancel.release_early")
                 onHoldCancel()
             }
@@ -272,9 +151,6 @@ final class ModifierHoldMonitor {
         typeDown = typeHeld
     }
 
-    /// A real key pressed while a modifier gesture is in flight. During a hold
-    /// it means a chorded shortcut: cancel without submitting. Otherwise it
-    /// just dirties the current ⌃ press and any pending double-tap.
     func handleKeyDown(keyCode: Int64 = -1) {
         lastCleanTypeRelease = nil
         if typeDown { typePressClean = false }

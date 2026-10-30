@@ -3,18 +3,18 @@ import XCTest
 
 @MainActor
 final class VoiceInputLifecycleTests: XCTestCase {
-    func testPushToTalkRecognizesBothDisabledEventTypes() {
-        XCTAssertTrue(PushToTalkController.tapIsDisabled(.tapDisabledByTimeout))
-        XCTAssertTrue(PushToTalkController.tapIsDisabled(.tapDisabledByUserInput))
-        XCTAssertFalse(PushToTalkController.tapIsDisabled(.keyDown))
+    func testKeyEventSourceRecognizesBothDisabledEventTypes() {
+        XCTAssertTrue(KeyEventSource.isTapDisabled(.tapDisabledByTimeout))
+        XCTAssertTrue(KeyEventSource.isTapDisabled(.tapDisabledByUserInput))
+        XCTAssertFalse(KeyEventSource.isTapDisabled(.keyDown))
     }
 
-    func testPushToTalkEventMaskIncludesBothDisabledEventTypes() {
+    func testKeyEventSourceMaskIncludesBothDisabledEventTypes() {
         let timeoutMask = CGEventMask(1) &<< CGEventType.tapDisabledByTimeout.rawValue
         let userInputMask = CGEventMask(1) &<< CGEventType.tapDisabledByUserInput.rawValue
 
-        XCTAssertNotEqual(PushToTalkController.eventTapMask & timeoutMask, 0)
-        XCTAssertNotEqual(PushToTalkController.eventTapMask & userInputMask, 0)
+        XCTAssertNotEqual(KeyEventSource.eventMask & timeoutMask, 0)
+        XCTAssertNotEqual(KeyEventSource.eventMask & userInputMask, 0)
     }
 
     func testWakeWordDuplicateTerminalCallbacksScheduleOneRestartAndStartOneNewGeneration() {
