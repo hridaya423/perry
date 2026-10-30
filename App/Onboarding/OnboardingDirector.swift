@@ -21,7 +21,6 @@ final class OnboardingDirector: ObservableObject {
         var finish: (_ keepNotchOpen: Bool) -> Void = { _ in }
     }
 
-
     @Published private(set) var beat: Beat?
     @Published private(set) var direction = Direction.forward
     @Published private(set) var permissions: PerryPermissionSnapshot?

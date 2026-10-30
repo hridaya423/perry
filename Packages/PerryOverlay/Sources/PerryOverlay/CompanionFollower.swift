@@ -2,8 +2,6 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// One screen's overlay surface: owns cursor tracking and composes the
-/// ink, glow, ghost, caption, and follower layers in draw order.
 struct PerryOverlaySurface: View {
     let screenFrame: CGRect
     @ObservedObject var cursorState: PerryCursorState
@@ -15,16 +13,7 @@ struct PerryOverlaySurface: View {
         self.cursorState = cursorState
         _pointer = StateObject(wrappedValue: OverlayPointer(screenFrame: screenFrame))
     }
-    /// Event-driven cursor follow (§5): mouse-moved/dragged monitors write
-    /// the position in the same turn the event arrives — no polling timer,
-    /// so an idle Perry keeps zero timers ticking. The global monitor covers
-    /// events aimed at other apps; the local monitor covers our own.
     @State private var cursorMoveMonitors: [Any] = []
-    /// Global monitors deliver nothing without Input Monitoring — they install
-    /// fine and just never fire, which used to freeze the follower silently. A
-    /// 0.5 s watchdog compares `NSEvent.mouseLocation` (permission-free) with
-    /// the monitor event count; movement without events means starvation, and
-    /// follow switches to a permission-free poll until monitors wake.
     @State private var cursorWatchdog: Timer?
     @State private var cursorPollTimer: Timer?
     @State private var lastProbePoint: CGPoint = .zero
@@ -47,8 +36,6 @@ struct PerryOverlaySurface: View {
         .frame(width: screenFrame.width, height: screenFrame.height)
         .ignoresSafeArea()
         .onAppear {
-            // Host windows persist and are pre-rendered at warm time while
-            // invisible — real activation is driven by `overlayVisible`.
             guard cursorState.overlayVisible else { return }
             beginVisibleSession()
         }
@@ -64,16 +51,11 @@ struct PerryOverlaySurface: View {
         }
     }
 
-    /// The overlay just became visible: snap the follower to the live
-    /// pointer, start tracking, and reveal. A published element target is
-    /// picked up automatically through `followerPosition`.
     private func beginVisibleSession() {
         pointer.snap()
         startTrackingCursor()
         cursorOpacity = 1.0
     }
-
-    // MARK: - Cursor Tracking
 
     private func startTrackingCursor() {
         stopTrackingCursor()
@@ -81,8 +63,6 @@ struct PerryOverlaySurface: View {
             .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged,
         ]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { _ in
-            // Global-monitor callbacks arrive on a background thread; the
-            // state write still lands inside the frame the event produced.
             DispatchQueue.main.async {
                 monitorEventCount += 1
                 updateCursorTracking()
@@ -150,7 +130,6 @@ struct PerryOverlaySurface: View {
         OverlayPerfProbe.shared.tick()
         pointer.follow(NSEvent.mouseLocation)
     }
-
 }
 
 @MainActor
@@ -215,8 +194,6 @@ private struct PointerRiders: View {
         cursorState.detectedElementScreenLocation != nil
     }
 
-    /// Where the companion sits: parked at the detected element while one
-    /// is published on this screen, otherwise riding the pointer offset.
     private var followerPosition: CGPoint {
         if let screenLocation = cursorState.detectedElementScreenLocation,
            (cursorState.detectedElementDisplayFrame?.intersects(screenFrame) == true

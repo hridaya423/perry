@@ -208,8 +208,6 @@ extension PerryGuidanceOverlay {
         )
     }
 
-    // MARK: - Mark verbs (§5)
-
     /// `point`: a hand-inked dot on the element's center, reached by a short
     /// leader stroke from below-left. Replaces the degenerate two-point
     /// scribble, which rendered nothing.

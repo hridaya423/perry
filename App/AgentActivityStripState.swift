@@ -34,8 +34,6 @@ final class AgentActivityStripState: ObservableObject {
     @Published var startedAt: Date?
     @Published var isExpanded = false
     @Published var canRetry = false
-    /// The user took over mid-task — resume means replan, not restart the
-    /// stale plan that expected to do the step itself.
     @Published var handedToHuman = false
 
     var steeringIsAvailable: Bool {

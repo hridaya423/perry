@@ -255,7 +255,6 @@ struct CompactTargetChooser: View {
         if let title = target.windowTitle, !title.isEmpty { return title }
         return applicationName(target)
     }
-
 }
 
 struct NotchInteractionHost<Workspace: View>: View {

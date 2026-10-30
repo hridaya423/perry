@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// Caption placement solver (§5/§7 Phase 3.4): positions a caption rect next
+/// Caption placement solver: positions a caption rect next
 /// to its anchor while avoiding the target itself, the caret, other marks,
 /// the menu bar, and the Dock. Pure geometry in screen coordinates — works
 /// with multi-display negative origins because nothing assumes (0,0).
@@ -8,8 +8,6 @@ public enum CaptionPlacer {
     public static let defaultMargin: CGFloat = 10
     public static let defaultGap: CGFloat = 8
 
-    /// Ordered preference: below, above, right, left, then the four screen
-    /// corners as last-resort placements. First wins on ties.
     private static func candidates(
         size: CGSize, anchor: CGRect, screen: CGRect, margin: CGFloat, gap: CGFloat
     ) -> [CGRect] {
@@ -31,7 +29,6 @@ public enum CaptionPlacer {
         return slots
     }
 
-    /// Overlap area between two rects; zero when disjoint or either is null.
     static func overlapArea(_ a: CGRect, _ b: CGRect) -> CGFloat {
         guard !a.isNull, !b.isNull else { return 0 }
         let intersection = a.intersection(b)
@@ -39,7 +36,6 @@ public enum CaptionPlacer {
         return intersection.width * intersection.height
     }
 
-    /// Area of `rect` lying outside `screen`.
     static func overflowArea(_ rect: CGRect, in screen: CGRect) -> CGFloat {
         rect.width * rect.height - overlapArea(rect, screen)
     }
@@ -67,7 +63,6 @@ public enum CaptionPlacer {
                                         margin: margin, gap: gap).enumerated() {
             let clamped = clamp(slot, into: bounds)
             let overlap = obstacles.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) }
-            // Overflow dominates: an off-screen caption is worse than overlap.
             let score = overlap + 4 * overflowArea(clamped, in: screen)
             let soft = index < 4 ? preferablyAvoiding.reduce(CGFloat(0)) { $0 + overlapArea(clamped, $1) } : 0
             guard let current = best else {
@@ -82,8 +77,6 @@ public enum CaptionPlacer {
             ?? clamp(CGRect(origin: .zero, size: size), into: bounds)
     }
 
-    /// Moves `rect` the minimum distance to fit inside `bounds`; a rect
-    /// larger than `bounds` is centered on it.
     static func clamp(_ rect: CGRect, into bounds: CGRect) -> CGRect {
         var r = rect
         if r.width > bounds.width {

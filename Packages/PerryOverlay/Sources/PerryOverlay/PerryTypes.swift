@@ -10,7 +10,7 @@ public enum PerryOverlayTheme {
         )
         public static let ink = Color(white: 0.16)
         public static let selection = Color(red: 0.86, green: 0.28, blue: 0.24)
-        /// Amber hold — the §5 blocked morph. Distinct from failure red.
+        /// Amber hold — the blocked morph. Distinct from failure red.
         public static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
         public static let labelForeground = Color.white
         public static let labelBackground = Color.black.opacity(0.72)
@@ -31,9 +31,6 @@ public enum PerryOverlayTheme {
 }
 
 public extension Color {
-    /// Failable initializer for dynamic hex values (model output, external
-    /// cursor state). Returns nil on parse failure so callers can fall back
-    /// to their intended color rather than silently getting black.
     init?(optionalHex hex: String) {
         let sanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
@@ -114,9 +111,6 @@ public final class PerryCursorState: ObservableObject {
     @Published public var circleSelectSnapLabel: String?
     @Published public var activeControlGlowRect: CGRect?
     @Published public var activeControlGlowLabel: String?
-    /// Set by OverlayWindowManager: overlay windows are persistent now, so
-    /// this flag — not view appear/disappear — drives cursor tracking. A
-    /// hidden host must hold zero monitors and timers (idle CPU budget).
     @Published public var overlayVisible: Bool = false
     @Published public var panelScreenFrame: CGRect?
 
@@ -221,7 +215,7 @@ public final class OverlayPerfProbe {
     }
 }
 
-/// The chrome contract every Perry window follows (plan §10): excluded
+/// The chrome contract every Perry window follows: excluded
 /// from screenshots and screen shares (`sharingType = .none`), visible on
 /// every space including fullscreen apps, stationary, and out of the
 /// ⌘⇥ window cycle. Interactive levels stack just under the system

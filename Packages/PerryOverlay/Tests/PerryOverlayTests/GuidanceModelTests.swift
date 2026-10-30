@@ -110,8 +110,6 @@ struct PerryGuidanceOverlayTests {
 struct MarkGeometryTests {
     private let element = CGRect(x: 400, y: 300, width: 90, height: 30)
 
-    /// `point` used to be `.scribble([center, center])` — a zero-length path
-    /// that renders nothing. The mark is now a real dot with a leader.
     @Test func pointMarkProducesANonDegenerateDotAndLeader() {
         let overlay = PerryGuidanceOverlay.pointMark(center: CGPoint(x: 445, y: 315))
         let cg = overlay.points.map(\.cgPoint)
@@ -123,26 +121,21 @@ struct MarkGeometryTests {
             #expect((10...16).contains(hypot(p.x - 445, p.y - 315)))
         }
         #expect(hypot(cg[0].x - 445, cg[0].y - 315) > 50)
-        // The leader approaches from below-left (AppKit: -x, -y).
         #expect(cg[0].x < 445 && cg[0].y < 315)
     }
 
-    /// The arrow keeps its below-approach and carries a real head: two barbs
-    /// retraced at the tip, all short of the element's bottom edge.
     @Test func arrowMarkEndsInAHeadShortOfTheElement() {
         let overlay = PerryGuidanceOverlay.arrowMark(to: element)
         let cg = overlay.points.map(\.cgPoint)
 
         #expect(cg.count == 5)
-        #expect(cg[1] == cg[3]) // tip retraced between barbs
+        #expect(cg[1] == cg[3])
         for p in cg {
-            #expect(p.y < element.minY) // never overlaps the element
+            #expect(p.y < element.minY)
         }
-        #expect(cg[1].y > cg[2].y && cg[1].y > cg[4].y) // head points up at the element
+        #expect(cg[1].y > cg[2].y && cg[1].y > cg[4].y)
     }
 
-    /// `underline` drew at `maxY + 4` — above the element in AppKit space.
-    /// It belongs below: `minY -`.
     @Test func underlineMarkSitsBelowTheElement() {
         let overlay = PerryGuidanceOverlay.underlineMark(below: element)
         for p in overlay.points.map(\.cgPoint) {
@@ -151,7 +144,6 @@ struct MarkGeometryTests {
         }
     }
 
-    /// `ring` is an ellipse padded off the element, not the old crisp rect.
     @Test func ringMarkIsAPaddedEllipse() {
         let overlay = PerryGuidanceOverlay.ringMark(around: element, padding: 8)
         #expect(overlay.kind == PerryGuidanceOverlayKind.ellipse)
@@ -166,7 +158,6 @@ struct MarkGeometryTests {
         let b = InkStroke.ellipse(in: rect)
         #expect(a == b)
         #expect(a.count > 14)
-        // Every sample stays inside (plus jitter slack); loop closes near start.
         for p in a {
             #expect(rect.insetBy(dx: -2, dy: -2).contains(p))
         }

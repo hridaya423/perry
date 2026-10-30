@@ -46,8 +46,6 @@ final class NotchPresence {
         return enabled
     }
 
-    // MARK: - Lifecycle
-
     func start() {
         guard monitors.isEmpty else { return }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -125,8 +123,6 @@ final class NotchPresence {
         cachedZones = zones
         return zones
     }
-
-    // MARK: - Pointer and keys
 
     private func pointerMoved() {
         guard let zones = currentZones() else {
@@ -219,8 +215,6 @@ final class NotchPresence {
         timer.tolerance = 0
         deadlineTimer = timer
     }
-
-    // MARK: - Panels
 
     private func showRestingDotIfNeeded() {
         guard isEnabled, dotPanels.isEmpty else { return }

@@ -4,10 +4,6 @@ import PerryGuide
 import PerryOverlay
 import SwiftUI
 
-/// Floating Watch & Learn surface. While recording it shows the bounded
-/// step count and Done; after the demonstration ends it morphs into the
-/// review — the inferred steps, a name field, and Save/Discard. Nothing is
-/// saved until the user reviews it.
 final class RoutineReviewState: ObservableObject {
     enum Phase { case recording, review, fillParameters }
 

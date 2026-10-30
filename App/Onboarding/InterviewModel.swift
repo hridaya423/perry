@@ -46,7 +46,6 @@ final class InterviewModel: ObservableObject {
         var save: (Facts) -> Void = { _ in }
         var saveNotes: ([LearnedFact]) -> Void = { _ in }
         var sayName: (String) -> Void = { _ in }
-        /// Speaks a line and returns once it has been said, so the mic can open after it.
         var say: (String) async -> Void = { _ in }
         var listensAfterSpeaking = true
         var importMemory: ((MemoryService) async -> String?)?

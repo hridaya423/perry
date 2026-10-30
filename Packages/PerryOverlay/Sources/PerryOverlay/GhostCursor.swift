@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Other agents' pointers (§5 ghost cursors): a dashed-outline glass
-/// pointer per external cursor plus its caption, so parallel workers are
-/// visible without ever reading as the user's own cursor.
 struct GhostCursorLayer: View {
     @ObservedObject var state: PerryCursorState
     let screenFrame: CGRect
@@ -25,8 +22,6 @@ struct GhostCursorLayer: View {
         let position = PerryOverlaySpace.characterCenter(pointingAt: local, size: 30)
         let color = perryAccentColor(cursor.accentHex)
         ZStack {
-            // §5 ghost morph: another agent's pointer is a dashed outline,
-            // never filled — reads as Perry's, not the user's.
             PerryCharacter(mood: .working, size: 30)
                 .shadow(color: color.opacity(0.90), radius: 10, x: 0, y: 0)
                 .position(position)

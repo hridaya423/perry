@@ -9,11 +9,7 @@ final class GuideControlsState: ObservableObject {
     @Published var markerCaptions: [String] = []
     @Published var pendingPrompt: String?
     @Published var pendingChoices: [String] = []
-    /// Steps that carry a postcondition verify themselves on the user's
-    /// click — the manual Done is hidden so it can't confirm what the
-    /// observation can already prove (§3.4).
     @Published var hasPostcondition = false
-    /// Whether a previous presented step exists to return to (§3.4 Back).
     @Published var canGoBack = false
 
     var mapIsPresented: Bool { !markerCaptions.isEmpty }

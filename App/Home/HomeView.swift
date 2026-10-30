@@ -6,8 +6,6 @@ import PerryGuide
 import PerryOverlay
 import PerryRuntimes
 
-/// Morning suggestion cards (Phase 9 §4.6): read-only research over connected
-/// apps, ranked; "Do it" runs the card's action as a goal on a new thread.
 struct SuggestionsView: View {
     @ObservedObject var model: HomeModel
     @AppStorage(PerryPreferences.$suggestionsEnabled.key) private var enabled = false
@@ -136,8 +134,6 @@ private struct SuggestionEditor: View {
     }
 }
 
-/// Learned routines (Phase 9): replay goes through the foreground path, so
-/// Run kicks off a typed-plan run exactly like the menu command.
 struct RoutinesView: View {
     @ObservedObject var model: HomeModel
     @State private var selectedID: UUID?
@@ -277,9 +273,6 @@ struct RoutinesView: View {
     }
 }
 
-/// Files Perry owns, grouped into one pile per root directory. Rows drag
-/// out as real file URLs (Finder/Desktop drops work via `Transferable`
-/// URL), double-click opens, ⌥-click reveals.
 struct FilesPage: View {
     let roots: [URL]
     var perrys: [Perry] = []
