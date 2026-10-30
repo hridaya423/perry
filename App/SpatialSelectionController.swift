@@ -3,8 +3,6 @@ import PerryCore
 import PerryGuide
 import PerryOverlay
 
-/// ⌥⌘-drag circle selection: the live stroke on the overlay, the selected
-/// area other features read, and the one-line spoken description of it.
 @MainActor
 final class SpatialSelectionController {
     private let overlayState: PerryCursorState

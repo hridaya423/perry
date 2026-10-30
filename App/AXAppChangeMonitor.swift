@@ -1,18 +1,6 @@
 import ApplicationServices
 import Foundation
 
-/// Watches one target app's AX notifications so Guide verification can wait
-/// on real UI changes instead of a fixed poll. AX posts propagate to
-/// observers registered on ancestor elements, so subscribing on the
-/// application element covers the whole window tree without per-element
-/// registration — and without a screen capture.
-///
-/// Notifications that arrive between waits are counted, not dropped: a change
-/// that lands after the user's click but before the engine suspends still
-/// ends the wait immediately. The notification set is deliberately narrow —
-/// the four `GuideStep.Postcondition` shapes plus the transitions a step can
-/// predict — because a chatty app could otherwise turn verification into a
-/// read storm.
 final class AXAppChangeMonitor: @unchecked Sendable {
     private struct State {
         var observer: AXObserver?
@@ -37,10 +25,6 @@ final class AXAppChangeMonitor: @unchecked Sendable {
 
     deinit { tearDownObserver() }
 
-    /// Suspends until the app signals a change or `within` elapses. True means
-    /// a signal ended the wait. Returns false immediately when Perry cannot
-    /// observe the process — the caller still reads once, preserving the
-    /// poll-based semantics this replaces.
     func waitForChange(pid: pid_t, within: Duration) async -> Bool {
         guard within > .zero, ensureObserver(pid: pid) else { return false }
         return await withTaskCancellationHandler {
@@ -52,8 +36,6 @@ final class AXAppChangeMonitor: @unchecked Sendable {
                     cont.resume(returning: true)
                     return
                 }
-                // A second concurrent waiter would strand the first — wake it
-                // as timed-out rather than leak the continuation.
                 state.waiter?.resume(returning: false)
                 state.timeout?.cancel()
                 state.waiter = cont
@@ -116,6 +98,7 @@ final class AXAppChangeMonitor: @unchecked Sendable {
                 .takeUnretainedValue()
                 .noteSignal()
         }, &observer) == .success, let observer else { return false }
+        // AX posts reach observers on ancestor elements, so the application element covers the whole window tree.
         let app = AXUIElementCreateApplication(pid)
         for name in Self.notifications {
             AXObserverAddNotification(observer, app, name as CFString, refcon)

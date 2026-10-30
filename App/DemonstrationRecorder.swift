@@ -1,11 +1,6 @@
 import AppKit
 import PerryGuide
 
-/// Bounded Watch & Learn capture. While armed it listens for the user's own
-/// clicks and keypresses and correlates each click with the AX element under
-/// it via a fresh observation. Text aimed at secure or unknown-sensitivity
-/// fields is dropped before it can ever reach a routine. Capped at
-/// `maximumEvents` so a demonstration stays bounded; the caller stops it.
 @MainActor
 final class DemonstrationRecorder {
     static let maximumEvents = 60
@@ -87,8 +82,6 @@ final class DemonstrationRecorder {
         }
     }
 
-    /// Stops listening and waits for in-flight click correlations to land so
-    /// the returned demonstration reflects every click the user made.
     func stop() async -> RecordedDemonstration? {
         guard recording else { return nil }
         recording = false
@@ -108,17 +101,12 @@ final class DemonstrationRecorder {
         consecutiveEscapes = 0
         let cgPoint = event.cgEvent?.location ?? CGPoint(x: event.locationInWindow.x, y: event.locationInWindow.y)
         let axPoint = CGPointShim(x: Double(cgPoint.x), y: Double(cgPoint.y))
-        // Correlations resolve in click order against fresh observations.
         correlationChain = Task { @MainActor [weak self] in
             _ = await self?.correlationChain?.value
             await self?.recordClick(axPoint: axPoint)
         }
     }
 
-    /// Click correlation, split out so tests drive it without NSEvent
-    /// monitors: resolve the AX point against a fresh observation and record
-    /// the element anchor. A click that hits nothing actionable is kept as a
-    /// step the person does themselves.
     func recordClick(axPoint: CGPointShim) async {
         guard recording else { return }
         guard let observation = try? await observe(),
@@ -128,8 +116,6 @@ final class DemonstrationRecorder {
         }
         onRecognizedControl(element.frame)
         lastClickTarget = RoutineTarget(role: element.role.rawValue, label: element.label, subrole: element.subrole)
-        // Secure or unknown-sensitivity fields keep their click but typing
-        // into them is dropped — a routine must never hold a secret.
         typingBlocked = element.sensitivity != .ordinary
         typingWithheld = element.sensitivity == .unknown && element.role == .textField
         append(.click(lastClickTarget!))
@@ -145,9 +131,6 @@ final class DemonstrationRecorder {
         )
     }
 
-    /// Event classification, split out so tests drive it without NSEvent
-    /// monitors: plain characters append typed text onto the last clicked
-    /// target; named keys and modifier chords record a key press.
     func recordKey(
         characters: String?,
         charactersIgnoringModifiers: String? = nil,
@@ -195,7 +178,6 @@ final class DemonstrationRecorder {
         onEventCount(events.count)
     }
 
-    /// Smallest actionable element enclosing the click, in AX coordinates.
     private func element(at point: CGPointShim, in elements: [AXElement]) -> AXElement? {
         elements
             .filter { element in

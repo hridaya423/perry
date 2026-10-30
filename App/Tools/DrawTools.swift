@@ -4,9 +4,6 @@ import PerryBrain
 import PerryGuide
 import PerryOverlay
 
-/// The draw verbs (`point`, `ring`, `arrow`, `underline`, `caption`, `path`,
-/// `clear`) as tool-host executors. Verb→overlay mapping mirrors
-/// `TalkSession.draw` so marks look identical on every surface.
 struct DrawTools {
     let overlayState: PerryCursorState
     let observations: AgentObservationStore
@@ -24,13 +21,9 @@ struct DrawTools {
     }
 }
 
-/// Which draw verb is being rendered; `path` and `clear` have their own
-/// executors since their arguments differ.
 enum DrawVerb: String {
     case point, ring, arrow, underline, caption
 
-    /// Observed frames are AX-space (top-left origin); overlays draw in
-    /// AppKit space — same conversion TalkSession uses.
     func overlay(axRect rect: CGRect, label: String?, duration: Double = 15, near controls: [CGRect] = []) -> PerryGuidanceOverlay {
         let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
         func appKit(_ rect: CGRect) -> CGRect {
@@ -87,8 +80,6 @@ private struct DrawVerbExecutor: ToolExecutor {
         let label = args["label"]?.stringValue
         let duration = args["duration"]?.doubleValue ?? 15
 
-        // Resolve the mark rect: elementID → observed frame (AX space), else
-        // a small box around an explicit (x, y) point.
         let rect: CGRect
         var nearby: [CGRect] = []
         if let elementID = args["elementID"]?.stringValue {
@@ -187,8 +178,6 @@ private struct ClearDrawExecutor: ToolExecutor {
 }
 
 extension PerryCursorState {
-    /// A mark from inline markup: drawn on the control the brain named,
-    /// or every mark cleared.
     func apply(_ command: DrawCommand) {
         if command.verb == .clear {
             visualGuidanceOverlays = []
@@ -199,8 +188,6 @@ extension PerryCursorState {
 }
 
 extension ElementIndex {
-    /// Controls around `rect` that a mark's caption should not cover, in the
-    /// same AX space. Containers that enclose the mark are left out.
     func controlFrames(near rect: CGRect) -> [CGRect] {
         let area = rect.insetBy(dx: -160, dy: -100)
         let center = CGPoint(x: rect.midX, y: rect.midY)
