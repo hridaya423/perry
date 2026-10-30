@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import PerryCore
-import PerryGuide
 import PerryRuntimes
 
 /// Owns runtime inventory inspection and BYOK provider configuration.

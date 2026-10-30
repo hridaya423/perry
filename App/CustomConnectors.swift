@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 import PerryBrain
 import PerryCore
-import PerryGuide
 
 struct CustomConnector: Codable, Identifiable, Hashable {
     enum Endpoint: Codable, Hashable {

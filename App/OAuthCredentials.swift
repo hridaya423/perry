@@ -1,7 +1,6 @@
 import Foundation
 import PerryBrain
 import PerryCore
-import PerryGuide
 
 struct OAuthConfiguration: Sendable {
     static let defaultRedirectURI = URL(string: "dev.perry.perry:/oauth/callback")!

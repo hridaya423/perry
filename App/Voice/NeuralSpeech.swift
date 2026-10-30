@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import PerryBrain
-import PerryGuide
+import PerryCore
 
 protocol NeuralVoice: Sendable {
     var spellsNumbers: Bool { get }

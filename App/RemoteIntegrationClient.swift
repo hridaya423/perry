@@ -1,7 +1,6 @@
 import Foundation
 import PerryBrain
 import PerryCore
-import PerryGuide
 
 enum RemoteIntegrationError: Error, Equatable, LocalizedError {
     case missingIntegration

@@ -1,5 +1,5 @@
 import AppKit
-import PerryGuide
+import PerryCore
 import SwiftUI
 import XCTest
 @testable import Perry

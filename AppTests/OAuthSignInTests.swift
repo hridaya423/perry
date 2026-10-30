@@ -3,7 +3,6 @@ import Foundation
 import XCTest
 import PerryBrain
 import PerryCore
-import PerryGuide
 @testable import Perry
 
 private actor ScriptedTransport {

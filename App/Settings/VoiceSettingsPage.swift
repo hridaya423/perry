@@ -2,7 +2,6 @@ import AppKit
 import AVFoundation
 import PerryBrain
 import PerryCore
-import PerryGuide
 import PerryOverlay
 import SwiftUI
 

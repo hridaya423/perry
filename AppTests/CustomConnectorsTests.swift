@@ -1,5 +1,5 @@
 import PerryBrain
-import PerryGuide
+import PerryCore
 @testable import Perry
 import XCTest
 

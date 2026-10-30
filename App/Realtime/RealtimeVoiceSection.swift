@@ -1,4 +1,4 @@
-import PerryGuide
+import PerryCore
 import SwiftUI
 
 struct RealtimeVoiceSection: View {

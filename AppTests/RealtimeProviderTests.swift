@@ -1,5 +1,5 @@
 import Foundation
-import PerryGuide
+import PerryCore
 import XCTest
 @testable import Perry
 
