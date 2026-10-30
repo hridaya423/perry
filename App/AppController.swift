@@ -5,7 +5,6 @@ import SwiftUI
 import PerryBrain
 import PerryCore
 import PerryOverlay
-import PerryCapture
 import PerryGuide
 import PerryRuntimes
 

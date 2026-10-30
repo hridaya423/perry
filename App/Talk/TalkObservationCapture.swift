@@ -1,5 +1,4 @@
 import ApplicationServices
-import PerryCapture
 import PerryCore
 import PerryGuide
 

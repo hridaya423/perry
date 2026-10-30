@@ -1,5 +1,4 @@
 import XCTest
-import PerryCapture
 import PerryCore
 import PerryGuide
 @testable import Perry

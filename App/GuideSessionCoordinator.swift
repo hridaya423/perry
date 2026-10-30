@@ -2,7 +2,6 @@ import AppKit
 import PerryCore
 import PerryBrain
 import PerryOverlay
-import PerryCapture
 import PerryGuide
 import PerryRuntimes
 

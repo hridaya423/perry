@@ -1,6 +1,6 @@
 import SwiftUI
 import PerryBrain
-import PerryCapture
+import PerryCore
 import PerryOverlay
 
 struct HomeOnboardingView: View {

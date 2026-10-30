@@ -9,7 +9,7 @@ build/tools/xcodegen/bin/xcodegen generate --spec project.yml          # regener
 xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
   -derivedDataPath build/debug-p1 -destination 'platform=macOS,arch=arm64'
 swift test --package-path Packages/PerryCore        # also PerryGuide, PerryOverlay,
-                                                    # PerryCapture, PerryRuntimes
+                                                    # PerryRuntimes
 scripts/performance/self-test.sh                    # perf tooling unit tests
 ```
 

@@ -1,5 +1,5 @@
 import Foundation
-import PerryCapture
+import PerryCore
 
 @MainActor
 final class OnboardingDirector: ObservableObject {

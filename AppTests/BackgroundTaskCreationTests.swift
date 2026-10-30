@@ -2,7 +2,6 @@ import Combine
 import Foundation
 import XCTest
 import PerryCore
-import PerryCapture
 import PerryGuide
 import PerryRuntimes
 @testable import Perry

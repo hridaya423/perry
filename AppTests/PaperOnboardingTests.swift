@@ -1,6 +1,6 @@
 import AppKit
 import PerryBrain
-import PerryCapture
+import PerryCore
 import SwiftUI
 import XCTest
 @testable import Perry

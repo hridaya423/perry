@@ -3,7 +3,6 @@ import ApplicationServices
 import AVFoundation
 import Speech
 import PerryBrain
-import PerryCapture
 import PerryCore
 import PerryGuide
 import PerryOverlay

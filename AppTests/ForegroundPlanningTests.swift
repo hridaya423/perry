@@ -2,9 +2,8 @@ import Foundation
 import AppKit
 import XCTest
 import SwiftUI
-import PerryCapture
-import PerryBrain
 import PerryCore
+import PerryBrain
 import PerryGuide
 import PerryRuntimes
 @testable import Perry

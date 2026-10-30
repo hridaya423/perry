@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import PerryCapture
 import PerryCore
 import PerryGuide
 import PerryRuntimes
