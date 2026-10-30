@@ -50,9 +50,9 @@ final class BackgroundTaskController: ObservableObject {
     private static let maximumConcurrentTasks = 3
     private static let joinTimeout: Duration = .milliseconds(500)
 
+    var trashURL: URL?
 #if DEBUG
     private var debugLaunchBarrier: (@MainActor () async -> Void)?
-    var debugTrashURL: URL?
 #endif
 
     init(
@@ -121,30 +121,15 @@ final class BackgroundTaskController: ObservableObject {
             guard let self else { return }
             defer { self.undoingIDs.remove(record.id) }
             do {
-                let engine: WorkspaceUndoEngine
-#if DEBUG
-                if let trash = self.debugTrashURL {
-                    engine = WorkspaceUndoEngine(workspace: workspace, trashURL: trash)
-                } else {
-                    engine = WorkspaceUndoEngine(workspace: workspace)
-                }
-#else
-                engine = WorkspaceUndoEngine(workspace: workspace)
-#endif
+                let engine = WorkspaceUndoEngine(workspace: workspace, trashURL: self.trashURL)
                 let plan = try engine.inversePlan(
                     receipts: receipts,
                     goal: Self.undoGoal(for: record.goal)
                 )
-#if DEBUG
                 let journal = WorkspaceRunJournal(
                     plan: plan, workspace: workspace, coordinator: self.coordinator,
-                    trashURL: self.debugTrashURL
+                    trashURL: self.trashURL
                 )
-#else
-                let journal = WorkspaceRunJournal(
-                    plan: plan, workspace: workspace, coordinator: self.coordinator
-                )
-#endif
                 var undone = 0
                 var stopped: String?
                 for action in plan.actions {
@@ -798,11 +783,9 @@ final class BackgroundTaskController: ObservableObject {
     }
 
     private func workspaceRoot() -> URL {
-#if DEBUG
         if let override = storageDirectory() {
             return override.appendingPathComponent("BackgroundWorkspaces", isDirectory: true)
         }
-#endif
         return WorkspaceScope.root
             .appendingPathComponent("BackgroundTasks", isDirectory: true)
     }

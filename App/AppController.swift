@@ -92,14 +92,8 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         onSpeak: { [weak self] text in self?.voice.speak(text) }
     )
 
-    /// Whether open-ended Do goals route through `AgentCoordinator`/`AgentLoop`.
-    /// Production always does; the DEBUG harness init defaults to the typed
-    /// plan path so fixtures stay deterministic without a provider.
     let notifier: any AppNotificationClient
-#if DEBUG
-    let debugSeams: DebugLaunchSeams
-#endif
-    let debugFinalizationPersistenceBarrier: (@Sendable () async -> Void)?
+    let overrides: LaunchOverrides
     lazy var guideBridge = GuideSessionBridge(host: self)
     lazy var commandRouter = CommandRouter(host: self)
     var talkSessionStarted = false
@@ -125,73 +119,21 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
     private var runtimeChoicesObservation: AnyCancellable?
     var agentRunningObservation: AnyCancellable?
 
-    override init() {
-#if DEBUG
-        debugSeams = .launch(arguments: ProcessInfo.processInfo.arguments)
-#endif
-        debugFinalizationPersistenceBarrier = nil
-        let notifier = SystemNotifier()
-        self.notifier = notifier
-        sessionController = SessionController()
-        super.init()
-        observeSessionState()
-    }
-
-    init(sessionController: SessionController) {
-#if DEBUG
-        debugSeams = DebugLaunchSeams(guidePlanner: AXGuidePlanner())
-#endif
-        debugFinalizationPersistenceBarrier = nil
-        let notifier = SystemNotifier()
-        self.notifier = notifier
+    init(sessionController: SessionController, overrides: LaunchOverrides) {
         self.sessionController = sessionController
+        self.overrides = overrides
+        notifier = overrides.notifier ?? SystemNotifier()
         super.init()
         observeSessionState()
     }
 
+    override convenience init() {
 #if DEBUG
-    init(
-        debugStorageDirectory: URL,
-        sessionController: SessionController? = nil,
-        taskCoordinator: TaskCoordinator? = nil,
-        runtimeInventoryLoader: RuntimeCatalog.InventoryLoader? = nil,
-        permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader? = nil,
-        cuaHealthLoader: EnvironmentProbe.CuaHealthLoader? = nil,
-        fullGuideCaptureLoader: FullGuideCaptureLoader? = nil,
-        fullGuideContinuationBarrier: FullGuideContinuationBarrier? = nil,
-        guidePlanner: (any GuidePlanner)? = AXGuidePlanner(),
-        finalizationBarrier: FinalizationBarrier? = nil,
-        finalizationPersistenceBarrier: FinalizationPersistenceBarrier? = nil,
-        screenContextLoader: EnvironmentProbe.ScreenContextLoader? = nil,
-        typedVerifier: (any TypedActionVerifier)? = nil,
-        notifier: (any AppNotificationClient)? = nil,
-        confirmer: (any Confirmer)? = nil,
-        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
-    ) {
-        debugSeams = DebugLaunchSeams(
-            storageDirectory: debugStorageDirectory,
-            runtimeInventoryLoader: runtimeInventoryLoader,
-            permissionSnapshotLoader: permissionSnapshotLoader,
-            cuaHealthLoader: cuaHealthLoader,
-            screenContextLoader: screenContextLoader,
-            fullGuideCaptureLoader: fullGuideCaptureLoader,
-            fullGuideContinuationBarrier: fullGuideContinuationBarrier,
-            guidePlanner: guidePlanner,
-            finalizationBarrier: finalizationBarrier,
-            typedVerifier: typedVerifier,
-            confirmer: confirmer,
-            askUser: askUser
-        )
-        debugFinalizationPersistenceBarrier = finalizationPersistenceBarrier
-        self.notifier = notifier ?? SystemNotifier()
-        self.sessionController = sessionController ?? SessionController()
-        super.init()
-        observeSessionState()
-        if let taskCoordinator {
-            self.backgroundTaskCoordinator = taskCoordinator
-        }
-    }
+        self.init(sessionController: SessionController(), overrides: .launch(arguments: ProcessInfo.processInfo.arguments))
+#else
+        self.init(sessionController: SessionController(), overrides: LaunchOverrides())
 #endif
+    }
 
     var isTaskActive: Bool {
         if case .executing = sessionState { return true }

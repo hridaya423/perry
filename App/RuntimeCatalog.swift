@@ -11,22 +11,16 @@ final class RuntimeCatalog: ObservableObject {
 
     private let setStatus: (String) -> Void
 
-#if DEBUG
     typealias InventoryLoader = @MainActor () async throws -> RuntimeInventory
-    private let debugInventoryLoader: InventoryLoader?
+    private let inventoryLoader: InventoryLoader?
 
     init(
         setStatus: @escaping (String) -> Void,
         inventoryLoader: InventoryLoader? = nil
     ) {
         self.setStatus = setStatus
-        self.debugInventoryLoader = inventoryLoader
+        self.inventoryLoader = inventoryLoader
     }
-#else
-    init(setStatus: @escaping (String) -> Void) {
-        self.setStatus = setStatus
-    }
-#endif
 
     private var inspector: RuntimeInventoryInspector {
         RuntimeInventoryInspector(
@@ -52,11 +46,9 @@ final class RuntimeCatalog: ObservableObject {
     /// everything that can change the answer. `currentSetup` bypasses it: an
     /// explicit Settings refresh must always see the real state.
     func inspect() async throws -> RuntimeInventory {
-#if DEBUG
-        if let debugInventoryLoader {
-            return try await debugInventoryLoader()
+        if let inventoryLoader {
+            return try await inventoryLoader()
         }
-#endif
         let key = await inventoryCacheKey()
         if let cached = cachedInventory, cached.key == key,
            Date().timeIntervalSince(cached.at) < inventoryCacheTTL {

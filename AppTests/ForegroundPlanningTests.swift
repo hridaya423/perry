@@ -470,14 +470,13 @@ final class ForegroundPlanningTests: XCTestCase {
         addTeardownBlock { try TestTempDirectory.remove(directory) }
         try Data("blocked store".utf8).write(to: directory.appendingPathComponent("Threads"))
         var captured = false
-        let controller = AppController(
-            debugStorageDirectory: directory,
-            fullGuideCaptureLoader: { _, _ in
+        let controller = AppController.testing(directory: directory) {
+            $0.fullGuideCaptureLoader = { _, _ in
                 captured = true
                 throw FullGuidePlannerError.failed
-            },
-            notifier: ForegroundNotifier()
-        )
+            }
+            $0.notifier = ForegroundNotifier()
+        }
         await controller.showEverything(goal: "Save the fixture")
         let settled = await waitUntil { controller.guideCoordinator.debugGuideScopeCount == 0 }
         XCTAssertTrue(settled)
@@ -733,7 +732,9 @@ final class ForegroundPlanningTests: XCTestCase {
         )
         try session.report(summary: "Stopped safely", outcome: .stopped)
 
-        let controller = AppController(sessionController: session)
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let controller = AppController.testing(directory: directory, session: session)
         XCTAssertEqual(controller.foreground.debugActivityState.phase, .reporting)
         XCTAssertEqual(controller.foreground.debugActivityState.title, "Stopped")
     }
@@ -1180,7 +1181,9 @@ final class ForegroundPlanningTests: XCTestCase {
         try session.setExecutionPhase(.verifying)
         _ = try session.beginFinalization(outcome: .completed(stepsRun: 0))
         try session.report(summary: "First report")
-        let controller = AppController(sessionController: session)
+        let directory = try makeTemporaryDirectory()
+        addTeardownBlock { try TestTempDirectory.remove(directory) }
+        let controller = AppController.testing(directory: directory, session: session)
         let oldGeneration = controller.foreground.debugForegroundActivityGeneration
         controller.foreground.debugScheduleActivityRetirement(taskID: taskID, generation: oldGeneration, after: 0.02)
         try session.completeDismissal()
@@ -1432,26 +1435,24 @@ final class ForegroundPlanningTests: XCTestCase {
         } else {
             planner = AXGuidePlanner()
         }
-        return AppController(
-            debugStorageDirectory: directory,
-            sessionController: session ?? SessionController(),
-            runtimeInventoryLoader: { inventory },
-            permissionSnapshotLoader: {
+        return AppController.testing(directory: directory, session: session) {
+            $0.runtimeInventoryLoader = { inventory }
+            $0.permissionSnapshotLoader = {
                 PerryPermissionSnapshot(
                     accessibility: true,
                     screenRecording: .granted,
                     microphone: .granted
                 )
-            },
-            cuaHealthLoader: {
+            }
+            $0.cuaHealthLoader = {
                 CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
-            },
-            fullGuideCaptureLoader: fullGuideCaptureLoader,
-            fullGuideContinuationBarrier: fullGuideContinuationBarrier,
-            guidePlanner: planner,
-            finalizationBarrier: finalizationBarrier,
-            finalizationPersistenceBarrier: finalizationPersistenceBarrier,
-            screenContextLoader: screenContextLoader ?? { _, _ in
+            }
+            $0.fullGuideCaptureLoader = fullGuideCaptureLoader
+            $0.fullGuideContinuationBarrier = fullGuideContinuationBarrier
+            $0.guidePlanner = planner
+            $0.finalizationBarrier = finalizationBarrier
+            $0.finalizationPersistenceBarrier = finalizationPersistenceBarrier
+            $0.screenContextLoader = screenContextLoader ?? { _, _ in
                 (
                     ScreenContext(
                         frontAppBundleID: "fixture.app",
@@ -1461,12 +1462,12 @@ final class ForegroundPlanningTests: XCTestCase {
                     ),
                     nil
                 )
-            },
-            typedVerifier: typedVerifier,
-            notifier: ForegroundNotifier(),
-            confirmer: confirmer ?? ApprovingConfirmer(),
-            askUser: askUser ?? { _, _ in }
-        )
+            }
+            $0.typedVerifier = typedVerifier
+            $0.notifier = ForegroundNotifier()
+            $0.confirmer = confirmer ?? ApprovingConfirmer()
+            $0.askUser = askUser ?? { _, _ in }
+        }
     }
 
     private func waitUntil(
@@ -1501,23 +1502,21 @@ final class ForegroundPlanningTests: XCTestCase {
             readDirectProvider: { nil },
             commandLineProviders: []
         )
-        return AppController(
-            debugStorageDirectory: directory,
-            sessionController: session,
-            runtimeInventoryLoader: { try await inspector.inspect() },
-            permissionSnapshotLoader: {
+        return AppController.testing(directory: directory, session: session) {
+            $0.runtimeInventoryLoader = { try await inspector.inspect() }
+            $0.permissionSnapshotLoader = {
                 PerryPermissionSnapshot(
                     accessibility: true,
                     screenRecording: .granted,
                     microphone: .granted
                 )
-            },
-            cuaHealthLoader: {
+            }
+            $0.cuaHealthLoader = {
                 CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
-            },
-            finalizationBarrier: finalizationBarrier,
-            finalizationPersistenceBarrier: finalizationPersistenceBarrier,
-            screenContextLoader: { _, _ in
+            }
+            $0.finalizationBarrier = finalizationBarrier
+            $0.finalizationPersistenceBarrier = finalizationPersistenceBarrier
+            $0.screenContextLoader = { _, _ in
                 (
                     ScreenContext(
                         frontAppBundleID: "fixture.app",
@@ -1527,10 +1526,10 @@ final class ForegroundPlanningTests: XCTestCase {
                     ),
                     nil
                 )
-            },
-            notifier: ForegroundNotifier(),
-            confirmer: ApprovingConfirmer()
-        )
+            }
+            $0.notifier = ForegroundNotifier()
+            $0.confirmer = ApprovingConfirmer()
+        }
     }
 
     /// Routes `foreground`'s open-ended Do path through an AgentCoordinator

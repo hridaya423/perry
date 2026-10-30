@@ -164,7 +164,7 @@ final class ShortcutRolesTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         defer { controller.notchPresence.stop() }
 
         let first = Gesture.chord([.control, .option, .shift, .command], keyCode: 105)

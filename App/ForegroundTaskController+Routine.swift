@@ -78,13 +78,8 @@ extension ForegroundTaskController {
         )
         guard presentRunStart(execution, attemptID: attemptID, bubble: "Preparing \(routine.name)…") else { return .notStarted }
         hooks.setStatus("Getting ready with \(sandboxLabel).")
-#if DEBUG
-        let confirmer = debugConfirmer ?? hooks.makeConfirmer()
-        let typedVerifier = debugTypedVerifier ?? CompositeActionVerifier(workspace: workspaceURL, worker: worker)
-#else
-        let confirmer = hooks.makeConfirmer()
-        let typedVerifier: any TypedActionVerifier = CompositeActionVerifier(workspace: workspaceURL, worker: worker)
-#endif
+        let confirmer = confirmerOverride ?? hooks.makeConfirmer()
+        let typedVerifier = typedVerifierOverride ?? CompositeActionVerifier(workspace: workspaceURL, worker: worker)
         let taskID = execution.taskID
         let supervisor = DoSupervisor(
             activityLog: activityLog,
@@ -148,17 +143,13 @@ extension ForegroundTaskController {
         bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> RoutineStepBinding?
     ) -> TypedActionRouter {
         let codexRuntimeHome = RuntimeCatalog.codexRuntimeHome
-#if DEBUG
-        let debugAskUser = self.debugAskUser
-#endif
+        let askUserOverride = self.askUserOverride
         return TypedActionRouter(
             worker: worker,
             workspace: workspace,
             remoteIntegrations: remoteIntegrationExecutor,
             askUser: { prompt, choices in
-#if DEBUG
-                if let debugAskUser { return try await debugAskUser(prompt, choices) }
-#endif
+                if let askUserOverride { return try await askUserOverride(prompt, choices) }
                 try await Self.presentAskUser(prompt: prompt, choices: choices)
             },
             runCodingTask: { runtimeID, workspaceURL, prompt in

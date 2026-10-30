@@ -33,7 +33,7 @@ final class PaperOnboardingTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         var submissions = 0
         model.onStartConversation = { _ in submissions += 1 }

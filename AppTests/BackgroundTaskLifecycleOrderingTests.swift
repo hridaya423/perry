@@ -14,7 +14,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testErasurePromptDeduplicatesAndCollapseCancelsBeforeMaintenance() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
         presentation.onPresent = nil
@@ -44,7 +44,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testCollapsingUnsavedQuitConfirmationRestoresAdmissionAndRequest() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
         presentation.onPresent = nil
@@ -70,7 +70,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testQuitChecksFailedAcceptedWritesBeforeDiscardingInput() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         controller.homeController.threadStore = nil
         let input = controller.homeController.acceptInput("Keep this unsaved request")
         var asked = false
@@ -93,7 +93,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
     func testRenderUnsavedQuitConfirmation() async throws {
         let directory = try temporaryDirectory()
         addTeardownBlock { try self.removeFixture(directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let originalOnPresent = presentation.onPresent
         presentation.onPresent = nil
@@ -145,7 +145,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             taskID: taskID, goal: "Create two files", actions: actions, requestedScopes: [.workspaceWrite]
         )
         let queued = try await coordinator.enqueue(executablePlan: plan)
-        let controller = AppController(debugStorageDirectory: directory, taskCoordinator: coordinator)
+        let controller = AppController.testing(directory: directory) { $0.taskCoordinator = coordinator }
         await controller.backgroundTasks.reloadRecords()
         let visible = try XCTUnwrap(controller.backgroundTasks.records.first)
         XCTAssertEqual(visible.revision, queued.revision)
@@ -197,7 +197,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         }
         let plan = try PerryRuntimes.ExecutionPlan(taskID: "two-file-app-task", goal: "Create two files", actions: actions, requestedScopes: [.workspaceWrite])
         let metadata = BackgroundTaskMetadata(workspacePath: workspace.path)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         try await controller.backgroundTasks.debugSeed(record: TaskRecord(executablePlan: plan), metadata: metadata)
         let initial = await controller.backgroundTasks.debugRecord(plan.taskID)
         controller.backgroundTasks.approveWorkspace(try XCTUnwrap(initial))
@@ -265,7 +265,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let moved = directory.appendingPathComponent("moved-workspace", isDirectory: true)
         try FileManager.default.moveItem(at: workspace, to: moved)
 
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         await controller.backgroundTasks.reloadRecords()
         controller.backgroundTasks.cancel(plan.taskID)
         let reported = await waitUntil {
@@ -312,7 +312,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let metadata = BackgroundTaskMetadata(workspacePath: workspace.path)
         try await BackgroundTaskContextStore(storageDirectory: directory).save(metadata, for: queued.id)
 
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         await controller.backgroundTasks.reloadRecords()
         controller.backgroundTasks.resume(queued.id)
         let paused = await waitUntil {
@@ -341,7 +341,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         let fileURL = directory.appendingPathComponent("tasks.json")
         let future = Data(#"{"version":9001,"tasks":[]}"#.utf8)
         try future.write(to: fileURL)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         await controller.backgroundTasks.reloadRecords()
         XCTAssertTrue(controller.sessionStatus.contains("9001"))
         XCTAssertTrue(controller.sessionStatus.contains("compatible Perry version"))
@@ -355,7 +355,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         addTeardownBlock {
             try self.removeFixture(directory)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let id = TaskID("cancel-waits-for-writer")
         let record = TaskRecord(executablePlan: try executablePlan(taskID: id, workspace: directory))
         let initialMetadata = BackgroundTaskMetadata(targetWindowTitle: "before writer")
@@ -414,7 +414,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         addTeardownBlock {
             try self.removeFixture(directory)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let id = TaskID("uncooperative-writer")
         let record = TaskRecord(executablePlan: try executablePlan(taskID: id, workspace: directory))
         let initialMetadata = BackgroundTaskMetadata(targetWindowTitle: "retained")
@@ -480,7 +480,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
             try self.removeFixture(directory)
         }
         let coordinator = TaskCoordinator(storageDirectory: directory)
-        let controller = AppController(debugStorageDirectory: directory, taskCoordinator: coordinator)
+        let controller = AppController.testing(directory: directory) { $0.taskCoordinator = coordinator }
         let id = TaskID("pause-invalidates-launch")
         let plan = try executablePlan(taskID: id, workspace: directory)
         let queued = try await coordinator.enqueue(executablePlan: plan)
@@ -537,7 +537,7 @@ final class BackgroundTaskLifecycleOrderingTests: XCTestCase {
         addTeardownBlock {
             try self.removeFixture(directory)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let gate = AsyncGate()
         let probe = FixtureProbe()
         controller.debugSetMaintenanceFixture(skipEraseConfirmation: true) {

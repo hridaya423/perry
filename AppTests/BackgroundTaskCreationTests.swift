@@ -118,7 +118,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
         let controller = makeController(directory: directory, probe: probe)
-        controller.backgroundTasks.debugTrashURL = trash
+        controller.backgroundTasks.trashURL = trash
 
         let queued = try await enqueueFileTask(
             on: controller,
@@ -181,7 +181,7 @@ final class BackgroundTaskCreationTests: XCTestCase {
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let probe = BackgroundCreationProbe()
         let controller = makeController(directory: directory, probe: probe)
-        controller.backgroundTasks.debugTrashURL = trash
+        controller.backgroundTasks.trashURL = trash
 
         let queued = try await enqueueFileTask(
             on: controller,
@@ -258,10 +258,9 @@ final class BackgroundTaskCreationTests: XCTestCase {
             readDirectProvider: { nil },
             commandLineProviders: []
         )
-        return AppController(
-            debugStorageDirectory: directory,
-            runtimeInventoryLoader: { try await inspector.inspect() },
-            permissionSnapshotLoader: {
+        return AppController.testing(directory: directory) {
+            $0.runtimeInventoryLoader = { try await inspector.inspect() }
+            $0.permissionSnapshotLoader = {
                 probe.incrementPermission()
                 XCTFail("background task tests must not request desktop permissions")
                 return PerryPermissionSnapshot(
@@ -269,14 +268,14 @@ final class BackgroundTaskCreationTests: XCTestCase {
                     screenRecording: .granted,
                     microphone: .granted
                 )
-            },
-            screenContextLoader: { _, _ in
+            }
+            $0.screenContextLoader = { _, _ in
                 probe.incrementCapture()
                 XCTFail("background task tests must not capture the desktop")
                 return (ScreenContext.empty, nil)
-            },
-            notifier: probe
-        )
+            }
+            $0.notifier = probe
+        }
     }
 
     /// Fabricates a canonical workspace-file task the way the retired planner

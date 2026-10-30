@@ -17,7 +17,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testTaskQuestionInsideNotch() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         let previousOnPresent = presentation.onPresent
         presentation.onPresent = nil
@@ -44,7 +44,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testRenderActiveInteractionSurfaces() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let id = UUID()
@@ -94,7 +94,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testRenderRoutineOfferStates() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         var id = UUID()
@@ -163,7 +163,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         for entry in NotchPresentation.shared.entries {
             NotchPresentation.shared.remove(entry.id)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         defer { controller.notchPresence.stop() }
         let selections: [(String, HomeModel.Selection?)] = [
@@ -224,7 +224,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         for entry in NotchPresentation.shared.entries {
             NotchPresentation.shared.remove(entry.id)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         defer { controller.notchPresence.stop() }
         var snapshot = PerryPermissionSnapshot(accessibility: false, screenRecording: .denied, microphone: .denied)
@@ -268,7 +268,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testApprovalWindowFitsShortContentAndBoundsLongContent() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let id = UUID()
@@ -337,7 +337,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         await controller.homeController.joinAll()
         let model = controller.homeController.homeModel
         defer { controller.notchPresence.stop() }
@@ -383,7 +383,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         for entry in NotchPresentation.shared.entries {
             NotchPresentation.shared.remove(entry.id)
         }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         defer { controller.notchPresence.stop() }
         var effects = OnboardingDirector.Effects()
@@ -436,7 +436,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         defer {
             controller.clearFailure()
@@ -494,7 +494,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testFocusedNotchHugsItsContent() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let id = UUID()
@@ -520,7 +520,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testCloseRemovesContentThenShapeThenWindow() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         defer {
@@ -556,7 +556,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
     func testRenderOpenAndCloseMotionFrames() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         let id = UUID()
@@ -613,7 +613,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let model = controller.homeController.homeModel
         defer {
             for entry in presentation.entries { presentation.remove(entry.id) }
@@ -665,7 +665,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         defer {
             controller.overlayState.voiceState = .idle
             controller.overlayState.buddyState = .idle
@@ -700,7 +700,7 @@ final class NotchSurfaceRenderTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         defer {
             for entry in NotchPresentation.shared.entries { NotchPresentation.shared.remove(entry.id) }
             controller.overlayState.voiceState = .idle

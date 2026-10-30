@@ -206,7 +206,7 @@ final class InterviewModelTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         defer { controller.notchPresence.stop() }
         let before = await controller.currentMemoryConfiguration()
         XCTAssertFalse(before.enabled)

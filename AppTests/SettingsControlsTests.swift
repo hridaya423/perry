@@ -10,7 +10,7 @@ final class SettingsControlsTests: XCTestCase {
     override func setUp() async throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        controller = AppController(debugStorageDirectory: directory)
+        controller = AppController.testing(directory: directory)
     }
 
     override func tearDown() async throws {

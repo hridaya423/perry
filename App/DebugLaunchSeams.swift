@@ -7,32 +7,9 @@ import PerryCore
 import PerryGuide
 import PerryRuntimes
 
-typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
-typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
-typealias FinalizationPersistenceBarrier = @Sendable () async -> Void
-
-/// Fixture seams the DEBUG harness init and `--perry-debug-*` launch
-/// arguments inject into the composition root — each replaces a production
-/// collaborator so fixtures stay deterministic. One bag so AppController
-/// doesn't carry a dozen properties that exist only for tests.
-struct DebugLaunchSeams {
-    var storageDirectory: URL?
-    var runtimeInventoryLoader: RuntimeCatalog.InventoryLoader?
-    var permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader?
-    var cuaHealthLoader: EnvironmentProbe.CuaHealthLoader?
-    var screenContextLoader: EnvironmentProbe.ScreenContextLoader?
-    var fullGuideCaptureLoader: FullGuideCaptureLoader?
-    var fullGuideContinuationBarrier: FullGuideContinuationBarrier?
-    var guidePlanner: (any GuidePlanner)?
-    var finalizationBarrier: FinalizationBarrier?
-    var typedVerifier: (any TypedActionVerifier)?
-    var confirmer: (any Confirmer)?
-    var askUser: (@Sendable (String, [String]) async throws -> Void)?
-
-    /// `--perry-debug-*` launch arguments → seams. Parsed once in the
-    /// production init; the harness init takes seams explicitly.
-    static func launch(arguments: [String]) -> DebugLaunchSeams {
-        var seams = DebugLaunchSeams()
+extension LaunchOverrides {
+    static func launch(arguments: [String]) -> LaunchOverrides {
+        var overrides = LaunchOverrides()
         if PerryDebugLaunchSurface(arguments: arguments) == .backgroundTasksStorageError,
            let index = arguments.firstIndex(of: "--perry-debug-storage-directory"),
            arguments.indices.contains(index + 1),
@@ -41,21 +18,16 @@ struct DebugLaunchSeams {
             var isDirectory = ObjCBool(false)
             if FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
                isDirectory.boolValue {
-                seams.storageDirectory = URL(fileURLWithPath: path, isDirectory: true)
+                overrides.storageDirectory = URL(fileURLWithPath: path, isDirectory: true)
             }
         }
-        // `--perry-guide-drill` swaps the model planner for the offline
-        // AXGuidePlanner — the lab's Preview click→next-mark drill stays
-        // deterministic and needs no provider key.
         if arguments.contains("--perry-guide-drill") {
-            seams.guidePlanner = AXGuidePlanner()
+            overrides.guidePlanner = AXGuidePlanner()
         }
-        return seams
+        return overrides
     }
 }
-#endif
 
-#if DEBUG
 extension AppController {
     func debugSetMaintenanceFixture(
         skipEraseConfirmation: Bool,
@@ -112,7 +84,7 @@ extension AppController {
     func debugHandleEarlyLaunchSurface() -> Bool {
         let debugSurface = PerryDebugLaunchSurface(arguments: ProcessInfo.processInfo.arguments)
         if debugSurface == .backgroundTasksStorageError {
-            guard debugSeams.storageDirectory != nil else { return true }
+            guard overrides.storageDirectory != nil else { return true }
             DispatchQueue.main.async { [weak self] in
                 self?.showDebugBackgroundTasksStorageError()
             }

@@ -1482,7 +1482,7 @@ final class NotchListeningPresentationTests: XCTestCase {
     func testListeningKeepsTheNotchOpenUntilTheTurnEnds() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         defer {

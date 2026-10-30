@@ -47,12 +47,10 @@ final class ForegroundTaskController: ObservableObject {
     let activityStripState = AgentActivityStripState()
     let activityStripID = UUID()
 
-#if DEBUG
-    private var debugFinalizationBarrier: FinalizationBarrier?
-    var debugConfirmer: (any Confirmer)?
-    var debugAskUser: (@Sendable (String, [String]) async throws -> Void)?
-    var debugTypedVerifier: (any TypedActionVerifier)?
-#endif
+    private let finalizationBarrier: FinalizationBarrier?
+    let confirmerOverride: (any Confirmer)?
+    let askUserOverride: (@Sendable (String, [String]) async throws -> Void)?
+    let typedVerifierOverride: (any TypedActionVerifier)?
 
     var supervisorActive: Bool { activeRun != nil }
 
@@ -68,7 +66,11 @@ final class ForegroundTaskController: ObservableObject {
         executionFinalizer: ExecutionFinalizer,
         overlayState: PerryCursorState,
         workspaceCoordinator: TaskCoordinator?,
-        hooks: Hooks
+        hooks: Hooks,
+        finalizationBarrier: FinalizationBarrier? = nil,
+        confirmer: (any Confirmer)? = nil,
+        askUser: (@Sendable (String, [String]) async throws -> Void)? = nil,
+        typedVerifier: (any TypedActionVerifier)? = nil
     ) {
         self.sessionController = sessionController
         self.workers = workers
@@ -80,43 +82,11 @@ final class ForegroundTaskController: ObservableObject {
         self.overlayState = overlayState
         self.workspaceCoordinator = workspaceCoordinator
         self.hooks = hooks
+        self.finalizationBarrier = finalizationBarrier
+        confirmerOverride = confirmer
+        askUserOverride = askUser
+        typedVerifierOverride = typedVerifier
     }
-
-#if DEBUG
-    convenience init(
-        sessionController: SessionController,
-        workers: CuaWorkerService,
-        probe: EnvironmentProbe,
-        voice: VoiceController,
-        remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
-        activityLog: ActivityLog,
-        executionFinalizer: ExecutionFinalizer,
-        overlayState: PerryCursorState,
-        hooks: Hooks,
-        finalizationBarrier: FinalizationBarrier?,
-        confirmer: (any Confirmer)?,
-        askUser: (@Sendable (String, [String]) async throws -> Void)?,
-        typedVerifier: (any TypedActionVerifier)?,
-        workspaceCoordinator: TaskCoordinator? = nil
-    ) {
-        self.init(
-            sessionController: sessionController,
-            workers: workers,
-            probe: probe,
-            voice: voice,
-            remoteIntegrationExecutor: remoteIntegrationExecutor,
-            activityLog: activityLog,
-            executionFinalizer: executionFinalizer,
-            overlayState: overlayState,
-            workspaceCoordinator: workspaceCoordinator,
-            hooks: hooks
-        )
-        self.debugFinalizationBarrier = finalizationBarrier
-        self.debugConfirmer = confirmer
-        self.debugAskUser = askUser
-        self.debugTypedVerifier = typedVerifier
-    }
-#endif
 
     func handleSessionState(_ state: SessionState) {
         switch state {
@@ -578,11 +548,9 @@ final class ForegroundTaskController: ObservableObject {
             return .failed(stepSummary: "finalization", reason: "the session no longer accepts finalization")
         }
         let taskID = execution.taskID
-#if DEBUG
-        if let debugFinalizationBarrier {
-            await debugFinalizationBarrier()
+        if let finalizationBarrier {
+            await finalizationBarrier()
         }
-#endif
         let committedExecution: ExecutionSessionState
         let finalizationOutcome: DoOutcome
         do {

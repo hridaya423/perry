@@ -150,11 +150,7 @@ final class AppSubsystems {
     )
 
     var storageDirectory: URL? {
-#if DEBUG
-        return app.debugSeams.storageDirectory ?? AppController.supportDirectory
-#else
-        return AppController.supportDirectory
-#endif
+        app.overrides.storageDirectory ?? AppController.supportDirectory
     }
 
     lazy var activityLog = ActivityLog(storageDirectory: self.storageDirectory)
@@ -163,7 +159,6 @@ final class AppSubsystems {
 
     lazy var transcriptStore = TranscriptStore(directory: self.storageDirectory)
 
-#if DEBUG
     lazy var guideCoordinator = GuideSessionCoordinator(
         sessionController: app.sessionController,
         workers: self.workers,
@@ -171,11 +166,11 @@ final class AppSubsystems {
         memoryStore: self.memoryStore,
         output: app.guideBridge,
         context: app.guideBridge,
-        fullGuideCaptureLoader: app.debugSeams.fullGuideCaptureLoader,
-        fullGuideContinuationBarrier: app.debugSeams.fullGuideContinuationBarrier,
+        fullGuideCaptureLoader: app.overrides.fullGuideCaptureLoader,
+        fullGuideContinuationBarrier: app.overrides.fullGuideContinuationBarrier,
         guidePlannerProvider: { [weak app = app] guide in
             guard let app else { return nil }
-            return app.debugSeams.guidePlanner ?? app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
+            return app.overrides.guidePlanner ?? app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
                 guard let app else { throw CancellationError() }
                 return try await app.agentCoordinator.prepareGuideRequest(
                     threadID: guide.threadID, runID: guide.id, provider: provider, request: request
@@ -184,27 +179,6 @@ final class AppSubsystems {
         },
         executionOwner: self.agentCoordinator
     )
-#else
-    lazy var guideCoordinator = GuideSessionCoordinator(
-        sessionController: app.sessionController,
-        workers: self.workers,
-        transcriptStore: self.transcriptStore,
-        memoryStore: self.memoryStore,
-        output: app.guideBridge,
-        context: app.guideBridge,
-        guidePlannerProvider: { [weak app = app] guide in
-            guard let app else { return nil }
-            return app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
-                guard let app else { throw CancellationError() }
-                return try await app.agentCoordinator.prepareGuideRequest(
-                    threadID: guide.threadID, runID: guide.id, provider: provider, request: request
-                )
-            }
-        },
-        executionOwner: self.agentCoordinator
-    )
-
-#endif
 
     lazy var talkCapture = TalkObservationCapture(
         workers: self.workers,
@@ -386,44 +360,25 @@ final class AppSubsystems {
         transcriptStore: self.transcriptStore,
         memoryStore: self.memoryStore,
         notifier: app.notifier,
-        beforeTranscriptAppend: app.debugFinalizationPersistenceBarrier
+        beforeTranscriptAppend: app.overrides.finalizationPersistenceBarrier
     )
 
-    lazy var runtimes: RuntimeCatalog = {
-#if DEBUG
-        return RuntimeCatalog(
-            setStatus: { [weak app = app] status in app?.sessionStatus = status },
-            inventoryLoader: app.debugSeams.runtimeInventoryLoader
-        )
-#else
-        return RuntimeCatalog(setStatus: { [weak app = app] status in app?.sessionStatus = status })
-#endif
-    }()
+    lazy var runtimes = RuntimeCatalog(
+        setStatus: { [weak app = app] status in app?.sessionStatus = status },
+        inventoryLoader: app.overrides.runtimeInventoryLoader
+    )
 
-    lazy var probe: EnvironmentProbe = {
-#if DEBUG
-        return EnvironmentProbe(
-            workers: self.workers,
-            memoryStore: self.memoryStore,
-            oauthCoordinator: self.oauthCoordinator,
-            remoteIntegrationPermissions: self.remoteIntegrationPermissions,
-            spatialSelection: { [weak app = app] in app?.spatial.selection },
-            storageDirectory: { [weak app = app] in app?.storageDirectory },
-            permissionSnapshotLoader: app.debugSeams.permissionSnapshotLoader,
-            cuaHealthLoader: app.debugSeams.cuaHealthLoader,
-            screenContextLoader: app.debugSeams.screenContextLoader
-        )
-#else
-        return EnvironmentProbe(
-            workers: self.workers,
-            memoryStore: self.memoryStore,
-            oauthCoordinator: self.oauthCoordinator,
-            remoteIntegrationPermissions: self.remoteIntegrationPermissions,
-            spatialSelection: { [weak app = app] in app?.spatial.selection },
-            storageDirectory: { [weak app = app] in app?.storageDirectory }
-        )
-#endif
-    }()
+    lazy var probe = EnvironmentProbe(
+        workers: self.workers,
+        memoryStore: self.memoryStore,
+        oauthCoordinator: self.oauthCoordinator,
+        remoteIntegrationPermissions: self.remoteIntegrationPermissions,
+        spatialSelection: { [weak app = app] in app?.spatial.selection },
+        storageDirectory: { [weak app = app] in app?.storageDirectory },
+        permissionSnapshotLoader: app.overrides.permissionSnapshotLoader,
+        cuaHealthLoader: app.overrides.cuaHealthLoader,
+        screenContextLoader: app.overrides.screenContextLoader
+    )
 
     lazy var foreground: ForegroundTaskController = {
         let hooks = ForegroundTaskController.Hooks(
@@ -439,24 +394,6 @@ final class AppSubsystems {
             routineVerified: { [weak app = app] id in app?.routineLibrary.recordVerifiedRun(id) },
             guiTaskCompleted: { [weak app = app] in app?.routineOffer.taskFinished(usedGUI: true) }
         )
-#if DEBUG
-        let controller = ForegroundTaskController(
-            sessionController: app.sessionController,
-            workers: self.workers,
-            probe: self.probe,
-            voice: self.voice,
-            remoteIntegrationExecutor: self.remoteIntegrationExecutor,
-            activityLog: self.activityLog,
-            executionFinalizer: self.executionFinalizer,
-            overlayState: self.overlayState,
-            hooks: hooks,
-            finalizationBarrier: app.debugSeams.finalizationBarrier,
-            confirmer: app.debugSeams.confirmer,
-            askUser: app.debugSeams.askUser,
-            typedVerifier: app.debugSeams.typedVerifier,
-            workspaceCoordinator: self.backgroundTaskCoordinator
-        )
-#else
         let controller = ForegroundTaskController(
             sessionController: app.sessionController,
             workers: self.workers,
@@ -467,9 +404,12 @@ final class AppSubsystems {
             executionFinalizer: self.executionFinalizer,
             overlayState: self.overlayState,
             workspaceCoordinator: self.backgroundTaskCoordinator,
-            hooks: hooks
+            hooks: hooks,
+            finalizationBarrier: app.overrides.finalizationBarrier,
+            confirmer: app.overrides.confirmer,
+            askUser: app.overrides.askUser,
+            typedVerifier: app.overrides.typedVerifier
         )
-#endif
         // Open-ended Do goals route through the agent loop; its tools run on
         // the session's claimed worker, not a competing background one.
         controller.agentCoordinator = agentCoordinator
@@ -477,7 +417,7 @@ final class AppSubsystems {
         return controller
     }()
 
-    lazy var backgroundTaskCoordinator = TaskCoordinator(storageDirectory: self.storageDirectory)
+    lazy var backgroundTaskCoordinator = app.overrides.taskCoordinator ?? TaskCoordinator(storageDirectory: self.storageDirectory)
 
     lazy var backgroundTaskRunner = ResumableTaskRunner(
         coordinator: self.backgroundTaskCoordinator,
@@ -707,7 +647,6 @@ final class AppSubsystems {
                 )
             }
         )
-#if DEBUG
         return BackgroundTaskController(
             workers: self.workers,
             coordinator: self.backgroundTaskCoordinator,
@@ -716,22 +655,9 @@ final class AppSubsystems {
             transcriptStore: self.transcriptStore,
             notifier: app.notifier,
             agentCoordinator: self.agentCoordinator,
-            storageDirectory: { [weak app = app] in app?.debugSeams.storageDirectory },
+            storageDirectory: { [weak app = app] in app?.overrides.storageDirectory },
             hooks: hooks
         )
-#else
-        return BackgroundTaskController(
-            workers: self.workers,
-            coordinator: self.backgroundTaskCoordinator,
-            runner: self.backgroundTaskRunner,
-            contextStore: self.backgroundTaskContextStore,
-            transcriptStore: self.transcriptStore,
-            notifier: app.notifier,
-            agentCoordinator: self.agentCoordinator,
-            storageDirectory: { nil },
-            hooks: hooks
-        )
-#endif
     }()
 
     lazy var erasurePaths = PerryErasurePaths(supportDirectory: self.storageDirectory)

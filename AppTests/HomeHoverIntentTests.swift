@@ -104,7 +104,7 @@ final class NotchPeekTests: XCTestCase {
     private func peekingController() async throws -> (AppController, () -> Void) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let controller = AppController(debugStorageDirectory: directory)
+        let controller = AppController.testing(directory: directory)
         let presentation = NotchPresentation.shared
         for entry in presentation.entries { presentation.remove(entry.id) }
         presentation.showsInteraction = true

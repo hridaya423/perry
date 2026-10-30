@@ -7,7 +7,7 @@ final class StatusMenuTests: XCTestCase {
     private func makeController() throws -> (AppController, URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return (AppController(debugStorageDirectory: directory), directory)
+        return (AppController.testing(directory: directory), directory)
     }
 
     private func visibleTitles(_ menu: NSMenu) -> [String] {
