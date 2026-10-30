@@ -2,26 +2,17 @@ import AppKit
 import PerryGuide
 import PerryOverlay
 
-/// GuideSessionCoordinator and TalkSession see the app only through
-/// GuideSessionOutput/GuideSessionContext; this bridge forwards those calls
-/// to the extracted owners, so neither session needs the whole controller.
 @MainActor
 final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     private weak var host: AppController?
-
-    private var guideOverlay: GuideOverlayPresenter? {
-        host.map { GuideOverlayPresenter(overlayState: $0.overlayState) }
-    }
 
     init(host: AppController) {
         self.host = host
     }
 
     func guideShowOverlay() {
-        guard let host else { return }
-        if !host.overlayManager.isShowingOverlay() {
-            host.overlayManager.showOverlay(onScreens: NSScreen.screens, state: host.overlayState)
-        }
+        guard let host, !host.overlayManager.isShowingOverlay() else { return }
+        host.overlayManager.showOverlay(onScreens: NSScreen.screens, state: host.overlayState)
     }
 
     func guideStopSpatialInput() {
@@ -61,11 +52,11 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideInteractiveFrames() -> [CGRect] {
-        [host?.sessionPanelFrame, host?.intentCardFrame].compactMap { $0 }
+        [host?.sessionPanel.frame, host?.intentCards.frame].compactMap { $0 }
     }
 
     func guidePresent(_ presentation: GuidePresentation) {
-        guideOverlay?.present(presentation)
+        host?.overlayState.presentGuide(presentation)
         PerfMark.mark("guide.step.shown")
         #if DEBUG
         GuideDrillRecorder.presented(presentation)
@@ -73,7 +64,7 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
     }
 
     func guideShowFullPath(_ viewPlan: EverythingViewPlan) {
-        guideOverlay?.showFullPath(viewPlan)
+        host?.overlayState.showGuideFullPath(viewPlan)
     }
 
     func guideClearPresentation() {
@@ -83,12 +74,8 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
         #endif
     }
 
-    func guideClearHighlight() {
-        guideOverlay?.clearHighlight()
-    }
-
     func guideClearFullPath() {
-        guideOverlay?.clearFullPath()
+        host?.overlayState.clearGuideFullPath()
     }
 
     func guideRequestTakeOver(_ handoff: GuideHandoff) {
@@ -114,75 +101,6 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
 }
 
 extension AppController {
-    var sessionPanelFrame: CGRect? { sessionPanel.frame }
-    var intentCardFrame: CGRect? { intentCards.frame }
-
-}
-
-#if DEBUG
-/// Phase-3 lab seam: when `PERRY_GUIDE_DRILL_STATE` points at a file, each
-/// presented step's target rect (AX top-left space, same as CGEvent clicks)
-/// and the session end are recorded there so scripts/lab/guide-drill.sh can
-/// click the marked element and time click→next-mark without voice or a
-/// model round-trip.
-enum GuideDrillRecorder {
-    static let enabled = !Set(ProcessInfo.processInfo.arguments).isDisjoint(with: ["--perry-guide-drill", "--perry-guide-live"])
-    private static let statePath = ProcessInfo.processInfo.environment["PERRY_GUIDE_DRILL_STATE"]
-        ?? NSTemporaryDirectory() + "perry-guide-drill-state.json"
-    private static var sequence = 0
-
-    static func presented(_ presentation: GuidePresentation) {
-        guard enabled else { return }
-        sequence += 1
-        let target = presentation.target
-        write([
-            "seq": sequence,
-            "instruction": presentation.step.instruction,
-            "done": false,
-            "hasTarget": target != nil,
-            "targetLabel": target?.label ?? "",
-            "targetRole": target?.role.rawValue ?? "",
-            "x": target?.frame.x ?? 0,
-            "y": target?.frame.y ?? 0,
-            "w": target?.frame.width ?? 0,
-            "h": target?.frame.height ?? 0,
-            "targetID": target?.stableID ?? "",
-            "postcondition": presentation.step.postcondition.flatMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) } ?? ""
-        ])
-    }
-
-    /// Drill-only: statuses describe planner/worker failures that would
-    /// otherwise leave the run at done-with-zero-steps.
-    static func status(_ status: String) {
-        guard enabled else { return }
-        sequence += 1
-        write(["seq": sequence, "status": status])
-    }
-
-    static func finished() {
-        guard enabled else { return }
-        sequence += 1
-        write(["seq": sequence, "instruction": "", "done": true])
-    }
-
-    /// Atomic "latest presentation" snapshot the drill polls, plus a JSONL
-    /// history append so a run can reconstruct every presented step.
-    private static func write(_ record: [String: Any]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: record) else { return }
-        let stateURL = URL(fileURLWithPath: statePath)
-        try? data.write(to: stateURL, options: .atomic)
-        if let handle = FileHandle(forWritingAtPath: statePath + ".log")
-            ?? (FileManager.default.createFile(atPath: statePath + ".log", contents: nil) ? FileHandle(forWritingAtPath: statePath + ".log") : nil) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            handle.write(Data([0x0a]))
-            try? handle.close()
-        }
-    }
-}
-#endif
-
-extension AppController {
     func guideConversationID() -> UUID {
         if case .thread(let id) = homeController.homeModel.sidebarSelection,
            !agentCoordinator.runningThreads.contains(id) { return id }
@@ -198,16 +116,10 @@ extension AppController {
             targetHint: homeController.homeModel.conversationTargets[threadID]
         )
     }
-}
 
-extension AppController {
     func ask(question: String) {
         guard !maintenance.isUnderMaintenance else { return }
         talkSession.submitComposer(question: question)
-    }
-
-    func advanceGuide() {
-        guideCoordinator.advanceGuide()
     }
 
     func showEverything(goal: String, targetHint: CuaTargetHint? = nil) async {

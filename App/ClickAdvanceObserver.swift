@@ -1,54 +1,37 @@
 import AppKit
 import PerryGuide
 
-struct ClickLocation: Sendable {
-    let axPoint: CGPointShim
-    let appKitPoint: CGPointShim
-}
-
 @MainActor
 final class ClickAdvanceObserver {
-    private let onClick: (ClickLocation) -> Void
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
+    private let onClick: (CGPointShim) -> Void
+    private var monitors: [Any] = []
 
-    init(onClick: @escaping (ClickLocation) -> Void) {
+    init(onClick: @escaping (CGPointShim) -> Void) {
         self.onClick = onClick
     }
 
     func start() {
-        guard globalMonitor == nil else { return }
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+        guard monitors.isEmpty else { return }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
             self?.report(event)
+        }) {
+            monitors.append(global)
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+        if let local = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown, handler: { [weak self] event in
             self?.report(event)
             return event
+        }) {
+            monitors.append(local)
         }
     }
 
     func stop() {
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-        }
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-        }
-        globalMonitor = nil
-        localMonitor = nil
+        monitors.forEach(NSEvent.removeMonitor)
+        monitors = []
     }
 
     private func report(_ event: NSEvent) {
-        let cgPoint = event.cgEvent?.location ?? CGPoint(
-            x: event.locationInWindow.x,
-            y: event.locationInWindow.y
-        )
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        onClick(
-            ClickLocation(
-                axPoint: CGPointShim(x: Double(cgPoint.x), y: Double(cgPoint.y)),
-                appKitPoint: CGPointShim(x: Double(cgPoint.x), y: Double(primaryMaxY - cgPoint.y))
-            )
-        )
+        let point = event.cgEvent?.location ?? event.locationInWindow
+        onClick(CGPointShim(x: Double(point.x), y: Double(point.y)))
     }
 }

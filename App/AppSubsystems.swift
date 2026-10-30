@@ -170,12 +170,10 @@ final class AppSubsystems {
         workers: self.workers,
         transcriptStore: self.transcriptStore,
         memoryStore: self.memoryStore,
-        storageDirectory: self.storageDirectory,
         output: app.guideBridge,
         context: app.guideBridge,
         fullGuideCaptureLoader: app.debugSeams.fullGuideCaptureLoader,
         fullGuideContinuationBarrier: app.debugSeams.fullGuideContinuationBarrier,
-        fullGuidePlanner: app.debugSeams.fullGuidePlanner,
         guidePlannerProvider: { [weak app = app] guide in
             guard let app else { return nil }
             return app.debugSeams.guidePlanner ?? app.brain.makeGuidePlanner(storageDirectory: app.storageDirectory) { [weak app = app] provider, request in
@@ -193,7 +191,6 @@ final class AppSubsystems {
         workers: self.workers,
         transcriptStore: self.transcriptStore,
         memoryStore: self.memoryStore,
-        storageDirectory: self.storageDirectory,
         output: app.guideBridge,
         context: app.guideBridge,
         guidePlannerProvider: { [weak app = app] guide in

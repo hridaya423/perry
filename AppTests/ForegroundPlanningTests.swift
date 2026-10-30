@@ -1427,6 +1427,12 @@ final class ForegroundPlanningTests: XCTestCase {
             setup: RuntimeSetupSnapshot(summary: "Typed foreground fixture", records: []),
             credentialFailure: nil
         )
+        let planner: any GuidePlanner
+        if let fullGuidePlanner {
+            planner = FixturePathPlanner(path: fullGuidePlanner)
+        } else {
+            planner = AXGuidePlanner()
+        }
         return AppController(
             debugStorageDirectory: directory,
             sessionController: session ?? SessionController(),
@@ -1443,7 +1449,7 @@ final class ForegroundPlanningTests: XCTestCase {
             },
             fullGuideCaptureLoader: fullGuideCaptureLoader,
             fullGuideContinuationBarrier: fullGuideContinuationBarrier,
-            fullGuidePlanner: fullGuidePlanner,
+            guidePlanner: planner,
             finalizationBarrier: finalizationBarrier,
             finalizationPersistenceBarrier: finalizationPersistenceBarrier,
             screenContextLoader: screenContextLoader ?? { _, _ in
@@ -1574,6 +1580,18 @@ private final class FailOnceProvider: ModelProvider, @unchecked Sendable {
             $0.yield(.done(.endTurn))
             $0.finish()
         }
+    }
+}
+
+private struct FixturePathPlanner: GuidePlanner {
+    let path: @MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep]
+
+    func nextStep(goal: String, observation: GuideObservation, progress: GuideProgress, context: GuideContext) async throws -> GuideDecision {
+        try await AXGuidePlanner().nextStep(goal: goal, observation: observation, progress: progress, context: context)
+    }
+
+    func visiblePath(goal: String, observation: GuideObservation, context: GuideContext) async throws -> [GuideStep] {
+        try await path(goal, observation, context)
     }
 }
 

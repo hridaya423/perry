@@ -22,7 +22,6 @@ final class TalkSessionAskTests: XCTestCase {
         func guideInteractiveFrames() -> [CGRect] { [] }
         func guideShowFullPath(_ viewPlan: EverythingViewPlan) {}
         func guideClearPresentation() {}
-        func guideClearHighlight() {}
         func guideClearFullPath() {}
     }
 
