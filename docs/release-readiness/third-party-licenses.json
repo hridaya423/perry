@@ -55,7 +55,6 @@
     "runtime_lock": "scripts/codex-runtime.lock",
     "sparkle_lock": "scripts/sparkle.lock",
     "swift_package_graph": [
-      "Packages/PerryCapture",
       "Packages/PerryCore",
       "Packages/PerryGuide",
       "Packages/PerryOverlay",

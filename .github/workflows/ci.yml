@@ -53,7 +53,7 @@ jobs:
       - name: Run package tests
         run: |
           set -euo pipefail
-          for package in PerryCore PerryRuntimes PerryOverlay PerryCapture PerryGuide; do
+          for package in PerryCore PerryRuntimes PerryOverlay PerryGuide; do
             swift test --package-path "Packages/${package}"
           done
 
