@@ -293,7 +293,8 @@ final class CustomConnectors: ObservableObject {
                 persist: { try keychain.save(try Self.encode($0), account: account) },
                 onSaveFailure: { [weak self] in
                     Task { @MainActor in
-                        guard let self, self.currentSessions[id] == sessionID else { return }
+                        guard let self, self.currentSessions[id] == sessionID,
+                              self.connectors.contains(where: { $0.id == id }) else { return }
                         self.signInNotSaved.insert(id)
                     }
                 }

@@ -31,6 +31,7 @@ struct AgentDesktopElement: Sendable, Equatable {
     let label: String?
     let center: ComputerCoordinates?
     var holdsState = false
+    var isSecure = false
 }
 
 struct AgentDesktopSnapshot: Sendable {
@@ -104,7 +105,8 @@ struct AgentDesktopSnapshot: Sendable {
                         y: (frame.y + frame.height / 2 - target.y) * scale
                     )
                 },
-                holdsState: !Self.toggleStates.isDisjoint(with: node.states)
+                holdsState: !Self.toggleStates.isDisjoint(with: node.states),
+                isSecure: node.isSecure
             )
         }
     }
@@ -116,12 +118,12 @@ struct AgentDesktopSnapshot: Sendable {
         return candidates.count == 1 ? candidates[0].0.ref : nil
     }
 
-    var focusedTextRef: String? {
+    var focusedTextField: AgentDesktopNode? {
         let fields = actionable.filter { Self.textRoles.contains($0.role) }
         if let focused = fields.first(where: { $0.states.contains("focused") }) {
-            return focused.ref
+            return focused
         }
-        return fields.count == 1 ? fields[0].ref : nil
+        return fields.count == 1 ? fields[0] : nil
     }
 
     private static let textRoles: Set<String> = ["textfield", "textarea", "searchfield"]

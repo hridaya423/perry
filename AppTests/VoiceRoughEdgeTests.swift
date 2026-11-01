@@ -122,6 +122,18 @@ final class VoiceRoughEdgeTests: XCTestCase {
         controller.wakeWordListener.stop()
     }
 
+    func testTheWakeIndicatorTurnsOnOnlyOnceTheListenerHasStarted() {
+        controller.wakeWordListener.retryDelays = []
+        controller.wakeWordListener.beginListening = { throw WakeStartFailure() }
+        controller.wakeWordListener.start()
+        XCTAssertEqual(wakeListening, [])
+
+        controller.wakeWordListener.beginListening = {}
+        controller.wakeWordListener.start()
+        XCTAssertEqual(wakeListening, [true])
+        controller.wakeWordListener.stop()
+    }
+
     private func failWakeWordStart() async {
         controller.wakeWordListener.start()
         try? await Task.sleep(for: .milliseconds(100))

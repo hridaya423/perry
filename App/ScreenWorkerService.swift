@@ -365,9 +365,13 @@ actor ScreenWorkerService {
 
     private func stopWorkers() async throws {
         let completions = workers.keys.map { completeRetirement($0) }
+        var firstFailure: Error?
         for completion in completions {
-            try await completion.value
+            if case .failure(let error) = await completion.result, firstFailure == nil {
+                firstFailure = error
+            }
         }
+        if let firstFailure { throw firstFailure }
     }
 
     private func requireOutsideWorker() throws {

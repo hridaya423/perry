@@ -41,6 +41,9 @@ actor AgentDesktopClient {
     static let windowInStageStrip = ScreenDriverError.toolRejected(
         "That window is in the Stage Manager strip. Click it to bring it to the front, then try again."
     )
+    static let secureFieldNeedsTheUser = ScreenDriverError.toolRejected(
+        "I can’t enter text in a password field here. Type it yourself, then continue."
+    )
     static let pointerNeedsForeground = ScreenDriverError.toolRejected(
         "Clicking a spot or dragging moves your cursor, so I only do it while I work in front of you."
     )
@@ -270,13 +273,17 @@ actor AgentDesktopClient {
     private func insertTextReportingDelivery(_ text: String, resolvedTarget: ScreenWindowTarget, sessionID: String) async throws -> ScreenWindowTarget {
         try Task.checkCancellation()
         _ = try validateResolvedTarget(resolvedTarget, sessionID: sessionID)
-        let field = try await focusedRef(in: resolvedTarget, sessionID: sessionID)
-        let before = try await fieldValue(field, sessionID: sessionID)
-        let typed = try await run(["type", field], payload: text, session: sessionID, timeout: requestTimeout)
-        if Self.delivery(typed) != "delivered_verified" {
-            let after = try await fieldValue(field, sessionID: sessionID)
-            guard Self.occurrences(of: text, in: after) > Self.occurrences(of: text, in: before) else {
-                throw ScreenDriverError.toolRejected("I couldn’t confirm the text went into the field.")
+        let field = try await focusedField(in: resolvedTarget, sessionID: sessionID)
+        if field.isSecure {
+            try await typeSecurely(text, into: field.ref, window: resolvedTarget, sessionID: sessionID)
+        } else {
+            let before = try await fieldValue(field.ref, sessionID: sessionID)
+            let typed = try await run(["type", field.ref], payload: text, session: sessionID, timeout: requestTimeout)
+            if Self.delivery(typed) != "delivered_verified" {
+                let after = try await fieldValue(field.ref, sessionID: sessionID)
+                guard Self.occurrences(of: text, in: after) > Self.occurrences(of: text, in: before) else {
+                    throw ScreenDriverError.toolRejected("I couldn’t confirm the text went into the field.")
+                }
             }
         }
         let current = try await refreshResolvedTarget(resolvedTarget, sessionID: sessionID)
@@ -633,23 +640,28 @@ actor AgentDesktopClient {
             case .point(let point): try await pointerClick(point, button: "left", count: 2, state: state, sessionID: sessionID)
             }
         case .typeText(let text, let target):
-            let field: String
+            let field: (ref: String, isSecure: Bool)
             if let target {
                 switch try await pointer(target) {
                 case .ref(let ref):
-                    field = ref
+                    field = (ref, isSecure(ref, state: state, sessionID: sessionID))
                 case .point(let point):
                     try await pointerClick(point, button: "left", count: 1, state: state, sessionID: sessionID)
-                    field = try await focusedRef(in: state.target, sessionID: sessionID)
+                    field = try await focusedField(in: state.target, sessionID: sessionID)
                 }
             } else {
-                field = try await focusedRef(in: state.target, sessionID: sessionID)
+                field = try await focusedField(in: state.target, sessionID: sessionID)
             }
-            try await refAction(["type", field], payload: text, state: state, sessionID: sessionID)
+            if field.isSecure {
+                try await typeSecurely(text, into: field.ref, window: state.target, sessionID: sessionID)
+            } else {
+                try await refAction(["type", field.ref], payload: text, state: state, sessionID: sessionID)
+            }
         case .setValue(let value, let target):
             guard let ref = try await elementRef(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken) else {
                 throw ScreenDriverError.targetNotFound
             }
+            guard !isSecure(ref, state: state, sessionID: sessionID) else { throw Self.secureFieldNeedsTheUser }
             _ = try await run(["set-value", ref], payload: value, session: sessionID, timeout: requestTimeout)
         case .scroll(let direction, let amount, let by, let target):
             let ref: String
@@ -878,12 +890,27 @@ actor AgentDesktopClient {
         return ref
     }
 
-    private func focusedRef(in target: ScreenWindowTarget, sessionID: String) async throws -> String {
+    private func focusedField(in target: ScreenWindowTarget, sessionID: String) async throws -> (ref: String, isSecure: Bool) {
         let snapshot = try await liveSnapshot(target, sessionID: sessionID, arguments: ["--surface", "focused", "-i"])
-        guard let ref = snapshot.focusedTextRef else {
+        guard let field = snapshot.focusedTextField, let ref = field.ref else {
             throw ScreenDriverError.targetNotFound
         }
-        return ref
+        return (ref, field.isSecure)
+    }
+
+    private func isSecure(_ ref: String, state: AgentDesktopSessionState, sessionID: String) -> Bool {
+        (sessionStates[sessionID]?.elements[ref] ?? state.elements[ref])?.isSecure == true
+    }
+
+    private func typeSecurely(_ text: String, into field: String, window: ScreenWindowTarget, sessionID: String) async throws {
+        guard let fallback else { throw Self.secureFieldNeedsTheUser }
+        guard !stagedWindowIDs.contains(window.windowID) else { throw Self.windowInStageStrip }
+        _ = try await run(["focus", field], session: sessionID, timeout: requestTimeout)
+        _ = try await fallback.insertText(
+            text,
+            target: ScreenTargetHint(bundleID: window.bundleID, processID: window.processID, windowID: window.windowID),
+            sessionID: sessionID
+        )
     }
 
     private func scrollableRef(in target: ScreenWindowTarget, sessionID: String) async throws -> String {

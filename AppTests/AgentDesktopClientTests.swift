@@ -86,7 +86,9 @@ final class AgentDesktopClientTests: XCTestCase {
         ok '[{"id":"w-1001","title":"Editor - Draft","app_name":"Editor","pid":4242,"bounds":{"x":10,"y":10,"width":800,"height":600},"is_focused":true},{"id":"w-1002","title":"Editor - Other","app_name":"Editor","pid":4242,"bounds":{"x":40,"y":40,"width":1200,"height":900},"is_focused":false}]'
         ;;
     snapshot)
-        if [ -f "$root/secure-fields" ]; then
+        if [ -f "$root/focused-secure" ]; then
+            ok '{"snapshot_id":"snap-1","complete":true,"ref_count":2,"tree":{"role":"window","name":"Editor - Draft","children":[{"ref_id":"@snap-1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}},{"ref_id":"@snap-1:e2","role":"textfield","name":"Password","states":["focused","secure"],"bounds":{"x":20,"y":60,"width":300,"height":24}}]}}'
+        elif [ -f "$root/secure-fields" ]; then
             ok '{"snapshot_id":"snap-secure","complete":true,"ref_count":2,"tree":{"role":"window","name":"Editor - Draft","children":[{"ref_id":"@snap-secure:e1","role":"textfield","name":"Password","value":"bullets","states":["secure"],"bounds":{"x":20,"y":60,"width":160,"height":24}},{"ref_id":"@snap-secure:e2","role":"textfield","value":"draft text","bounds":{"x":20,"y":90,"width":160,"height":24}},{"ref_id":"@snap-secure:e3","role":"textfield","value":"hunter2","states":["secure"]}]}}'
         elif [ -f "$root/stale-ref" ] && [ "$interactive" -eq 1 ] && [ "$focused" -eq 0 ]; then
             ok '{"snapshot_id":"snap-2","complete":true,"ref_count":1,"tree":{"role":"window","name":"Editor - Draft","children":[{"ref_id":"@snap-2:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}}]}}'
@@ -170,6 +172,7 @@ final class AgentDesktopClientTests: XCTestCase {
             *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
             *check_permissions*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"accessibility":true,"screen_recording":true,"source":{"attribution":"host","embedded":true}},"content":[]}}\n' "$id" ;;
             *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id" ;;
+            *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"effect":"confirmed","verified":true},"content":[]}}\n' "$id" ;;
             *) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}\n' "$id" ;;
         esac
     done
@@ -742,6 +745,87 @@ final class AgentDesktopClientTests: XCTestCase {
         XCTAssertEqual(second.stepID, "after-cancel")
         XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("late-response").path))
         XCTAssertEqual(calls(named: "click").count, 2)
+    }
+
+    func testAfterACancelledActionTheNextStepLooksTheControlUpAgain() async throws {
+        let client = makeClient()
+        addTeardownBlock {
+            try? Data([1]).write(to: self.testDirectory.appendingPathComponent("release-action"))
+            await client.shutdown()
+        }
+        let sessionID = "cancel-forgets-snapshot"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        let save = ComputerAction(stepID: "save", operation: .click(.element(id: "@snap-1:e1", label: "Save", point: nil)))
+        _ = try await client.execute(save, sessionID: sessionID)
+        let lookups = calls(named: "snapshot").count
+        try createMarker("delay-action")
+        let requester = Task { try await client.execute(save, sessionID: sessionID) }
+        try await waitForMarker("action-delayed")
+        requester.cancel()
+        _ = try? await requester.value
+        try createMarker("release-action")
+
+        _ = try await client.execute(save, sessionID: sessionID)
+
+        XCTAssertEqual(calls(named: "snapshot").count, lookups + 1)
+        XCTAssertEqual(calls(named: "snapshot").last?.contains("-i"), true)
+    }
+
+    func testAPasswordIsTypedThroughCuaAndNeverOnTheCommandLine() async throws {
+        try createMarker("focused-secure")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let target = try await client.resolveTarget(ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: "secure-insert")
+
+        _ = try await client.insertText("hunter2", resolvedTarget: target, sessionID: "secure-insert")
+
+        XCTAssertEqual(cuaCalls(named: "type_text").first?["text"] as? String, "hunter2")
+        XCTAssertTrue(calls(named: "type").isEmpty)
+        XCTAssertFalse(calls().contains { $0.contains("hunter2") })
+    }
+
+    func testAPasswordFieldNamedByTheStepIsTypedThroughCua() async throws {
+        try createMarker("focused-secure")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "secure-step"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+
+        _ = try await client.execute(ComputerAction(stepID: "password", operation: .typeText(text: "hunter2", target: .element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
+
+        XCTAssertEqual(calls(named: "focus").first?.contains("@snap-1:e2"), true)
+        XCTAssertEqual(cuaCalls(named: "type_text").first?["text"] as? String, "hunter2")
+        XCTAssertFalse(calls().contains { $0.contains("hunter2") })
+    }
+
+    func testSettingAPasswordFieldsValueIsRefused() async throws {
+        try createMarker("focused-secure")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "secure-set-value"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        do {
+            _ = try await client.execute(ComputerAction(stepID: "password", operation: .setValue(value: "hunter2", target: .element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
+            XCTFail("a password must not go through set-value")
+        } catch let error as ScreenDriverError {
+            XCTAssertEqual(error, AgentDesktopClient.secureFieldNeedsTheUser)
+        }
+        XCTAssertFalse(calls().contains { $0.contains("hunter2") })
+        XCTAssertTrue(cuaCalls(named: "type_text").isEmpty)
+    }
+
+    func testWithoutCuaAPasswordIsRefusedRatherThanPutOnTheCommandLine() async throws {
+        try createMarker("focused-secure")
+        let client = makeClient()
+        addTeardownBlock { await client.shutdown() }
+        let target = try await client.resolveTarget(ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: "secure-no-cua")
+        do {
+            _ = try await client.insertText("hunter2", resolvedTarget: target, sessionID: "secure-no-cua")
+            XCTFail("a password must not go through argv")
+        } catch let error as ScreenDriverError {
+            XCTAssertEqual(error, AgentDesktopClient.secureFieldNeedsTheUser)
+        }
+        XCTAssertFalse(calls().contains { $0.contains("hunter2") })
     }
 
     func testNoRestartTimeoutRetiresClientAndRejectsLaterActions() async throws {
@@ -1700,10 +1784,10 @@ final class AgentDesktopLabelMatchTests: XCTestCase {
             ["ref_id": .string(ref), "role": .string("textfield"), "states": .array(focused ? [.string("focused")] : [])]
         }
         let button: [String: JSONValue] = ["ref_id": .string("@s1:e9"), "role": .string("button"), "name": .string("Go")]
-        XCTAssertEqual(try tree([field("@s1:e1", false), field("@s1:e2", true)]).focusedTextRef, "@s1:e2")
-        XCTAssertEqual(try tree([button, field("@s1:e1", false)]).focusedTextRef, "@s1:e1")
-        XCTAssertNil(try tree([field("@s1:e1", false), field("@s1:e2", false)]).focusedTextRef)
-        XCTAssertNil(try tree([button]).focusedTextRef)
+        XCTAssertEqual(try tree([field("@s1:e1", false), field("@s1:e2", true)]).focusedTextField?.ref, "@s1:e2")
+        XCTAssertEqual(try tree([button, field("@s1:e1", false)]).focusedTextField?.ref, "@s1:e1")
+        XCTAssertNil(try tree([field("@s1:e1", false), field("@s1:e2", false)]).focusedTextField)
+        XCTAssertNil(try tree([button]).focusedTextField)
     }
 
     func testElementCentresAreWindowPixelsAtTheBackingScale() throws {

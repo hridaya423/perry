@@ -64,11 +64,18 @@ Last-20% push (2026-11-01, later; mini still offline, code only):
   - Not a defect: the second `refreshThreads()` in `presentRun`. The first runs while `pendingQuestions` still hides the turn's input id. The second, after it clears, is what shows an interrupted turn's input in the recovery view.
   - `ScreenWorkerService.completeRetirement` always waits for the running operation before dropping the worker, then rethrows any retirement error other than `terminationUnconfirmed`.
   - Checks: `swiftc -parse` on every touched file; no new comments or em dashes; the `completeRetirement` expression type-checks in a scratch file. Nothing built or run.
-- Earlier left: a failed OAuth refresh save fails the one request that triggered it (the next one works from the in-memory token); flagging rather than adding an out-of-band channel. Duplicate `directory()`/`waitUntil` helpers in two test files. `-parse` of `CustomConnectors.swift` needs `-enable-bare-slash-regex` (pre-existing in HEAD, builds on the mini).
+- Committed as 62518b1 (everything except `.devin/`, `.audit/` and a stray root `ob3.png`).
+- Code-only follow-ups after the commit:
+  - `stopWorkers` waits for every worker's retirement and then throws the first failure, instead of abandoning the rest at the first error. No test: it needs a slow injectable `retire()`, which the service doesn't have.
+  - Password fields: `insertText`, `typeText` and `setValue` know when the field is secure (focused-field snapshot, or the cached element). Secure text is focused with agent-desktop and typed through cua `type_text` (stdin JSON-RPC), never argv. Without cua, or for `set-value`, Perry refuses: "I can’t enter text in a password field here. Type it yourself, then continue." Tests: `testAPasswordIsTypedThroughCuaAndNeverOnTheCommandLine`, `testAPasswordFieldNamedByTheStepIsTypedThroughCua`, `testWithoutCuaAPasswordIsRefusedRatherThanPutOnTheCommandLine`, `testSettingAPasswordFieldsValueIsRefused`. Unverified live: cua `type_text` into a real secure field in the background.
+  - Connector late-report guard also requires the connector to still exist (a removal before the connect task runs, with a Keychain delete that failed, still built a current session). Test: `testASaveFailureReportedAfterTheConnectorWasRemovedIsIgnored`.
+  - Tests for earlier fixes: `testAfterACancelledActionTheNextStepLooksTheControlUpAgain`, `testTheWakeIndicatorTurnsOnOnlyOnceTheListenerHasStarted`.
+  - Checks: `swiftc -parse` on every touched file; no new comments or em dashes; the tuple and `await`-in-`if case` constructs type-check in a scratch file. Nothing built or run.
+- Earlier left: `-parse` of `CustomConnectors.swift` needs `-enable-bare-slash-regex` (pre-existing in HEAD, builds on the mini). Four older test files keep private `waitUntil` copies (outside this work).
 
 Left on purpose (owner or mini):
 - Stop on an action ends that session's host, which costs the warm host on the next step. Measure the restart on the mini.
-- Typed text goes through argv (visible in `ps`). `type --help` offers no stdin option; text over 200,000 bytes is refused before launch.
+- Ordinary typed text goes through argv (visible in `ps` to the same user). `type --help` offers no stdin option; text over 200,000 bytes is refused before launch. Password-field text goes through cua instead (see below).
 - Return confirms "Start task" (owner call from 2026-11-01).
 - Two client tests still wait out the real 15 s timeout.
 

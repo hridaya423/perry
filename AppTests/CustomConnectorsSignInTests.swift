@@ -222,6 +222,28 @@ final class CustomConnectorsSignInTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(backend.readCredential(account: id.uuidString)).contains("rotated"))
     }
 
+    func testASaveFailureReportedAfterTheConnectorWasRemovedIsIgnored() async throws {
+        let remote = FakeHostedMCP(accepting: "oauth-token")
+        let backend = FlakyCredentialBackend()
+        let first = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend, http: remote, userAgent: FakeBrowser())
+        _ = await first.add(CustomConnector(name: "Hosted", endpoint: hosted))
+        first.disconnectAll()
+        remote.issue("rotated")
+        backend.refuse(saves: true, deletes: true)
+
+        let relaunched = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend, http: remote, userAgent: FakeBrowser())
+        relaunched.connectAll()
+        relaunched.remove(try XCTUnwrap(relaunched.connectors.first?.id))
+        let refreshes = { remote.requests.filter { String(decoding: $0.httpBody ?? Data(), as: UTF8.self).contains("grant_type=refresh_token") }.count }
+        for _ in 0..<100 where refreshes() == 0 {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        try await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertGreaterThan(refreshes(), 0)
+        XCTAssertTrue(relaunched.signInNotSaved.isEmpty)
+    }
+
     func testAStaticBearerTokenStillWorksAndNeverOpensTheBrowser() async throws {
         let remote = FakeHostedMCP(accepting: "static-key")
         let browser = FakeBrowser()
