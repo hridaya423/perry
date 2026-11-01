@@ -235,8 +235,7 @@ extension VoiceController {
             overlayState.voiceState = .idle
             return
         }
-        let outputAvailable = AudioRouteMonitor.defaultOutputAvailable()
-        let outputMuted = AudioRouteMonitor.defaultOutputMuted()
+        let (outputAvailable, outputMuted) = outputRoute()
         guard outputAvailable, !outputMuted else {
             if copiesReplyWhenMuted {
                 PerfMark.mark("talk.muted_clipboard")
@@ -297,6 +296,14 @@ extension VoiceController {
     }
 
     func deliverVoiceReply(_ text: String) {
+        deliver(text, copiesWhenMuted: false)
+    }
+
+    func deliverAnswer(_ text: String) {
+        deliver(text, copiesWhenMuted: true)
+    }
+
+    private func deliver(_ text: String, copiesWhenMuted: Bool) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         if let realtimeVoiceSession {
@@ -308,7 +315,7 @@ extension VoiceController {
                 break
             }
         }
-        speak(cleaned, copiesReplyWhenMuted: true)
+        speak(cleaned, copiesReplyWhenMuted: copiesWhenMuted)
     }
 
     func preview(_ text: String, engine: SpeechEngineChoice, voiceID: String? = nil) {
@@ -332,8 +339,8 @@ extension VoiceController {
     func copyReplyToClipboard(_ text: String, status: String) {
         synthesizer.stopSpeaking(at: .immediate)
         currentSpeechText = nil
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
         hooks.setStatus(status)
         Task {
             await notifier.deliver(

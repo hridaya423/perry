@@ -5,15 +5,15 @@ import XCTest
 import PerryCore
 @testable import Perry
 
-final class CuaLiveTests: XCTestCase {
-    private let fixtureTitle = "Perry-Cua-Fixture.txt"
-    private let fixtureMarker = "Perry Cua capture fixture 001"
+final class AgentDesktopLiveTests: XCTestCase {
+    private let fixtureTitle = "Perry-Screen-Fixture.txt"
+    private let fixtureMarker = "Perry screen capture fixture 001"
 
     func testExactWindowCaptureSurvivesDriverRestart() async throws {
         let client = try await readyLiveClient()
         let sessionID = "perry-live-capture-\(UUID().uuidString)"
         let first = try await client.capture(
-            target: CuaTargetHint(bundleID: "com.apple.TextEdit", windowTitle: fixtureTitle),
+            target: ScreenTargetHint(bundleID: "com.apple.TextEdit", windowTitle: fixtureTitle),
             sessionID: sessionID
         )
         try assertFixtureCapture(first)
@@ -25,7 +25,7 @@ final class CuaLiveTests: XCTestCase {
         _ = try XCTUnwrap(health.ready ? true : nil, health.summary)
 
         let second = try await client.capture(
-            target: CuaTargetHint(
+            target: ScreenTargetHint(
                 bundleID: first.target.bundleID,
                 processID: first.target.processID,
                 windowID: first.target.windowID
@@ -41,14 +41,14 @@ final class CuaLiveTests: XCTestCase {
     func testMissingExactWindowDoesNotCaptureAnotherWindow() async throws {
         let client = try await readyLiveClient()
         let reference = try await client.capture(
-            target: CuaTargetHint(bundleID: "com.apple.TextEdit", windowTitle: fixtureTitle),
+            target: ScreenTargetHint(bundleID: "com.apple.TextEdit", windowTitle: fixtureTitle),
             sessionID: "perry-live-reference-\(UUID().uuidString)"
         )
         try assertFixtureCapture(reference)
         let sessionID = "perry-live-missing-\(UUID().uuidString)"
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(
+                target: ScreenTargetHint(
                     bundleID: reference.target.bundleID,
                     processID: reference.target.processID,
                     windowID: Int64.max
@@ -56,24 +56,24 @@ final class CuaLiveTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("An absent exact window must not fall back to another window")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         }
         let target = await client.target(for: sessionID)
         XCTAssertNil(target)
     }
 
-    private func readyLiveClient() async throws -> CuaDriverClient {
-        guard ProcessInfo.processInfo.environment["PERRY_LIVE_CUA"] == "1" else {
-            throw XCTSkip("Set PERRY_LIVE_CUA=1 in the test runner after opening the documented TextEdit fixture and granting Perry permissions")
+    private func readyLiveClient() async throws -> AgentDesktopClient {
+        guard ProcessInfo.processInfo.environment["PERRY_LIVE_AGENT_DESKTOP"] == "1" else {
+            throw XCTSkip("Set PERRY_LIVE_AGENT_DESKTOP=1 in the test runner after opening the documented TextEdit fixture and granting Perry permissions")
         }
-        let client = CuaDriverClient()
+        let client = AgentDesktopClient()
         addTeardownBlock { await client.shutdown() }
         let health = await client.health()
         return try XCTUnwrap(health.ready ? client : nil, health.summary)
     }
 
-    private func assertFixtureCapture(_ capture: CuaCapturedWindow) throws {
+    private func assertFixtureCapture(_ capture: ScreenCapturedWindow) throws {
         XCTAssertEqual(capture.target.bundleID, "com.apple.TextEdit")
         XCTAssertEqual(capture.target.title, fixtureTitle)
         XCTAssertGreaterThan(capture.target.processID, 0)

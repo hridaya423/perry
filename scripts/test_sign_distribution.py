@@ -7,11 +7,17 @@ import unittest
 
 SIGNER = Path(__file__).with_name("sign-distribution.sh")
 CAPABILITIES_PATH = "Contents/Resources/CuaDriver/capabilities.yaml"
+AGENT_DESKTOP_PATH = "Contents/Resources/AgentDesktop/bin/agent-desktop"
+AGENT_DESKTOP_HELPER_PATH = "Contents/Resources/AgentDesktop/bin/agent-desktop-macos-helper"
 REQUIRED_CODE_PATHS = (
     "Contents/MacOS/Perry",
     "Contents/MacOS/perry-mcp",
     "Contents/Resources/CodexRuntime/bin/codex",
     "Contents/Resources/CuaDriver/bin/cua-driver",
+    AGENT_DESKTOP_PATH,
+    AGENT_DESKTOP_HELPER_PATH,
+    "Contents/Resources/LocalEngine/libllama.dylib",
+    "Contents/Resources/LocalEngine/llama-server",
     "Contents/Frameworks/Sparkle.framework",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate",
@@ -25,6 +31,10 @@ REQUIRED_CODE_PATHS = (
 SIGN_ORDER = (
     "Contents/Resources/CodexRuntime/bin/codex",
     "Contents/Resources/CuaDriver/bin/cua-driver",
+    AGENT_DESKTOP_HELPER_PATH,
+    AGENT_DESKTOP_PATH,
+    "Contents/Resources/LocalEngine/libllama.dylib",
+    "Contents/Resources/LocalEngine/llama-server",
     "Contents/MacOS/perry-mcp",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Installer.xpc",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/XPCServices/Downloader.xpc",
@@ -110,18 +120,20 @@ class DistributionSigningTests(unittest.TestCase):
             sign_index = call.index("--sign")
             self.assertEqual(call[sign_index + 1], "TEST IDENTITY")
             self.assertNotIn("--deep", call)
-        self.assertIn("--preserve-metadata=entitlements", calls[4])
-        self.assertTrue(all("--preserve-metadata=entitlements" not in call for call in calls[:4] + calls[5:-1]))
+        self.assertIn("--preserve-metadata=entitlements", calls[8])
+        self.assertTrue(all("--preserve-metadata=entitlements" not in call for call in calls[:8] + calls[9:-1]))
+        self.assertEqual(calls[2][calls[2].index("--identifier") + 1], "agent-desktop-macos-helper")
+        self.assertEqual(calls[3][calls[3].index("--identifier") + 1], "agent-desktop")
         self.assertIn("--entitlements", calls[-1])
         self.assertEqual(calls[-1][calls[-1].index("--entitlements") + 1], str(self.entitlements))
         self.assertTrue(all("--entitlements" not in call for call in calls[:-1]))
 
     def test_sign_failure_stops_before_app_seal(self):
-        failure_target = str(self.app / SIGN_ORDER[4])
+        failure_target = str(self.app / SIGN_ORDER[8])
         result = self.run_signer(failure_target)
         self.assertNotEqual(result.returncode, 0)
         calls = self.captured_calls()
-        self.assertEqual([call[-1] for call in calls], [str(self.app / path) for path in SIGN_ORDER[:5]])
+        self.assertEqual([call[-1] for call in calls], [str(self.app / path) for path in SIGN_ORDER[:9]])
         self.assertNotIn(str(self.app), [call[-1] for call in calls])
 
     def test_missing_nested_code_fails_before_any_sign(self):

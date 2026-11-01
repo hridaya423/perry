@@ -268,4 +268,45 @@ final class OnboardingDirectorTests: XCTestCase {
             fresh.stop()
         }
     }
+
+    func testGoingBackKeepsTheInterviewWhereTheUserLeftIt() {
+        let director = OnboardingDirector()
+        let make = { InterviewModel(name: "Ada", effects: .init(complete: nil, listensAfterSpeaking: false)) }
+        let first = director.interviewModel(make)
+        first.confirmPronunciation()
+        let step = first.step
+        XCTAssertNotEqual(step, .pronounce)
+        XCTAssertTrue(director.interviewModel(make) === first)
+        XCTAssertEqual(director.interviewModel(make).step, step)
+        first.cancel()
+        XCTAssertFalse(director.interviewModel(make) === first)
+        let second = director.interviewModel(make)
+        director.start(resume: false)
+        XCTAssertFalse(director.interviewModel(make) === second)
+        director.stop()
+    }
+
+    func testSkippingTheInterviewBeatStopsAnImportInProgress() async throws {
+        let director = OnboardingDirector()
+        director.start(resume: false)
+        while director.beat != .interview { director.skip() }
+        let model = director.interviewModel {
+            InterviewModel(name: "Ada", effects: .init(
+                complete: { _ in "" },
+                listensAfterSpeaking: false,
+                importMemory: { _ in
+                    try? await Task.sleep(for: .seconds(30))
+                    return nil
+                }
+            ))
+        }
+        model.confirmPronunciation()
+        model.answer(nil)
+        model.chooseImport(.chatGPT)
+        model.allowImport(true)
+        XCTAssertEqual(model.step, .importing(.chatGPT))
+        director.skip()
+        XCTAssertEqual(model.step, .summary)
+        director.stop()
+    }
 }

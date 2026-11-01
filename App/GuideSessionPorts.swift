@@ -16,7 +16,7 @@ struct GuideSpeechIdentity: Equatable {
 struct GuideHandoff {
     let threadID: UUID
     let goal: String
-    let target: CuaTargetHint
+    let target: ScreenTargetHint
 }
 
 @MainActor
@@ -47,7 +47,7 @@ extension GuideSessionOutput {
 
 @MainActor
 protocol GuideSessionContext: AnyObject {
-    func guideTargetHint() -> CuaTargetHint
-    func guideAppBundleID(for targetHint: CuaTargetHint) -> String?
+    func guideTargetHint() -> ScreenTargetHint
+    func guideAppBundleID(for targetHint: ScreenTargetHint) -> String?
     func guideSpatialRegionDescription() -> String?
 }

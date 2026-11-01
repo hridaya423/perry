@@ -14,11 +14,12 @@ class ReleaseMetadataTests(unittest.TestCase):
     def test_xcodegen_lock_is_emitted_as_sbom_and_license_component(self):
         runtime = release_metadata.load_runtime_lock(REPO_ROOT / "scripts/codex-runtime.lock")
         cua_driver = release_metadata.load_cua_driver_lock(REPO_ROOT / "scripts/cua-driver.lock")
+        agent_desktop = release_metadata.load_agent_desktop_lock(REPO_ROOT / "scripts/agent-desktop.lock")
         sparkle = release_metadata.load_sparkle_lock(REPO_ROOT / "scripts/sparkle.lock")
         xcodegen = release_metadata.load_xcodegen_lock(REPO_ROOT / "scripts/xcodegen.lock")
 
         licenses, unresolved = release_metadata.third_party_components(
-            {}, runtime, cua_driver, sparkle, xcodegen, []
+            {}, runtime, cua_driver, agent_desktop, sparkle, xcodegen
         )
         self.assertEqual(unresolved, [])
         xcodegen_license = next(item for item in licenses if item["id"] == "tool.xcodegen")
@@ -35,7 +36,7 @@ class ReleaseMetadataTests(unittest.TestCase):
         )
 
         sbom = release_metadata.build_sbom(
-            {}, {}, set(), runtime, cua_driver, sparkle, xcodegen, []
+            {}, {}, set(), runtime, cua_driver, agent_desktop, sparkle, xcodegen
         )
         xcodegen_component = next(
             item for item in sbom["components"] if item["bom-ref"] == "tool:xcodegen"

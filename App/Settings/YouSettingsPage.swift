@@ -11,6 +11,8 @@ struct YouSettingsPage: View {
     @State private var confirmsErase = false
     @State private var error: String?
     @State private var profile: [String: String] = [:]
+    @State private var savedProfile: [String: String] = [:]
+    @FocusState private var focusedField: String?
     @State private var pasted = ""
     @State private var copied = false
     @State private var importing = false
@@ -48,6 +50,7 @@ struct YouSettingsPage: View {
                             .frame(width: 110, alignment: .leading)
                         TextField(field, text: Binding(get: { profile[field] ?? "" }, set: { profile[field] = $0 }), prompt: Text("Not set").foregroundStyle(PerryTheme.Colors.textTertiary))
                             .textFieldStyle(.plain)
+                            .focused($focusedField, equals: field)
                             .onSubmit { saveProfile(field) }
                     }
                     .settingsRowPadding()
@@ -123,6 +126,12 @@ struct YouSettingsPage: View {
             }
         }
         .task(reload)
+        .onChange(of: focusedField) { old, _ in
+            if let old { saveProfile(old) }
+        }
+        .onDisappear {
+            Self.profileFields.forEach(saveProfile)
+        }
         .notchDialog(
             "Erase memory?",
             isPresented: $confirmsErase,
@@ -148,6 +157,11 @@ struct YouSettingsPage: View {
         categories = configuration.categoryToggles
         records = await controller.memories().sorted { Self.standing($0) && !Self.standing($1) }
         profile = Dictionary(uniqueKeysWithValues: Self.profileFields.map { ($0, controller.memoryFiles?.profileField($0) ?? "") })
+        savedProfile = profile
+    }
+
+    static func isUnsaved(_ field: String, profile: [String: String], saved: [String: String]) -> Bool {
+        (profile[field] ?? "") != (saved[field] ?? "")
     }
 
     private var canImport: Bool {
@@ -155,8 +169,10 @@ struct YouSettingsPage: View {
     }
 
     private func saveProfile(_ field: String) {
+        guard Self.isUnsaved(field, profile: profile, saved: savedProfile) else { return }
         do {
             try controller.memoryFiles?.setProfileField(field, profile[field] ?? "")
+            savedProfile[field] = profile[field] ?? ""
         } catch {
             self.error = "I couldn’t save your \(field.lowercased()). Try again."
         }

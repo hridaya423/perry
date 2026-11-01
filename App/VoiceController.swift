@@ -16,12 +16,12 @@ final class VoiceController: NSObject, ObservableObject {
         var dispatch: (_ text: String?, _ taskScope: UUID?) -> Void = { _, _ in }
         var wake: () -> Void = {}
         var sessionIsIdle: () -> Bool = { false }
-        var wakeListeningChanged: () -> Void = {}
+        var wakeListeningChanged: (Bool) -> Void = { _ in }
         var executingTaskID: () -> UUID? = { nil }
     }
 
     let overlayState: PerryCursorState
-    let workers: CuaWorkerService
+    let workers: ScreenWorkerService
     let notifier: any AppNotificationClient
     let supportDirectory: () -> URL?
     let hooks: Hooks
@@ -35,6 +35,7 @@ final class VoiceController: NSObject, ObservableObject {
     private var realtimeCommandDispatched = false
     private var dictationAttemptID: UUID?
     var dictationScopedTaskID: UUID?
+    var dictationInsertsWithoutPrefix = false
     var dictationWorkerTask: Task<Void, Never>?
     var dictationInsertionID: UUID?
     var dictationLearnCheckTask: Task<Void, Never>?
@@ -42,6 +43,10 @@ final class VoiceController: NSObject, ObservableObject {
     var dictationSpeechEndedAt: UInt64?
     var dictationTargetApplication: NSRunningApplication?
     var lastDictationLanguageIdentifier: String?
+    var pasteboard = NSPasteboard.general
+    var outputRoute: () -> (available: Bool, muted: Bool) = {
+        (AudioRouteMonitor.defaultOutputAvailable(), AudioRouteMonitor.defaultOutputMuted())
+    }
 
     lazy var performanceSampleLog: PerformanceSampleLog? = {
         do {
@@ -115,7 +120,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     private lazy var pushToTalk = PushToTalkController(
         gesture: PerryPreferences.dictateGesture,
-        onPress: { [weak self] in self?.beginDictation() },
+        onPress: { [weak self] in self?.beginDictation(insertsWithoutPrefix: true) },
         onRelease: { [weak self] in self?.finishDictation() }
     )
 
@@ -125,7 +130,7 @@ final class VoiceController: NSObject, ObservableObject {
         self?.handleMutedOutput()
     }
 
-    private lazy var wakeWordListener = WakeWordListener(
+    lazy var wakeWordListener = WakeWordListener(
         onWake: { [weak self] command in
             Task { @MainActor [weak self] in self?.handleWakeWord(command) }
         },
@@ -134,13 +139,20 @@ final class VoiceController: NSObject, ObservableObject {
         },
         onFailure: { [weak self] reason in
             Task { @MainActor [weak self] in
-                guard let self, PerryPreferences.wakeWordEnabled else { return }
-                PerryPreferences.wakeWordEnabled = false
-                self.hooks.wakeListeningChanged()
+                guard let self, !self.wakeWordListener.isRunning else { return }
+                self.hooks.wakeListeningChanged(false)
+                guard PerryPreferences.wakeWordEnabled, !self.wakeWordFailureReported else { return }
+                self.wakeWordFailureReported = true
                 self.hooks.setStatus("Wake word is unavailable: \(reason). Use the hotkey instead.")
             }
+        },
+        onStarted: { [weak self] in
+            self?.wakeWordFailureReported = false
+            self?.hooks.wakeListeningChanged(true)
         }
     )
+
+    private var wakeWordFailureReported = false
 
     var wakeWordGate: WakeWordGate {
         WakeWordGate(enabled: PerryPreferences.wakeWordEnabled)
@@ -148,7 +160,7 @@ final class VoiceController: NSObject, ObservableObject {
 
     init(
         overlayState: PerryCursorState,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         notifier: any AppNotificationClient,
         supportDirectory: @escaping () -> URL?,
         hooks: Hooks
@@ -170,8 +182,9 @@ final class VoiceController: NSObject, ObservableObject {
         audioRouteMonitor.start()
     }
 
-    func beginDictation(steering: Bool = false) {
+    func beginDictation(steering: Bool = false, insertsWithoutPrefix: Bool = false) {
         dictationAttemptID = nil
+        dictationInsertsWithoutPrefix = insertsWithoutPrefix
         dictation.cancel()
         overlayState.voiceState = .idle
         overlayState.buddyState = .idle
@@ -299,6 +312,7 @@ final class VoiceController: NSObject, ObservableObject {
         voiceInvocation.cancel()
         dictationAttemptID = nil
         dictationScopedTaskID = nil
+        dictationInsertsWithoutPrefix = false
         dictationSpeechEndedAt = nil
         dictationTargetApplication = nil
         dictationInsertionID = nil
@@ -457,39 +471,44 @@ final class VoiceController: NSObject, ObservableObject {
 
     func updateWakeWordEnabled(_ enabled: Bool) {
         PerryPreferences.wakeWordEnabled = enabled
-        hooks.wakeListeningChanged()
+        wakeWordFailureReported = false
         if enabled {
             Task { @MainActor in
                 guard await self.requestDictationPermission() else {
                     PerryPreferences.wakeWordEnabled = false
-                    self.hooks.wakeListeningChanged()
+                    self.hooks.wakeListeningChanged(false)
                     self.hooks.setStatus("Wake word needs microphone and speech permission; the hotkey still works.")
                     return
                 }
                 self.refreshWakeWordListener()
             }
         } else {
-            wakeWordListener.stop()
+            stopWakeWordListener()
         }
     }
 
     func refreshWakeWordListener() {
         guard PerryPreferences.wakeWordEnabled, hooks.sessionIsIdle() else {
-            wakeWordListener.stop()
+            stopWakeWordListener()
             return
         }
         if let realtimeVoiceSession, realtimeVoiceSession.state != .idle {
-            wakeWordListener.stop()
+            stopWakeWordListener()
             return
         }
         guard PerryPermissionProbe.checkMicrophone() == .granted,
               SFSpeechRecognizer.authorizationStatus() == .authorized else {
             PerryPreferences.wakeWordEnabled = false
-            hooks.wakeListeningChanged()
+            hooks.wakeListeningChanged(false)
             hooks.setStatus("Wake word is off because microphone or speech permission is unavailable.")
             return
         }
         wakeWordListener.start()
+    }
+
+    private func stopWakeWordListener() {
+        wakeWordListener.stop()
+        hooks.wakeListeningChanged(false)
     }
 
     private func handleWakeHeard() {
@@ -498,6 +517,7 @@ final class VoiceController: NSObject, ObservableObject {
     }
 
     private func handleWakeWord(_ command: String) {
+        hooks.wakeListeningChanged(false)
         overlayState.voiceState = .idle
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard hooks.sessionIsIdle(), !trimmed.isEmpty else {

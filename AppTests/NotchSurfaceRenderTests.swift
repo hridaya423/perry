@@ -211,6 +211,18 @@ final class NotchSurfaceRenderTests: XCTestCase {
         model.threads = [thread]
         model.sidebarSelection = .thread(thread.id)
         try await render(openNotch(controller), name: "conversation", size: NSSize(width: 892, height: 552))
+        model.pendingQuestions[thread.id] = .init(text: "Draft the follow-up email", turnIndex: 1)
+        model.streamingAnswers[thread.id] = "Looking at the outline now."
+        model.queuedFollowUps[thread.id] = [
+            .init(text: "Then add the open questions to the email"),
+            .init(text: "And copy Sam on it, but keep the tone short and friendly, nothing too formal please")
+        ]
+        try await render(openNotch(controller), name: "conversation-queued", size: NSSize(width: 892, height: 552))
+        model.pausedQueues = [thread.id]
+        model.pendingQuestions[thread.id] = nil
+        model.streamingAnswers[thread.id] = nil
+        try await render(openNotch(controller), name: "conversation-queue-paused", size: NSSize(width: 892, height: 552))
+        model.clearQueues()
     }
 
     func testRenderOnboardingBeats() async throws {

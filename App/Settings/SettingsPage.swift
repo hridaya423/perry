@@ -348,7 +348,7 @@ extension AppController {
     }
 
     func setNotchEyes(_ enabled: Bool) {
-        subsystems.notchStatus.setEnabled(enabled)
+        PerryPreferences.notchStatusEnabled = enabled
         if enabled {
             subsystems.notchStatus.update(
                 isRecording: subsystems.routineLibrary.isRecording,

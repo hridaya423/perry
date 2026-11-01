@@ -7,12 +7,11 @@ click lands on its centre. A case passes when the app ends in the goal state.
 Draw cases ask the agent to mark things without acting and capture the marks.
 """
 import argparse
-import base64
 import importlib.util
 import json
-import re
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -20,35 +19,29 @@ REPO = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("bench", REPO / "scripts/lab/planner-bench.py")
 bench = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bench)
+sys.path.insert(0, str(REPO / "scripts/lab"))
+import agent_desktop as ad
 
 STATE = bench.RUN.parent / "guide-state.json"
 OVERLAYS = bench.RUN.parent / "overlays.jsonl"
-DRIVER = os.path.expanduser("~/.local/bin/cua-driver")
 DRAW_TOOLS = ("point", "ring", "arrow", "underline", "caption", "path")
 
 
-def driver(name, arguments):
-    out = subprocess.run([DRIVER, "call", name], input=json.dumps(arguments), capture_output=True, text=True).stdout
-    try:
-        return json.loads(out)
-    except ValueError:
-        return {}
+def app_windows(app, visible_only=True):
+    return [w for w in ad.windows(app_name=app)
+            if w["bounds"]["width"] > 200 and (not visible_only or (w.get("visible", True) and not w.get("minimized")))]
 
 
 def capture(path):
-    shot = driver("get_desktop_state", {})
-    if shot.get("screenshot_png_b64"):
-        path.write_bytes(base64.b64decode(shot["screenshot_png_b64"]))
-        return path.name
-    return None
+    subprocess.run(["screencapture", "-x", str(path)], capture_output=True, check=False)
+    return path.name if path.exists() else None
 
 
 def calculator_result():
-    window = next(w for w in driver("list_windows", {"on_screen_only": True}).get("windows", [])
-                  if w.get("app_name") == "Calculator" and w["bounds"]["width"] > 200)
-    tree = driver("get_window_state", {"pid": window["pid"], "window_id": window["window_id"]}).get("tree_markdown", "")
-    match = re.search(r'AXStaticText = "([^"]*)" \(Edit field\)', tree)
-    value = match.group(1).replace(",", "").replace("\u200e", "").strip() if match else ""
+    window = app_windows("Calculator")[0]
+    display = next((n for n in ad.nodes(window["id"], interactive=False)
+                    if n.get("role") == "statictext" and "Edit field" in str(n.get("description") or "")), {})
+    value = str(display.get("value") or display.get("name") or "").replace(",", "").replace("\u200e", "").strip()
     print(json.dumps(dict(calculator_display=value)), flush=True)
     return value
 
@@ -66,10 +59,8 @@ def settings_open():
 def close_finder_windows():
     deadline, quiet_since = time.time() + 30, time.time()
     while time.time() < deadline and time.time() - quiet_since < 4:
-        windows = [w for w in driver("list_windows", {"on_screen_only": True}).get("windows", [])
-                   if w.get("app_name") == "Finder" and w["bounds"]["width"] > 200]
-        if windows:
-            driver("invoke_menu", {"pid": windows[0]["pid"], "window_id": windows[0]["window_id"], "path": ["File", "Close Window"]})
+        if app_windows("Finder"):
+            bench.osa('tell application "Finder" to close front window')
             quiet_since = time.time()
         time.sleep(0.4)
 
@@ -83,8 +74,7 @@ def hidden_path_bar():
     close_finder_windows()
     bench.sh("open -R " + str(bench.RUN / "inbox/draft-c.txt"))
     time.sleep(2)
-    finder = [w for w in driver("list_windows", {"on_screen_only": False}).get("windows", [])
-              if w.get("app_name") == "Finder" and w["bounds"]["width"] > 200]
+    finder = app_windows("Finder", visible_only=False)
     print(json.dumps(dict(finder_windows=len(finder))), flush=True)
 
 
@@ -140,8 +130,7 @@ def overlay_rows():
 
 
 def window_point(app, offset):
-    window = next(w for w in driver("list_windows", {"on_screen_only": True}).get("windows", [])
-                  if w.get("app_name") == app and w["bounds"]["width"] > 200)
+    window = app_windows(app)[0]
     return window["bounds"]["x"] + offset[0], window["bounds"]["y"] + offset[1]
 
 

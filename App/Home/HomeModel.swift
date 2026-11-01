@@ -55,8 +55,8 @@ final class HomeModel: ObservableObject {
         var followsLatest = true
     }
 
-    @Published var newConversationTarget: CuaTargetHint?
-    @Published var conversationTargets: [UUID: CuaTargetHint] = [:]
+    @Published var newConversationTarget: ScreenTargetHint?
+    @Published var conversationTargets: [UUID: ScreenTargetHint] = [:]
 
     @Published var conversationPositions: [UUID: ConversationScrollPosition] = [:]
     @Published var onboarding: OnboardingDirector?
@@ -79,9 +79,25 @@ final class HomeModel: ObservableObject {
     struct PendingQuestion: Equatable {
         let text: String
         let turnIndex: Int
+        var inputID: UUID?
     }
 
-    @Published var pendingQuestions: [UUID: PendingQuestion] = [:]
+    @Published var pendingQuestions: [UUID: PendingQuestion] = [:] {
+        didSet { sendQueuedFollowUps() }
+    }
+    struct QueuedFollowUp: Identifiable, Equatable {
+        let id: UUID
+        let text: String
+
+        init(id: UUID = UUID(), text: String) {
+            self.id = id
+            self.text = text
+        }
+    }
+
+    @Published var queuedFollowUps: [UUID: [QueuedFollowUp]] = [:]
+    @Published var pausedQueues: Set<UUID> = []
+    private var sendingNow: Set<UUID> = []
     @Published var threadErrors: [UUID: String] = [:]
     var onNewDraftChanged: ((String) -> Void)?
     var onStartConversation: ((String) -> Void)?
@@ -100,6 +116,7 @@ final class HomeModel: ObservableObject {
 
     func updateNewDraft(_ text: String) {
         guard text != newConversationDraft else { return }
+        composerNotice = nil
         newConversationDraft = text
         onNewDraftChanged?(text)
     }
@@ -119,11 +136,16 @@ final class HomeModel: ObservableObject {
         return turns
     }
 
-    @Published var threads: [PerryThread] = []
+    @Published var threads: [PerryThread] = [] {
+        didSet { sendQueuedFollowUps() }
+    }
     @Published var perrys: [Perry] = []
     @Published var sidebarSelection: Selection?
     @Published var composerMode: ComposerMode = .ask
-    @Published var workingThreads: Set<UUID> = []
+    @Published var composerNotice: String?
+    @Published var workingThreads: Set<UUID> = [] {
+        didSet { sendQueuedFollowUps() }
+    }
     @Published var stoppingThreads: Set<UUID> = []
     @Published var streamingAnswers: [UUID: String] = [:]
     @Published var suggestions: [SuggestionCard] = []
@@ -140,7 +162,8 @@ final class HomeModel: ObservableObject {
     private var backgroundTasksObservation: AnyCancellable?
 
     var onDraftChanged: ((UUID, String) -> Void)?
-    var onSend: ((UUID, String) -> Void)?
+    var onSend: ((UUID, String, UUID?) -> Bool)?
+    var onQueueFollowUp: ((UUID, PerryThread.WaitingInput) -> Void)?
     var onPerrySelected: ((Perry) -> Void)?
     var onSuggestionAct: ((SuggestionCard) -> Void)?
     var onSuggestionAdjust: ((SuggestionCard) -> Void)?
@@ -153,9 +176,83 @@ final class HomeModel: ObservableObject {
         onDraftChanged?(threadID, draft)
     }
 
+    func isBusy(_ threadID: UUID) -> Bool {
+        workingThreads.contains(threadID) || pendingQuestions[threadID] != nil
+    }
+
     func send(threadID: UUID, text: String) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !workingThreads.contains(threadID), pendingQuestions[threadID] == nil else { return }
-        onSend?(threadID, text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard isBusy(threadID) else {
+            _ = onSend?(threadID, text, nil)
+            return
+        }
+        let inFlight = pendingQuestions[threadID]?.text ?? threads.first { $0.id == threadID }?.pendingTurn?.question
+        if trimmed != inFlight?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            let queued = QueuedFollowUp(text: trimmed)
+            queuedFollowUps[threadID, default: []].append(queued)
+            onQueueFollowUp?(threadID, .init(id: queued.id, text: trimmed))
+        }
+        draftChanged(threadID: threadID, draft: "")
+    }
+
+    func stop(threadID: UUID) {
+        if !(queuedFollowUps[threadID] ?? []).isEmpty { pausedQueues.insert(threadID) }
+        onStop?(threadID)
+    }
+
+    func sendQueuedNow(threadID: UUID, id: UUID) {
+        guard var queue = queuedFollowUps[threadID], let index = queue.firstIndex(where: { $0.id == id }) else { return }
+        queue.insert(queue.remove(at: index), at: 0)
+        queuedFollowUps[threadID] = queue
+        pausedQueues.remove(threadID)
+        if isBusy(threadID) {
+            sendingNow.insert(threadID)
+            onStop?(threadID)
+        } else {
+            sendQueuedFollowUps()
+        }
+    }
+
+    func removeQueued(threadID: UUID, id: UUID) {
+        guard queuedFollowUps[threadID]?.contains(where: { $0.id == id }) == true else { return }
+        onRemoveWaitingInput?(threadID, id)
+        queuedFollowUps[threadID]?.removeAll { $0.id == id }
+        if queuedFollowUps[threadID]?.isEmpty == true {
+            queuedFollowUps[threadID] = nil
+            pausedQueues.remove(threadID)
+        }
+    }
+
+    func turnEnded(threadID: UUID, finish: AgentFinish) {
+        if finish != .completed, !sendingNow.contains(threadID), !(queuedFollowUps[threadID] ?? []).isEmpty {
+            pausedQueues.insert(threadID)
+        }
+        sendingNow.remove(threadID)
+    }
+
+    func clearQueues() {
+        queuedFollowUps = [:]
+        pausedQueues = []
+        sendingNow = []
+    }
+
+    func sendQueuedFollowUps() {
+        for (threadID, queue) in queuedFollowUps {
+            guard !isBusy(threadID) else { continue }
+            guard let thread = threads.first(where: { $0.id == threadID }) else {
+                queuedFollowUps[threadID] = nil
+                pausedQueues.remove(threadID)
+                sendingNow.remove(threadID)
+                continue
+            }
+            guard let next = queue.first, !pausedQueues.contains(threadID), thread.pendingTurn == nil else { continue }
+            queuedFollowUps[threadID] = queue.count > 1 ? Array(queue.dropFirst()) : nil
+            if onSend?(threadID, next.text, next.id) == true {
+                sendingNow.remove(threadID)
+            } else {
+                queuedFollowUps[threadID, default: []].insert(next, at: 0)
+            }
+        }
     }
 }

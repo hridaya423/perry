@@ -23,7 +23,7 @@ extension ForegroundTaskController {
         _ routine: LearnedRoutine,
         parameters: [String: String],
         attemptID: UUID,
-        worker: CuaWorkerHandle
+        worker: ScreenWorkerHandle
     ) async throws -> RoutineOutcome {
         guard taskStartIsCurrent(attemptID) else { return .notStarted }
         let workspace = try WorkspaceScope.makeTaskDirectory()
@@ -35,10 +35,10 @@ extension ForegroundTaskController {
             voice.speak("I couldn’t capture that window, so I stopped before replaying.")
             return .notStarted
         }
-        let targetStore = CuaGuideTargetStore()
-        await targetStore.set(CuaTargetHint(bundleID: routine.bundleID, processID: nil, windowTitle: nil))
+        let targetStore = ScreenGuideTargetStore()
+        await targetStore.set(ScreenTargetHint(bundleID: routine.bundleID, processID: nil, windowTitle: nil))
         let observe: @Sendable () async throws -> GuideObservation = {
-            try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe()
+            try await ScreenGuideTreeReader(worker: worker, targetStore: targetStore).observe()
         }
         let observation = try await observe()
         let plan = try RoutineReplay.plan(
@@ -137,7 +137,7 @@ extension ForegroundTaskController {
     }
 
     private func typedActionRouter(
-        worker: CuaWorkerHandle,
+        worker: ScreenWorkerHandle,
         workspace: URL,
         journal: WorkspaceRunJournal?,
         bindComputerCommand: @escaping @Sendable (ExecutableAction) async throws -> RoutineStepBinding?

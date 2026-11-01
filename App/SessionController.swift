@@ -275,6 +275,11 @@ extension SessionState {
         if case .talking = self { return true }
         return false
     }
+
+    var isAskingSession: Bool {
+        if case .asking = self { return true }
+        return false
+    }
 }
 
 struct IllegalSessionTransitionError: Error, Equatable {

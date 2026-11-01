@@ -7,7 +7,7 @@ import PerryRuntimes
 typealias LocateTarget = @Sendable (_ description: String, _ screenshot: Data, _ windowSize: CGSize, _ accepts: @escaping @Sendable (CGPoint) -> Bool) async throws -> ClickGrounder.Located
 
 struct UITools {
-    let workers: CuaWorkerService
+    let workers: ScreenWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     var onActuation: (@Sendable (CGPoint, String?) -> Void)?
@@ -242,7 +242,7 @@ private struct UIToolDefinition: Sendable {
             plan: { request in
                 await resolveTarget(request).map { resolved in
                     UIPlan(
-                        operation: kind.operation(windowPixels(resolved.pointerTarget, request)),
+                        operation: kind.operation(windowPixels(resolved.target, request)),
                         bundleID: resolved.bundleID,
                         actuation: resolved.target.point,
                         actuationLabel: resolved.target.label,
@@ -281,12 +281,6 @@ private struct ResolvedTarget {
     let target: ComputerTarget
     let bundleID: String?
     var note: String?
-    var pressable = true
-
-    var pointerTarget: ComputerTarget {
-        guard !pressable, let point = target.point else { return target }
-        return .point(point)
-    }
 }
 
 private func staleElement(_ elementID: String) -> ToolResolutionError {
@@ -302,8 +296,7 @@ private func resolveTarget(_ request: UIPlanRequest) async -> Result<ResolvedTar
         }
         return .success(ResolvedTarget(
             target: .element(id: element.id, label: element.label.nilIfEmpty, point: ComputerCoordinates(x: element.frame.midX, y: element.frame.midY)),
-            bundleID: observations.snapshot(runID: request.runID)?.window?.bundleID,
-            pressable: element.pressable
+            bundleID: observations.snapshot(runID: request.runID)?.window?.bundleID
         ))
     }
     if let x = args["x"]?.doubleValue, let y = args["y"]?.doubleValue {
@@ -395,7 +388,7 @@ private func bringForward(_ bundleID: String?, observations: AgentObservationSto
 }
 
 @MainActor
-private func raise(_ window: CuaWindowTarget, in pid: pid_t) {
+private func raise(_ window: ScreenWindowTarget, in pid: pid_t) {
     let app = AXUIElementCreateApplication(pid)
     let match = AXQuery.elements(app, kAXWindowsAttribute).first { AXQuery.string($0, kAXTitleAttribute) == window.title }
     guard let match else { return }
@@ -470,7 +463,7 @@ private func targetResources(_ bundleID: String?) -> Set<BackgroundTaskResource>
 }
 
 private func verifiedResult(
-    _ call: ToolCall, _ result: StepResult, worker: CuaWorkerHandle,
+    _ call: ToolCall, _ result: StepResult, worker: ScreenWorkerHandle,
     observations: AgentObservationStore, runID: UUID, located: String? = nil
 ) async -> ToolResult {
     let message = [located, result.message].compactMap { $0 }.joined(separator: "\n")
@@ -546,6 +539,20 @@ private struct UIToolExecutor: ToolExecutor {
     }
 }
 
+private enum UIStepsError: LocalizedError {
+    case targetNotFrontmost
+
+    var errorDescription: String? {
+        "The app I was using is no longer in front, so I stopped."
+    }
+}
+
+private func targetProcessID(_ bundleID: String?, observations: AgentObservationStore, runID: UUID) async -> pid_t? {
+    if let pid = observations.snapshot(runID: runID)?.window?.processID { return pid }
+    guard let bundleID else { return nil }
+    return await MainActor.run { NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.processIdentifier }
+}
+
 private struct UIStepsExecutor: ToolExecutor {
     static let name = "ui.steps"
 
@@ -607,6 +614,7 @@ private struct UIStepsExecutor: ToolExecutor {
         await bringForward(bundleID, observations: worker.observations, context: context)
         let observations = worker.observations
         let onActuation = onActuation
+        let targetPID = await targetProcessID(bundleID, observations: observations, runID: context.runID)
         return try await worker.withWorker(runID: context.runID, resources: targetResources(bundleID)) { handle in
             guard !context.unattended else {
                 let result = try await handle.execute(ComputerAction(stepID: call.id, operation: .steps(planned.map(\.operation))))
@@ -614,11 +622,12 @@ private struct UIStepsExecutor: ToolExecutor {
             }
             var last: StepResult?
             for (index, step) in planned.enumerated() {
+                try Task.checkCancellation()
                 var arrived = false
                 if let point = step.target?.point {
                     arrived = await showActuation(onActuation, at: CGPoint(x: point.x, y: point.y), label: step.target?.label, movesPointer: true)
                 }
-                if let handled = await performWithPointer(step.operation, at: step.target?.point, arrived: arrived) {
+                if let handled = try await performWithPointer(step.operation, at: step.target?.point, arrived: arrived, targetPID: targetPID) {
                     last = StepResult(stepID: "\(call.id)-\(index)", success: true, message: handled)
                     continue
                 }
@@ -631,10 +640,11 @@ private struct UIStepsExecutor: ToolExecutor {
         }
     }
 
-    private func performWithPointer(_ operation: ComputerAction.Operation, at point: ComputerCoordinates?, arrived: Bool) async -> String? {
+    private func performWithPointer(_ operation: ComputerAction.Operation, at point: ComputerCoordinates?, arrived: Bool, targetPID: pid_t?) async throws -> String? {
         switch operation {
         case .click, .doubleClick, .rightClick:
             guard arrived, let point else { return nil }
+            try await requireFrontmost(targetPID)
             let kind: UIClickKind = switch operation {
             case .doubleClick: .doubleClick
             case .rightClick: .rightClick
@@ -643,12 +653,20 @@ private struct UIStepsExecutor: ToolExecutor {
             await pointerClick(at: CGPoint(x: point.x, y: point.y), kind: kind)
             return "Clicked with the pointer."
         case .pressKey(let key, let modifiers, _):
-            guard onActuation != nil, keyboardPress(key, modifiers: modifiers) else { return nil }
+            guard onActuation != nil else { return nil }
+            try await requireFrontmost(targetPID)
+            guard keyboardPress(key, modifiers: modifiers) else { return nil }
             try? await Task.sleep(for: .milliseconds(150))
             return "Pressed \(key)."
         default:
             return nil
         }
+    }
+
+    private func requireFrontmost(_ targetPID: pid_t?) async throws {
+        guard let targetPID else { return }
+        let frontmost = await MainActor.run { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+        guard frontmost == targetPID else { throw UIStepsError.targetNotFrontmost }
     }
 
     private func plannedStep(_ request: UIPlanRequest) async -> Result<PlannedStep, ToolResolutionError> {
@@ -658,8 +676,7 @@ private struct UIStepsExecutor: ToolExecutor {
         if targeted, resolved == nil {
             return .failure(ToolResolutionError(message: "element \(step["elementID"]?.stringValue ?? "at x/y") is stale or unknown — run screen.observe again"))
         }
-        let pointer = resolved.map { windowPixels($0.pointerTarget, request) }
-        let plain = resolved.map { windowPixels($0.target, request) }
+        let pointer = resolved.map { windowPixels($0.target, request) }
         func planned(_ operation: ComputerAction.Operation) -> Result<PlannedStep, ToolResolutionError> {
             .success(PlannedStep(operation: operation, target: resolved?.target))
         }
@@ -673,7 +690,7 @@ private struct UIStepsExecutor: ToolExecutor {
             }
         case "type":
             guard let text = step["text"]?.stringValue else { return .failure(ToolResolutionError(message: "type needs text")) }
-            return planned(.typeText(text: text, target: plain))
+            return planned(.typeText(text: text, target: pointer))
         case "setValue":
             guard let value = step["value"]?.stringValue, let id = resolved?.target.id else {
                 return .failure(ToolResolutionError(message: "setValue needs elementID and value"))
@@ -681,15 +698,15 @@ private struct UIStepsExecutor: ToolExecutor {
             return planned(.setValue(value: value, target: .element(id: id, label: resolved?.target.label, point: nil)))
         case "key":
             guard let key = step["key"]?.stringValue else { return .failure(ToolResolutionError(message: "key needs key")) }
-            return planned(.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: plain))
+            return planned(.pressKey(key: key.lowercased(), modifiers: step["modifiers"]?.arrayValue?.compactMap(\.stringValue), target: pointer))
         case "hotkey":
             guard let keys = step["keys"]?.arrayValue?.compactMap(\.stringValue), !keys.isEmpty else { return .failure(ToolResolutionError(message: "hotkey needs keys")) }
-            return planned(.hotkey(keys: keys.map { $0.lowercased() }, target: plain))
+            return planned(.hotkey(keys: keys.map { $0.lowercased() }, target: pointer))
         case "scroll":
             guard let direction = step["direction"]?.stringValue.flatMap(ComputerAction.Direction.init(rawValue:)) else {
                 return .failure(ToolResolutionError(message: "scroll needs a direction"))
             }
-            return planned(.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: plain))
+            return planned(.scroll(direction: direction, amount: step["amount"]?.doubleValue.map { Int($0) } ?? 3, by: nil, target: pointer))
         default:
             return .failure(ToolResolutionError(message: "unknown action"))
         }

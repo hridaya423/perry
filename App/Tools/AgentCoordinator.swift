@@ -70,8 +70,8 @@ final class AgentCoordinator: ObservableObject {
         let bindings: [DeixisBinding]
         let skill: String?
 
-        var target: CuaTargetHint {
-            CuaTargetHint(bundleID: observation.snapshot.appBundleID, processID: observation.processID,
+        var target: ScreenTargetHint {
+            ScreenTargetHint(bundleID: observation.snapshot.appBundleID, processID: observation.processID,
                           windowID: observation.windowID, windowTitle: observation.snapshot.windowTitle)
         }
     }
@@ -79,7 +79,7 @@ final class AgentCoordinator: ObservableObject {
     @Published private(set) var runningThreads: Set<UUID> = []
 
     private let provider: (RouteRequirement) async throws -> any ModelProvider
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let workerLease: ForegroundWorkerLease
     private let host: PerryToolHost
     private let threads: ThreadStore
@@ -100,7 +100,7 @@ final class AgentCoordinator: ObservableObject {
         consent: ToolConsentStore,
         perrys: PerryStore? = nil,
         observations: AgentObservationStore = .shared,
-        workers: CuaWorkerService = CuaWorkerService(),
+        workers: ScreenWorkerService = ScreenWorkerService(),
         workerLease: ForegroundWorkerLease = ForegroundWorkerLease(),
         memoryContext: @escaping (String?) async -> (enabled: Bool, text: String?) = { _ in (false, nil) },
         promptEnvironment: @escaping () async -> PromptEnvironment = { PromptEnvironment() },
@@ -139,7 +139,7 @@ final class AgentCoordinator: ObservableObject {
         let goal: String
         let runID: UUID
         var perryID: String?
-        var target: CuaTargetHint?
+        var target: ScreenTargetHint?
         var waitingInputID: UUID?
     }
 
@@ -148,7 +148,7 @@ final class AgentCoordinator: ObservableObject {
 
     func run(
         threadID: UUID, goal: String, kind: RunKind = .chat, runID: UUID = UUID(),
-        target: CuaTargetHint? = nil, waitingInputID: UUID? = nil
+        target: ScreenTargetHint? = nil, waitingInputID: UUID? = nil
     ) -> AsyncStream<AgentLoopEvent> {
         AsyncStream { continuation in
             let finished = LockedFlag()
@@ -175,7 +175,7 @@ final class AgentCoordinator: ObservableObject {
 
     func runToEnd(
         threadID: UUID, goal: String, kind: RunKind = .chat, runID: UUID = UUID(),
-        target: CuaTargetHint? = nil, waitingInputID: UUID? = nil,
+        target: ScreenTargetHint? = nil, waitingInputID: UUID? = nil,
         onEvent: (AgentLoopEvent) -> Void = { _ in }
     ) async -> RunResult {
         var result = RunResult()

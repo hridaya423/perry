@@ -9,6 +9,7 @@ vendor/
 App/Resources/CodexRuntime/
 App/Resources/LocalEngine/*
 !App/Resources/LocalEngine/.gitkeep
+App/Resources/AgentDesktop/
 App/Resources/CuaDriver/*
 !App/Resources/CuaDriver/capabilities.yaml
 .swiftpm/

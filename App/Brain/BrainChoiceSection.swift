@@ -63,7 +63,7 @@ struct BrainChoiceSection: View {
         switch brain.modelChoice {
         case .chatGPT:
             SettingsCard(title: "ChatGPT") {
-                HomeConnectionView(brain: brain, openSettings: { brain.modelChoice = .direct })
+                HomeConnectionView(brain: brain)
                     .settingsRowPadding()
                 SettingsDivider()
                 modelPicker(BrainController.chatGPTModels, selection: Binding(get: { brain.chatGPTModel }, set: { brain.chatGPTModel = $0 }))

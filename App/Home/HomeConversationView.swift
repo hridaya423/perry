@@ -90,6 +90,14 @@ struct HomeConversationView: View {
                         .buttonStyle(InkButtonStyle(.secondary))
                     }
                 }
+                if let queued = model.queuedFollowUps[thread.id], !queued.isEmpty {
+                    QueuedFollowUpsView(
+                        items: queued,
+                        paused: model.pausedQueues.contains(thread.id),
+                        sendNow: { model.sendQueuedNow(threadID: thread.id, id: $0) },
+                        remove: { model.removeQueued(threadID: thread.id, id: $0) }
+                    )
+                }
                 if isWorking {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -97,7 +105,7 @@ struct HomeConversationView: View {
                             .font(PerryTheme.Scale.body)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("Stop", systemImage: "stop.fill") { model.onStop?(thread.id) }
+                        Button("Stop", systemImage: "stop.fill") { model.stop(threadID: thread.id) }
                             .controlSize(.small)
                             .disabled(model.stoppingThreads.contains(thread.id))
                     }
@@ -112,8 +120,8 @@ struct HomeConversationView: View {
                         get: { model.draft(for: thread) },
                         set: { model.draftChanged(threadID: thread.id, draft: $0) }
                     ),
-                    placeholder: "Ask a follow-up",
-                    canSend: !isWorking && thread.pendingTurn == nil,
+                    placeholder: isWorking ? "Ask a follow-up. I’ll send it next." : "Ask a follow-up",
+                    canSend: isWorking || thread.pendingTurn == nil,
                     focusOnAppear: focusComposer,
                     onVoice: isWorking || thread.pendingTurn != nil ? nil : model.deps.controller.map { controller in
                         {
@@ -131,6 +139,78 @@ struct HomeConversationView: View {
             }
             .frame(maxWidth: 680)
             .padding(20)
+        }
+    }
+}
+
+struct QueuedFollowUpsView: View {
+    let items: [HomeModel.QueuedFollowUp]
+    let paused: Bool
+    let sendNow: (UUID) -> Void
+    let remove: (UUID) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let visibleRows = 4
+    private static let scrollHeight = CGFloat(160)
+
+    static func actionLabel(_ verb: String, for text: String) -> String {
+        let words = text.split(whereSeparator: \.isWhitespace)
+        let head = words.prefix(6).joined(separator: " ")
+        let clipped = head.prefix(60)
+        let truncated = words.count > 6 || clipped.count < head.count
+        return "\(verb): \(clipped)" + (truncated ? "…" : "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(paused ? "Up next · paused" : "Up next")
+                .font(PerryTheme.Scale.meta)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(paused ? "Up next, paused" : "Up next")
+                .accessibilityAddTraits(.isHeader)
+            if items.count > Self.visibleRows {
+                ScrollView { rows }
+                    .frame(height: Self.scrollHeight)
+            } else {
+                rows
+            }
+        }
+        .animation(reduceMotion ? nil : PerryTheme.Motion.panelStateChange, value: items)
+        .accessibilityElement(children: .contain)
+        .onChange(of: paused) { _, nowPaused in
+            if nowPaused { AccessibilityNotification.Announcement("Up next is paused. Send or remove your messages.").post() }
+        }
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(items) { item in
+                HStack(spacing: 4) {
+                    Text(item.text)
+                        .font(PerryTheme.Scale.body)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(item.text)
+                    WindowControlButton(
+                        systemImage: "arrow.up",
+                        label: Self.actionLabel("Send now", for: item.text),
+                        help: paused ? "Send this message" : "Stop the current reply and send this now",
+                        action: { sendNow(item.id) }
+                    )
+                    WindowControlButton(
+                        systemImage: "xmark",
+                        label: Self.actionLabel("Remove", for: item.text),
+                        help: "Remove this message",
+                        action: { remove(item.id) }
+                    )
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 4)
+                .padding(.vertical, 2)
+                .background(PerryTheme.Colors.veil(0.06), in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+            }
         }
     }
 }
@@ -173,17 +253,12 @@ struct WaitingInputRecoveryView: View {
 
 struct HomeConnectionView: View {
     @ObservedObject var brain: BrainController
-    let openSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if brain.modelChoice != .chatGPT {
                 Text("Using \(brain.modelChoice.title)")
                     .font(PerryTheme.Scale.rowTitle)
-                Text("Change it in Settings.")
-                    .font(PerryTheme.Scale.body)
-                    .foregroundStyle(PerryTheme.Colors.textSecondary)
-                Button("Brain settings", action: openSettings).buttonStyle(.borderless)
             } else if case .signedIn(let email, _) = brain.account {
                 HStack {
                     StatusLabel(email.isEmpty ? "Connected to ChatGPT" : "Connected to ChatGPT as \(email)", .ok)
@@ -207,15 +282,12 @@ struct HomeConnectionView: View {
                     .buttonStyle(InkButtonStyle())
                     .controlSize(.small)
                     .disabled(brain.isSigningIn)
-                    Group {
-                        if brain.isSigningIn {
-                            Button("Cancel") { brain.cancelSignIn() }
-                        } else {
-                            Button("Other brains", action: openSettings)
-                        }
+                    if brain.isSigningIn {
+                        Button("Cancel") { brain.cancelSignIn() }
+                            .accessibilityLabel("Cancel sign-in")
+                            .buttonStyle(InkButtonStyle(.secondary))
+                            .controlSize(.small)
                     }
-                    .buttonStyle(InkButtonStyle(.secondary))
-                    .controlSize(.small)
                 }
             }
             if let error = brain.signInError {

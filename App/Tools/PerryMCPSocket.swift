@@ -6,7 +6,7 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
     private let host: PerryToolHost
     private let directory: URL
     private let toolConsent: ToolConsentStore
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let workerLease: ForegroundWorkerLease
     private let observations: AgentObservationStore
     private let lock = NSLock()
@@ -20,7 +20,7 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
 
     init(
         host: PerryToolHost, directory: URL,
-        workers: CuaWorkerService, workerLease: ForegroundWorkerLease,
+        workers: ScreenWorkerService, workerLease: ForegroundWorkerLease,
         observations: AgentObservationStore = .shared
     ) {
         self.host = host

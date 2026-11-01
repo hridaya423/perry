@@ -273,6 +273,10 @@ extension VoiceService: Identifiable {
         return try? keychain.readChecked(account: RealtimeProvider(.openAI).keychainAccount)
     }
 
+    func removeStoredKey(keychain: any OAuthCredentialStoreBackend = KeychainStore()) throws {
+        try keychain.deleteCredential(account: keyAccount)
+    }
+
     func verify(key: String, session: URLSession = .shared) async throws -> [CloudVoiceOption] {
         guard let request = voicesRequest(key: key) else { return [] }
         let (data, response) = try await session.data(for: request)

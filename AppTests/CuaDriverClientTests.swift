@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Darwin
 import XCTest
@@ -10,34 +9,6 @@ import PerryRuntimes
 
 private enum CuaTestError: Error {
     case timeout(String)
-}
-
-private actor WorkerGate {
-    private var released = false
-    private var waiter: CheckedContinuation<Void, Never>?
-
-    func waitUntilReleased() async {
-        if released { return }
-        await withCheckedContinuation { waiter = $0 }
-    }
-
-    func release() {
-        released = true
-        waiter?.resume()
-        waiter = nil
-    }
-}
-
-private actor ProviderCallRecorder {
-    private var calls = 0
-
-    func record() {
-        calls += 1
-    }
-
-    func callCount() -> Int {
-        calls
-    }
 }
 
 final class CuaDriverClientTests: XCTestCase {
@@ -223,7 +194,7 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         for index in 0..<3 {
             let capture = try await client.capture(
-                target: CuaTargetHint(bundleID: "com.example.Editor", windowTitle: "Editor - Draft"),
+                target: ScreenTargetHint(bundleID: "com.example.Editor", windowTitle: "Editor - Draft"),
                 sessionID: "large-capture-\(index)"
             )
             XCTAssertEqual(capture.screenshotData, expected)
@@ -238,11 +209,11 @@ final class CuaDriverClientTests: XCTestCase {
 
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(processID: 4242, windowID: 9999, windowTitle: "Editor - Draft"),
+                target: ScreenTargetHint(processID: 4242, windowID: 9999, windowTitle: "Editor - Draft"),
                 sessionID: "missing-window"
             )
             XCTFail("capture should reject a missing persisted window ID")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         } catch {
             XCTFail("unexpected error: \(error)")
@@ -261,7 +232,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
 
         let target = try await client.resolveTarget(
-            CuaTargetHint(processID: 4242, windowID: 1001),
+            ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "resolve-only"
         )
 
@@ -277,7 +248,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
 
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "tree-format"
         )
 
@@ -297,7 +268,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
 
         let capture = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "secure-capture"
         )
         XCTAssertEqual(capture.snapshotID, "snapshot-secure")
@@ -322,7 +293,7 @@ final class CuaDriverClientTests: XCTestCase {
             await client.shutdown()
         }
 
-        let capture = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: "field-values")
+        let capture = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: "field-values")
 
         XCTAssertEqual(capture.elementDetails["note"]?.value, "draft text")
         XCTAssertNotNil(capture.elementDetails["pw"])
@@ -337,14 +308,14 @@ final class CuaDriverClientTests: XCTestCase {
             await client.shutdown()
         }
         let target = try await client.resolveTarget(
-            CuaTargetHint(processID: 4242, windowID: 1001),
+            ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "resolved-session"
         )
 
         do {
             _ = try await client.capture(resolvedTarget: target, sessionID: "different-session")
             XCTFail("A resolved target must not be used by another session")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .targetSessionMismatch)
         }
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"get_window_state\"") })
@@ -356,7 +327,7 @@ final class CuaDriverClientTests: XCTestCase {
             await client.shutdown()
         }
         let target = try await client.resolveTarget(
-            CuaTargetHint(processID: 4242, windowID: 1001),
+            ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "stale-target"
         )
         XCTAssertEqual(target.connectionGeneration, 0)
@@ -369,7 +340,7 @@ final class CuaDriverClientTests: XCTestCase {
         do {
             _ = try await client.capture(resolvedTarget: target, sessionID: "stale-target")
             XCTFail("A resolved target from an earlier connection must be rejected")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .processExited)
         }
         XCTAssertEqual(startCount(), 2)
@@ -397,17 +368,17 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         let sessionID = "retargeted-window"
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
 
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(processID: 4242, windowID: 9999),
+                target: ScreenTargetHint(processID: 4242, windowID: 9999),
                 sessionID: sessionID
             )
             XCTFail("A missing replacement window must be rejected")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         }
 
@@ -422,7 +393,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("A failed retarget must not leave the previous window executable")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .targetNotFound)
         }
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"press_key\"") })
@@ -436,11 +407,11 @@ final class CuaDriverClientTests: XCTestCase {
 
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(processID: 4242, windowTitle: "Editor - Closed"),
+                target: ScreenTargetHint(processID: 4242, windowTitle: "Editor - Closed"),
                 sessionID: "missing-window-title"
             )
             XCTFail("capture should reject a missing window title")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         } catch {
             XCTFail("unexpected error: \(error)")
@@ -456,11 +427,11 @@ final class CuaDriverClientTests: XCTestCase {
 
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+                target: ScreenTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
                 sessionID: "host-window"
             )
             XCTFail("Perry must not capture its own window as task context")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         }
 
@@ -475,11 +446,11 @@ final class CuaDriverClientTests: XCTestCase {
 
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(bundleID: "com.example.Other", processID: 4242, windowID: 1001),
+                target: ScreenTargetHint(bundleID: "com.example.Other", processID: 4242, windowID: 1001),
                 sessionID: "wrong-application"
             )
             XCTFail("capture should reject a window owned by another application")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .noTargetWindow)
         }
 
@@ -494,7 +465,7 @@ final class CuaDriverClientTests: XCTestCase {
 
         let target = try await client.insertText(
             "Perry verified this",
-            target: CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
             sessionID: "dictation"
         )
 
@@ -514,7 +485,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
         let sessionID = "resolved-dictation"
         let target = try await client.resolveTarget(
-            CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+            ScreenTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
 
@@ -537,7 +508,7 @@ final class CuaDriverClientTests: XCTestCase {
             await client.shutdown()
         }
         let target = try await client.resolveTarget(
-            CuaTargetHint(processID: 4242, windowID: 1001),
+            ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: "resolved-dictation"
         )
 
@@ -548,7 +519,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: "different-dictation"
             )
             XCTFail("A resolved target must not insert through another session")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .targetSessionMismatch)
         }
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"type_text\"") })
@@ -561,7 +532,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
         let sessionID = "stale-dictation"
         let target = try await client.resolveTarget(
-            CuaTargetHint(processID: 4242, windowID: 1001),
+            ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         await client.shutdown()
@@ -575,7 +546,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("A resolved target from an earlier connection must be rejected")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .processExited)
         }
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"type_text\"") })
@@ -591,13 +562,13 @@ final class CuaDriverClientTests: XCTestCase {
         do {
             _ = try await client.insertText(
                 "Unverified text",
-                target: CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+                target: ScreenTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
                 sessionID: "dictation"
             )
             XCTFail("unverified insertion must fail closed")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             guard case .toolRejected = error else {
-                return XCTFail("unexpected Cua error: \(error)")
+                return XCTFail("unexpected Screen error: \(error)")
             }
         }
     }
@@ -638,45 +609,10 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertTrue(result.ready, "\(result.summary); requests=\(requestLines())")
         XCTAssertEqual(startCount(), 2)
         let replacementCapture = try await client.capture(
-            target: CuaTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(bundleID: "com.example.Editor", processID: 4242, windowID: 1001),
             sessionID: "replacement"
         )
         XCTAssertEqual(replacementCapture.target.connectionGeneration, 1)
-    }
-
-    func testDiscoverIgnoresPATHOnlyCandidateWithoutInvokingIt() async throws {
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let configuration = CuaDriverConfiguration.discover(
-            environment: ["PATH": testDirectory.path],
-            bundle: Bundle(for: CuaDriverClientTests.self),
-            userDefaults: defaults
-        )
-        XCTAssertNil(configuration)
-
-        let health = await CuaDriverClient(configuration: configuration).health()
-        XCTAssertFalse(health.ready)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("starts").path))
-    }
-
-    func testDiscoverRejectsUnverifiedRegisteredCandidateWithoutInvokingIt() async throws {
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
-
-        let configuration = CuaDriverConfiguration.discover(
-            environment: ["PATH": testDirectory.path],
-            bundle: Bundle(for: CuaDriverClientTests.self),
-            userDefaults: defaults
-        )
-        XCTAssertNil(configuration)
-
-        let health = await CuaDriverClient(configuration: configuration).health()
-        XCTAssertFalse(health.ready)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("starts").path))
     }
 
     func testBundledUpstreamFixtureRemainsAvailableForUnsignedHost() throws {
@@ -694,11 +630,11 @@ final class CuaDriverClientTests: XCTestCase {
     func testBundledReSignedFixtureRequiresMatchingDeveloperIDTeamAndIdentifier() throws {
         let bundle = try makeBundleFixture()
         let releaseTeam = "PERRYRELEASE"
-        let hostIdentity = CuaCodeIdentity.appleDeveloperID(
+        let hostIdentity = ScreenCodeIdentity.appleDeveloperID(
             identifier: "dev.perry.Perry",
             teamIdentifier: releaseTeam
         )
-        let driverIdentity = CuaCodeIdentity.appleDeveloperID(
+        let driverIdentity = ScreenCodeIdentity.appleDeveloperID(
             identifier: "cua-driver",
             teamIdentifier: releaseTeam
         )
@@ -711,7 +647,7 @@ final class CuaDriverClientTests: XCTestCase {
         )
         XCTAssertNotNil(accepted)
 
-        let rejected: [(String, CuaCodeIdentity, CuaCodeIdentity)] = [
+        let rejected: [(String, ScreenCodeIdentity, ScreenCodeIdentity)] = [
             (
                 "different team",
                 hostIdentity,
@@ -765,65 +701,12 @@ final class CuaDriverClientTests: XCTestCase {
         try Data("external capabilities".utf8).write(to: externalURL)
         try FileManager.default.removeItem(at: manifestURL)
         try FileManager.default.createSymbolicLink(at: manifestURL, withDestinationURL: externalURL)
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        for registered in [false, true] {
-            if registered {
-                defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
-            }
-            let configuration = CuaDriverConfiguration.discover(
-                bundle: bundle,
-                userDefaults: defaults,
-                identityVerifier: { _ in true },
-                codeIdentityReader: { _ in nil }
-            )
-            XCTAssertNil(configuration, "An external manifest must disable both bundled and registered drivers")
-        }
-    }
-
-    func testRegisteredUpstreamFixtureRemainsAccepted() throws {
-        let bundle = try makeBundleFixture(includeDriver: false)
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
-        let expectedURL = driverURL.resolvingSymlinksInPath().standardizedFileURL
-
         let configuration = CuaDriverConfiguration.discover(
             bundle: bundle,
-            userDefaults: defaults,
-            identityVerifier: { $0 == expectedURL },
-            codeIdentityReader: { _ in
-                XCTFail("registered candidates must not use bundled identity authorization")
-                return nil
-            }
+            identityVerifier: { _ in true },
+            codeIdentityReader: { _ in nil }
         )
-
-        XCTAssertEqual(configuration?.executableURL, expectedURL)
-    }
-
-    func testRegisteredReSignedFixtureDoesNotUseBundledTrustRule() throws {
-        let bundle = try makeBundleFixture(includeDriver: false)
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        defaults.set(driverURL.path, forKey: PerryPreferences.$cuaDriverPath.key)
-        var codeIdentityReaderCalled = false
-
-        let configuration = CuaDriverConfiguration.discover(
-            bundle: bundle,
-            userDefaults: defaults,
-            identityVerifier: { _ in false },
-            codeIdentityReader: { _ in
-                codeIdentityReaderCalled = true
-                return .appleDeveloperID(identifier: "cua-driver", teamIdentifier: "PERRYRELEASE")
-            }
-        )
-
-        XCTAssertNil(configuration)
-        XCTAssertFalse(codeIdentityReaderCalled)
+        XCTAssertNil(configuration, "An external manifest must disable the bundled driver")
     }
 
     func testExplicitNilConfigurationRemainsUnavailable() async {
@@ -832,7 +715,7 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(health.ready)
         XCTAssertEqual(
             health.summary,
-            "Screen control isn’t available. Reinstall Perry or set its path in Settings > Brain."
+            "Screen control isn’t available. Reinstall Perry."
         )
         XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("starts").path))
     }
@@ -852,7 +735,7 @@ final class CuaDriverClientTests: XCTestCase {
                 )
             )
         ) { error in
-            XCTAssertEqual(error as? CuaDriverError, .targetNotFound)
+            XCTAssertEqual(error as? ScreenDriverError, .targetNotFound)
         }
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: testDirectory.appendingPathComponent("starts").path))
@@ -864,7 +747,7 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         let sessionID = "typed-actions"
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         let point = ExecutableAction.Selector.windowPixels(x: 12.5, y: 20.25)
@@ -928,7 +811,7 @@ final class CuaDriverClientTests: XCTestCase {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }
         let sessionID = "targeted-keys"
-        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         for (command, tool) in [
             (ExecutableAction.ComputerCommand.pressKey("Return", modifiers: [], target: .accessibilityID("s1")), "press_key"),
             (.hotkey(key: "s", modifiers: [.command], target: .accessibilityID("s1")), "hotkey"),
@@ -952,7 +835,7 @@ final class CuaDriverClientTests: XCTestCase {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }
         let sessionID = "unmatched-label"
-        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         let target = ComputerTarget.label("Cedar review\nNoor owns the venue checklist.", point: ComputerCoordinates(x: 40, y: 60))
         _ = try await client.execute(ComputerAction(stepID: "text-area", operation: .click(target)), sessionID: sessionID)
         let click = try XCTUnwrap(requestLines().last { $0.contains("\"name\":\"click\"") })
@@ -970,11 +853,11 @@ final class CuaDriverClientTests: XCTestCase {
                 hostBundleID: "dev.perry.PerryTests"
             ), allowsForegroundInput: allowed)
             let sessionID = "focus-\(allowed)"
-            _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+            _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
             do {
                 _ = try await client.execute(ComputerAction(stepID: "click", operation: .click(point)), sessionID: sessionID)
                 XCTAssertTrue(allowed, "A background client must not take focus")
-            } catch let error as CuaDriverError {
+            } catch let error as ScreenDriverError {
                 XCTAssertFalse(allowed, "\(error)")
             }
             await client.shutdown()
@@ -992,7 +875,7 @@ final class CuaDriverClientTests: XCTestCase {
                 hostBundleID: "dev.perry.PerryTests"
             ), allowsForegroundInput: allowed)
             let sessionID = "finder-\(allowed)"
-            _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+            _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
             _ = try await client.execute(ComputerAction(stepID: "click", operation: .click(point)), sessionID: sessionID)
             await client.shutdown()
         }
@@ -1006,7 +889,7 @@ final class CuaDriverClientTests: XCTestCase {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }
         let sessionID = "snapshot-token"
-        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         let area = ComputerTarget.element(id: "s0001:4", label: nil, point: ComputerCoordinates(x: 50, y: 50))
         _ = try await client.execute(ComputerAction(stepID: "key", operation: .pressKey(key: "end", modifiers: [], target: area)), sessionID: sessionID)
         let lines = requestLines()
@@ -1018,7 +901,7 @@ final class CuaDriverClientTests: XCTestCase {
         let client = makeClient()
         addTeardownBlock { await client.shutdown() }
         let sessionID = "unknown-element"
-        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         do {
             _ = try await client.execute(
                 try ComputerAction(
@@ -1028,7 +911,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("A missing control must not redirect keys to the focused control")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .targetNotFound)
         }
         XCTAssertFalse(requestLines().contains { $0.contains("\"name\":\"press_key\"") })
@@ -1039,7 +922,7 @@ final class CuaDriverClientTests: XCTestCase {
         addTeardownBlock { await client.shutdown() }
         let sessionID = "identity-guard"
         let capture = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         let target = capture.target
@@ -1072,7 +955,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("a plan bound to another window must not act on this one")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .targetMismatch)
         }
         let clicks = requestLines().filter { $0.contains("\"name\":\"click\"") }
@@ -1082,7 +965,7 @@ final class CuaDriverClientTests: XCTestCase {
     func testLateResponseDoesNotReplayAction() async throws {
         let client = makeClient()
         let sessionID = "cancelled-action"
-        _ = try await client.capture(target: CuaTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         try createMarker("delay-action")
         let completed = expectation(description: "cancelled requester completes")
         let requester = Task {
@@ -1133,7 +1016,7 @@ final class CuaDriverClientTests: XCTestCase {
         let directory = try XCTUnwrap(testDirectory)
         let sessionID = "timeout-retirement"
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         try createMarker("delay-action")
@@ -1166,7 +1049,7 @@ final class CuaDriverClientTests: XCTestCase {
         do {
             _ = try await requester.value
             XCTFail("a timed-out action completed")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .requestTimedOut)
         } catch {
             XCTFail("timed-out action failed with an unexpected error: \(error)")
@@ -1180,7 +1063,7 @@ final class CuaDriverClientTests: XCTestCase {
                 sessionID: sessionID
             )
             XCTFail("a no-restart client accepted an action after timeout")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .processExited)
         }
         XCTAssertEqual(startCount(), 1)
@@ -1191,7 +1074,7 @@ final class CuaDriverClientTests: XCTestCase {
         let directory = try XCTUnwrap(testDirectory)
         let sessionID = "timeout-respawn"
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         try await waitForStartCount(1)
@@ -1228,7 +1111,7 @@ final class CuaDriverClientTests: XCTestCase {
         do {
             _ = try await requester.value
             XCTFail("a timed-out action completed")
-        } catch let error as CuaDriverError {
+        } catch let error as ScreenDriverError {
             XCTAssertEqual(error, .requestTimedOut)
         } catch {
             XCTFail("timed-out action failed with an unexpected error: \(error)")
@@ -1285,7 +1168,7 @@ final class CuaDriverClientTests: XCTestCase {
         }
         let sessionID = "retiring-delayed-worker"
         _ = try await client.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionID
         )
         try createMarker("delay-action")
@@ -1337,12 +1220,12 @@ final class CuaDriverClientTests: XCTestCase {
         let sessionB = "retiring-client-b"
 
         _ = try await clientA.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionA
         )
         try await waitForStartCount(1)
         _ = try await clientB.capture(
-            target: CuaTargetHint(processID: 4242, windowID: 1001),
+            target: ScreenTargetHint(processID: 4242, windowID: 1001),
             sessionID: sessionB
         )
         try await waitForStartCount(2)
@@ -1405,11 +1288,11 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertFalse(retiredHealth.ready)
         do {
             _ = try await client.capture(
-                target: CuaTargetHint(processID: 4242, windowID: 1001),
+                target: ScreenTargetHint(processID: 4242, windowID: 1001),
                 sessionID: "retired"
             )
             XCTFail("A retired client restarted for capture")
-        } catch is CuaDriverError {
+        } catch is ScreenDriverError {
         }
         await client.reloadConfiguration()
         let reloadedHealth = await client.health()
@@ -1496,382 +1379,6 @@ final class CuaDriverClientTests: XCTestCase {
         XCTAssertTrue(Self.processHasExited(child))
     }
 
-    func testTypedComputerExecutionPreservesDriverParameters() async throws {
-        let configuration = CuaDriverConfiguration(
-            executableURL: driverURL,
-            capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
-            hostBundleID: "dev.perry.PerryTests"
-        )
-        let service = CuaWorkerService(configuration: configuration)
-        addTeardownBlock { try await service.shutdown() }
-        let supervisor = DoSupervisor(
-            confirmer: AutoApproveConfirmer(),
-            typedVerifier: AlwaysVerifiedTypedVerifier()
-        )
-        let (outcome, actionCount) = try await service.withWorker(scope: .foreground, resources: []) { worker in
-            let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
-            let window = ExecutableAction.WindowIdentity(
-                bundleID: capture.target.bundleID,
-                processID: capture.target.processID,
-                windowID: UInt32(capture.target.windowID),
-                connectionGeneration: capture.target.connectionGeneration
-            )
-            let plan = try ExecutionPlan(
-                taskID: TaskID("typed-computer"),
-                goal: "exercise keyboard, scroll, and drag",
-                actions: [
-                    try ExecutableAction(
-                        id: "press-key",
-                        summary: "press shift-command-return",
-                        approvalRequirement: .action,
-                        operation: .computer(window: window, command: .pressKey("return", modifiers: [.shift, .command], target: nil)),
-                        postcondition: .elementValue("")
-                    ),
-                    try ExecutableAction(
-                        id: "scroll-down",
-                        summary: "scroll down",
-                        approvalRequirement: .action,
-                        operation: .computer(window: window, command: .scroll(direction: .down, amount: 1, unit: .line, target: nil)),
-                        postcondition: .elementValue("")
-                    ),
-                    try ExecutableAction(
-                        id: "drag-window",
-                        summary: "drag across the window",
-                        approvalRequirement: .action,
-                        operation: .computer(window: window, command: .drag(
-                            from: .windowPixels(x: 1, y: 2),
-                            to: .windowPixels(x: 3, y: 4),
-                            durationMilliseconds: 250,
-                            steps: 12
-                        )),
-                        postcondition: .elementValue("")
-                    ),
-                ],
-                requestedScopes: [.computerControl]
-            )
-            return (await supervisor.run(
-                plan: plan,
-                typedExecutor: TypedActionRouter(
-                    worker: worker,
-                    workspace: nil,
-                    remoteIntegrations: nil,
-                    askUser: nil,
-                    runCodingTask: nil
-                )
-            ), plan.actions.count)
-        }
-        guard case .completed(let stepsRun) = outcome else {
-            return XCTFail("typed computer plan did not complete: \(outcome)")
-        }
-        XCTAssertEqual(stepsRun, actionCount)
-        let log = try String(contentsOf: testDirectory.appendingPathComponent("requests.log"), encoding: .utf8)
-        let requests = try log.split(separator: "\n").map { line in
-            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
-        }
-        let calls = requests.compactMap { $0["params"] as? [String: Any] }
-        let actionNames = ["press_key", "scroll", "drag"]
-        let actionCalls = calls.filter { actionNames.contains($0["name"] as? String ?? "") }
-        XCTAssertEqual(actionCalls.compactMap { $0["name"] as? String }, actionNames)
-        let actionArguments = try actionCalls.map {
-            try XCTUnwrap($0["arguments"] as? [String: Any])
-        }
-        let sessionID = try XCTUnwrap(actionArguments.first?["session"] as? String)
-        XCTAssertNotNil(UUID(uuidString: sessionID))
-        for arguments in actionArguments {
-            XCTAssertEqual(arguments["pid"] as? Int, 4242)
-            XCTAssertEqual(arguments["window_id"] as? Int, 1001)
-            XCTAssertEqual(arguments["delivery_mode"] as? String, "background")
-            XCTAssertEqual(arguments["session"] as? String, sessionID)
-        }
-        let keyCall = try XCTUnwrap(calls.first { $0["name"] as? String == "press_key" })
-        let keyArguments = try XCTUnwrap(keyCall["arguments"] as? [String: Any])
-        XCTAssertEqual(keyArguments["key"] as? String, "return")
-        XCTAssertEqual(keyArguments["modifiers"] as? [String], ["shift", "cmd"])
-        let scrollCall = try XCTUnwrap(calls.first { $0["name"] as? String == "scroll" })
-        let scrollArguments = try XCTUnwrap(scrollCall["arguments"] as? [String: Any])
-        XCTAssertEqual(scrollArguments["direction"] as? String, "down")
-        XCTAssertEqual(scrollArguments["amount"] as? Int, 1)
-        let dragCall = try XCTUnwrap(calls.first { $0["name"] as? String == "drag" })
-        let dragArguments = try XCTUnwrap(dragCall["arguments"] as? [String: Any])
-        XCTAssertEqual(dragArguments["from_x"] as? Double, 1)
-        XCTAssertEqual(dragArguments["from_y"] as? Double, 2)
-        XCTAssertEqual(dragArguments["to_x"] as? Double, 3)
-        XCTAssertEqual(dragArguments["to_y"] as? Double, 4)
-        XCTAssertEqual(dragArguments["duration_ms"] as? Int, 250)
-        XCTAssertEqual(dragArguments["steps"] as? Int, 12)
-    }
-
-    func testTypedRouterDispatchesTheCommandBoundJustBeforeTheStep() async throws {
-        let configuration = CuaDriverConfiguration(
-            executableURL: driverURL,
-            capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
-            hostBundleID: "dev.perry.PerryTests"
-        )
-        let service = CuaWorkerService(configuration: configuration)
-        addTeardownBlock { try await service.shutdown() }
-        let evidence = EvidenceRecordingTypedVerifier()
-        let supervisor = DoSupervisor(
-            confirmer: AutoApproveConfirmer(),
-            typedVerifier: evidence
-        )
-        let outcome = try await service.withWorker(scope: .foreground, resources: []) { worker in
-            let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
-            let window = ExecutableAction.WindowIdentity(
-                bundleID: capture.target.bundleID,
-                processID: capture.target.processID,
-                windowID: UInt32(capture.target.windowID),
-                connectionGeneration: capture.target.connectionGeneration
-            )
-            let plan = try ExecutionPlan(
-                taskID: TaskID("bound-click"),
-                goal: "click where the control is now",
-                actions: [
-                    try ExecutableAction(
-                        id: "routine-step-0",
-                        summary: "click the control",
-                        approvalRequirement: .action,
-                        operation: .computer(window: window, command: .click(.windowPixels(x: 1, y: 2))),
-                        postcondition: .elementValue("")
-                    )
-                ],
-                requestedScopes: [.computerControl]
-            )
-            var router = TypedActionRouter(
-                worker: worker,
-                workspace: nil,
-                remoteIntegrations: nil,
-                askUser: nil,
-                runCodingTask: nil
-            )
-            router.bindComputerCommand = { _ in
-                RoutineStepBinding(command: .click(.windowPixels(x: 12.5, y: 20.25)), baselineSHA256: "baseline-before-step")
-            }
-            return await supervisor.run(plan: plan, typedExecutor: router)
-        }
-        guard case .completed = outcome else {
-            return XCTFail("bound click did not complete: \(outcome)")
-        }
-        let log = try String(contentsOf: testDirectory.appendingPathComponent("requests.log"), encoding: .utf8)
-        let calls = try log.split(separator: "\n").compactMap { line in
-            try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])["params"] as? [String: Any]
-        }
-        let click = try XCTUnwrap(calls.first { $0["name"] as? String == "click" })
-        let arguments = try XCTUnwrap(click["arguments"] as? [String: Any])
-        XCTAssertEqual(arguments["x"] as? Double, 12.5)
-        XCTAssertEqual(arguments["y"] as? Double, 20.25)
-        XCTAssertEqual(evidence.recorded, [.windowBaseline("baseline-before-step")])
-    }
-
-    func testVisualChangeIsMeasuredAgainstTheScreenBeforeThatStep() async throws {
-        let configuration = CuaDriverConfiguration(
-            executableURL: driverURL,
-            capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
-            hostBundleID: "dev.perry.PerryTests"
-        )
-        let service = CuaWorkerService(configuration: configuration)
-        addTeardownBlock { try await service.shutdown() }
-        let (unchanged, changed) = try await service.withWorker(scope: .foreground, resources: []) { worker in
-            let capture = try await worker.capture(target: CuaTargetHint(processID: 4242, windowID: 1001))
-            let window = ExecutableAction.WindowIdentity(
-                bundleID: capture.target.bundleID,
-                processID: capture.target.processID,
-                windowID: UInt32(capture.target.windowID),
-                connectionGeneration: capture.target.connectionGeneration
-            )
-            let screenNow = SHA256.hash(data: capture.screenshotData).map { String(format: "%02x", $0) }.joined()
-            let staleBaseline = String(repeating: "0", count: 64)
-            let action = try ExecutableAction(
-                id: "routine-step-1",
-                summary: "click the control",
-                approvalRequirement: .action,
-                operation: .computer(window: window, command: .click(.windowPixels(x: 1, y: 2))),
-                postcondition: .visualChange(baselineSHA256: staleBaseline)
-            )
-            let plan = try ExecutionPlan(
-                taskID: TaskID("per-step-baseline"),
-                goal: "judge each click against its own before-screen",
-                actions: [action],
-                requestedScopes: [.computerControl]
-            )
-            let grant = try await ExecutionApprovalRegistry().issue(plan: plan, scope: .action(action.id))
-            let approved = try ApprovedExecutableAction(plan: plan, actionID: action.id, grant: grant)
-            let verifier = CompositeActionVerifier(workspace: self.testDirectory, worker: worker)
-            let unchanged = await verifier.verify(
-                approvedAction: approved,
-                result: ActionExecutionResult(action: action, evidence: .windowBaseline(screenNow)),
-                context: .empty
-            )
-            let changed = await verifier.verify(
-                approvedAction: approved,
-                result: ActionExecutionResult(action: action, evidence: .windowBaseline(staleBaseline)),
-                context: .empty
-            )
-            return (unchanged, changed)
-        }
-        guard case .unverified = unchanged else {
-            return XCTFail("a step that left the screen as it found it was verified: \(unchanged)")
-        }
-        guard case .verified = changed else {
-            return XCTFail("a step that changed the screen was not verified: \(changed)")
-        }
-    }
-
-    func testTransformActionWithoutBoundWorkspaceFailsClosed() async throws {
-        let service = CuaWorkerService()
-        addTeardownBlock { try await service.shutdown() }
-        let workspace = testDirectory.appendingPathComponent("unbound-workspace", isDirectory: true)
-        let action = try ExecutableAction(
-            id: ActionID("unbound-create"),
-            summary: "create an unbound file",
-            approvalRequirement: .action,
-            operation: .transform(
-                workspace: workspace,
-                command: .createUTF8File(path: "must-not-be-created.txt", contents: "x")
-            ),
-            postcondition: .fileContents("x")
-        )
-        let plan = try ExecutionPlan(
-            taskID: TaskID("unbound-transform"),
-            goal: "create a file without a bound workspace",
-            actions: [action],
-            requestedScopes: [.workspaceWrite]
-        )
-        let supervisor = DoSupervisor(
-            confirmer: AutoApproveConfirmer(),
-            typedVerifier: AlwaysVerifiedTypedVerifier()
-        )
-
-        let outcome = await supervisor.run(
-            plan: plan,
-            typedExecutor: TypedActionRouter(
-                worker: nil,
-                workspace: nil,
-                remoteIntegrations: nil,
-                askUser: nil,
-                runCodingTask: nil
-            )
-        )
-        guard case .failed(_, let reason) = outcome else {
-            return XCTFail("a transform without a bound workspace completed: \(outcome)")
-        }
-        XCTAssertEqual(reason, "execution error: typed transform is not bound to this executor's workspace")
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: workspace.appendingPathComponent("must-not-be-created.txt").path
-        ))
-        XCTAssertEqual(startCount(), 0)
-    }
-
-    func testUnknownIntegrationIDFailsBeforeProviderCall() async throws {
-        let service = CuaWorkerService()
-        addTeardownBlock { try await service.shutdown() }
-        let provider = ProviderCallRecorder()
-        let client = RemoteIntegrationClient(transport: { _ in
-            await provider.record()
-            let url = URL(string: "https://provider.example")!
-            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (Data(), response)
-        })
-        let remote = RemoteIntegrationActionRuntime(client: client)
-        let action = try ExecutableAction(
-            id: ActionID("unknown-integration"),
-            summary: "write to an unknown integration",
-            approvalRequirement: .action,
-            operation: .integration(
-                accountID: "not-in-catalog",
-                command: .slackSendMessage(channelID: "C1", text: "hello")
-            ),
-            postcondition: .integrationResource(identifier: "C1", expectedText: "hello")
-        )
-        let plan = try ExecutionPlan(
-            taskID: TaskID("unknown-integration"),
-            goal: "write to an unknown integration",
-            actions: [action],
-            requestedScopes: [.integrationWrite]
-        )
-        let supervisor = DoSupervisor(
-            confirmer: AutoApproveConfirmer(),
-            typedVerifier: AlwaysVerifiedTypedVerifier()
-        )
-
-        let outcome = await supervisor.run(
-            plan: plan,
-            typedExecutor: TypedActionRouter(
-                worker: nil,
-                workspace: nil,
-                remoteIntegrations: remote,
-                askUser: nil,
-                runCodingTask: nil
-            )
-        )
-        guard case .failed(_, let reason) = outcome else {
-            return XCTFail("an unknown integration action completed: \(outcome)")
-        }
-        XCTAssertTrue(
-            reason.contains("missingIntegration") || reason.contains("not available"),
-            "unexpected failure reason: \(reason)"
-        )
-
-        let callCount = await provider.callCount()
-        XCTAssertEqual(callCount, 0)
-    }
-
-    func testSupportedIntegrationConflictFailsBeforeProviderCall() async throws {
-        let service = CuaWorkerService()
-        addTeardownBlock { try await service.shutdown() }
-        let gate = WorkerGate()
-        let holderStarted = expectation(description: "integration holder started")
-        let holderFinished = expectation(description: "integration holder finished")
-        let holderTeardownFinished = XCTestExpectation(description: "integration holder teardown finished")
-        let holder = Task {
-            defer {
-                holderFinished.fulfill()
-                holderTeardownFinished.fulfill()
-            }
-            return try await service.withWorker(
-                scope: .background,
-                resources: [.integration("slack")]
-            ) { _ in
-                holderStarted.fulfill()
-                await gate.waitUntilReleased()
-                return true
-            }
-        }
-        addTeardownBlock {
-            holder.cancel()
-            await gate.release()
-            let result = await XCTWaiter.fulfillment(of: [holderTeardownFinished], timeout: 1)
-            if result != .completed {
-                XCTFail("integration holder did not finish during teardown")
-            }
-        }
-        let startedResult = await XCTWaiter.fulfillment(of: [holderStarted], timeout: 1)
-        XCTAssertEqual(startedResult, .completed)
-
-        do {
-            _ = try await service.withWorker(
-                scope: .background,
-                resources: [.integration("slack")]
-            ) { _ in
-                true
-            }
-            XCTFail("a conflicting integration claim succeeded")
-        } catch let error as CuaWorkerError {
-            XCTAssertEqual(error, .resourceBusy)
-        } catch {
-            XCTFail("unexpected error: \(error)")
-        }
-        await gate.release()
-        let finishedResult = await XCTWaiter.fulfillment(of: [holderFinished], timeout: 1)
-        guard finishedResult == .completed else {
-            XCTFail("integration holder did not finish after release")
-            return
-        }
-        let holderResult = await holder.result
-        if case .failure(let error) = holderResult {
-            XCTFail("integration holder failed: \(error)")
-        }
-    }
-
     private func retireWithinDeadline(_ client: CuaDriverClient, cancelCaller: Bool = false) async throws {
         let completed = expectation(description: "worker retirement completed")
         let task = Task {
@@ -1939,13 +1446,10 @@ final class CuaDriverClientTests: XCTestCase {
 
     private func discoverBundledFixture(
         bundle: Bundle,
-        hostIdentity: CuaCodeIdentity,
-        driverIdentity: CuaCodeIdentity,
+        hostIdentity: ScreenCodeIdentity,
+        driverIdentity: ScreenCodeIdentity,
         identityVerifier: @escaping (URL) -> Bool
     ) throws -> CuaDriverConfiguration? {
-        let suiteName = "dev.perry.CuaDriverClientTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
         let hostURL = bundle.bundleURL.resolvingSymlinksInPath().standardizedFileURL
         let driverURL = try XCTUnwrap(
             bundle.url(forResource: "cua-driver", withExtension: nil, subdirectory: "CuaDriver/bin")
@@ -1953,7 +1457,6 @@ final class CuaDriverClientTests: XCTestCase {
         let resolvedDriverURL = driverURL.resolvingSymlinksInPath().standardizedFileURL
         return CuaDriverConfiguration.discover(
             bundle: bundle,
-            userDefaults: defaults,
             identityVerifier: identityVerifier,
             codeIdentityReader: { url in
                 let resolvedURL = url.resolvingSymlinksInPath().standardizedFileURL
@@ -2090,42 +1593,6 @@ final class CuaDriverClientTests: XCTestCase {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         throw CuaTestError.timeout("marker \(name) did not appear")
-    }
-}
-
-private struct AutoApproveConfirmer: Confirmer {
-    func requestConfirmation(_ request: ConfirmationRequest) async -> Bool { true }
-}
-
-private final class EvidenceRecordingTypedVerifier: TypedActionVerifier, @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage: [ActionExecutionEvidence?] = []
-
-    var recorded: [ActionExecutionEvidence?] {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage
-    }
-
-    func verify(
-        approvedAction: ApprovedExecutableAction,
-        result: ActionExecutionResult,
-        context: ScreenContext
-    ) async -> VerificationStatus {
-        lock.lock()
-        storage.append(result.evidence)
-        lock.unlock()
-        return .verified(evidence: "recorded")
-    }
-}
-
-private struct AlwaysVerifiedTypedVerifier: TypedActionVerifier {
-    func verify(
-        approvedAction: ApprovedExecutableAction,
-        result: ActionExecutionResult,
-        context: ScreenContext
-    ) async -> VerificationStatus {
-        .verified(evidence: "fixture verification")
     }
 }
 

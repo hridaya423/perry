@@ -4,9 +4,9 @@ import PerryGuide
 import ScreenCaptureKit
 
 struct LocalTalkObserver: GuideObserving {
-    let hint: CuaTargetHint
+    let hint: ScreenTargetHint
     let pointerAXPoint: CGPoint
-    let targetStore: CuaGuideTargetStore
+    let targetStore: ScreenGuideTargetStore
     let changes = AXAppChangeMonitor()
 
     enum Failure: Error, Sendable {
@@ -71,12 +71,12 @@ struct LocalTalkObserver: GuideObserving {
         let bounds: CGRect
         let bundleID: String
 
-        var hint: CuaTargetHint {
-            CuaTargetHint(bundleID: bundleID, processID: pid, windowID: windowID, windowTitle: title)
+        var hint: ScreenTargetHint {
+            ScreenTargetHint(bundleID: bundleID, processID: pid, windowID: windowID, windowTitle: title)
         }
     }
 
-    private static func resolveWindow(hint: CuaTargetHint, anchor: CGPoint) -> ResolvedWindow? {
+    private static func resolveWindow(hint: ScreenTargetHint, anchor: CGPoint) -> ResolvedWindow? {
         if let windowID = hint.windowID,
            let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(windowID)) as? [[String: Any]])?.first,
            (info[kCGWindowIsOnscreen as String] as? Bool) == true {

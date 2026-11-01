@@ -81,6 +81,7 @@ struct NotchDialogView: View {
     let cancelTitle: String
     let actions: [NotchDialog.Action]
     let onCancel: () -> Void
+    var confirmsOnReturn = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: PerryTheme.Spacing.section) {
@@ -110,7 +111,7 @@ struct NotchDialogView: View {
             }
         }
         .controlSize(.small)
-        .background { returnToCancel }
+        .background { defaultReturn }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(PerryTheme.Colors.text)
         .tint(PerryTheme.Colors.accent)
@@ -138,8 +139,12 @@ struct NotchDialogView: View {
         .keyboardShortcut(.cancelAction)
     }
 
-    private var returnToCancel: some View {
-        Button(cancelTitle, action: onCancel)
+    var defaultAction: NotchDialog.Action? {
+        confirmsOnReturn ? actions.first : nil
+    }
+
+    private var defaultReturn: some View {
+        Button(defaultAction?.title ?? cancelTitle, action: defaultAction?.perform ?? onCancel)
             .keyboardShortcut(.defaultAction)
             .opacity(0)
             .allowsHitTesting(false)

@@ -77,7 +77,7 @@ final class CommandRouter {
     }
 
     func runHomeGuide(
-        input: HomeController.AcceptedInput, target: CuaTargetHint?, full: Bool,
+        input: HomeController.AcceptedInput, target: ScreenTargetHint?, full: Bool,
         onPartial: @MainActor @Sendable (String) -> Void
     ) async -> AgentFinish {
         guard let host,
@@ -100,8 +100,9 @@ final class CommandRouter {
         let offer = NotchConfirmation(
             title: "Do this as a task?",
             detail: "Perry will use your apps to: \(goal). You can stop it at any time.",
-            destructiveTitle: "Start task",
-            cancelTitle: "Keep asking"
+            confirmTitle: "Start task",
+            cancelTitle: "Keep asking",
+            destructive: false
         )
         taskOffer = offer
         Task { [weak self] in
@@ -134,7 +135,7 @@ final class CommandRouter {
                 try await accepted.saved.value
                 return !host.isUnderMaintenance
             } catch {
-                host.subsystems.homeController.homeModel.storageError = error.localizedDescription
+                host.subsystems.homeController.homeModel.storageError = "Couldn’t save your Guide request. Your text is still here. \(error.localizedDescription)"
                 host.sessionStatus = "Couldn’t save your Guide request. Your text is still here."
                 return false
             }

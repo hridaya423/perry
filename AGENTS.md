@@ -29,7 +29,7 @@ file, builds stay ad-hoc and every rebuild loses the grants.
 - Reuse `build/debug-p1` DerivedData; no clean builds.
 - The XCUITest runner hangs in `_dyld_start` on macOS 27 / Xcode 26.6
   (testmanagerd never ready). Do not gate on the PerryUI scheme; drive the real
-  app with `scripts/lab/` + `cua-driver` instead.
+  app with `scripts/lab/` + the bundled `agent-desktop` instead.
 - Never commit `.devin/`, `.audit/`, or `build/`. No `git push`.
 - No new third-party dependencies without approval.
 
@@ -42,3 +42,7 @@ file, builds stay ad-hoc and every rebuild loses the grants.
 - `latency-report.py <markers.jsonl> [--pair a:b] [--json]` prints n/p50/p95/max ms.
 - `idle-probe.sh [--seconds 60]` enforces budgets: avg CPU <= 0.5%, max RSS <= 180 MB.
 - `record.sh <name> [seconds]` screen-records to `docs/evidence/recordings/`.
+- `agent_desktop.py` is the drills' client for the app's bundled
+  `Contents/Resources/AgentDesktop/bin/agent-desktop` (override with `AGENT_DESKTOP`).
+- `driver-bench.py --label <name> --out <json>` times cold, warm, click and type.
+  It types only into a TextEdit document it creates, and closes it unsaved.

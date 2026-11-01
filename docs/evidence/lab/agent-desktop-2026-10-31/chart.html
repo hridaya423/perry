@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver Latency</title>
+<style>
+:root {
+  --canvas: #F5F3EE; --surface: #FFFEFA; --chip: #EDEAE3; --ink: #202420; --ink-2: #666D66;
+  --ink-3: #6E736E; --rule: #DCDDD5; --ad: #3C7765; --cua: #9C968A;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --canvas: #1B1B1A; --surface: #252524; --chip: #30302E; --ink: #F5F2EA; --ink-2: #A6A59F;
+    --ink-3: #8B8A85; --rule: #343432; --ad: #9CCBB6; --cua: #86837B;
+  }
+}
+:root[data-theme="dark"] {
+  --canvas: #1B1B1A; --surface: #252524; --chip: #30302E; --ink: #F5F2EA; --ink-2: #A6A59F;
+  --ink-3: #8B8A85; --rule: #343432; --ad: #9CCBB6; --cua: #86837B;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--canvas); color: var(--ink); font: 13px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; padding: 40px 16px; }
+.card { max-width: 860px; margin: 0 auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 22px; padding: 32px 36px 28px; }
+.top { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+.wordmark { font: 600 18px/1 ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif; letter-spacing: -0.01em; }
+.tag { font: 500 11px/1 -apple-system, system-ui, sans-serif; color: var(--ink-2); background: var(--chip); padding: 5px 8px; border-radius: 8px; }
+h1 { font: 600 30px/1.15 ui-serif, "New York", Georgia, serif; letter-spacing: -0.015em; margin: 0 0 8px; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--ad); }
+.sub { color: var(--ink-2); margin: 0 0 26px; }
+.legend { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; font-size: 12px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sw.ad, .bar.ad { background: var(--ad); }
+.sw.cua, .bar.cua { background: var(--cua); }
+.row { display: grid; grid-template-columns: 168px 1fr 64px; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--rule); }
+.row:last-of-type { border-bottom: 1px solid var(--rule); }
+.op { font: 600 14px/1.25 -apple-system, system-ui, sans-serif; }
+.op small { display: block; font: 400 12px/1.35 -apple-system, system-ui, sans-serif; color: var(--ink-3); margin-top: 2px; }
+.bars { display: grid; gap: 2px; min-width: 0; }
+.track { position: relative; height: 18px; }
+.bar { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; }
+.val { position: absolute; top: 50%; transform: translateY(-50%); font: 500 11px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); white-space: nowrap; margin-left: 6px; padding: 2px 4px; background: var(--surface); border-radius: 4px; z-index: 1; }
+.grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule); }
+.x { font: 700 22px/1 ui-serif, "New York", Georgia, serif; text-align: right; font-variant-numeric: tabular-nums; }
+.x small { display: block; font: 500 10px/1.2 -apple-system, system-ui, sans-serif; color: var(--ink-3); margin-top: 3px; }
+.axis { display: grid; grid-template-columns: 168px 1fr 64px; gap: 16px; font: 500 10px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-3); padding-top: 8px; }
+.scale { position: relative; height: 12px; }
+.scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.scale span:first-child { transform: none; }
+.note { color: var(--ink-3); font-size: 12px; margin: 18px 0 0; max-width: 64ch; }
+@media (max-width: 640px) {
+  .card { padding: 24px 18px 20px; border-radius: 14px; }
+  h1 { font-size: 24px; }
+  .row, .axis { grid-template-columns: 1fr 48px; }
+  .op { grid-column: 1 / -1; }
+  .axis > :first-child { display: none; }
+}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="top"><span class="wordmark">perry</span><span class="tag">lab · driver bench</span></div>
+  <h1>agent-desktop acts up to <em>16× faster</em> than cua-driver</h1>
+  <p class="sub">Median latency in milliseconds, lower is better. 20 runs per operation on TextEdit and Calculator, MacBook Pro, macOS 27, 31 Oct 2026.</p>
+  <div class="legend">
+    <span><i class="sw ad"></i>agent-desktop 1.0.2</span>
+    <span><i class="sw cua"></i>cua-driver 0.38.0 (Perry today)</span>
+  </div>
+  <div id="chart"></div>
+  <div class="axis" aria-hidden="true"><span></span><div class="scale" id="scale"></div><span></span></div>
+  <p class="note">cua-driver reads each value back to confirm an action landed; agent-desktop leaves that to the next snapshot. A snapshot plus click on agent-desktop still takes 210 ms against cua's 525 ms click alone.</p>
+</main>
+<script>
+const rows = [
+  { op: "Type text", hint: "6 characters into TextEdit", ad: 37, cua: 615 },
+  { op: "Click a button", hint: "Calculator digit, by ref", ad: 71, cua: 525 },
+  { op: "Cold start", hint: "launch plus first UI read", ad: 217, cua: 942 },
+  { op: "Read the UI", hint: "warm accessibility snapshot", ad: 122, cua: 146 },
+];
+const pct = v => (v / 1100 * 100) + "%";
+const ticks = [0, 250, 500, 750, 1000];
+const grid = ticks.slice(1).map(t => `<i class="grid" style="left:${pct(t)}"></i>`).join("");
+const track = (key, v) => `<div class="track">${grid}<div class="bar ${key}" style="width:${pct(v)}"></div><span class="val" style="left:${pct(v)}">${v} ms</span></div>`;
+document.getElementById("chart").innerHTML = rows.map(r => {
+  const speed = r.cua / r.ad;
+  return `<div class="row"><div class="op">${r.op}<small>${r.hint}</small></div>
+    <div class="bars">${track("ad", r.ad)}${track("cua", r.cua)}</div>
+    <div class="x">${speed >= 2 ? Math.floor(speed) : speed.toFixed(1)}×<small>faster</small></div></div>`;
+}).join("");
+document.getElementById("scale").innerHTML = ticks.map(t => `<span style="left:${pct(t)}">${t === 1000 ? "1 s" : t}</span>`).join("");
+</script>
+</body>
+</html>

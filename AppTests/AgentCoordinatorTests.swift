@@ -8,13 +8,6 @@ import PerryOverlay
 
 @MainActor
 final class AgentCoordinatorTests: XCTestCase {
-    private func directory() throws -> URL {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
-        return url
-    }
-
     private func collect(_ events: AsyncStream<AgentLoopEvent>) async -> [AgentLoopEvent] {
         var result: [AgentLoopEvent] = []
         for await event in events { result.append(event) }

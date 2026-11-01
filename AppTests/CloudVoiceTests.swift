@@ -11,6 +11,19 @@ final class CloudVoiceTests: XCTestCase {
         XCTAssertNil(VoiceService.provider(forKey: "sk_short"))
     }
 
+    func testRemovingAKeyTheKeychainWillNotDeleteThrowsAndLeavesTheKeyInPlace() throws {
+        let backend = FlakyCredentialBackend()
+        try backend.save("sk-proj-key", account: VoiceService.openAI.keyAccount)
+        backend.refuse(deletes: true)
+
+        XCTAssertThrowsError(try VoiceService.openAI.removeStoredKey(keychain: backend))
+        XCTAssertEqual(backend.accounts, [VoiceService.openAI.keyAccount])
+
+        backend.refuse()
+        try VoiceService.openAI.removeStoredKey(keychain: backend)
+        XCTAssertEqual(backend.accounts, [])
+    }
+
     func testRequestsAskForRawPCMAt24kHz() throws {
         let eleven = VoiceService.elevenLabs.speechRequest(text: "Hi.", voiceID: "v1", key: "k", previous: "Before.", speed: 1)
         XCTAssertEqual(eleven.url?.absoluteString, "https://api.elevenlabs.io/v1/text-to-speech/v1/stream?output_format=pcm_24000")

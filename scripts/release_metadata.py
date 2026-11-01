@@ -28,6 +28,18 @@ CUA_DRIVER_LOCK_FIELDS = {
     "CUA_DRIVER_SOURCE",
     "CUA_DRIVER_SOURCE_REVISION",
 }
+AGENT_DESKTOP_LOCK_FIELDS = {
+    "AGENT_DESKTOP_VERSION",
+    "AGENT_DESKTOP_TARGET",
+    "AGENT_DESKTOP_RELEASE_TAG",
+    "AGENT_DESKTOP_ASSET",
+    "AGENT_DESKTOP_ASSET_URL",
+    "AGENT_DESKTOP_ARCHIVE_SHA256",
+    "AGENT_DESKTOP_BINARY_SHA256",
+    "AGENT_DESKTOP_HELPER_SHA256",
+    "AGENT_DESKTOP_SOURCE",
+    "AGENT_DESKTOP_SOURCE_REVISION",
+}
 SPARKLE_LOCK_FIELDS = {
     "SPARKLE_VERSION",
     "SPARKLE_REVISION",
@@ -43,6 +55,7 @@ SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 CUA_DRIVER_LICENSE = "MIT"
+AGENT_DESKTOP_LICENSE = "Apache-2.0"
 SPARKLE_LICENSE = "MIT"
 XCODEGEN_SOURCE = "https://github.com/yonaskolb/XcodeGen"
 XCODEGEN_LICENSE = "MIT"
@@ -169,6 +182,61 @@ def load_cua_driver_lock(path):
         fail("Cua driver signing team must be a ten-character Apple team identifier")
     if not SOURCE_REVISION_PATTERN.fullmatch(values["CUA_DRIVER_SOURCE_REVISION"]):
         fail("Cua driver source revision is not a lowercase 40-character commit")
+    return values
+
+
+def load_agent_desktop_lock(path):
+    values = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        fail(f"agent-desktop lock not found: {path}")
+    except OSError as error:
+        fail(f"could not read agent-desktop lock {path}: {error}")
+
+    for line_number, line in enumerate(lines, start=1):
+        if not line:
+            continue
+        if line.count("=") != 1:
+            fail(f"agent-desktop lock line {line_number} is not a key/value pair")
+        key, value = line.split("=", 1)
+        if key not in AGENT_DESKTOP_LOCK_FIELDS:
+            fail(f"agent-desktop lock has an unknown field: {key}")
+        if key in values:
+            fail(f"agent-desktop lock repeats field: {key}")
+        if not value:
+            fail(f"agent-desktop lock field is empty: {key}")
+        values[key] = value
+
+    missing = sorted(AGENT_DESKTOP_LOCK_FIELDS - values.keys())
+    if missing:
+        fail(f"agent-desktop lock is missing fields: {', '.join(missing)}")
+
+    version = values["AGENT_DESKTOP_VERSION"]
+    if not VERSION_PATTERN.fullmatch(version):
+        fail(f"agent-desktop version is not pinned semver: {version}")
+    if values["AGENT_DESKTOP_TARGET"] != "aarch64-apple-darwin":
+        fail("agent-desktop target must be aarch64-apple-darwin")
+    release_tag = values["AGENT_DESKTOP_RELEASE_TAG"]
+    if release_tag != f"v{version}":
+        fail(f"agent-desktop release tag must match version: {release_tag}")
+    asset = values["AGENT_DESKTOP_ASSET"]
+    if asset != f"agent-desktop-v{version}-aarch64-apple-darwin.tar.gz":
+        fail(f"agent-desktop asset must be the Apple Silicon release archive: {asset}")
+    expected_asset_url = f"https://github.com/vercel-labs/agent-desktop/releases/download/{release_tag}/{asset}"
+    if values["AGENT_DESKTOP_ASSET_URL"] != expected_asset_url:
+        fail("agent-desktop asset URL must be the exact pinned GitHub release asset")
+    if values["AGENT_DESKTOP_SOURCE"] != "https://github.com/vercel-labs/agent-desktop":
+        fail("agent-desktop source must be the pinned agent-desktop repository")
+    for field in (
+        "AGENT_DESKTOP_ARCHIVE_SHA256",
+        "AGENT_DESKTOP_BINARY_SHA256",
+        "AGENT_DESKTOP_HELPER_SHA256",
+    ):
+        if not SHA256_PATTERN.fullmatch(values[field]):
+            fail(f"agent-desktop lock field is not a lowercase SHA-256 digest: {field}")
+    if not SOURCE_REVISION_PATTERN.fullmatch(values["AGENT_DESKTOP_SOURCE_REVISION"]):
+        fail("agent-desktop source revision is not a lowercase 40-character commit")
     return values
 
 
@@ -349,7 +417,7 @@ def license_from_file(package_path):
     return None
 
 
-def third_party_components(nodes, runtime, cua_driver, sparkle, xcodegen):
+def third_party_components(nodes, runtime, cua_driver, agent_desktop, sparkle, xcodegen):
     components = [
         {
             "id": "runtime.codex",
@@ -376,6 +444,20 @@ def third_party_components(nodes, runtime, cua_driver, sparkle, xcodegen):
             "binary_sha256": cua_driver["CUA_DRIVER_DISTRIBUTION_BINARY_SHA256"],
             "signing_identifier": cua_driver["CUA_DRIVER_SIGNING_IDENTIFIER"],
             "signing_team": cua_driver["CUA_DRIVER_SIGNING_TEAM"],
+        },
+        {
+            "id": "runtime.agent-desktop",
+            "name": "agent-desktop",
+            "version": agent_desktop["AGENT_DESKTOP_VERSION"],
+            "release_tag": agent_desktop["AGENT_DESKTOP_RELEASE_TAG"],
+            "source": agent_desktop["AGENT_DESKTOP_SOURCE"],
+            "source_revision": agent_desktop["AGENT_DESKTOP_SOURCE_REVISION"],
+            "license": AGENT_DESKTOP_LICENSE,
+            "license_url": f"{agent_desktop['AGENT_DESKTOP_SOURCE']}/blob/{agent_desktop['AGENT_DESKTOP_SOURCE_REVISION']}/LICENSE",
+            "target": agent_desktop["AGENT_DESKTOP_TARGET"],
+            "archive_sha256": agent_desktop["AGENT_DESKTOP_ARCHIVE_SHA256"],
+            "binary_sha256": agent_desktop["AGENT_DESKTOP_BINARY_SHA256"],
+            "helper_sha256": agent_desktop["AGENT_DESKTOP_HELPER_SHA256"],
         },
         {
             "id": "framework.sparkle",
@@ -448,9 +530,10 @@ def sbom_component(record):
     return component
 
 
-def build_sbom(nodes, edges, roots, runtime, cua_driver, sparkle, xcodegen):
+def build_sbom(nodes, edges, roots, runtime, cua_driver, agent_desktop, sparkle, xcodegen):
     runtime_ref = "runtime:codex"
     cua_driver_ref = "runtime:cua-driver"
+    agent_desktop_ref = "runtime:agent-desktop"
     sparkle_ref = "framework:sparkle"
     xcodegen_ref = "tool:xcodegen"
     components = [sbom_component(record) for record in nodes.values()]
@@ -507,6 +590,32 @@ def build_sbom(nodes, edges, roots, runtime, cua_driver, sparkle, xcodegen):
     )
     components.append(
         {
+            "bom-ref": agent_desktop_ref,
+            "externalReferences": [
+                {"type": "distribution", "url": agent_desktop["AGENT_DESKTOP_ASSET_URL"]},
+                {
+                    "type": "license",
+                    "url": f"{agent_desktop['AGENT_DESKTOP_SOURCE']}/blob/{agent_desktop['AGENT_DESKTOP_SOURCE_REVISION']}/LICENSE",
+                },
+                {"type": "vcs", "url": agent_desktop["AGENT_DESKTOP_SOURCE"]},
+            ],
+            "licenses": [{"license": {"id": AGENT_DESKTOP_LICENSE}}],
+            "name": "agent-desktop",
+            "properties": [
+                {"name": "perry:runtime-target", "value": agent_desktop["AGENT_DESKTOP_TARGET"]},
+                {"name": "perry:release-tag", "value": agent_desktop["AGENT_DESKTOP_RELEASE_TAG"]},
+                {"name": "perry:source-revision", "value": agent_desktop["AGENT_DESKTOP_SOURCE_REVISION"]},
+                {"name": "perry:archive-sha256", "value": agent_desktop["AGENT_DESKTOP_ARCHIVE_SHA256"]},
+                {"name": "perry:binary-sha256", "value": agent_desktop["AGENT_DESKTOP_BINARY_SHA256"]},
+                {"name": "perry:helper-sha256", "value": agent_desktop["AGENT_DESKTOP_HELPER_SHA256"]},
+            ],
+            "scope": "required",
+            "type": "application",
+            "version": agent_desktop["AGENT_DESKTOP_VERSION"],
+        }
+    )
+    components.append(
+        {
             "bom-ref": sparkle_ref,
             "externalReferences": [
                 {
@@ -552,7 +661,7 @@ def build_sbom(nodes, edges, roots, runtime, cua_driver, sparkle, xcodegen):
     dependencies = [
         {
             "ref": "application:perry",
-            "dependsOn": sorted((*roots, runtime_ref, cua_driver_ref, sparkle_ref, xcodegen_ref)),
+            "dependsOn": sorted((*roots, runtime_ref, cua_driver_ref, agent_desktop_ref, sparkle_ref, xcodegen_ref)),
         }
     ]
     dependencies.extend(
@@ -573,6 +682,7 @@ def build_sbom(nodes, edges, roots, runtime, cua_driver, sparkle, xcodegen):
             "properties": [
                 {"name": "perry:runtime-lock", "value": "scripts/codex-runtime.lock"},
                 {"name": "perry:cua-driver-lock", "value": "scripts/cua-driver.lock"},
+                {"name": "perry:agent-desktop-lock", "value": "scripts/agent-desktop.lock"},
                 {"name": "perry:sparkle-lock", "value": "scripts/sparkle.lock"},
                 {"name": "perry:xcodegen-lock", "value": "scripts/xcodegen.lock"},
                 {"name": "perry:swift-graph", "value": "swift package show-dependencies --format json"},
@@ -596,6 +706,7 @@ def main():
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--lock-file", type=Path, required=True)
     parser.add_argument("--cua-driver-lock", type=Path, required=True)
+    parser.add_argument("--agent-desktop-lock", type=Path, required=True)
     parser.add_argument("--sparkle-lock", type=Path, required=True)
     parser.add_argument("--xcodegen-lock", type=Path, required=True)
     parser.add_argument("--sbom-path", type=Path, required=True)
@@ -606,13 +717,14 @@ def main():
     repo_root = args.repo_root.resolve()
     runtime = load_runtime_lock(args.lock_file)
     cua_driver = load_cua_driver_lock(args.cua_driver_lock)
+    agent_desktop = load_agent_desktop_lock(args.agent_desktop_lock)
     sparkle = load_sparkle_lock(args.sparkle_lock)
     xcodegen = load_xcodegen_lock(args.xcodegen_lock)
     nodes, edges, roots = collect_graph(args.graph, repo_root)
-    licenses, unresolved = third_party_components(nodes, runtime, cua_driver, sparkle, xcodegen)
+    licenses, unresolved = third_party_components(nodes, runtime, cua_driver, agent_desktop, sparkle, xcodegen)
     if unresolved:
         fail(f"third-party packages need license metadata: {', '.join(unresolved)}")
-    write_json(args.sbom_path, build_sbom(nodes, edges, roots, runtime, cua_driver, sparkle, xcodegen))
+    write_json(args.sbom_path, build_sbom(nodes, edges, roots, runtime, cua_driver, agent_desktop, sparkle, xcodegen))
     write_json(
         args.licenses_path,
         {
@@ -621,6 +733,7 @@ def main():
             "source": {
                 "runtime_lock": "scripts/codex-runtime.lock",
                 "cua_driver_lock": "scripts/cua-driver.lock",
+                "agent_desktop_lock": "scripts/agent-desktop.lock",
                 "sparkle_lock": "scripts/sparkle.lock",
                 "xcodegen_lock": "scripts/xcodegen.lock",
                 "swift_package_graph": sorted(nodes[ref]["location"] for ref in roots),

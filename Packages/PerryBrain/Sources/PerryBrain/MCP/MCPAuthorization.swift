@@ -39,20 +39,22 @@ public enum MCPAuthError: Error, Sendable, Equatable, LocalizedError {
     case denied
     case tokenExchangeFailed
     case signInRequired
+    case credentialNotSaved
     case browserUnavailable
     case timedOut
 
     public var errorDescription: String? {
         switch self {
-        case .discoveryFailed: "Perry couldn’t find how to sign in to this server."
-        case .pkceUnsupported: "This server’s sign-in lacks a protection Perry requires."
-        case .noClientRegistration: "This server doesn’t let Perry register itself, so Perry can’t sign in."
-        case .registrationFailed: "The server refused to register Perry."
-        case .stateMismatch, .issuerMismatch: "The sign-in reply didn’t match Perry’s request, so Perry ignored it."
+        case .discoveryFailed: "I couldn’t find how to sign in to this server."
+        case .pkceUnsupported: "This server’s sign-in lacks a protection I require."
+        case .noClientRegistration: "This server doesn’t let me register myself, so I can’t sign in."
+        case .registrationFailed: "The server refused to register me."
+        case .stateMismatch, .issuerMismatch: "The sign-in reply didn’t match my request, so I ignored it."
         case .denied: "Sign-in was cancelled."
         case .tokenExchangeFailed: "The server didn’t accept the sign-in."
         case .signInRequired: "Sign in again to keep using this server."
-        case .browserUnavailable: "Perry couldn’t open your browser."
+        case .credentialNotSaved: "I couldn’t save the refreshed sign-in to your Keychain. Reconnect this server to keep it."
+        case .browserUnavailable: "I couldn’t open your browser."
         case .timedOut: "Sign-in timed out."
         }
     }

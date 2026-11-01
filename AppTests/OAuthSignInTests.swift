@@ -174,6 +174,35 @@ final class OAuthSignInTests: XCTestCase {
         XCTAssertNotNil(session.presentationContextProvider)
     }
 
+    func testCancellingWhileTheAuthorizationURLIsBeingBuiltNeverOpensTheSheet() async {
+        let agent = WebAuthenticationSessionUserAgent(redirectURI: customRedirect)
+        let outcome = Task { @MainActor in
+            do {
+                _ = try await agent.authorize { _ in
+                    while !Task.isCancelled { await Task.yield() }
+                    return URL(string: "https://linear.app/oauth/authorize")!
+                }
+                return "returned"
+            } catch OAuthError.cancelled {
+                return "cancelled"
+            } catch {
+                return "\(error)"
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        outcome.cancel()
+        let result = await withTaskGroup(of: String.self) { group in
+            group.addTask { await outcome.value }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return "sheet opened"
+            }
+            defer { group.cancelAll() }
+            return await group.next()!
+        }
+        XCTAssertEqual(result, "cancelled")
+    }
+
     func testLoopbackPortIsAcceptedAtTokenExchange() async throws {
         let loopbackLinear = RemoteIntegrationDefinition(
             descriptor: definition("linear").descriptor,

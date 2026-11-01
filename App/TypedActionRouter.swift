@@ -4,7 +4,7 @@ import PerryGuide
 import PerryRuntimes
 
 struct TypedActionRouter: ExecutableActionExecutor {
-    let worker: CuaWorkerHandle?
+    let worker: ScreenWorkerHandle?
     let workspace: URL?
     let remoteIntegrations: RemoteIntegrationActionRuntime?
     let askUser: (@Sendable (String, [String]) async throws -> Void)?

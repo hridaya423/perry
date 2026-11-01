@@ -23,6 +23,8 @@ final class DictationController {
     private var bufferedFrameCount = 0
     private let maximumBufferedFrames = 30 * 48_000
     private var finishCancellationWorkItem: DispatchWorkItem?
+    private var latestPartial: String?
+    var finalizationTimeout: TimeInterval = 2.5
     var session: RecognitionSession?
     var languageMode: DictationLanguageMode = .automatic
     var recognitionGate = DictationRecognitionGate()
@@ -177,11 +179,15 @@ final class DictationController {
         finishCancellationWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
             guard let self, self.recognitionGate.generation == generation else { return }
-            self.abortRecognition()
-            self.onFailure(DictationError.unavailable)
+            if let partial = self.latestPartial {
+                self.deliverTranscript(partial, generation: generation)
+            } else {
+                self.abortRecognition()
+                self.onFailure(DictationError.unavailable)
+            }
         }
         finishCancellationWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + finalizationTimeout, execute: workItem)
     }
 
     private func startCapture(deviceID: AudioDeviceID?) throws {
@@ -269,6 +275,7 @@ final class DictationController {
         case .transcript(let transcript, isFinal: false, let words):
             onWords(words)
             if !transcript.isEmpty {
+                latestPartial = transcript
                 onPartial(transcript)
             }
         case .failure(let error):
@@ -302,6 +309,7 @@ final class DictationController {
         guard !replay.isEmpty else { throw DictationError.unavailable }
 
         session?.cancel()
+        latestPartial = nil
         recognizer = nextRecognizer
         prepareAnalyzer()
         let generation = recognitionGate.advance()
@@ -332,6 +340,7 @@ final class DictationController {
         mic.stop()
         session?.cancel()
         session = nil
+        latestPartial = nil
         clearAudioBuffer()
     }
 

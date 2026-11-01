@@ -97,6 +97,10 @@ final class LocalBrain: ObservableObject {
         return LocalEngine.Model(weights: urls[0], projector: urls[1])
     }
 
+    func substitute(for rung: ModelRung) -> ModelRung? {
+        model(for: rung) == nil ? installed : nil
+    }
+
     func endpoint() async throws -> LocalEngine.Endpoint {
         guard let engine else { throw LocalBrainError.noEngine }
         guard let rung = installed, let model = model(for: rung) else { throw LocalBrainError.notInstalled }

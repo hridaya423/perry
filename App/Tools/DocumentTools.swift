@@ -5,7 +5,7 @@ import PerryBrain
 import PerryGuide
 
 struct DocumentTools {
-    let workers: CuaWorkerService
+    let workers: ScreenWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
 
@@ -70,7 +70,7 @@ private struct DocumentReadExecutor: ToolExecutor {
         }
     }
 
-    private static func openFileText(of target: CuaWindowTarget) -> String? {
+    private static func openFileText(of target: ScreenWindowTarget) -> String? {
         let app = AXUIElementCreateApplication(target.processID)
         guard let window = AXQuery.elements(app, kAXWindowsAttribute).first(where: {
             AXQuery.point($0, kAXPositionAttribute).map { abs($0.x - target.x) < 2 && abs($0.y - target.y) < 2 } ?? false

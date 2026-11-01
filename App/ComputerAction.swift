@@ -144,7 +144,7 @@ struct ComputerAction: Sendable, Equatable {
 
     private static func coordinates(_ selector: ExecutableAction.Selector) throws -> ComputerCoordinates {
         guard case .windowPixels(let x, let y) = selector else {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         return ComputerCoordinates(x: x, y: y)
     }

@@ -100,8 +100,13 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
         sessionStateObservation = sessionController.$state.sink { [weak self] state in
             guard let self else { return }
             self.subsystems.foreground.handleSessionState(state)
-            if self.talkSessionStarted, !state.isTalkingSession {
-                self.subsystems.talkSession.cancel()
+            let previous = self.sessionController.state
+            if self.talkSessionStarted {
+                if previous.isTalkingSession, !state.isTalkingSession {
+                    self.subsystems.talkSession.cancel()
+                } else if previous.isAskingSession, !state.isAskingSession {
+                    self.subsystems.talkSession.cancelAsk()
+                }
             }
             if let cue = SoundPlayer.cue(from: self.sessionController.state, to: state) {
                 SoundPlayer.play(cue)
@@ -143,7 +148,7 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             do {
                 try FileManager.default.createDirectory(at: support.appendingPathComponent("workspace", isDirectory: true), withIntermediateDirectories: true)
             } catch {
-                subsystems.homeController.homeModel.storageError = "Couldn’t prepare Perry’s file workspace. \(error.localizedDescription)"
+                subsystems.homeController.homeModel.storageError = "Couldn’t prepare Perry’s work folder. File tasks won’t start until it exists. \(error.localizedDescription)"
             }
         }
         notifier.configure(
@@ -209,7 +214,6 @@ final class AppController: NSObject, NSApplicationDelegate, ObservableObject {
             await decision.provider.warm()
         }
         subsystems.voice.refreshWakeWordListener()
-        subsystems.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled)
         Task { @MainActor [weak self] in
             await self?.subsystems.backgroundTasks.recoverInterruptedAndStartQueued()
         }

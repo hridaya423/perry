@@ -155,7 +155,7 @@ final class AgentActivityStripState: ObservableObject {
             detail = report.summary
         case .failed(let failure):
             phase = .failed
-            title = "Failed"
+            title = failure.taskID != nil && failure.goal == nil ? "Not saved" : "Failed"
             detail = failure.message
             canRetry = failure.goal != nil
         }

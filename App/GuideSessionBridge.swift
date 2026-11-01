@@ -85,11 +85,11 @@ final class GuideSessionBridge: GuideSessionOutput, GuideSessionContext {
         )
     }
 
-    func guideTargetHint() -> CuaTargetHint {
-        host?.subsystems.probe.currentTargetHint() ?? CuaTargetHint()
+    func guideTargetHint() -> ScreenTargetHint {
+        host?.subsystems.probe.currentTargetHint() ?? ScreenTargetHint()
     }
 
-    func guideAppBundleID(for targetHint: CuaTargetHint) -> String? {
+    func guideAppBundleID(for targetHint: ScreenTargetHint) -> String? {
         targetHint.processID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
             ?? host?.subsystems.spatial.selection?.window?.appBundleID
             ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
@@ -122,7 +122,7 @@ extension AppController {
         subsystems.talkSession.submitComposer(question: question)
     }
 
-    func showEverything(goal: String, targetHint: CuaTargetHint? = nil) async {
+    func showEverything(goal: String, targetHint: ScreenTargetHint? = nil) async {
         let threadID = guideConversationID()
         if let targetHint { subsystems.homeController.homeModel.conversationTargets[threadID] = targetHint }
         await subsystems.guideCoordinator.showEverything(

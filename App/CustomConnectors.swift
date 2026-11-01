@@ -34,17 +34,24 @@ final class CustomConnectors: ObservableObject {
         case connecting
         case ready(toolCount: Int)
         case failed(String)
+
+        var isFailed: Bool {
+            if case .failed = self { return true }
+            return false
+        }
     }
 
     @Published private(set) var connectors: [CustomConnector] = []
     @Published private(set) var status: [UUID: Status] = [:]
+    @Published private(set) var signInNotSaved: Set<UUID> = []
+    private var currentSessions: [UUID: UUID] = [:]
 
     static let keychainService = "dev.perry.connectors"
 
     private let file: URL?
     private let host: PerryToolHost
     private let timeout: Duration
-    private let keychain: KeychainStore
+    private let keychain: any OAuthCredentialStoreBackend
     private let http: any MCPHTTPPerforming
     private let authorizer: MCPAuthorizer
     private var live: [UUID: MCPConnector] = [:]
@@ -58,7 +65,7 @@ final class CustomConnectors: ObservableObject {
         directory: URL?,
         host: PerryToolHost,
         timeout: Duration = .seconds(20),
-        keychain: KeychainStore = KeychainStore(service: CustomConnectors.keychainService),
+        keychain: any OAuthCredentialStoreBackend = KeychainStore(service: CustomConnectors.keychainService),
         http: any MCPHTTPPerforming = URLSessionMCPHTTP(),
         userAgent: any MCPAuthorizationUserAgent = CustomConnectors.browserUserAgent
     ) {
@@ -112,34 +119,64 @@ final class CustomConnectors: ObservableObject {
             connector.secret = nil
         }
         connectors.append(connector)
-        let result = await establish(connector, signingIn: true)
+        var result = await establish(connector, signingIn: true)
         if case .ready = result {
-            save()
-        } else {
-            connectors.removeAll { $0.id == connector.id }
-            status[connector.id] = nil
-            try? keychain.deleteChecked(account: connector.id.uuidString)
+            do {
+                try save()
+                return result
+            } catch {
+                result = .failed("I couldn’t save the connector.")
+            }
+        }
+        disconnect(connector.id)
+        connectors.removeAll { $0.id == connector.id }
+        status[connector.id] = nil
+        if case .failed(let message) = result {
+            do {
+                try keychain.deleteCredential(account: connector.id.uuidString)
+            } catch {
+                result = .failed(message + (message.hasSuffix(".") ? " " : ". ") + "I couldn’t clear its key from your Keychain.")
+            }
         }
         return result
     }
 
     func reconnect(_ id: UUID, signingIn: Bool = true) {
-        guard live[id] == nil, status[id] != .connecting, let connector = connectors.first(where: { $0.id == id }) else { return }
+        guard live[id] == nil || signInNotSaved.contains(id), status[id] != .connecting,
+              let connector = connectors.first(where: { $0.id == id }) else { return }
+        disconnect(id)
+        signInNotSaved.remove(id)
         status[id] = .connecting
         Task { await establish(connector, signingIn: signingIn) }
     }
 
-    func remove(_ id: UUID) {
+    @discardableResult
+    func remove(_ id: UUID) -> String? {
         connectors.removeAll { $0.id == id }
         status[id] = nil
+        signInNotSaved.remove(id)
         disconnect(id)
-        try? keychain.deleteChecked(account: id.uuidString)
-        save()
+        var failures: [String] = []
+        do {
+            try save()
+        } catch {
+            failures.append("I couldn’t save the change. The connector may come back when Perry restarts.")
+        }
+        do {
+            try keychain.deleteCredential(account: id.uuidString)
+        } catch {
+            failures.append(failures.isEmpty
+                ? "I removed the connector, but couldn’t clear its key from your Keychain."
+                : "Its key is also still in your Keychain.")
+        }
+        return failures.isEmpty ? nil : failures.joined(separator: " ")
     }
 
     func disconnectAll() {
         for id in Array(live.keys) { disconnect(id) }
         status = [:]
+        signInNotSaved = []
+        currentSessions = [:]
     }
 
     func forgetAll() {
@@ -223,13 +260,14 @@ final class CustomConnectors: ObservableObject {
 
     private func disconnect(_ id: UUID) {
         host.setExecutors([], group: id.uuidString)
+        currentSessions[id] = nil
         if let client = live.removeValue(forKey: id) {
             Task { await client.close() }
         }
     }
 
     private func transport(for connector: CustomConnector) throws -> any MCPTransport {
-        let value = try connector.secret.flatMap { _ in try keychain.readChecked(account: connector.id.uuidString) }
+        let value = try connector.secret.flatMap { _ in try keychain.readCredential(account: connector.id.uuidString) }
         let id = connector.id
         let onExit: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in self?.serverExited(id) }
@@ -247,7 +285,19 @@ final class CustomConnectors: ObservableObject {
             }
             let keychain = keychain
             let account = id.uuidString
-            let session = MCPOAuthSession(credential: credential, performer: http, persist: { try? keychain.save(try Self.encode($0), account: account) })
+            let sessionID = UUID()
+            currentSessions[id] = sessionID
+            let session = MCPOAuthSession(
+                credential: credential,
+                performer: http,
+                persist: { try keychain.save(try Self.encode($0), account: account) },
+                onSaveFailure: { [weak self] in
+                    Task { @MainActor in
+                        guard let self, self.currentSessions[id] == sessionID else { return }
+                        self.signInNotSaved.insert(id)
+                    }
+                }
+            )
             return try HTTPMCPTransport(endpoint: url, auth: session, performer: http)
         case (.url(let url), _, _):
             return try HTTPMCPTransport(endpoint: url, performer: http)
@@ -264,10 +314,10 @@ final class CustomConnectors: ObservableObject {
         status[id] = .failed("The server stopped.")
     }
 
-    private func save() {
+    private func save() throws {
         guard let file else { return }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(connectors).write(to: file, options: .atomic)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(connectors).write(to: file, options: .atomic)
     }
 
     private static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"

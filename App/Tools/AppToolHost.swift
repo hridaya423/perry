@@ -7,7 +7,7 @@ import PerryOverlay
 enum AppToolHost {
     static func make(
         overlayState: PerryCursorState,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         lease: ForegroundWorkerLease,
         supportDirectory: URL?,
         integrationBackend: AppIntegrationBackend,

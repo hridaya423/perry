@@ -6,10 +6,24 @@ enum IntegrationOperationState: Equatable {
     case working(String)
     case succeeded(String)
     case failed(String)
+    case needsReconnect
+
+    static func resulting(from error: Error) -> IntegrationOperationState {
+        if error is CancellationError { return .idle }
+        if let oauth = error as? OAuthError {
+            switch oauth {
+            case .cancelled: return .idle
+            case .refreshFailed: return .needsReconnect
+            default: break
+            }
+        }
+        if (error as? RemoteIntegrationError) == .authenticationRequired { return .needsReconnect }
+        return .failed(error.localizedDescription)
+    }
 
     var message: String? {
         switch self {
-        case .idle:
+        case .idle, .needsReconnect:
             nil
         case .working(let message), .succeeded(let message), .failed(let message):
             message
@@ -31,6 +45,8 @@ enum IntegrationOperationState: Equatable {
             "Succeeded: \(message)"
         case .failed(let message):
             "Failed: \(message)"
+        case .needsReconnect:
+            "Sign-in expired. Reconnect to keep using it."
         }
     }
 }
@@ -45,6 +61,8 @@ struct IntegrationRow: View {
     @State private var operationState = IntegrationOperationState.idle
     @State private var showDisconnectConfirmation = false
     @State private var settingUp = false
+    @State private var signInExpired = false
+    @State private var authorizing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -59,9 +77,20 @@ struct IntegrationRow: View {
                 }
                 Spacer(minLength: 8)
                 if connected {
-                    StatusLabel("Connected", .ok)
-                        .font(PerryTheme.Scale.secondary)
-                        .foregroundStyle(PerryTheme.Colors.success)
+                    if signInExpired {
+                        StatusLabel("Sign-in expired", .attention)
+                            .font(PerryTheme.Scale.secondary)
+                            .foregroundStyle(PerryTheme.Colors.danger)
+                        Button("Reconnect") { connect() }
+                            .buttonStyle(InkButtonStyle())
+                            .controlSize(.small)
+                            .disabled(operationState.isWorking)
+                            .accessibilityLabel("Reconnect \(definition.displayName)")
+                    } else {
+                        StatusLabel("Connected", .ok)
+                            .font(PerryTheme.Scale.secondary)
+                            .foregroundStyle(PerryTheme.Colors.success)
+                    }
                     Menu {
                         Button("Test connection") { testConnection() }
                         if !definition.quickActions.isEmpty {
@@ -152,6 +181,14 @@ struct IntegrationRow: View {
                 HStack(spacing: 6) {
                     operationStatusIcon
                     Text(message)
+                    if authorizing {
+                        Button("Cancel") { connections.cancel() }
+                            .buttonStyle(.pressable)
+                            .underline()
+                            .padding(4)
+                            .contentShape(Rectangle())
+                            .accessibilityLabel("Cancel \(definition.displayName) sign-in")
+                    }
                 }
                 .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(operationStatusColor)
@@ -180,17 +217,19 @@ struct IntegrationRow: View {
     }
 
     private func connect() {
+        authorizing = true
         setOperationState(.working("Opening sign-in…"))
         connections.connect(definition, clientID: clientID, clientSecret: clientSecret, deviceCodePrompt: showDeviceCode) { result in
             switch result {
             case .success:
                 connected = true
+                signInExpired = false
                 settingUp = false
                 clientID = ""
                 clientSecret = ""
                 setOperationState(.succeeded("Connected on this Mac."))
             case .failure(let error):
-                setOperationState(.failed(error.localizedDescription))
+                setOperationState(.resulting(from: error))
             }
         }
     }
@@ -206,7 +245,10 @@ struct IntegrationRow: View {
     }
 
     private func setWrites(_ value: Bool) {
-        if value { setOperationState(.working("Checking \(definition.displayName) access…")) }
+        if value {
+            authorizing = true
+            setOperationState(.working("Checking \(definition.displayName) access…"))
+        }
         connections.setWrites(value, for: definition, deviceCodePrompt: showDeviceCode) { result in
             switch result {
             case .success(let enabled):
@@ -214,7 +256,7 @@ struct IntegrationRow: View {
                 setOperationState(.idle)
             case .failure(let error):
                 writesEnabled = false
-                setOperationState(.failed(error.localizedDescription))
+                setOperationState(.resulting(from: error))
             }
         }
     }
@@ -230,7 +272,7 @@ struct IntegrationRow: View {
         connections.test(definition) { result in
             switch result {
             case .success(let summary): setOperationState(.succeeded(summary))
-            case .failure(let error): setOperationState(.failed(error.localizedDescription))
+            case .failure(let error): setOperationState(.resulting(from: error))
             }
         }
     }
@@ -240,7 +282,7 @@ struct IntegrationRow: View {
         connections.preview(definition, action: action) { result in
             switch result {
             case .success(let summary): setOperationState(.succeeded(summary))
-            case .failure(let error): setOperationState(.failed(error.localizedDescription))
+            case .failure(let error): setOperationState(.resulting(from: error))
             }
         }
     }
@@ -262,7 +304,7 @@ struct IntegrationRow: View {
     @ViewBuilder
     private var operationStatusIcon: some View {
         switch operationState {
-        case .idle:
+        case .idle, .needsReconnect:
             EmptyView()
         case .working:
             ProgressView()
@@ -283,13 +325,15 @@ struct IntegrationRow: View {
             PerryTheme.Colors.danger
         case .succeeded:
             PerryTheme.Colors.success
-        case .idle, .working:
+        case .idle, .working, .needsReconnect:
             .secondary
         }
     }
 
     private func setOperationState(_ state: IntegrationOperationState) {
         operationState = state
+        if state == .needsReconnect { signInExpired = true }
+        if !state.isWorking { authorizing = false }
         guard let announcement = state.accessibilityLabel else { return }
         guard let application = NSApp else { return }
         NSAccessibility.post(

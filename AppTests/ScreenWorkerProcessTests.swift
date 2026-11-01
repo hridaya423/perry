@@ -6,44 +6,54 @@ import PerryBrain
 import PerryRuntimes
 @testable import Perry
 
-final class CuaWorkerProcessTests: XCTestCase {
-    private func makeFixture(sharedTarget: Bool = false, windowOrigin: (x: Int, y: Int) = (0, 0)) throws -> (CuaWorkerService, URL) {
+final class ScreenWorkerProcessTests: XCTestCase {
+    private func makeFixture(sharedTarget: Bool = false, windowOrigin: (x: Int, y: Int) = (0, 0)) throws -> (ScreenWorkerService, URL) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("perry-workers-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let executable = directory.appendingPathComponent("driver")
+        let executable = directory.appendingPathComponent("agent-desktop")
         let script = #"""
         #!/bin/sh
         set -eu
         root=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
         printf '%s\n' "$$" > "$root/pid-$$"
-        image=$(cat "$root/image.b64" 2>/dev/null || printf 'AQI=')
-        apppid=$$
-        if [ -f "$root/stable-app" ]; then [ -f "$root/app-pid" ] || printf '%s' "$$" > "$root/app-pid"; apppid=$(cat "$root/app-pid"); fi
-        bundle="fixture.$$"
-        if [ -f "$root/shared-target" ]; then bundle="fixture.shared"; fi
-        if [ -f "$root/finder" ]; then bundle="com.apple.finder"; fi
-        trap '' TERM
-        while IFS= read -r line; do
-            printf '%s\n' "$line" >> "$root/requests-$$"
-            id=$(printf '%s\n' "$line" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
-            [ -n "$id" ] || continue
-            case "$line" in
-                *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"%s","pid":%s,"window_id":1,"title":"Fixture","bounds":{"x":\#(windowOrigin.x),"y":\#(windowOrigin.y),"width":800,"height":600}}]}}}\n' "$id" "$bundle" "$apppid" ;;
-                *get_window_state*) if [ -f "$root/finder" ]; then printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","actions":["AXPress"],"frame":{"x":20,"y":20,"width":80,"height":24}},{"element_token":"name","role":"AXTextField","value":"draft-a.txt","actions":["AXShowMenu","AXConfirm"],"frame":{"x":20,"y":60,"width":80,"height":18}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image"; else printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s1","elements":[{"element_token":"save","role":"AXButton","label":"Save","frame":{"x":20,"y":20,"width":80,"height":24}}]},"content":[{"type":"image","data":"%s","mimeType":"image/png"}]}}\n' "$id" "$image" ; fi ;;
-                *set_value*) if [ -f "$root/die-on-set" ]; then rm "$root/die-on-set"; exit 1; fi; printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
-                *type_text*unconfirmed*) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"Sent (unverified) 11 char(s)"}]}}\n' "$id" ;;
-                *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"verified":true}}}\n' "$id" ;;
-                *) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
-            esac
+        command="$1"
+        session=""
+        previous=""
+        for argument in "$@"; do
+            if [ "$previous" = "--session" ]; then session="$argument"; fi
+            previous="$argument"
         done
+        apppid=$(( $(printf '%s' "$session" | cksum | cut -d' ' -f1) % 50000 + 10000 ))
+        if [ -f "$root/stable-app" ]; then apppid=4242; fi
+        log="$root/requests-$apppid"
+        if [ "$command" = "permissions" ]; then log="$root/health.log"; fi
+        IFS=$(printf '\t')
+        printf '%s\n' "$*" >> "$log"
+        unset IFS
+        image=$(cat "$root/image.b64" 2>/dev/null || printf 'AQI=')
+        width=$(cat "$root/image-width" 2>/dev/null || printf '800')
+        ok() { printf '{"version":"2.5","ok":true,"command":"%s","data":%s}\n' "$command" "$1"; }
+        case "$command" in
+            list-windows) ok "[{\"id\":\"w-1\",\"title\":\"Fixture\",\"app_name\":\"Fixture\",\"pid\":$apppid,\"is_focused\":true,\"bounds\":{\"x\":\#(windowOrigin.x),\"y\":\#(windowOrigin.y),\"width\":800,\"height\":600}}]" ;;
+            snapshot) if [ -f "$root/finder" ]; then ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}},{"ref_id":"@s1:e2","role":"textfield","value":"draft-a.txt","available_actions":["ShowMenu","Confirm"],"bounds":{"x":20,"y":60,"width":80,"height":18}}]}}'; else ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}}]}}'; fi ;;
+            screenshot) ok "{\"format\":\"png\",\"width\":$width,\"height\":600,\"scale_factor\":$(( width / 800 )),\"data\":\"$image\"}" ;;
+            set-value) if [ -f "$root/die-on-set" ]; then rm "$root/die-on-set"; exit 1; fi; ok '{}' ;;
+            *) ok '{}' ;;
+        esac
         """#
         try script.write(to: executable, atomically: true, encoding: .utf8)
         if sharedTarget { try Data().write(to: directory.appendingPathComponent("shared-target")) }
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-        let service = CuaWorkerService(configuration: CuaDriverConfiguration(
+        let finder = directory.appendingPathComponent("finder").path
+        let shared = directory.appendingPathComponent("shared-target").path
+        let service = ScreenWorkerService(configuration: AgentDesktopConfiguration(
             executableURL: executable,
-            capabilityManifestURL: directory.appendingPathComponent("capabilities.yaml"),
-            hostBundleID: "dev.perry.PerryTests"
+            hostBundleID: "dev.perry.PerryTests",
+            stateDirectoryURL: directory.appendingPathComponent("state", isDirectory: true),
+            bundleIdentifier: { pid in
+                if FileManager.default.fileExists(atPath: finder) { return "com.apple.finder" }
+                return FileManager.default.fileExists(atPath: shared) ? "fixture.shared" : "fixture.\(pid)"
+            }
         ))
         addTeardownBlock {
             try await service.shutdown()
@@ -52,9 +62,9 @@ final class CuaWorkerProcessTests: XCTestCase {
             for file in files where file.lastPathComponent.hasPrefix("pid-") {
                 let value = try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
                 let pid = try XCTUnwrap(pid_t(value))
-                guard pid > 1, pid != getpid() else { throw CuaDriverError.terminationUnconfirmed }
+                guard pid > 1, pid != getpid() else { throw ScreenDriverError.terminationUnconfirmed }
                 guard kill(pid, 0) == -1, errno == ESRCH else {
-                    throw CuaDriverError.terminationUnconfirmed
+                    throw ScreenDriverError.terminationUnconfirmed
                 }
             }
             try TestTempDirectory.remove(directory)
@@ -62,11 +72,12 @@ final class CuaWorkerProcessTests: XCTestCase {
         return (service, directory)
     }
 
-    func testPointClicksAreScreenshotPixelsAndReachTheDriverAsItsPixels() async throws {
+    func testPointClicksAreScreenshotPixelsAndReachTheDriverAsScreenPoints() async throws {
         let (service, directory) = try makeFixture(sharedTarget: true, windowOrigin: (100, 50))
         let retina = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1600, pixelsHigh: 1200, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
         try XCTUnwrap(retina.representation(using: .png, properties: [:])).base64EncodedString()
             .write(to: directory.appendingPathComponent("image.b64"), atomically: true, encoding: .utf8)
+        try "1600".write(to: directory.appendingPathComponent("image-width"), atomically: true, encoding: .utf8)
         let observations = AgentObservationStore()
         let lease = ForegroundWorkerLease()
         let host = PerryToolHost(executors:
@@ -83,8 +94,8 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let click = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"click\"") })
-        XCTAssertTrue(click.contains("\"x\":100") && click.contains("\"y\":100"), String(click))
+        let click = try XCTUnwrap(Self.calls(requests, named: "mouse-click").last)
+        XCTAssertEqual(click[1], "--xy=150,100", requests)
     }
 
     func testTypeWithoutTargetGoesToTheFocusedField() async throws {
@@ -107,12 +118,12 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let typed = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"type_text\"") })
-        XCTAssertTrue(typed.contains("cedar-a.txt"), String(typed))
-        XCTAssertFalse(typed.contains("element_token") || typed.contains("\"x\":"), String(typed))
+        let typed = try XCTUnwrap(Self.calls(requests, named: "type").last)
+        XCTAssertEqual(Array(typed.prefix(3)), ["type", "@s1:e1", "cedar-a.txt"])
+        XCTAssertTrue(Self.calls(requests, named: "mouse-click").isEmpty, requests)
     }
 
-    func testFieldsWithoutPressGetPointerClicksAndShowTheirValue() async throws {
+    func testFieldsWithoutPressAreClickedByReferenceAndShowTheirValue() async throws {
         let (service, directory) = try makeFixture()
         try Data().write(to: directory.appendingPathComponent("finder"))
         let observations = AgentObservationStore()
@@ -136,10 +147,8 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let clicks = requests.split(separator: "\n").filter { $0.contains("\"name\":\"click\"") }
-        XCTAssertEqual(clicks.count, 2, requests)
-        XCTAssertFalse(clicks[0].contains("element_token"), String(clicks[0]))
-        XCTAssertTrue(clicks[1].contains("element_token"), String(clicks[1]))
+        XCTAssertEqual(Self.calls(requests, named: "click").map { $0[1] }, ["@s1:e2", "@s1:e1"], requests)
+        XCTAssertTrue(Self.calls(requests, named: "mouse-click").isEmpty, requests)
     }
 
     func testSetValueReplacesTheWholeValueThroughTheDriver() async throws {
@@ -160,9 +169,9 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let set = try XCTUnwrap(requests.split(separator: "\n").last { $0.contains("\"name\":\"set_value\"") })
-        XCTAssertTrue(set.contains("\"value\":\"cedar-a.txt\"") && set.contains("\"element_token\""), String(set))
-        XCTAssertFalse(set.contains("delivery_mode"), String(set))
+        let set = try XCTUnwrap(Self.calls(requests, named: "set-value").last)
+        XCTAssertEqual(Array(set.prefix(3)), ["set-value", "@s1:e1", "cedar-a.txt"])
+        XCTAssertFalse(set.contains("--headed"), requests)
     }
 
     func testADroppedActionIsReportedAndTheRunCarriesOnWithARespawnedDriver() async throws {
@@ -212,12 +221,11 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        XCTAssertFalse(requests.contains("\"name\":\"run_steps\""), requests)
-        XCTAssertTrue(requests.contains("\"name\":\"click\""), requests)
-        XCTAssertTrue(requests.contains("\"name\":\"press_key\""), requests)
+        XCTAssertEqual(Self.calls(requests, named: "click").count, 1, requests)
+        XCTAssertEqual(Self.calls(requests, named: "press").first?[1], "return", requests)
     }
 
-    func testUnattendedStepsRunAsOneDriverBatch() async throws {
+    func testUnattendedStepsRunInOrder() async throws {
         let (service, directory) = try makeFixture(sharedTarget: true)
         let observations = AgentObservationStore()
         let lease = ForegroundWorkerLease()
@@ -242,19 +250,11 @@ final class CuaWorkerProcessTests: XCTestCase {
         }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        let batches = requests.split(separator: "\n").filter { $0.contains("\"name\":\"run_steps\"") }
-        XCTAssertEqual(batches.count, 1, requests)
-        let batch = try XCTUnwrap(batches.first)
-        let data = try XCTUnwrap(String(batch).data(using: .utf8))
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let arguments = try XCTUnwrap((json["params"] as? [String: Any])?["arguments"] as? [String: Any])
-        let sent = try XCTUnwrap(arguments["steps"] as? [[String: Any]])
-        XCTAssertEqual(sent.compactMap { $0["tool"] as? String }, ["click", "press_key", "type_text"])
-        XCTAssertEqual(arguments["delay_ms"] as? Int, 300)
-        XCTAssertNotNil((sent[0]["args"] as? [String: Any])?["element_token"])
-        XCTAssertEqual((sent[1]["args"] as? [String: Any])?["key"] as? String, "return")
-        XCTAssertEqual((sent[2]["args"] as? [String: Any])?["text"] as? String, "cedar")
-        XCTAssertFalse(requests.contains("\"name\":\"click\""), requests)
+        let actions = Self.calls(requests).filter { ["click", "press", "type"].contains($0[0]) }
+        XCTAssertEqual(actions.map { $0[0] }, ["click", "press", "type"], requests)
+        XCTAssertEqual(actions[0][1], "@s1:e1")
+        XCTAssertEqual(actions[1][1], "return")
+        XCTAssertEqual(actions[2][2], "cedar")
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {
@@ -265,7 +265,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             do {
                 _ = try await worker.execute(missing)
                 XCTFail("A click on a missing control must fail")
-            } catch let error as CuaDriverError {
+            } catch let error as ScreenDriverError {
                 XCTAssertEqual(error, .targetNotFound)
             }
             _ = try await worker.capture(target: nil)
@@ -280,11 +280,11 @@ final class CuaWorkerProcessTests: XCTestCase {
             lease.set(foreground, for: runID)
             defer { lease.set(nil, for: runID) }
             let original = try await foreground.capture(target: nil)
-            let owned = try await withCuaWorker(service, lease: lease, runID: runID, resources: []) { worker in
+            let owned = try await withScreenWorker(service, lease: lease, runID: runID, resources: []) { worker in
                 try await worker.capture(target: nil)
             }
             XCTAssertEqual(owned.target.processID, original.target.processID)
-            let unrelated = try await withCuaWorker(service, lease: lease, runID: UUID(), resources: []) { worker in
+            let unrelated = try await withScreenWorker(service, lease: lease, runID: UUID(), resources: []) { worker in
                 try await worker.capture(target: nil)
             }
             XCTAssertNotEqual(unrelated.target.processID, original.target.processID)
@@ -299,13 +299,13 @@ final class CuaWorkerProcessTests: XCTestCase {
             lease.set(foreground, for: runID)
             defer { lease.set(nil, for: runID) }
             do {
-                _ = try await withCuaWorker(
+                _ = try await withScreenWorker(
                     service, lease: lease, runID: UUID(), resources: [.application("fixture.shared")]
                 ) { worker in
                     try await worker.capture(target: nil)
                 }
                 XCTFail("An unrelated run bypassed the application's resource lock")
-            } catch let error as CuaWorkerError {
+            } catch let error as ScreenWorkerError {
                 XCTAssertEqual(error, .resourceBusy)
             }
         }
@@ -394,7 +394,7 @@ final class CuaWorkerProcessTests: XCTestCase {
             workers: service, workerLease: lease
         )
         var results: [ToolResult] = []
-        for await event in coordinator.run(threadID: UUID(), goal: "Click the fixture Save button", target: CuaTargetHint(bundleID: "fixture.shared", windowID: 1)) {
+        for await event in coordinator.run(threadID: UUID(), goal: "Click the fixture Save button", target: ScreenTargetHint(bundleID: "fixture.shared", windowID: 1)) {
             if case .toolCallFinished(let result) = event { results.append(result) }
         }
         XCTAssertEqual(results.count, 2)
@@ -403,7 +403,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let logs = files.filter { $0.lastPathComponent.hasPrefix("requests-") }
         XCTAssertEqual(logs.count, 1)
         let requests = try logs.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        XCTAssertTrue(requests.contains("\"name\":\"click\""))
+        XCTAssertEqual(Self.calls(requests, named: "click").count, 1, requests)
         for file in files where file.lastPathComponent.hasPrefix("pid-") {
             let pid = try XCTUnwrap(Int32(try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
             XCTAssertEqual(kill(pid, 0), -1)
@@ -450,7 +450,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }
             .map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        XCTAssertFalse(requests.contains("\"name\":\"click\""))
+        XCTAssertTrue(Self.calls(requests, named: "click").isEmpty, requests)
         for file in files where file.lastPathComponent.hasPrefix("pid-") {
             let pid = try XCTUnwrap(Int32(try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
             XCTAssertEqual(kill(pid, 0), -1)
@@ -486,9 +486,8 @@ final class CuaWorkerProcessTests: XCTestCase {
         await server.stop()
         XCTAssertTrue(client.isClosedByServer())
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        let pids = files.filter { $0.lastPathComponent.hasPrefix("pid-") }
-        XCTAssertEqual(pids.count, 1)
-        for file in pids {
+        XCTAssertEqual(files.filter { $0.lastPathComponent.hasPrefix("requests-") }.count, 1)
+        for file in files where file.lastPathComponent.hasPrefix("pid-") {
             let pid = try XCTUnwrap(Int32(try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
             XCTAssertEqual(kill(pid, 0), -1)
             XCTAssertEqual(errno, ESRCH)
@@ -579,7 +578,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let (service, _) = try makeFixture(sharedTarget: true)
         let observations = AgentObservationStore()
         let context = ToolContext(surface: .agent)
-        observations.setTarget(CuaTargetHint(bundleID: "fixture.shared", windowID: 1, windowTitle: "Fixture"), runID: context.runID)
+        observations.setTarget(ScreenTargetHint(bundleID: "fixture.shared", windowID: 1, windowTitle: "Fixture"), runID: context.runID)
         let lease = ForegroundWorkerLease()
         let host = PerryToolHost(executors: ScreenTools(workers: service, lease: lease, observations: observations).executors)
         try await lease.withRun(context.runID, workers: service) {
@@ -602,7 +601,7 @@ final class CuaWorkerProcessTests: XCTestCase {
         let (service, directory) = try makeFixture(sharedTarget: true)
         let observations = AgentObservationStore()
         let context = ToolContext(surface: .agent)
-        observations.setTarget(CuaTargetHint(bundleID: "fixture.shared", windowID: 999), runID: context.runID)
+        observations.setTarget(ScreenTargetHint(bundleID: "fixture.shared", windowID: 999), runID: context.runID)
         let host = PerryToolHost(executors: ScreenTools(workers: service, lease: nil, observations: observations).executors)
         let result = await host.handle(ToolCall(id: "closed", name: "screen.observe", arguments: .object([:])), context: context)
         XCTAssertTrue(result.isError)
@@ -611,19 +610,19 @@ final class CuaWorkerProcessTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }
             .map { try String(contentsOf: $0, encoding: .utf8) }.joined()
-        XCTAssertFalse(requests.contains("\"name\":\"get_window_state\""))
+        XCTAssertTrue(Self.calls(requests, named: "snapshot").isEmpty, requests)
     }
 
     func testGuideReaderCannotCaptureAfterItsWorkerScopeEnds() async throws {
         let (service, directory) = try makeFixture(sharedTarget: true)
-        let targetStore = CuaGuideTargetStore()
+        let targetStore = ScreenGuideTargetStore()
         let reader = try await service.withWorker(scope: .guide, resources: []) { worker in
-            let reader = CuaGuideTreeReader(worker: worker, targetStore: targetStore)
+            let reader = ScreenGuideTreeReader(worker: worker, targetStore: targetStore)
             let snapshot = try await reader.observe().snapshot
             XCTAssertEqual(snapshot.appBundleID, "fixture.shared")
             XCTAssertEqual(snapshot.windowTitle, "Fixture")
             XCTAssertEqual(snapshot.elements.count, 1)
-            XCTAssertEqual(snapshot.elements.first?.stableID, "save")
+            XCTAssertEqual(snapshot.elements.first?.stableID, "@s1:e1")
             XCTAssertEqual(snapshot.elements.first?.label, "Save")
             return reader
         }
@@ -633,15 +632,15 @@ final class CuaWorkerProcessTests: XCTestCase {
         do {
             _ = try await reader.observe()
             XCTFail("A guide reader outlived its worker scope")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .retired)
         }
         XCTAssertEqual(try Data(contentsOf: requestFile), requests)
         let remainingFiles = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-        XCTAssertEqual(remainingFiles.filter { $0.lastPathComponent.hasPrefix("pid-") }.count, 1)
+        XCTAssertEqual(remainingFiles.filter { $0.lastPathComponent.hasPrefix("requests-") }.count, 1)
     }
 
-    func testThreeWorkerProcessesHaveIndependentRetirement() async throws {
+    func testThreeWorkersHaveIndependentRetirement() async throws {
         let (service, directory) = try makeFixture()
         let captures = WorkerCaptures()
         let ready = expectation(description: "three workers captured")
@@ -672,7 +671,7 @@ final class CuaWorkerProcessTests: XCTestCase {
                 XCTFail("Fourth worker operation was invoked")
             }
             XCTFail("Fourth worker was admitted")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .capacityReached)
         }
         let first = try XCTUnwrap(all[0])
@@ -686,21 +685,20 @@ final class CuaWorkerProcessTests: XCTestCase {
             return XCTFail("Retirement exceeded its deadline")
         }
         try await retirement.value
-        XCTAssertEqual(kill(first.pid, 0), -1)
-        XCTAssertEqual(errno, ESRCH)
+        do {
+            _ = try await first.worker.capture(target: nil)
+            XCTFail("A retired worker captured")
+        } catch let error as ScreenWorkerError {
+            XCTAssertEqual(error, .retired)
+        }
         for index in [1, 2] {
             let active = try XCTUnwrap(all[index])
             let capture = try await active.worker.capture(target: nil)
             XCTAssertEqual(capture.target.processID, active.pid)
-            XCTAssertEqual(kill(active.pid, 0), 0)
         }
         for task in tasks { task.cancel() }
         guard await XCTWaiter.fulfillment(of: [stopped], timeout: 2) == .completed else {
             return XCTFail("Worker scopes did not acknowledge cancellation")
-        }
-        for record in all.values {
-            XCTAssertEqual(kill(record.pid, 0), -1)
-            XCTAssertEqual(errno, ESRCH)
         }
         try TestTempDirectory.remove(directory)
     }
@@ -727,13 +725,13 @@ final class CuaWorkerProcessTests: XCTestCase {
             do {
                 try await service.withWorker(scope: .dictation, resources: []) { worker in
                     if insert {
-                        _ = try await worker.insertText("must not be sent", target: CuaTargetHint(bundleID: "fixture.shared"))
+                        _ = try await worker.insertText("must not be sent", target: ScreenTargetHint(bundleID: "fixture.shared"))
                     } else {
-                        _ = try await worker.capture(target: CuaTargetHint(bundleID: "fixture.shared"))
+                        _ = try await worker.capture(target: ScreenTargetHint(bundleID: "fixture.shared"))
                     }
                 }
                 XCTFail("Conflicting application was accepted")
-            } catch let error as CuaWorkerError {
+            } catch let error as ScreenWorkerError {
                 XCTAssertEqual(error, .resourceBusy)
             }
         }
@@ -746,9 +744,9 @@ final class CuaWorkerProcessTests: XCTestCase {
         XCTAssertEqual(rejectedLogs.count, 2)
         for file in rejectedLogs {
             let requests = try String(contentsOf: file, encoding: .utf8)
-            XCTAssertTrue(requests.contains("list_windows"))
-            XCTAssertFalse(requests.contains("get_window_state"))
-            XCTAssertFalse(requests.contains("type_text"))
+            XCTAssertFalse(Self.calls(requests, named: "list-windows").isEmpty, requests)
+            XCTAssertTrue(Self.calls(requests, named: "snapshot").isEmpty, requests)
+            XCTAssertTrue(Self.calls(requests, named: "type").isEmpty, requests)
         }
         first.cancel()
         let stoppedResult = await XCTWaiter.fulfillment(of: [stopped], timeout: 2)
@@ -777,6 +775,12 @@ final class CuaWorkerProcessTests: XCTestCase {
         let refused = try MCPFixtureClient(directory: socketDirectory, token: scope.token)
         defer { refused.close() }
         XCTAssertThrowsError(try refused.request(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))
+    }
+
+    private static func calls(_ requests: String, named name: String? = nil) -> [[String]] {
+        requests.split(separator: "\n")
+            .map { $0.split(separator: "\t", omittingEmptySubsequences: false).map(String.init) }
+            .filter { name == nil || $0.first == name }
     }
 
     func testAcpAgentCallsAPerryToolThroughTheEmbeddedHelper() async throws {
@@ -849,12 +853,12 @@ final class CuaWorkerProcessTests: XCTestCase {
 
 private actor WorkerCaptures {
     struct Capture: Sendable {
-        let worker: CuaWorkerHandle
+        let worker: ScreenWorkerHandle
         let pid: pid_t
     }
     var values: [Int: Capture] = [:]
 
-    func insert(_ index: Int, worker: CuaWorkerHandle, pid: pid_t) {
+    func insert(_ index: Int, worker: ScreenWorkerHandle, pid: pid_t) {
         values[index] = Capture(worker: worker, pid: pid)
     }
 }

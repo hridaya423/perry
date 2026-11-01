@@ -48,6 +48,9 @@ targets:
       - path: App/Resources/CodexRuntime
         type: folder
         buildPhase: resources
+      - path: App/Resources/AgentDesktop
+        type: folder
+        buildPhase: resources
       - path: App/Resources/CuaDriver
         type: folder
         buildPhase: resources
@@ -73,6 +76,9 @@ targets:
     preBuildScripts:
       - path: scripts/fetch-codex-runtime.sh
         name: FetchCodexRuntime
+        basedOnDependencyAnalysis: false
+      - path: scripts/fetch-agent-desktop.sh
+        name: FetchAgentDesktop
         basedOnDependencyAnalysis: false
       - path: scripts/fetch-cua-driver.sh
         name: FetchCuaDriver
@@ -163,7 +169,7 @@ schemes:
         - PerryTests
     run:
       config: Debug
-  PerryCuaLive:
+  PerryAgentDesktopLive:
     build:
       targets:
         Perry: all
@@ -171,9 +177,10 @@ schemes:
       targets:
         - name: PerryTests
           selectedTests:
-            - CuaLiveTests
+            - AgentDesktopLiveTests
+            - HybridDriverLiveTests
       environmentVariables:
-        PERRY_LIVE_CUA: "1"
+        PERRY_LIVE_AGENT_DESKTOP: "1"
   PerryUI:
     build:
       targets:

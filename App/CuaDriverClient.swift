@@ -78,14 +78,14 @@ private struct CuaOwnedProcess {
             target = process.processIdentifier
         }
         guard kill(target, signal) == 0 || errno == ESRCH else {
-            throw CuaDriverError.terminationUnconfirmed
+            throw ScreenDriverError.terminationUnconfirmed
         }
     }
 }
 
 private struct CuaSessionState: Sendable {
     let generation: UInt64
-    let target: CuaWindowTarget
+    let target: ScreenWindowTarget
     let snapshotID: String?
     let elementLabels: [String: String]
 }
@@ -117,7 +117,7 @@ actor CuaDriverClient {
     private var nextConnectionGeneration: UInt64 = 0
     private var startedSessions: [String: UInt64] = [:]
     private var sessionStates: [String: CuaSessionState] = [:]
-    private var sessionTargets: [String: CuaWindowTarget] = [:]
+    private var sessionTargets: [String: ScreenWindowTarget] = [:]
     private var ownedProcesses: [UInt64: CuaOwnedProcess] = [:]
     private var retired = false
     private var retirementTask: Task<Void, Error>?
@@ -134,11 +134,11 @@ actor CuaDriverClient {
         configurationSource = .resolved(configuration)
     }
 
-    func health() async -> CuaDriverHealth {
+    func health() async -> ScreenDriverHealth {
         guard resolvedConfiguration() != nil else {
-            return CuaDriverHealth(
+            return ScreenDriverHealth(
                 ready: false,
-                summary: "Screen control isn’t available. Reinstall Perry or set its path in Settings > Brain."
+                summary: "Screen control isn’t available. Reinstall Perry."
             )
         }
         do {
@@ -146,50 +146,50 @@ actor CuaDriverClient {
             let output = try await callTool("check_permissions", DriverArguments(), generation: generation)
             let report = output.structure(CuaPermissionReport.self)
             guard report?.source?.attribution == "host", report?.source?.embedded == true else {
-                return CuaDriverHealth(
+                return ScreenDriverHealth(
                     ready: false,
                     summary: "Screen control couldn’t confirm that Perry holds its permissions."
                 )
             }
             guard report?.accessibility == true, report?.screenRecording == true else {
-                return CuaDriverHealth(
+                return ScreenDriverHealth(
                     ready: false,
                     summary: "I need Accessibility and Screen Recording access. Turn both on for Perry in System Settings."
                 )
             }
-            return CuaDriverHealth(ready: true, summary: "Screen control is ready.")
+            return ScreenDriverHealth(ready: true, summary: "Screen control is ready.")
         } catch {
-            return CuaDriverHealth(ready: false, summary: "Screen control isn’t responding. Try again.")
+            return ScreenDriverHealth(ready: false, summary: "Screen control isn’t responding. Try again.")
         }
     }
 
-    func target(for sessionID: String) -> CuaWindowTarget? {
+    func target(for sessionID: String) -> ScreenWindowTarget? {
         guard let state = sessionStates[sessionID], state.generation == connection?.generation else { return nil }
         return state.target
     }
 
-    func capture(target hint: CuaTargetHint?, sessionID: String) async throws -> CuaCapturedWindow {
+    func capture(target hint: ScreenTargetHint?, sessionID: String) async throws -> ScreenCapturedWindow {
         let resolvedTarget = try await resolveTarget(hint, sessionID: sessionID)
         return try await capture(resolvedTarget: resolvedTarget, sessionID: sessionID)
     }
 
-    func resolveTarget(_ hint: CuaTargetHint?, sessionID: String) async throws -> CuaWindowTarget {
+    func resolveTarget(_ hint: ScreenTargetHint?, sessionID: String) async throws -> ScreenWindowTarget {
         sessionStates[sessionID] = nil
         sessionTargets[sessionID] = nil
         let generation = try await ensureSession(sessionID)
         let windows = try await listWindows(generation: generation, sessionID: sessionID)
         guard let target = selectTarget(from: windows, hint: hint) else {
-            throw CuaDriverError.noTargetWindow
+            throw ScreenDriverError.noTargetWindow
         }
         try ensureTargetAllowed(target)
         guard connection?.generation == generation, startedSessions[sessionID] == generation else {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
         sessionTargets[sessionID] = target
         return target
     }
 
-    func capture(resolvedTarget: CuaWindowTarget, sessionID: String, includeScreenshot: Bool = true) async throws -> CuaCapturedWindow {
+    func capture(resolvedTarget: ScreenWindowTarget, sessionID: String, includeScreenshot: Bool = true) async throws -> ScreenCapturedWindow {
         try Task.checkCancellation()
         let generation = try validateResolvedTarget(resolvedTarget, sessionID: sessionID)
         let output = try await callTool(
@@ -200,10 +200,10 @@ actor CuaDriverClient {
         )
         let screenshotData = output.images.first ?? Data()
         if includeScreenshot, screenshotData.isEmpty {
-            throw CuaDriverError.noScreenshot
+            throw ScreenDriverError.noScreenshot
         }
         guard connection?.generation == generation, startedSessions[sessionID] == generation else {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
         let state = output.structure(CuaWindowState.self)
         sessionStates[sessionID] = CuaSessionState(
@@ -213,7 +213,7 @@ actor CuaDriverClient {
             elementLabels: state?.labels ?? [:]
         )
         sessionTargets[sessionID] = resolvedTarget
-        return CuaCapturedWindow(
+        return ScreenCapturedWindow(
             target: resolvedTarget,
             screenshotData: screenshotData,
             screenshotMIMEType: output.imageMIMEType ?? "image/png",
@@ -234,7 +234,7 @@ actor CuaDriverClient {
             guard target.processID == expected.processID,
                   target.windowID == Int64(expected.windowID),
                   target.bundleID.lowercased() == expected.bundleID.lowercased() else {
-                throw CuaDriverError.targetMismatch
+                throw ScreenDriverError.targetMismatch
             }
         }
         let output = try await perform(action.operation, state: state, sessionID: sessionID)
@@ -245,17 +245,17 @@ actor CuaDriverClient {
         )
     }
 
-    func insertText(_ text: String, target hint: CuaTargetHint, sessionID: String) async throws -> CuaWindowTarget {
+    func insertText(_ text: String, target hint: ScreenTargetHint, sessionID: String) async throws -> ScreenWindowTarget {
         guard !text.isEmpty else {
-            throw CuaDriverError.toolRejected("Text insertion requires non-empty text.")
+            throw ScreenDriverError.toolRejected("Text insertion requires non-empty text.")
         }
         let resolvedTarget = try await resolveTarget(hint, sessionID: sessionID)
         return try await insertText(text, resolvedTarget: resolvedTarget, sessionID: sessionID)
     }
 
-    func insertText(_ text: String, resolvedTarget: CuaWindowTarget, sessionID: String) async throws -> CuaWindowTarget {
+    func insertText(_ text: String, resolvedTarget: ScreenWindowTarget, sessionID: String) async throws -> ScreenWindowTarget {
         guard !text.isEmpty else {
-            throw CuaDriverError.toolRejected("Text insertion requires non-empty text.")
+            throw ScreenDriverError.toolRejected("Text insertion requires non-empty text.")
         }
         try Task.checkCancellation()
         let generation = try validateResolvedTarget(resolvedTarget, sessionID: sessionID)
@@ -264,11 +264,11 @@ actor CuaDriverClient {
         arguments.delayMs = 10
         let output = try await callTool("type_text", arguments, generation: generation)
         guard output.effectConfirmed else {
-            throw CuaDriverError.toolRejected("I couldn’t confirm the text went into the field.")
+            throw ScreenDriverError.toolRejected("I couldn’t confirm the text went into the field.")
         }
         let current = try await refreshResolvedTarget(resolvedTarget, sessionID: sessionID)
         guard current == resolvedTarget else {
-            throw CuaDriverError.toolRejected("The target window changed before text insertion could be verified.")
+            throw ScreenDriverError.toolRejected("The target window changed before text insertion could be verified.")
         }
         sessionStates[sessionID] = CuaSessionState(
             generation: current.connectionGeneration,
@@ -348,14 +348,14 @@ actor CuaDriverClient {
         var arguments = DriverArguments()
         arguments.session = sessionID
         _ = try await callTool("start_session", arguments, generation: generation)
-        guard connection?.generation == generation else { throw CuaDriverError.processExited }
+        guard connection?.generation == generation else { throw ScreenDriverError.processExited }
         startedSessions[sessionID] = generation
         return generation
     }
 
     private func ensureStarted() async throws -> UInt64 {
         try Task.checkCancellation()
-        guard !retired else { throw CuaDriverError.processExited }
+        guard !retired else { throw ScreenDriverError.processExited }
         reapExitedProcesses()
         if let connection {
             if connection.process.isRunning {
@@ -368,9 +368,9 @@ actor CuaDriverClient {
             await failConnection(generation: connection.generation)
         }
         guard allowsRestart || nextConnectionGeneration == 0 else {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
-        guard let configuration = resolvedConfiguration() else { throw CuaDriverError.unavailable }
+        guard let configuration = resolvedConfiguration() else { throw ScreenDriverError.unavailable }
 
         let generation = nextConnectionGeneration
         nextConnectionGeneration += 1
@@ -386,7 +386,7 @@ actor CuaDriverClient {
         do {
             try process.run()
         } catch {
-            throw CuaDriverError.unavailable
+            throw ScreenDriverError.unavailable
         }
         let pid = process.processIdentifier
         ownedProcesses[generation] = CuaOwnedProcess(process: process, processGroup: getpgid(pid) == pid ? pid : nil)
@@ -411,7 +411,7 @@ actor CuaDriverClient {
             initialization: nil
         )
         let initialization = Task { [weak self] () throws -> Void in
-            guard let self else { throw CuaDriverError.processExited }
+            guard let self else { throw ScreenDriverError.processExited }
             do {
                 await rpc.start()
                 _ = try await self.send(rpc, generation: generation, method: "initialize", params: .object([
@@ -444,7 +444,7 @@ actor CuaDriverClient {
     ) async throws -> CuaToolOutput {
         do {
             return try await invoke(tool, arguments, generation: generation, timeout: timeout)
-        } catch CuaDriverError.toolRejected(let detail)
+        } catch ScreenDriverError.toolRejected(let detail)
             where allowsForegroundInput && arguments.deliveryMode == "background" && detail.contains("Background input refused") {
             var foreground = arguments
             foreground.deliveryMode = "foreground"
@@ -459,7 +459,7 @@ actor CuaDriverClient {
         timeout: Duration?
     ) async throws -> CuaToolOutput {
         guard !retired, let connection, connection.generation == generation else {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
         PerfMark.markDynamic("cua.\(tool).begin")
         defer { PerfMark.markDynamic("cua.\(tool).end") }
@@ -475,7 +475,7 @@ actor CuaDriverClient {
         )
         let output = CuaToolOutput(result)
         if output.isError {
-            throw CuaDriverError.toolRejected(output.text)
+            throw ScreenDriverError.toolRejected(output.text)
         }
         return output
     }
@@ -493,20 +493,20 @@ actor CuaDriverClient {
                 group.addTask { try await rpc.request(method, params: params) }
                 group.addTask {
                     try await Task.sleep(for: timeout)
-                    throw CuaDriverError.requestTimedOut
+                    throw ScreenDriverError.requestTimedOut
                 }
                 defer { group.cancelAll() }
                 return try await group.next()!
             }
         } catch is CancellationError {
             throw CancellationError()
-        } catch CuaDriverError.requestTimedOut {
+        } catch ScreenDriverError.requestTimedOut {
             await failConnection(generation: generation)
-            throw CuaDriverError.requestTimedOut
+            throw ScreenDriverError.requestTimedOut
         } catch let error as JSONRPCError where error.code != -32098 {
-            throw CuaDriverError.protocolFailure(error.message)
+            throw ScreenDriverError.protocolFailure(error.message)
         } catch {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
     }
 
@@ -549,7 +549,7 @@ actor CuaDriverClient {
             try owned.signal(SIGKILL)
         }
         guard try await waitForTermination(until: started.advanced(by: .milliseconds(490))) else {
-            throw CuaDriverError.terminationUnconfirmed
+            throw ScreenDriverError.terminationUnconfirmed
         }
     }
 
@@ -566,17 +566,17 @@ actor CuaDriverClient {
         ownedProcesses = ownedProcesses.filter { !$0.value.hasExited }
     }
 
-    private func listWindows(generation: UInt64, sessionID: String) async throws -> [CuaWindowTarget] {
+    private func listWindows(generation: UInt64, sessionID: String) async throws -> [ScreenWindowTarget] {
         var arguments = DriverArguments()
         arguments.onScreenOnly = false
         let output = try await callTool("list_windows", arguments, generation: generation, timeout: Self.readTimeout)
         guard let list = output.structure(CuaWindowList.self) else {
-            throw CuaDriverError.protocolFailure("list_windows returned no window list")
+            throw ScreenDriverError.protocolFailure("list_windows returned no window list")
         }
         return list.windows.compactMap(\.value).compactMap { window in
             let bundleID = window.bundleId ?? NSRunningApplication(processIdentifier: window.pid)?.bundleIdentifier
             guard let bundleID, !bundleID.isEmpty else { return nil }
-            return CuaWindowTarget(
+            return ScreenWindowTarget(
                 bundleID: bundleID,
                 processID: window.pid,
                 windowID: window.windowId,
@@ -594,7 +594,7 @@ actor CuaDriverClient {
         }
     }
 
-    private func selectTarget(from windows: [CuaWindowTarget], hint: CuaTargetHint?) -> CuaWindowTarget? {
+    private func selectTarget(from windows: [ScreenWindowTarget], hint: ScreenTargetHint?) -> ScreenWindowTarget? {
         guard let configuration = resolvedConfiguration() else { return nil }
         let scopedWindows = windows.filter { window in
             guard window.bundleID.caseInsensitiveCompare(configuration.hostBundleID) != .orderedSame else { return false }
@@ -626,36 +626,36 @@ actor CuaDriverClient {
         }
     }
 
-    private func ensureTargetAllowed(_ target: CuaWindowTarget) throws {
+    private func ensureTargetAllowed(_ target: ScreenWindowTarget) throws {
         let context = WindowContext(appBundleID: target.bundleID, title: target.title)
         guard !TrustGuard().isWindowBlocked(context) else {
-            throw CuaDriverError.protectedTarget
+            throw ScreenDriverError.protectedTarget
         }
     }
 
-    private func validateResolvedTarget(_ target: CuaWindowTarget, sessionID: String) throws -> UInt64 {
+    private func validateResolvedTarget(_ target: ScreenWindowTarget, sessionID: String) throws -> UInt64 {
         guard target.sessionID == sessionID else {
-            throw CuaDriverError.targetSessionMismatch
+            throw ScreenDriverError.targetSessionMismatch
         }
         let generation = target.connectionGeneration
         guard connection?.generation == generation, startedSessions[sessionID] == generation else {
-            throw CuaDriverError.processExited
+            throw ScreenDriverError.processExited
         }
         try ensureTargetAllowed(target)
         return generation
     }
 
-    private func liveWindow(matching target: CuaWindowTarget, generation: UInt64, sessionID: String) async throws -> CuaWindowTarget {
+    private func liveWindow(matching target: ScreenWindowTarget, generation: UInt64, sessionID: String) async throws -> ScreenWindowTarget {
         let current = try await listWindows(generation: generation, sessionID: sessionID)
             .first { $0.processID == target.processID && $0.windowID == target.windowID }
         guard let current else {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         try ensureTargetAllowed(current)
         return current
     }
 
-    private func refreshResolvedTarget(_ target: CuaWindowTarget, sessionID: String) async throws -> CuaWindowTarget {
+    private func refreshResolvedTarget(_ target: ScreenWindowTarget, sessionID: String) async throws -> ScreenWindowTarget {
         let generation = try validateResolvedTarget(target, sessionID: sessionID)
         return try await liveWindow(matching: target, generation: generation, sessionID: sessionID)
     }
@@ -676,7 +676,7 @@ actor CuaDriverClient {
         guard let boundTarget = sessionTargets[sessionID],
               let generation = connection?.generation,
               startedSessions[sessionID] == generation else {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         let currentTarget = try await liveWindow(matching: boundTarget, generation: generation, sessionID: sessionID)
         let state = CuaSessionState(generation: generation, target: currentTarget, snapshotID: nil, elementLabels: [:])
@@ -685,7 +685,7 @@ actor CuaDriverClient {
         return state
     }
 
-    private func windowArguments(_ target: CuaWindowTarget, sessionID: String) -> DriverArguments {
+    private func windowArguments(_ target: ScreenWindowTarget, sessionID: String) -> DriverArguments {
         var arguments = DriverArguments()
         arguments.pid = target.processID
         arguments.windowId = target.windowID
@@ -696,7 +696,7 @@ actor CuaDriverClient {
     }
 
     private func windowStateArguments(
-        _ target: CuaWindowTarget,
+        _ target: ScreenWindowTarget,
         sessionID: String,
         includeScreenshot: Bool,
         query: String? = nil
@@ -731,7 +731,7 @@ actor CuaDriverClient {
         let call = try await request(for: operation, state: state, sessionID: sessionID)
         do {
             return try await callTool(call.tool, call.arguments, generation: state.generation)
-        } catch let error as CuaDriverError where error.isStaleTarget {
+        } catch let error as ScreenDriverError where error.isStaleTarget {
             guard operation.target?.hasFreshSelector == true else { throw error }
             let refreshed = try await request(for: operation, state: state, sessionID: sessionID, trustsSnapshotToken: false)
             return try await callTool(refreshed.tool, refreshed.arguments, generation: state.generation)
@@ -767,7 +767,7 @@ actor CuaDriverClient {
             return call
         case .setValue(let value, let target):
             guard let token = try await elementToken(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken) else {
-                throw CuaDriverError.targetNotFound
+                throw ScreenDriverError.targetNotFound
             }
             var call = DriverCall(tool: "set_value", arguments: DriverArguments())
             call.arguments.session = sessionID
@@ -799,7 +799,7 @@ actor CuaDriverClient {
             call.arguments.steps = steps
             return call
         case .steps:
-            throw CuaDriverError.unsupportedAction
+            throw ScreenDriverError.unsupportedAction
         }
     }
 
@@ -817,7 +817,7 @@ actor CuaDriverClient {
             arguments.x = point.x
             arguments.y = point.y
         } else if requiresTarget {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         return arguments
     }
@@ -832,7 +832,7 @@ actor CuaDriverClient {
             return try await targetArguments(
                 target, state: state, sessionID: sessionID, requiresTarget: true, trustsSnapshotToken: trustsSnapshotToken
             )
-        } catch CuaDriverError.targetNotFound where target.point != nil {
+        } catch ScreenDriverError.targetNotFound where target.point != nil {
             return try await targetArguments(
                 .point(target.point!), state: state, sessionID: sessionID, requiresTarget: true, trustsSnapshotToken: trustsSnapshotToken
             )
@@ -858,7 +858,7 @@ actor CuaDriverClient {
         }
         let token = id.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         guard token.hasPrefix("s") else {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         return token
     }
@@ -872,7 +872,7 @@ actor CuaDriverClient {
         )
         guard let window = output.structure(CuaWindowState.self),
               let token = window.uniqueTokenMatching(label: targetLabel) else {
-            throw CuaDriverError.targetNotFound
+            throw ScreenDriverError.targetNotFound
         }
         let current = sessionStates[sessionID]
         sessionStates[sessionID] = CuaSessionState(
@@ -882,23 +882,5 @@ actor CuaDriverClient {
             elementLabels: (current?.elementLabels ?? [:]).merging(window.labels) { _, newer in newer }
         )
         return token
-    }
-}
-
-extension AppController {
-    func reloadCuaDriverConfiguration() {
-        guard isIdle, !subsystems.foreground.supervisorActive, !subsystems.backgroundTasks.hasRunningTasks, !subsystems.foreground.startIsInFlight else {
-            sessionStatus = "Finish your running tasks before changing screen control."
-            return
-        }
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await subsystems.workers.reloadConfiguration()
-                sessionStatus = "Screen control updated."
-            } catch {
-                sessionStatus = "I couldn’t update screen control. Try again."
-            }
-        }
     }
 }

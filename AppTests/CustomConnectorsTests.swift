@@ -120,6 +120,78 @@ final class CustomConnectorsTests: XCTestCase {
         connectors.disconnectAll()
     }
 
+    private func unwritableDirectory() throws -> URL {
+        let blocker = directory.appendingPathComponent("blocker")
+        try Data().write(to: blocker)
+        return blocker
+    }
+
+    func testAConnectorThatCannotBeSavedIsDisconnectedForgottenAndItsKeyCleared() async throws {
+        let backend = FlakyCredentialBackend()
+        let host = PerryToolHost(executors: [])
+        let connectors = CustomConnectors(directory: try unwritableDirectory(), host: host, keychain: backend)
+
+        let status = await connectors.add(CustomConnector(name: "Keyed", endpoint: fakeServer, secret: .environment("API_KEY")), secret: "s3cret")
+
+        XCTAssertEqual(status, .failed("I couldn’t save the connector."))
+        XCTAssertTrue(connectors.connectors.isEmpty)
+        XCTAssertTrue(host.specs(for: .agent).isEmpty)
+        XCTAssertEqual(backend.accounts, [])
+    }
+
+    func testAFailedAddAlsoSaysWhenItsKeyCouldNotBeCleared() async throws {
+        let backend = FlakyCredentialBackend()
+        let connectors = CustomConnectors(directory: try unwritableDirectory(), host: PerryToolHost(executors: []), keychain: backend)
+        backend.refuse(deletes: true)
+
+        let status = await connectors.add(CustomConnector(name: "Keyed", endpoint: fakeServer, secret: .environment("API_KEY")), secret: "s3cret")
+
+        XCTAssertEqual(status, .failed("I couldn’t save the connector. I couldn’t clear its key from your Keychain."))
+        XCTAssertEqual(backend.accounts.count, 1)
+    }
+
+    func testRemovingAConnectorWhoseKeyStaysInTheKeychainSaysSo() async throws {
+        let backend = FlakyCredentialBackend()
+        let connectors = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend)
+        _ = await connectors.add(CustomConnector(name: "Keyed", endpoint: fakeServer, secret: .environment("API_KEY")), secret: "s3cret")
+        let id = try XCTUnwrap(connectors.connectors.first?.id)
+        backend.refuse(deletes: true)
+
+        let failure = connectors.remove(id)
+
+        XCTAssertEqual(failure, "I removed the connector, but couldn’t clear its key from your Keychain.")
+        XCTAssertTrue(connectors.connectors.isEmpty)
+        XCTAssertEqual(backend.accounts.count, 1)
+    }
+
+    func testRemovingAConnectorWhoseListCannotBeSavedSaysItMayComeBack() async throws {
+        let backend = FlakyCredentialBackend()
+        let connectors = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend)
+        _ = await connectors.add(CustomConnector(name: "Fake Notes", endpoint: fakeServer))
+        let id = try XCTUnwrap(connectors.connectors.first?.id)
+        try FileManager.default.removeItem(at: directory)
+        try Data().write(to: directory)
+
+        let failure = connectors.remove(id)
+
+        XCTAssertEqual(failure, "I couldn’t save the change. The connector may come back when Perry restarts.")
+        XCTAssertTrue(connectors.connectors.isEmpty)
+    }
+
+    func testRemovingReportsBothASaveFailureAndAKeyLeftInTheKeychain() async throws {
+        let backend = FlakyCredentialBackend()
+        let connectors = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend)
+        _ = await connectors.add(CustomConnector(name: "Keyed", endpoint: fakeServer, secret: .environment("API_KEY")), secret: "s3cret")
+        let id = try XCTUnwrap(connectors.connectors.first?.id)
+        backend.refuse(deletes: true)
+        try FileManager.default.removeItem(at: directory)
+        try Data().write(to: directory)
+
+        let failure = connectors.remove(id)
+
+        XCTAssertEqual(failure, "I couldn’t save the change. The connector may come back when Perry restarts. Its key is also still in your Keychain.")
+    }
+
     func testRemotePlainHTTPIsRejectedBeforeTheTokenIsStored() async throws {
         let connectors = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: keychain)
 

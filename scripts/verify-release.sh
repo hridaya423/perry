@@ -7,6 +7,7 @@ PROJECT="${REPO_ROOT}/Perry.xcodeproj"
 DERIVED_DATA="${PERRY_DERIVED_DATA_PATH:-${REPO_ROOT}/build/release}"
 LOCK_FILE="${PERRY_CODEX_RUNTIME_LOCK:-${SCRIPT_DIR}/codex-runtime.lock}"
 CUA_LOCK_FILE="${PERRY_CUA_DRIVER_LOCK:-${SCRIPT_DIR}/cua-driver.lock}"
+AGENT_DESKTOP_LOCK_FILE="${PERRY_AGENT_DESKTOP_LOCK:-${SCRIPT_DIR}/agent-desktop.lock}"
 XCODEGEN="${PERRY_XCODEGEN_BINARY:-${REPO_ROOT}/build/tools/xcodegen/bin/xcodegen}"
 
 die() {
@@ -23,6 +24,8 @@ command -v lipo >/dev/null 2>&1 || die "lipo is required"
 
 "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check-lock
 "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check
+"${SCRIPT_DIR}/fetch-agent-desktop.sh" --check-lock
+"${SCRIPT_DIR}/fetch-agent-desktop.sh" --check
 "${SCRIPT_DIR}/fetch-cua-driver.sh" --check-lock
 "${SCRIPT_DIR}/fetch-cua-driver.sh" --check
 "${SCRIPT_DIR}/fetch-xcodegen.sh" --check-lock
@@ -72,6 +75,9 @@ RUNTIME="${APP}/Contents/Resources/CodexRuntime/bin/codex"
 RUNTIME_VERSION_FILE="${APP}/Contents/Resources/CodexRuntime/.version"
 CUA_DRIVER="${APP}/Contents/Resources/CuaDriver/bin/cua-driver"
 CUA_VERSION_FILE="${APP}/Contents/Resources/CuaDriver/.version"
+AGENT_DESKTOP="${APP}/Contents/Resources/AgentDesktop/bin/agent-desktop"
+AGENT_DESKTOP_HELPER="${APP}/Contents/Resources/AgentDesktop/bin/agent-desktop-macos-helper"
+AGENT_DESKTOP_VERSION_FILE="${APP}/Contents/Resources/AgentDesktop/.version"
 SPARKLE_FRAMEWORK="${APP}/Contents/Frameworks/Sparkle.framework"
 PRIVACY_MANIFEST="${APP}/Contents/Resources/PrivacyInfo.xcprivacy"
 
@@ -93,6 +99,17 @@ EXPECTED_CUA_SHA256="$(awk -F= '$1 == "CUA_DRIVER_DISTRIBUTION_BINARY_SHA256" { 
 [ "$(cat "${CUA_VERSION_FILE}")" = "${EXPECTED_CUA_VERSION}" ] || die "bundled Cua driver version mismatch"
 [ "$(shasum -a 256 "${CUA_DRIVER}" | awk '{print $1}')" = "${EXPECTED_CUA_SHA256}" ] || die "bundled Cua driver checksum mismatch"
 codesign --verify --strict --verbose=2 "${CUA_DRIVER}" >/dev/null 2>&1 || die "bundled Cua driver signature is invalid"
+EXPECTED_AGENT_DESKTOP_VERSION="$(awk -F= '$1 == "AGENT_DESKTOP_VERSION" { print substr($0, index($0, "=") + 1); exit }' "${AGENT_DESKTOP_LOCK_FILE}")"
+EXPECTED_AGENT_DESKTOP_SHA256="$(awk -F= '$1 == "AGENT_DESKTOP_BINARY_SHA256" { print substr($0, index($0, "=") + 1); exit }' "${AGENT_DESKTOP_LOCK_FILE}")"
+EXPECTED_AGENT_DESKTOP_HELPER_SHA256="$(awk -F= '$1 == "AGENT_DESKTOP_HELPER_SHA256" { print substr($0, index($0, "=") + 1); exit }' "${AGENT_DESKTOP_LOCK_FILE}")"
+[ -x "${AGENT_DESKTOP}" ] || die "missing bundled agent-desktop: ${AGENT_DESKTOP}"
+[ -x "${AGENT_DESKTOP_HELPER}" ] || die "missing bundled agent-desktop helper: ${AGENT_DESKTOP_HELPER}"
+[ -f "${AGENT_DESKTOP_VERSION_FILE}" ] || die "missing bundled agent-desktop version: ${AGENT_DESKTOP_VERSION_FILE}"
+[ "$(cat "${AGENT_DESKTOP_VERSION_FILE}")" = "${EXPECTED_AGENT_DESKTOP_VERSION}" ] || die "bundled agent-desktop version mismatch"
+[ "$(shasum -a 256 "${AGENT_DESKTOP}" | awk '{print $1}')" = "${EXPECTED_AGENT_DESKTOP_SHA256}" ] || die "bundled agent-desktop checksum mismatch"
+[ "$(shasum -a 256 "${AGENT_DESKTOP_HELPER}" | awk '{print $1}')" = "${EXPECTED_AGENT_DESKTOP_HELPER_SHA256}" ] || die "bundled agent-desktop helper checksum mismatch"
+codesign --verify --strict --verbose=2 "${AGENT_DESKTOP}" >/dev/null 2>&1 || die "bundled agent-desktop signature is invalid"
+codesign --verify --strict --verbose=2 "${AGENT_DESKTOP_HELPER}" >/dev/null 2>&1 || die "bundled agent-desktop helper signature is invalid"
 [ -d "${SPARKLE_FRAMEWORK}" ] || die "missing embedded Sparkle framework"
 [ -f "${PRIVACY_MANIFEST}" ] || die "missing privacy manifest"
 plutil -lint "${PRIVACY_MANIFEST}" >/dev/null || die "privacy manifest is invalid"

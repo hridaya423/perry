@@ -1,4 +1,4 @@
-Perry Cua capture fixture 001
+Perry screen capture fixture 001
 
 This document contains only seeded test content.
 Live capture checks must target this TextEdit window exactly.

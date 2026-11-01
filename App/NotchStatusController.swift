@@ -26,16 +26,6 @@ final class NotchStatusController {
     private let reviewIcon = NSImageView()
     private let reviewLabel = NSTextField(labelWithString: "")
 
-    var isEnabled: Bool {
-        get { PerryPreferences.notchStatusEnabled }
-        set { PerryPreferences.notchStatusEnabled = newValue }
-    }
-
-    func setEnabled(_ enabled: Bool) {
-        isEnabled = enabled
-        if !enabled { hide() } else { present() }
-    }
-
     func update(isRecording: Bool, backgroundCount: Int, awaitingApproval: Int = 0) {
         self.isRecording = isRecording
         self.backgroundCount = max(0, backgroundCount)
@@ -79,8 +69,8 @@ final class NotchStatusController {
         return true
     }
 
-    nonisolated static func shouldPresent(isEnabled: Bool, isRecording: Bool, backgroundCount: Int, awaitingApproval: Int, listeningForWake: Bool = false) -> Bool {
-        listeningForWake || isEnabled && (isRecording || backgroundCount > 0 || awaitingApproval > 0)
+    nonisolated static func shouldPresent(isRecording: Bool, backgroundCount: Int, awaitingApproval: Int, listeningForWake: Bool = false) -> Bool {
+        listeningForWake || isRecording || backgroundCount > 0 || awaitingApproval > 0
     }
 
     private func present() {
@@ -89,7 +79,6 @@ final class NotchStatusController {
             return
         }
         guard Self.shouldPresent(
-            isEnabled: isEnabled,
             isRecording: isRecording,
             backgroundCount: backgroundCount,
             awaitingApproval: awaitingApproval,
@@ -103,9 +92,9 @@ final class NotchStatusController {
             hide()
             return
         }
-        let recording = isEnabled && isRecording
-        let tasks = isEnabled ? backgroundCount : 0
-        let reviews = isEnabled ? awaitingApproval : 0
+        let recording = isRecording
+        let tasks = backgroundCount
+        let reviews = awaitingApproval
         wakeIcon.isHidden = !listeningForWake
         wakeLabel.isHidden = !listeningForWake
         wakeSeparator.isHidden = !(listeningForWake && (recording || tasks > 0 || reviews > 0))

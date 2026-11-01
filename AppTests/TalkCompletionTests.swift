@@ -42,8 +42,8 @@ final class TalkCompletionTests: XCTestCase {
         func guideShowFullPath(_ viewPlan: EverythingViewPlan) {}
         func guideClearPresentation() {}
         func guideClearFullPath() {}
-        func guideTargetHint() -> CuaTargetHint { CuaTargetHint() }
-        func guideAppBundleID(for targetHint: CuaTargetHint) -> String? { targetHint.bundleID }
+        func guideTargetHint() -> ScreenTargetHint { ScreenTargetHint() }
+        func guideAppBundleID(for targetHint: ScreenTargetHint) -> String? { targetHint.bundleID }
         func guideSpatialRegionDescription() -> String? { nil }
     }
 
@@ -307,11 +307,11 @@ final class TalkCompletionTests: XCTestCase {
             let observation = GuideObservation(snapshot: AXSnapshot(appBundleID: "fixture.editor", windowTitle: "Orchid", elements: []), processID: 42, windowID: 73)
             var captured = false
             let guide = GuideSessionCoordinator(
-                sessionController: session, workers: CuaWorkerService(),
+                sessionController: session, workers: ScreenWorkerService(),
                 transcriptStore: TranscriptStore(directory: root), memoryStore: MemoryStore(storageDirectory: root),
                 output: output, context: output,
                 fullGuideCaptureLoader: { _, target in
-                    XCTAssertEqual(target, CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid"))
+                    XCTAssertEqual(target, ScreenTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid"))
                     captured = true
                     throw CocoaError(.fileReadUnknown)
                 }, executionOwner: coordinator

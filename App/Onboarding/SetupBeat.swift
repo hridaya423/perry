@@ -357,6 +357,7 @@ struct SetupBeat: View {
     private func installFinished() {
         if let failure = installer.failure {
             voiceError = failure
+            if voiceOverride == .kokoro { voiceOverride = nil }
             return
         }
         SetupFactsProbe.forget()

@@ -157,9 +157,13 @@ struct VoiceSettingsPage: View {
                 SettingsDivider()
                 SettingsRow(title: "\(service.name) key", detail: "Saved in your Keychain.") {
                     Button("Remove") {
-                        try? KeychainStore().deleteChecked(account: service.keyAccount)
-                        cloudVoices[service] = nil
-                        refresh += 1
+                        do {
+                            try service.removeStoredKey()
+                            cloudVoices[service] = nil
+                            refresh += 1
+                        } catch {
+                            self.error = "I couldn’t remove the \(service.name) key from your Keychain."
+                        }
                     }
                 }
             } else {

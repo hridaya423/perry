@@ -103,7 +103,7 @@ final class NotchAskTests: XCTestCase {
 
     func testConfirmationCancelResolvesFalseAndRemovesTheEntry() async {
         let presentation = NotchPresentation()
-        let confirmation = NotchConfirmation(title: "Erase?", detail: "Cannot be undone.", destructiveTitle: "Erase", cancelTitle: "Cancel", presentation: presentation)
+        let confirmation = NotchConfirmation(title: "Erase?", detail: "Cannot be undone.", confirmTitle: "Erase", cancelTitle: "Cancel", presentation: presentation)
         let asking = Task { await confirmation.confirm() }
         for _ in 0..<200 where !presentation.contains(confirmation.requestID) { await Task.yield() }
         XCTAssertEqual(presentation.current?.priority, .approval)

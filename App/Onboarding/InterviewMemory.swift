@@ -37,6 +37,7 @@ extension AppController {
             """
         }
         for attempt in 0..<3 {
+            guard !Task.isCancelled else { return nil }
             if attempt > 0 {
                 subsystems.voice.speak("Sign in to \(service.rawValue), and I’ll try again.")
                 try? await Task.sleep(for: .seconds(20))
@@ -44,7 +45,8 @@ extension AppController {
             }
             NSWorkspace.shared.open(page)
             try? await Task.sleep(for: .seconds(3))
-            let target = bundleID.map { CuaTargetHint(bundleID: $0) }
+            guard !Task.isCancelled else { return nil }
+            let target = bundleID.map { ScreenTargetHint(bundleID: $0) }
             let answer = await subsystems.agentCoordinator.runToEnd(threadID: UUID(), goal: goal, kind: .doTask, target: target).answer
             let reply = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             if reply.contains("SIGNED_OUT") { continue }

@@ -8,7 +8,7 @@ struct LaunchOverrides {
     var notifier: (any AppNotificationClient)?
     var runtimeSetupLoader: RuntimeCatalog.SetupLoader?
     var permissionSnapshotLoader: EnvironmentProbe.PermissionSnapshotLoader?
-    var cuaHealthLoader: EnvironmentProbe.CuaHealthLoader?
+    var screenHealthLoader: EnvironmentProbe.ScreenHealthLoader?
     var screenContextLoader: EnvironmentProbe.ScreenContextLoader?
     var fullGuideCaptureLoader: GuideSessionCoordinator.FullGuideCaptureLoader?
     var fullGuideContinuationBarrier: GuideSessionCoordinator.FullGuideContinuationBarrier?

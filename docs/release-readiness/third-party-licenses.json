@@ -11,6 +11,20 @@
       "version": "2.9.4"
     },
     {
+      "archive_sha256": "7bee385196d7b478de80cf05ca4304aaa38f0eba593b3406ad3c247c1773be19",
+      "binary_sha256": "bf0a3c9256512f2f57288d37ccd17d7f03665fccc53c2f74011a49b98e61ba59",
+      "helper_sha256": "522829116cb006b5770c6a82b361f466a4775f794d6af4083e75231a2d6bb551",
+      "id": "runtime.agent-desktop",
+      "license": "Apache-2.0",
+      "license_url": "https://github.com/vercel-labs/agent-desktop/blob/a47ed664e0db00d1d4df364eb3fe8a5599882f3c/LICENSE",
+      "name": "agent-desktop",
+      "release_tag": "v1.0.2",
+      "source": "https://github.com/vercel-labs/agent-desktop",
+      "source_revision": "a47ed664e0db00d1d4df364eb3fe8a5599882f3c",
+      "target": "aarch64-apple-darwin",
+      "version": "1.0.2"
+    },
+    {
       "archive_sha256": "341c4a08f9ce1935b3007376dc2a3d50a0a89112930e9a474ae61367218f6e8a",
       "binary_sha256": "788a818fbb9596869c7a487554507cb8bdca17584b8671112b23f9e225ba35c8",
       "id": "runtime.codex",
@@ -51,6 +65,7 @@
   ],
   "schema_version": 1,
   "source": {
+    "agent_desktop_lock": "scripts/agent-desktop.lock",
     "cua_driver_lock": "scripts/cua-driver.lock",
     "runtime_lock": "scripts/codex-runtime.lock",
     "sparkle_lock": "scripts/sparkle.lock",

@@ -19,7 +19,7 @@ final class BackgroundTaskController: ObservableObject {
         var statusCountsChanged: (_ total: Int, _ active: Int, _ awaitingApproval: Int) -> Void = { _, _, _ in }
     }
 
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let coordinator: TaskCoordinator
     private let runner: ResumableTaskRunner
     private let contextStore: BackgroundTaskContextStore
@@ -56,7 +56,7 @@ final class BackgroundTaskController: ObservableObject {
 #endif
 
     init(
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         coordinator: TaskCoordinator,
         runner: ResumableTaskRunner,
         contextStore: BackgroundTaskContextStore,
@@ -597,7 +597,7 @@ final class BackgroundTaskController: ObservableObject {
                     } catch TaskCoordinatorError.invalidTransition {
                     } catch {
                         canAdvanceQueue = false
-                        controller.messages[record.id] = "Could not save the paused task: \(error.localizedDescription). The queue is stopped until storage recovers."
+                        controller.messages[record.id] = "Couldn’t save the paused task: \(error.localizedDescription). Waiting tasks won’t start until saving works again."
                     }
                 }
                 if await controller.coordinator.lastPersistenceError != nil {
@@ -610,37 +610,42 @@ final class BackgroundTaskController: ObservableObject {
 
     private func startAgentTask(record: TaskRecord, launchLease: BackgroundTaskLaunchLease?) -> Bool {
         guard case .agent(let agentPlan) = record.plan, record.canResumeAgentTask else {
-            messages[record.id] = "This task cannot resume."
+            messages[record.id] = "This task can’t resume."
             return false
         }
         return beginRun(record, message: "Running in the background") { controller in
             let metadata = await controller.contextStore.metadata(for: record.id)
             var outcome: DoOutcome?
+            var ranActions: [String]?
             do {
                 try Task.checkCancellation()
                 guard controller.launchIsCurrent(launchLease), controller.canStartWork else { throw CancellationError() }
                 _ = try await controller.coordinator.beginAgentRun(id: record.id, expectedRevision: record.revision)
                 controller.refreshRecords()
+                var tally = AgentRunTally()
                 let result = await controller.agentCoordinator.runToEnd(
                     threadID: agentPlan.threadID,
                     goal: record.goal,
                     kind: .unattended(perryID: nil)
                 ) { event in
+                    tally.record(event) { controller.agentCoordinator.toolIsReadOnly(named: $0) }
                     switch event {
                     case .toolCallStarted(let call):
                         controller.messages[record.id] = "Running \(call.name)"
-                    case .toolCallFinished(let result) where result.isError:
-                        controller.messages[record.id] = "A tool call failed"
+                    case .toolCallFinished(let finished):
+                        if finished.isError { controller.messages[record.id] = "A tool call failed" }
                     case .note(let note):
                         controller.messages[record.id] = note
-                    case .textDelta, .toolCallFinished, .draw, .finished:
+                    case .textDelta, .draw, .finished:
                         break
                     }
                 }
                 if await controller.coordinator.record(id: record.id)?.state == .paused || Task.isCancelled {
                     throw CancellationError()
                 }
-                outcome = try await controller.coordinator.finish(id: record.id, outcome: result.finish.doOutcome(stepsRun: 0))
+                let resolved = tally.outcome(for: result.finish)
+                ranActions = tally.actions
+                outcome = try await controller.coordinator.finish(id: record.id, outcome: resolved)
             } catch is CancellationError {
             } catch {
                 let resolved = DoOutcome.failed(stepSummary: "the agent run", reason: error.localizedDescription)
@@ -654,7 +659,7 @@ final class BackgroundTaskController: ObservableObject {
                 await controller.finishRun(record.id, lease: launchLease)
                 return
             }
-            await controller.handleOutcome(record: record, metadata: metadata, outcome: outcome)
+            await controller.handleOutcome(record: record, metadata: metadata, outcome: outcome, ranActions: ranActions)
             if let outcome {
                 let completed = outcome.isCompleted
                 await controller.notifier.deliver(TaskNotification(
@@ -668,6 +673,13 @@ final class BackgroundTaskController: ObservableObject {
         }
     }
 
+    static func approvalReason(for call: ToolCall) -> String {
+        let headline = ToolApprovalPresenter.headline(call, target: nil)
+        let question = headline.dropLast()
+        let title = headline == "Approve this step?" ? call.name : question.prefix(1).lowercased() + question.dropFirst()
+        return "Needs your OK to \(title). Run it again in front of you to approve it."
+    }
+
     private func startQueuedTasks() {
         guard controlScope.acceptsControls, runCount < Self.maximumConcurrentTasks else { return }
         records
@@ -678,7 +690,8 @@ final class BackgroundTaskController: ObservableObject {
     private func handleOutcome(
         record: TaskRecord,
         metadata: BackgroundTaskMetadata?,
-        outcome reportedOutcome: DoOutcome?
+        outcome reportedOutcome: DoOutcome?,
+        ranActions: [String]? = nil
     ) async {
         let outcome: DoOutcome
         if let reportedOutcome {
@@ -722,7 +735,7 @@ final class BackgroundTaskController: ObservableObject {
             cleanupFailure = "Failed, and cleanup also failed"
         }
         if outcome.isCompleted || !persisted {
-            await recordToTranscript(record: record, metadata: metadata, outcome: outcome)
+            await recordToTranscript(record: record, metadata: metadata, outcome: outcome, ranActions: ranActions)
             do {
                 try await contextStore.remove(for: record.id)
             } catch {
@@ -735,19 +748,22 @@ final class BackgroundTaskController: ObservableObject {
     private func recordToTranscript(
         record: TaskRecord,
         metadata: BackgroundTaskMetadata?,
-        outcome: DoOutcome
+        outcome: DoOutcome,
+        ranActions: [String]? = nil
     ) async {
+        func sentence(_ text: String) -> String { text.hasSuffix(".") ? text : text + "." }
         let summary: String
         let stepCount: Int
         switch outcome {
         case .completed(let stepsRun):
-            summary = "Finished \(stepsRun) step\(stepsRun == 1 ? "" : "s") in the background."
-            stepCount = stepsRun
+            let count = ranActions?.count ?? stepsRun
+            summary = "Finished \(count) step\(count == 1 ? "" : "s") in the background."
+            stepCount = count
         case .blocked(let reason):
-            summary = "Stopped safely in the background: \(reason)."
+            summary = "Stopped safely in the background: \(sentence(reason))"
             stepCount = record.checkpoint.nextStepIndex
         case .failed(let step, let reason):
-            summary = "Stopped in the background at \(step): \(reason)."
+            summary = "Stopped in the background at \(step): \(sentence(reason))"
             stepCount = record.checkpoint.nextStepIndex
         }
         await transcriptStore.append(
@@ -758,7 +774,7 @@ final class BackgroundTaskController: ObservableObject {
                 outcome: outcome.transcriptOutcome,
                 startedAt: metadata?.createdAt ?? Date(),
                 finishedAt: Date(),
-                steps: Array(record.plan.actionSummaries.prefix(stepCount)),
+                steps: ranActions ?? Array(record.plan.actionSummaries.prefix(stepCount)),
                 verified: nil
             )
         )
@@ -884,4 +900,49 @@ final class BackgroundTaskController: ObservableObject {
         return task
     }
 #endif
+}
+
+@MainActor
+struct AgentRunTally {
+    private var calls: [String: ToolCall] = [:]
+    private(set) var actions: [String] = []
+    private(set) var deniedCall: ToolCall?
+    private(set) var lastFailure: (call: ToolCall, reason: String)?
+
+    mutating func record(_ event: AgentLoopEvent, isReadOnly: (String) -> Bool) {
+        switch event {
+        case .toolCallStarted(let call):
+            calls[call.id] = call
+        case .toolCallFinished(let finished):
+            guard let call = calls[finished.callID] else { return }
+            if finished.isError {
+                let first = finished.content.compactMap { part -> String? in
+                    if case .text(let text) = part { return text.components(separatedBy: .newlines).first }
+                    return nil
+                }.first
+                if first == ToolHostError.approvalDenied(name: call.name).localizedDescription {
+                    deniedCall = deniedCall ?? call
+                } else if !isReadOnly(call.name) {
+                    lastFailure = (call, first ?? "the action failed")
+                }
+            } else if !isReadOnly(call.name) {
+                actions.append(call.name)
+                lastFailure = nil
+            }
+        case .textDelta, .draw, .note, .finished:
+            break
+        }
+    }
+
+    func outcome(for finish: AgentFinish) -> DoOutcome {
+        var resolved = finish.doOutcome(stepsRun: 0)
+        if finish == .completed {
+            if let deniedCall {
+                resolved = .blocked(reason: BackgroundTaskController.approvalReason(for: deniedCall))
+            } else if let lastFailure {
+                resolved = .failed(stepSummary: lastFailure.call.name, reason: lastFailure.reason)
+            }
+        }
+        return resolved
+    }
 }

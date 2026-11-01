@@ -30,17 +30,22 @@ struct NotchWorkspaceView: View {
             Rectangle()
                 .fill(PerryTheme.Colors.subtleSeparator)
                 .frame(width: 1)
-            Group {
-                if model.sidebarSelection == nil {
-                    resting
-                        .transition(pageTransition)
-                } else {
-                    focusedPage
-                        .transition(pageTransition)
+            VStack(spacing: 0) {
+                if let error = model.storageError {
+                    storageErrorStrip(error)
                 }
+                Group {
+                    if model.sidebarSelection == nil {
+                        resting
+                            .transition(pageTransition)
+                    } else {
+                        focusedPage
+                            .transition(pageTransition)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(reduceMotion ? nil : PerryTheme.Motion.glide, value: model.sidebarSelection)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(reduceMotion ? nil : PerryTheme.Motion.glide, value: model.sidebarSelection)
         }
         .foregroundStyle(PerryTheme.Colors.text)
         .disabled(choosesTarget)
@@ -77,6 +82,12 @@ struct NotchWorkspaceView: View {
         .onChange(of: choosesTarget) { _, choosing in
             searchFocused = false
             targetBackFocused = choosing
+        }
+        .onChange(of: model.storageError) { _, error in
+            if let error { AccessibilityNotification.Announcement(error).post() }
+        }
+        .onChange(of: model.composerNotice) { _, notice in
+            if let notice { AccessibilityNotification.Announcement(notice).post() }
         }
     }
 
@@ -362,6 +373,10 @@ struct NotchWorkspaceView: View {
                                      window: model.newConversationTarget.map(CompactTargetChooser.targetName),
                                      chooseWindow: { choosesTarget = true },
                                      clearWindow: { model.newConversationTarget = nil })
+                    if let notice = model.composerNotice {
+                        StatusLabel(notice, .attention)
+                            .font(PerryTheme.Scale.body)
+                    }
                 }
             }
             .frame(maxWidth: 500, alignment: .leading)
@@ -371,18 +386,26 @@ struct NotchWorkspaceView: View {
 
             VStack(spacing: 8) {
                 UnsavedInputRecoveryButton(model: model)
-                if let error = model.storageError {
-                    StatusLabel(error, .attention)
-                        .font(PerryTheme.Scale.body)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
-                        .textSelection(.enabled)
-                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
         }
+    }
+
+    private func storageErrorStrip(_ error: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            StatusLabel(error, .attention)
+                .font(PerryTheme.Scale.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(6)
+                .help(error)
+                .textSelection(.enabled)
+            WindowControlButton(systemImage: "xmark", label: "Dismiss") { model.storageError = nil }
+        }
+        .padding(10)
+        .background(PerryTheme.Colors.surface, in: RoundedRectangle(cornerRadius: PerryTheme.Radius.control, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
     private var windowControls: some View {
@@ -606,6 +629,7 @@ private struct GestureHint: View {
 struct WindowControlButton: View {
     let systemImage: String
     let label: String
+    var help: String?
     let action: () -> Void
 
     var body: some View {
@@ -618,7 +642,7 @@ struct WindowControlButton: View {
         .buttonStyle(RailRowStyle(cornerRadius: PerryTheme.Radius.control))
         .foregroundStyle(PerryTheme.Colors.icon)
         .accessibilityLabel(label)
-        .help(label)
+        .help(help ?? label)
     }
 }
 

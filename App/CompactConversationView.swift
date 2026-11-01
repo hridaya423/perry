@@ -184,8 +184,8 @@ struct CompactConversationView: View {
 }
 
 struct CompactTargetChooser: View {
-    var onSelect: (CuaTargetHint?) -> Void
-    @State private var targets: [CuaTargetHint] = []
+    var onSelect: (ScreenTargetHint?) -> Void
+    @State private var targets: [ScreenTargetHint] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -237,11 +237,11 @@ struct CompactTargetChooser: View {
         .onAppear { targets = EnvironmentProbe.availableTargets() }
     }
 
-    static func bundleID(_ target: CuaTargetHint) -> String? {
+    static func bundleID(_ target: ScreenTargetHint) -> String? {
         target.bundleID ?? target.processID.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
     }
 
-    static func applicationName(_ target: CuaTargetHint) -> String {
+    static func applicationName(_ target: ScreenTargetHint) -> String {
         if let pid = target.processID,
            let name = NSRunningApplication(processIdentifier: pid)?.localizedName { return name }
         if let bundleID = target.bundleID,
@@ -251,7 +251,7 @@ struct CompactTargetChooser: View {
         return "Application"
     }
 
-    static func targetName(_ target: CuaTargetHint) -> String {
+    static func targetName(_ target: ScreenTargetHint) -> String {
         if let title = target.windowTitle, !title.isEmpty { return title }
         return applicationName(target)
     }

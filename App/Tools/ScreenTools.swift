@@ -4,7 +4,7 @@ import PerryBrain
 import PerryGuide
 
 struct ScreenTools {
-    let workers: CuaWorkerService
+    let workers: ScreenWorkerService
     let lease: ForegroundWorkerLease?
     let observations: AgentObservationStore
     var skills: AppSkillLibrary?
@@ -186,7 +186,7 @@ private struct ClipboardReadExecutor: ToolExecutor {
     }
 }
 
-func observeWindow(worker: CuaWorkerHandle, hint: CuaTargetHint, observations: AgentObservationStore, runID: UUID) async throws -> [ModelContentPart] {
+func observeWindow(worker: ScreenWorkerHandle, hint: ScreenTargetHint, observations: AgentObservationStore, runID: UUID) async throws -> [ModelContentPart] {
     PerfMark.mark("observe.begin")
     defer { PerfMark.mark("observe.end") }
     let captured = try await worker.capture(target: hint)

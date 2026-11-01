@@ -7,7 +7,7 @@ import PerryRuntimes
 
 @MainActor
 final class GuideSessionCoordinator {
-    typealias FullGuideCaptureLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow
+    typealias FullGuideCaptureLoader = @MainActor (ScreenWorkerHandle, ScreenTargetHint?) async throws -> ScreenCapturedWindow
     typealias FullGuideContinuationBarrier = @MainActor (UUID) async -> Void
     typealias GuidePlannerProvider = @MainActor (GuideSessionState) -> (any GuidePlanner)?
 
@@ -24,7 +24,7 @@ final class GuideSessionCoordinator {
     var activeGuideStepID: UUID?
     let fullGuideContinuationBarrier: FullGuideContinuationBarrier?
 
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let executionOwner: AgentCoordinator?
     private let finalizer: GuideFinalizer
     private var guideScopes: [UUID: GuideWorkerSession] = [:]
@@ -41,7 +41,7 @@ final class GuideSessionCoordinator {
 
     init(
         sessionController: SessionController,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         transcriptStore: TranscriptStore,
         memoryStore: MemoryStore,
         output: any GuideSessionOutput,
@@ -107,7 +107,7 @@ final class GuideSessionCoordinator {
     }
 
     @discardableResult
-    func startGuiding(goal: String, threadID: UUID = UUID(), targetHint: CuaTargetHint? = nil, full: Bool = false, waitingInput: PerryThread.WaitingInput? = nil) -> Task<AgentFinish, Never>? {
+    func startGuiding(goal: String, threadID: UUID = UUID(), targetHint: ScreenTargetHint? = nil, full: Bool = false, waitingInput: PerryThread.WaitingInput? = nil) -> Task<AgentFinish, Never>? {
         guard guideAdmissionOpen else { return nil }
         let attemptID = sessionController.currentOrFreshAttemptID
         guard sessionController.beginInvokingIfNeeded(attemptID: attemptID) else {
@@ -126,7 +126,7 @@ final class GuideSessionCoordinator {
         }
     }
 
-    func showEverything(goal: String, threadID: UUID = UUID(), targetHint: CuaTargetHint? = nil) async {
+    func showEverything(goal: String, threadID: UUID = UUID(), targetHint: ScreenTargetHint? = nil) async {
         startGuiding(goal: goal, threadID: threadID, targetHint: targetHint, full: true)
     }
 
@@ -403,7 +403,7 @@ final class GuideSessionCoordinator {
         case .needsInput(let prompt, let choices):
             presentGuideInput(guideID: guideID, prompt: prompt, choices: choices)
         case .stillWaiting:
-            output?.guideSetStatus("I can’t see that step done yet. Finish it, then choose Done.")
+            output?.guideSetStatus(Self.stillWaitingStatus(hasPostcondition: guideControlsState.hasPostcondition))
         case .blocked(let reason):
             finishGuide(guideID: guideID, outcome: .failed, summary: reason)
         case .ignoredClick(_, let hitLabel):
@@ -417,6 +417,12 @@ final class GuideSessionCoordinator {
         case .notPresenting:
             break
         }
+    }
+
+    static func stillWaitingStatus(hasPostcondition: Bool) -> String {
+        hasPostcondition
+            ? "I can’t see that done yet. Finish it and I’ll check again, or choose Skip this step."
+            : "I can’t see that step done yet. Finish it, then choose Done."
     }
 
     private func show(_ step: GuideStep, guideID: UUID) {
@@ -463,12 +469,12 @@ final class GuideSessionCoordinator {
         }
     }
 
-    private func startGuideSession(goal: String, full: Bool, threadID: UUID, targetHint: CuaTargetHint?, attemptID: UUID, waitingInput: PerryThread.WaitingInput?) -> GuideWorkerSession? {
+    private func startGuideSession(goal: String, full: Bool, threadID: UUID, targetHint: ScreenTargetHint?, attemptID: UUID, waitingInput: PerryThread.WaitingInput?) -> GuideWorkerSession? {
         guard guideAdmissionOpen, case .invoking(let invocation) = sessionController.state,
               invocation.id == attemptID else { return nil }
         output?.guideSetStatus(full ? "Showing the full path." : "Finding two places to show you.")
         output?.guideStopSpatialInput()
-        let targetHint = targetHint ?? context?.guideTargetHint() ?? CuaTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
+        let targetHint = targetHint ?? context?.guideTargetHint() ?? ScreenTargetHint(bundleID: nil, processID: nil, windowTitle: nil)
         let appBundleID = context?.guideAppBundleID(for: targetHint)
         let guide = GuideSessionState(id: waitingInput?.id ?? UUID(), threadID: threadID, goal: goal, startedAt: Date(), appBundleID: appBundleID)
         guard sessionController.transition({ try sessionController.startGuide(guide, attemptID: attemptID) }) else { return nil }
@@ -510,7 +516,7 @@ final class GuideSessionCoordinator {
     }
 
     private func runGuideScope(
-        _ scope: GuideWorkerSession, guide: GuideSessionState, full: Bool, targetHint: CuaTargetHint
+        _ scope: GuideWorkerSession, guide: GuideSessionState, full: Bool, targetHint: ScreenTargetHint
     ) async -> (answer: String, finish: AgentFinish) {
         do {
             await waitForScopeCompletion(guideScopes.values.filter { $0 !== scope })
@@ -519,7 +525,7 @@ final class GuideSessionCoordinator {
                 do {
                     let engine = GuideEngine(
                         planner: self.makeGuidePlanner(for: guide),
-                        observer: CuaGuideTreeReader(worker: worker, targetStore: scope.targetStore)
+                        observer: ScreenGuideTreeReader(worker: worker, targetStore: scope.targetStore)
                     )
                     if self.guideScopes[scope.id] === scope {
                         scope.bind(engine: engine)
@@ -528,7 +534,7 @@ final class GuideSessionCoordinator {
                     guard self.guideIsCurrent(guide.id) else { return }
                     try Task.checkCancellation()
                     if full {
-                        let capture: CuaCapturedWindow
+                        let capture: ScreenCapturedWindow
                         if let loader = self.fullGuideCaptureLoader {
                             capture = try await loader(worker, targetHint)
                         } else {

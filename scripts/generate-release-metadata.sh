@@ -8,6 +8,7 @@ SBOM_PATH="${PERRY_SBOM_PATH:-${OUTPUT_DIR}/sbom.cdx.json}"
 LICENSES_PATH="${PERRY_THIRD_PARTY_LICENSES_PATH:-${OUTPUT_DIR}/third-party-licenses.json}"
 LOCK_FILE="${PERRY_CODEX_RUNTIME_LOCK:-${SCRIPT_DIR}/codex-runtime.lock}"
 CUA_LOCK_FILE="${PERRY_CUA_DRIVER_LOCK:-${SCRIPT_DIR}/cua-driver.lock}"
+AGENT_DESKTOP_LOCK_FILE="${PERRY_AGENT_DESKTOP_LOCK:-${SCRIPT_DIR}/agent-desktop.lock}"
 SPARKLE_LOCK_FILE="${PERRY_SPARKLE_LOCK:-${SCRIPT_DIR}/sparkle.lock}"
 XCODEGEN_LOCK_FILE="${PERRY_XCODEGEN_LOCK:-${SCRIPT_DIR}/xcodegen.lock}"
 PYTHON_BIN="$(command -v python3 || true)"
@@ -40,11 +41,13 @@ esac
 [ -n "${PYTHON_BIN}" ] || die "python3 is required"
 [ -f "${LOCK_FILE}" ] || die "runtime lock not found: ${LOCK_FILE}"
 [ -f "${CUA_LOCK_FILE}" ] || die "Cua driver lock not found: ${CUA_LOCK_FILE}"
+[ -f "${AGENT_DESKTOP_LOCK_FILE}" ] || die "agent-desktop lock not found: ${AGENT_DESKTOP_LOCK_FILE}"
 [ -f "${SPARKLE_LOCK_FILE}" ] || die "Sparkle lock not found: ${SPARKLE_LOCK_FILE}"
 [ -f "${XCODEGEN_LOCK_FILE}" ] || die "XcodeGen lock not found: ${XCODEGEN_LOCK_FILE}"
 
 PERRY_CODEX_RUNTIME_LOCK="${LOCK_FILE}" "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check-lock >/dev/null
 PERRY_CUA_DRIVER_LOCK="${CUA_LOCK_FILE}" "${SCRIPT_DIR}/fetch-cua-driver.sh" --check-lock >/dev/null
+PERRY_AGENT_DESKTOP_LOCK="${AGENT_DESKTOP_LOCK_FILE}" "${SCRIPT_DIR}/fetch-agent-desktop.sh" --check-lock >/dev/null
 PERRY_XCODEGEN_LOCK="${XCODEGEN_LOCK_FILE}" "${SCRIPT_DIR}/fetch-xcodegen.sh" --check-lock >/dev/null
 
 command -v swift >/dev/null 2>&1 || die "swift is required"
@@ -64,6 +67,7 @@ if [ "${MODE}" = "write" ]; then
     --repo-root "${REPO_ROOT}" \
     --lock-file "${LOCK_FILE}" \
     --cua-driver-lock "${CUA_LOCK_FILE}" \
+    --agent-desktop-lock "${AGENT_DESKTOP_LOCK_FILE}" \
     --sparkle-lock "${SPARKLE_LOCK_FILE}" \
     --xcodegen-lock "${XCODEGEN_LOCK_FILE}" \
     --sbom-path "${SBOM_PATH}" \
@@ -81,6 +85,7 @@ mkdir -p "${GENERATED_DIR}"
   --repo-root "${REPO_ROOT}" \
   --lock-file "${LOCK_FILE}" \
   --cua-driver-lock "${CUA_LOCK_FILE}" \
+  --agent-desktop-lock "${AGENT_DESKTOP_LOCK_FILE}" \
   --sparkle-lock "${SPARKLE_LOCK_FILE}" \
   --xcodegen-lock "${XCODEGEN_LOCK_FILE}" \
   --sbom-path "${GENERATED_DIR}/sbom.cdx.json" \

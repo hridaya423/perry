@@ -6,21 +6,6 @@ import PerryBrain
 
 @MainActor
 final class HomeRecoveryTests: XCTestCase {
-    private func directory() throws -> URL {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
-        return root
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async -> Bool {
-        let deadline = Date().addingTimeInterval(2)
-        while !condition(), Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        return condition()
-    }
-
     func testHomeFollowUpSaveFailurePreservesAcceptedTextAndCannotDispatch() async throws {
         let root = try directory()
         let store = ThreadStore(directory: root)
@@ -249,7 +234,7 @@ final class HomeRecoveryTests: XCTestCase {
         home.homeModel.onRestoreWaitingInput?(threadID, input.id)
         XCTAssertEqual(home.homeModel.drafts[threadID], input.text)
         home.homeModel.drafts[threadID] = "Edited during the save"
-        let restored = await waitUntil { home.homeModel.threads.first?.waitingInputs?.isEmpty == true }
+        let restored = await pollUntil { home.homeModel.threads.first?.waitingInputs?.isEmpty == true }
         XCTAssertTrue(restored)
         XCTAssertEqual(home.homeModel.drafts[threadID], "Edited during the save")
         XCTAssertEqual(home.homeModel.newConversationDraft, "Welcome draft")
@@ -257,6 +242,166 @@ final class HomeRecoveryTests: XCTestCase {
         let saved = await store.thread(id: threadID)
         XCTAssertEqual(saved?.draft, input.text)
         XCTAssertNil(saved?.pendingTurn)
+    }
+
+    private func queuedHome(_ store: ThreadStore, thread: PerryThread) -> HomeController {
+        let home = HomeController()
+        home.threadStore = store
+        home.homeModel.threads = [thread]
+        home.homeModel.workingThreads = [thread.id]
+        return home
+    }
+
+    func testQueuedFollowUpsAreStagedHiddenFromRecoveryAndRecoverableAfterRelaunch() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        home.homeModel.send(threadID: thread.id, text: "second")
+        home.homeModel.send(threadID: thread.id, text: "third")
+        await home.joinInputSaves()
+        let saved = await store.thread(id: thread.id)
+        XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["second", "third"])
+        XCTAssertEqual(saved?.waitingInputs?.map(\.id), home.homeModel.queuedFollowUps[thread.id]?.map(\.id))
+        XCTAssertTrue(home.homeModel.threads.first?.waitingInputs?.isEmpty == true)
+        XCTAssertEqual(home.homeModel.queuedFollowUps[thread.id]?.map(\.text), ["second", "third"])
+        let relaunched = HomeController()
+        relaunched.threadStore = store
+        await relaunched.refreshThreads()
+        XCTAssertEqual(relaunched.homeModel.threads.first?.waitingInputs?.map(\.text), ["second", "third"])
+        XCTAssertNil(relaunched.homeModel.queuedFollowUps[thread.id])
+    }
+
+    func testTerminationJoinWaitsForStagedFollowUpsAndDrafts() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        home.homeModel.send(threadID: thread.id, text: "queued before quit")
+        home.homeModel.updateNewDraft("draft before quit")
+
+        await home.joinPendingWrites()
+
+        let saved = await store.thread(id: thread.id)
+        XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["queued before quit"])
+        let welcome = try await store.welcomeDraft()
+        XCTAssertEqual(welcome, "draft before quit")
+    }
+
+    func testTerminationJoinGivesUpAfterItsTimeout() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        home.homeModel.updateNewDraft("slow draft")
+
+        let clock = ContinuousClock()
+        let elapsed = await clock.measure { await home.joinPendingWrites(timeout: .milliseconds(20)) }
+
+        XCTAssertLessThan(elapsed, .milliseconds(300))
+        let early = try await store.welcomeDraft()
+        XCTAssertEqual(early, "")
+        await home.joinAll()
+        let late = try await store.welcomeDraft()
+        XCTAssertEqual(late, "slow draft")
+    }
+
+    func testAQueuedFollowUpBeingSentNeverShowsAsWaitingInput() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        var released = false
+        home.answerProvider = { _, _, _ in
+            while !released { try? await Task.sleep(for: .milliseconds(10)) }
+            return .completed
+        }
+        home.homeModel.send(threadID: thread.id, text: "second")
+        await home.joinInputSaves()
+        home.homeModel.workingThreads = []
+        let sending = await pollUntil { home.homeModel.pendingQuestions[thread.id] != nil }
+        XCTAssertTrue(sending)
+        XCTAssertNil(home.homeModel.queuedFollowUps[thread.id])
+        await home.joinInputSaves()
+        await home.refreshThreads()
+
+        let stored = await store.thread(id: thread.id)
+        XCTAssertEqual(stored?.waitingInputs?.map(\.text), ["second"])
+        XCTAssertTrue(home.homeModel.threads.first?.waitingInputs?.isEmpty ?? true)
+
+        released = true
+        await home.joinAll()
+        XCTAssertNil(home.homeModel.pendingQuestions[thread.id])
+        XCTAssertEqual(home.homeModel.threads.first?.waitingInputs?.map(\.text), ["second"])
+    }
+
+    func testSendingAQueuedFollowUpLeavesNoWaitingInput() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        var begun: [UUID] = []
+        home.answerProvider = { input, _, _ in
+            do {
+                let started = try await store.beginTurn(to: input.threadID, question: input.request.text, runID: input.request.id, waitingInputID: input.request.id)
+                begun.append(input.request.id)
+                try await store.finishTurn(to: input.threadID, runID: XCTUnwrap(started.pendingTurn?.id), answer: "Done", outcome: .completed)
+                return .completed
+            } catch { return .failed(error.localizedDescription) }
+        }
+        home.homeModel.send(threadID: thread.id, text: "second")
+        await home.joinInputSaves()
+        let stagedID = try XCTUnwrap(home.homeModel.queuedFollowUps[thread.id]?.first?.id)
+        let elsewhere = UUID()
+        home.homeModel.sidebarSelection = .thread(elsewhere)
+        home.homeModel.workingThreads = []
+        let finished = await pollUntil { home.homeModel.queuedFollowUps[thread.id] == nil && home.homeModel.pendingQuestions.isEmpty }
+        XCTAssertTrue(finished)
+        await home.joinAll()
+        XCTAssertEqual(begun, [stagedID])
+        let saved = await store.thread(id: thread.id)
+        XCTAssertEqual(saved?.turns.map(\.question), ["second"])
+        XCTAssertTrue(saved?.waitingInputs?.isEmpty ?? true)
+        XCTAssertTrue(home.homeModel.threads.first?.waitingInputs?.isEmpty ?? true)
+        XCTAssertTrue(home.homeModel.unsavedInputs.isEmpty)
+        XCTAssertEqual(home.homeModel.sidebarSelection, .thread(elsewhere), "a queued send must not pull you back to its conversation")
+    }
+
+    func testRemovingAQueuedFollowUpDeletesItsStagedInput() async throws {
+        let store = ThreadStore(directory: try directory())
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        home.homeModel.send(threadID: thread.id, text: "second")
+        home.homeModel.send(threadID: thread.id, text: "third")
+        let second = try XCTUnwrap(home.homeModel.queuedFollowUps[thread.id]?.first)
+        home.homeModel.removeQueued(threadID: thread.id, id: second.id)
+        await home.joinAll()
+        let saved = await store.thread(id: thread.id)
+        XCTAssertEqual(saved?.waitingInputs?.map(\.text), ["third"])
+        XCTAssertEqual(home.homeModel.queuedFollowUps[thread.id]?.map(\.text), ["third"])
+    }
+
+    func testFailedStageKeepsTheQueuedTextAndReportsTheError() async throws {
+        let root = try directory()
+        let store = ThreadStore(directory: root)
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        try FileManager.default.removeItem(at: root)
+        try Data("Unavailable directory".utf8).write(to: root)
+        home.homeModel.send(threadID: thread.id, text: "Keep these words")
+        await home.joinInputSaves()
+        XCTAssertEqual(home.homeModel.queuedFollowUps[thread.id]?.map(\.text), ["Keep these words"])
+        XCTAssertNotNil(home.homeModel.storageError)
+    }
+
+    func testErasureLeavesNoQueuedOrStagedFollowUps() async throws {
+        let root = try directory()
+        let store = ThreadStore(directory: root)
+        let thread = try await store.upsert(PerryThread())
+        let home = queuedHome(store, thread: thread)
+        home.homeModel.send(threadID: thread.id, text: "second")
+        await home.joinInputSaves()
+        try FileManager.default.removeItem(at: root)
+        await home.reloadAfterErasure()
+        XCTAssertTrue(home.homeModel.queuedFollowUps.isEmpty)
+        XCTAssertTrue(home.homeModel.threads.isEmpty)
+        let reopened = await ThreadStore(directory: root).list()
+        XCTAssertTrue(reopened.flatMap { $0.waitingInputs ?? [] }.isEmpty)
     }
 
     func testRenderWaitingRequestRecoveryAppearances() throws {
@@ -292,7 +437,7 @@ final class HomeRecoveryTests: XCTestCase {
         home.homeModel.send(threadID: thread.id, text: thread.draft)
         home.homeModel.onStop?(thread.id)
         XCTAssertTrue(home.homeModel.stoppingThreads.contains(thread.id))
-        let settled = await waitUntil { home.homeModel.pendingQuestions.isEmpty }
+        let settled = await pollUntil { home.homeModel.pendingQuestions.isEmpty }
         XCTAssertTrue(settled)
         XCTAssertFalse(dispatched)
         XCTAssertTrue(home.homeModel.stoppingThreads.isEmpty)
@@ -331,7 +476,7 @@ final class HomeRecoveryTests: XCTestCase {
         home.homeModel.onStop?(thread.id)
         XCTAssertEqual(stopRequests, 1)
         XCTAssertTrue(home.homeModel.stoppingThreads.contains(thread.id))
-        let settled = await waitUntil { home.homeModel.pendingQuestions.isEmpty }
+        let settled = await pollUntil { home.homeModel.pendingQuestions.isEmpty }
         XCTAssertTrue(settled)
         XCTAssertTrue(home.homeModel.stoppingThreads.isEmpty)
         XCTAssertTrue(coordinator.runningThreads.isEmpty)
@@ -348,7 +493,7 @@ final class HomeRecoveryTests: XCTestCase {
         let store = ThreadStore(directory: root)
         let home = HomeController()
         home.threadStore = store
-        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
+        let target = ScreenTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
         home.answerProvider = { input, receivedTarget, partial in
             XCTAssertEqual(receivedTarget, target)
             do {
@@ -361,7 +506,7 @@ final class HomeRecoveryTests: XCTestCase {
         home.prepareConversation(target: target)
         home.homeModel.updateNewDraft("Our project is Cedar")
         home.homeModel.onStartConversation?(home.homeModel.newConversationDraft)
-        let finished = await waitUntil { home.homeModel.threads.first?.turns.count == 1 && home.homeModel.pendingQuestions.isEmpty }
+        let finished = await pollUntil { home.homeModel.threads.first?.turns.count == 1 && home.homeModel.pendingQuestions.isEmpty }
         XCTAssertTrue(finished)
         let id = try XCTUnwrap(home.homeModel.threads.first?.id)
         let saved = await ThreadStore(directory: root).thread(id: id)
@@ -378,8 +523,8 @@ final class HomeRecoveryTests: XCTestCase {
     func testReopeningCompactWorkspacePreservesDraftTargetUntilDraftIsCleared() async throws {
         let home = HomeController()
         home.threadStore = ThreadStore(directory: try directory())
-        let first = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
-        let next = CuaTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
+        let first = ScreenTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
+        let next = ScreenTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
         home.prepareConversation(target: first)
         home.homeModel.updateNewDraft("Summarize this document")
         home.prepareConversation(target: next)
@@ -393,10 +538,10 @@ final class HomeRecoveryTests: XCTestCase {
     func testConversationRetainsItsInvocationTargetAcrossFollowUps() async throws {
         let home = HomeController()
         home.threadStore = ThreadStore(directory: try directory())
-        let first = CuaTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
-        let next = CuaTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
+        let first = ScreenTargetHint(bundleID: "fixture.editor", processID: 10, windowID: 20)
+        let next = ScreenTargetHint(bundleID: "fixture.preview", processID: 30, windowID: 40)
         var capturedBeforePresentation = false
-        var delivered: [(UUID, CuaTargetHint?)] = []
+        var delivered: [(UUID, ScreenTargetHint?)] = []
         var presented = false
         home.onOpenConversation = { presented = true }
         home.captureTarget = {
@@ -414,12 +559,12 @@ final class HomeRecoveryTests: XCTestCase {
         XCTAssertEqual(home.homeModel.newConversationTarget, first)
         home.homeModel.onStartConversation?("First question")
         home.homeModel.newConversationTarget = next
-        let firstFinished = await waitUntil { delivered.count == 1 && home.homeModel.pendingQuestions.isEmpty }
+        let firstFinished = await pollUntil { delivered.count == 1 && home.homeModel.pendingQuestions.isEmpty }
         XCTAssertTrue(firstFinished)
         XCTAssertTrue(capturedBeforePresentation)
         let id = try XCTUnwrap(delivered.first?.0)
         home.homeModel.send(threadID: id, text: "Follow-up")
-        let followUpFinished = await waitUntil { delivered.count == 2 }
+        let followUpFinished = await pollUntil { delivered.count == 2 }
         XCTAssertTrue(followUpFinished)
         XCTAssertEqual(delivered.map { $0.1 }, [first, first])
     }
@@ -435,11 +580,11 @@ final class HomeRecoveryTests: XCTestCase {
         var dispatched = 0
         home.answerProvider = { _, _, _ in dispatched += 1; return .completed }
         home.openHome(selection: .thread(id))
-        let loaded = await waitUntil { home.homeModel.threads.first?.pendingTurn != nil }
+        let loaded = await pollUntil { home.homeModel.threads.first?.pendingTurn != nil }
         XCTAssertTrue(loaded)
         home.homeModel.streamingAnswers[id] = "I renamed one file before stopping."
         home.homeModel.onResolveInterrupted?(id)
-        let reconciled = await waitUntil { home.homeModel.threads.first?.turns.count == 1 }
+        let reconciled = await pollUntil { home.homeModel.threads.first?.turns.count == 1 }
         XCTAssertTrue(reconciled)
         let saved = await ThreadStore(directory: root).thread(id: id)
         XCTAssertNil(saved?.pendingTurn)
@@ -456,7 +601,7 @@ final class HomeRecoveryTests: XCTestCase {
         let home = HomeController()
         home.threadStore = store
         home.openHome()
-        let loaded = await waitUntil { home.homeModel.newConversationDraft == "Help me think through a trip" }
+        let loaded = await pollUntil { home.homeModel.newConversationDraft == "Help me think through a trip" }
         let diskDraft = try await store.welcomeDraft()
         XCTAssertTrue(loaded, "Visible: \(home.homeModel.newConversationDraft), disk: \(diskDraft), error: \(home.homeModel.storageError ?? "none")")
         XCTAssertTrue(home.homeModel.threads.isEmpty)
@@ -487,7 +632,7 @@ final class HomeRecoveryTests: XCTestCase {
         let first = (1...80).map { "Paragraph \($0): Cedar is a fictional town beside a river." }.joined(separator: "\n\n")
         home.homeModel.streamingAnswers[id] = first
         home.openHome(selection: .thread(id))
-        let loaded = await waitUntil { home.homeModel.threads.first?.pendingTurn != nil }
+        let loaded = await pollUntil { home.homeModel.threads.first?.pendingTurn != nil }
         XCTAssertTrue(loaded)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 500), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -498,7 +643,7 @@ final class HomeRecoveryTests: XCTestCase {
         func scrollViews(in view: NSView) -> [NSScrollView] {
             (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap { scrollViews(in: $0) }
         }
-        let laidOut = await waitUntil { scrollViews(in: content).contains { ($0.documentView?.bounds.height ?? 0) > 1000 } }
+        let laidOut = await pollUntil { scrollViews(in: content).contains { ($0.documentView?.bounds.height ?? 0) > 1000 } }
         XCTAssertTrue(laidOut)
         let scroll = try XCTUnwrap(scrollViews(in: content).max { $0.bounds.width < $1.bounds.width })
         scroll.contentView.scroll(to: NSPoint(x: 0, y: 120))

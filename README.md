@@ -2,7 +2,7 @@
 
 A screen-aware companion that teaches you any app by pointing and drawing on your screen, and can take the whole task off your hands. Product spec lives in [PRD.md](PRD.md).
 
-Status: public beta, not GA. The arm64 app builds and the automated suites cover typed plans, fail-closed execution, Cua connection generations, guide postconditions, durable task checkpoints, bounded voice dispatch, integration policy, onboarding, and persistence recovery. These results establish wiring and automated behavior; they do not replace live TCC, provider-account, signed-release, performance, accessibility, or acceptance-journey evidence.
+Status: public beta, not GA. The arm64 app builds and the automated suites cover typed plans, fail-closed execution, screen-control session generations, guide postconditions, durable task checkpoints, bounded voice dispatch, integration policy, onboarding, and persistence recovery. These results establish wiring and automated behavior; they do not replace live TCC, provider-account, signed-release, performance, accessibility, or acceptance-journey evidence.
 
 ```bash
 cd Packages/PerryRuntimes && swift run perry-demo
@@ -12,9 +12,9 @@ Docs: [capabilities](docs/capabilities.md) · [support](docs/support.md) · [fol
 
 ## What is live
 
-The app target binds the menu-bar companion, intent cards, onboarding, guide overlays, push-to-talk, optional realtime voice, route fallback, task controls, history, integrations, and diagnostics to tested controller boundaries. Cua is the required computer-use boundary and binds sessions to process/window identities. Accessibility and Screen Recording are required for grounded screen work; the local planner handles only its disclosed deterministic task set, while open-ended work requires a healthy authenticated runtime.
+The app target binds the menu-bar companion, intent cards, onboarding, guide overlays, push-to-talk, optional realtime voice, route fallback, task controls, history, integrations, and diagnostics to tested controller boundaries. agent-desktop is the required computer-use boundary, and Perry binds its sessions to process and window identities. Accessibility and Screen Recording are required for grounded screen work; the local planner handles only its disclosed deterministic task set, while open-ended work requires a healthy authenticated runtime.
 
-A pinned Cua Driver binary ships inside the app bundle (`App/Resources/CuaDriver`) and is verified by SHA-256 against `scripts/cua-driver.lock`. Cua is required for grounded computer-use sessions: if it is unavailable or unhealthy, Perry reports the failure instead of silently switching to a second capture/action backend.
+A pinned agent-desktop build ships inside the app bundle (`App/Resources/AgentDesktop`) and is verified by SHA-256 against `scripts/agent-desktop.lock` (see `docs/release-readiness/agent-desktop.md`). It is required for grounded computer-use sessions. If it is unavailable or unhealthy, Perry reports the failure instead of switching to another backend. A pinned cua-driver (`App/Resources/CuaDriver`, `scripts/cua-driver.lock`) ships beside it as a background fallback: clicks at a point, drags, and control clicks that agent-desktop provably did not deliver, or reports as delivered with no observable effect, go through cua without moving the user's cursor.
 
 ## Development
 

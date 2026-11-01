@@ -25,6 +25,7 @@ final class OnboardingDirector: ObservableObject {
     @Published private(set) var direction = Direction.forward
     @Published private(set) var permissions: PerryPermissionSnapshot?
     @Published var choosingBrain = false
+    private var interview: InterviewModel?
 
     private let effects: Effects
     private let defaults: UserDefaults?
@@ -46,7 +47,15 @@ final class OnboardingDirector: ObservableObject {
         return permissions.accessibility && permissions.screenRecording.isUsable
     }
 
+    func interviewModel(_ make: () -> InterviewModel) -> InterviewModel {
+        if let interview, interview.step != .done { return interview }
+        let model = make()
+        interview = model
+        return model
+    }
+
     func start(resume: Bool = true) {
+        interview = nil
         let saved = resume ? defaults?.string(forKey: PerryPreferences.$onboardingBeat.key).flatMap(Beat.init(rawValue:)) : nil
         defaults?.removeObject(forKey: PerryPreferences.$onboardingDismissed.key)
         firstAnswerMarked = false
@@ -56,6 +65,7 @@ final class OnboardingDirector: ObservableObject {
 
     func skip() {
         guard let beat else { return }
+        interview?.cancelImport()
         guard let next = neighbor(of: beat, step: 1) else { return finish(keepNotchOpen: false) }
         enter(next, direction: .forward)
     }
@@ -131,6 +141,8 @@ final class OnboardingDirector: ObservableObject {
     }
 
     private func finish(keepNotchOpen: Bool) {
+        interview?.cancel()
+        interview = nil
         stop()
         defaults?.removeObject(forKey: PerryPreferences.$onboardingBeat.key)
         effects.mark("onboarding.finish")

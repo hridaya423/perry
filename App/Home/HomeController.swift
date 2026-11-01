@@ -22,15 +22,39 @@ final class HomeController {
         _ = await inputSaveTask?.result
     }
 
+    func joinPendingWrites(timeout: Duration = .seconds(2)) async {
+        let drafts = [welcomeDraftSaveTask, draftSaveTask, recoveryWriteTask].compactMap { $0 }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            var timer: Task<Void, Never>?
+            let finish: @MainActor () -> Void = {
+                guard !resumed else { return }
+                resumed = true
+                timer?.cancel()
+                continuation.resume()
+            }
+            Task { @MainActor in
+                await self.joinInputSaves()
+                for task in drafts { await task.value }
+                finish()
+            }
+            timer = Task { @MainActor in
+                try? await Task.sleep(for: timeout)
+                finish()
+            }
+        }
+    }
+
     let homeModel = HomeModel()
     private var welcomeDraftEdited = false
     private var welcomeDraftLoaded = false
     private var welcomeDraftSaveTask: Task<Void, Never>?
     private var recoveryWriteTask: Task<Void, Never>?
+    private var draftSaveTask: Task<Void, Never>?
 
     var threadStore: ThreadStore?
-    var captureTarget: (() -> CuaTargetHint?)?
-    var answerProvider: ((AcceptedInput, CuaTargetHint?, @MainActor @Sendable (String) -> Void) async -> AgentFinish)?
+    var captureTarget: (() -> ScreenTargetHint?)?
+    var answerProvider: ((AcceptedInput, ScreenTargetHint?, @MainActor @Sendable (String) -> Void) async -> AgentFinish)?
     var onStop: ((UUID) -> Void)?
     var onOpenConversation: (() -> Void)?
 
@@ -56,11 +80,13 @@ final class HomeController {
 
     func reopenAdmission() {
         acceptsInput = true
+        homeModel.sendQueuedFollowUps()
     }
 
     func reloadAfterErasure() async {
         _ = await threadStore?.reload()
         homeModel.drafts = [:]
+        homeModel.clearQueues()
         homeModel.pendingQuestions = [:]
         homeModel.streamingAnswers = [:]
         homeModel.threadErrors = [:]
@@ -183,7 +209,7 @@ final class HomeController {
                     try await store.restoreWaitingInput(inputID, from: id)
                     self.homeModel.storageError = nil
                     await self.refreshThreads()
-                } catch { self.homeModel.storageError = error.localizedDescription }
+                } catch { self.homeModel.storageError = "Couldn’t put that message back. It’s still listed here. \(error.localizedDescription)" }
             }
         }
         homeModel.onRemoveWaitingInput = { [weak self] id, inputID in
@@ -191,12 +217,13 @@ final class HomeController {
             let previousWrite = self.recoveryWriteTask
             self.recoveryWriteTask = self.performWork {
                 await previousWrite?.value
+                _ = await self.inputSaveTask?.result
                 do {
                     guard let store = self.threadStore else { throw CocoaError(.fileReadUnknown) }
                     try await store.removeWaitingInput(inputID, from: id)
                     self.homeModel.storageError = nil
                     await self.refreshThreads()
-                } catch { self.homeModel.storageError = error.localizedDescription }
+                } catch { self.homeModel.storageError = "Couldn’t remove that message. Try again. \(error.localizedDescription)" }
             }
         }
         homeModel.onResolveInterrupted = { [weak self] id in
@@ -211,7 +238,7 @@ final class HomeController {
                     self.homeModel.streamingAnswers[id] = nil
                     await self.refreshThreads()
                 } catch {
-                    self.homeModel.storageError = error.localizedDescription
+                    self.homeModel.storageError = "Couldn’t mark this task as reviewed. Try again. \(error.localizedDescription)"
                 }
             }
         }
@@ -227,6 +254,11 @@ final class HomeController {
             let mode = self.homeModel.composerMode
             if mode != .ask, let controller = self.homeModel.deps.controller {
                 let goal = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if mode != .background, self.startIsBlocked(by: controller) {
+                    self.homeModel.composerNotice = "I’m still working on something. Stop it first, or wait."
+                    return
+                }
+                self.homeModel.composerNotice = nil
                 self.homeModel.composerMode = .ask
                 self.homeModel.updateNewDraft("")
                 switch mode {
@@ -243,17 +275,22 @@ final class HomeController {
             self.homeModel.conversationTargets[input.threadID] = target
             self.submitHomeInput(input, target: target, welcomeDraft: text)
         }
-        homeModel.onSend = { [weak self] threadID, text in
+        homeModel.onQueueFollowUp = { [weak self] threadID, request in
             guard let self, self.acceptsInput else { return }
+            self.stageQueuedFollowUp(request, to: threadID)
+        }
+        homeModel.onSend = { [weak self] threadID, text, waitingInputID in
+            guard let self, self.acceptsInput else { return false }
             let target = self.homeModel.conversationTargets[threadID]
-            let input = self.acceptInput(text, threadID: threadID)
+            let input = self.acceptInput(text, threadID: threadID, waitingInputID: waitingInputID)
             self.homeModel.conversationTargets[input.threadID] = target
             self.submitHomeInput(input, target: target)
+            return true
         }
 
         homeModel.onDraftChanged = { [weak self] id, draft in
             guard let self, self.acceptsInput else { return }
-            self.performWork {
+            self.draftSaveTask = self.performWork {
                 do {
                     try await self.threadStore?.setDraft(draft, for: id)
                     self.homeModel.storageError = nil
@@ -278,7 +315,7 @@ final class HomeController {
                         self.homeModel.send(threadID: threadID, text: card.body)
                     }
                 } catch {
-                    self.homeModel.storageError = error.localizedDescription
+                    self.homeModel.storageError = "Couldn’t start a conversation from that suggestion. It’s still here. \(error.localizedDescription)"
                 }
             }
         }
@@ -308,7 +345,7 @@ final class HomeController {
                             PerryThread(id: uuid, title: perry.name, perryID: perry.id.uuidString)
                         )
                     } catch {
-                        self.homeModel.storageError = error.localizedDescription
+                        self.homeModel.storageError = "Couldn’t open a conversation with \(perry.name). Try again. \(error.localizedDescription)"
                         return
                     }
                 }
@@ -318,14 +355,29 @@ final class HomeController {
         }
     }
 
-    private func submitHomeInput(_ input: AcceptedInput, target: CuaTargetHint?, welcomeDraft: String? = nil) {
+    private func startIsBlocked(by controller: AppController) -> Bool {
+        switch controller.sessionController.state {
+        case .guiding, .asking, .talking, .executing: return true
+        default:
+            let foreground = controller.subsystems.foreground
+            return foreground.supervisorActive || foreground.startIsInFlight
+        }
+    }
+
+    private func submitHomeInput(_ input: AcceptedInput, target: ScreenTargetHint?, welcomeDraft: String? = nil) {
         let threadID = input.threadID
         homeModel.pendingQuestions[threadID] = .init(
-            text: input.request.text, turnIndex: homeModel.threads.first { $0.id == threadID }?.turns.count ?? 0
+            text: input.request.text, turnIndex: homeModel.threads.first { $0.id == threadID }?.turns.count ?? 0,
+            inputID: input.request.id
         )
         homeModel.threadErrors[threadID] = nil
+        if welcomeDraft != nil {
+            performWork {
+                _ = await input.saved.result
+                self.homeModel.isCreatingConversation = false
+            }
+        }
         performWork(cancelOnMaintenance: true) {
-            defer { if welcomeDraft != nil { self.homeModel.isCreatingConversation = false } }
             let finish = await self.presentRun(threadID: threadID, text: input.request.text) { onPartial in
                 do {
                     try await input.saved.value
@@ -344,11 +396,12 @@ final class HomeController {
             }
             if finish == .interrupted {
                 try? await self.threadStore?.restoreWaitingInput(input.request.id, from: threadID)
+                await self.refreshThreads()
             }
         }
     }
 
-    func acceptInput(_ text: String, threadID requestedThreadID: UUID? = nil, contextKey: TalkContextKey? = nil) -> AcceptedInput {
+    func acceptInput(_ text: String, threadID requestedThreadID: UUID? = nil, contextKey: TalkContextKey? = nil, waitingInputID: UUID? = nil) -> AcceptedInput {
         guard acceptsInput else {
             return AcceptedInput(threadID: requestedThreadID ?? UUID(), request: .init(text: text), saved: Task { throw CancellationError() })
         }
@@ -371,7 +424,7 @@ final class HomeController {
             threadID = UUID()
         }
         if let contextKey { talkContextStore.record(contextKey, threadID: threadID) }
-        let request = PerryThread.WaitingInput(text: text)
+        let request = PerryThread.WaitingInput(id: waitingInputID ?? UUID(), text: text)
         PerfMark.mark("home.question.sent")
         let saved = saveInput(request, to: threadID)
         if !homeModel.threads.contains(where: { $0.id == threadID }) {
@@ -379,7 +432,9 @@ final class HomeController {
             thread.title = ThreadStore.derivedTitle(from: text)
             homeModel.threads.insert(thread, at: 0)
         }
-        homeModel.sidebarSelection = .thread(threadID)
+        if waitingInputID == nil {
+            homeModel.sidebarSelection = .thread(threadID)
+        }
         return AcceptedInput(threadID: threadID, request: request, saved: saved)
     }
 
@@ -406,6 +461,20 @@ final class HomeController {
         return saved
     }
 
+    private func stageQueuedFollowUp(_ request: PerryThread.WaitingInput, to threadID: UUID) {
+        let previousSave = inputSaveTask
+        inputSaveTask = Task<Void, Error> { @MainActor in
+            _ = await previousSave?.result
+            do {
+                guard let store = self.threadStore else { throw CocoaError(.fileWriteUnknown) }
+                try await store.stageInput(request, to: threadID)
+                await self.refreshThreads()
+            } catch {
+                self.homeModel.storageError = "Couldn’t save your queued message. Keep Perry open until it sends. \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func retainUnsavedInput(_ request: PerryThread.WaitingInput, threadID: UUID, error: Error) {
         if let index = homeModel.unsavedInputs.firstIndex(where: { $0.id == request.id }) {
             homeModel.unsavedInputs[index].error = error.localizedDescription
@@ -427,7 +496,8 @@ final class HomeController {
             }, nil)
         }
         homeModel.pendingQuestions[threadID] = .init(
-            text: text, turnIndex: homeModel.threads.first { $0.id == threadID }?.turns.count ?? 0
+            text: text, turnIndex: homeModel.threads.first { $0.id == threadID }?.turns.count ?? 0,
+            inputID: input.request.id
         )
         let target = spatial?.target ?? homeModel.conversationTargets[threadID] ?? homeModel.newConversationTarget
         homeModel.sidebarSelection = .thread(threadID)
@@ -437,6 +507,7 @@ final class HomeController {
             do {
                 try await input.saved.value
             } catch {
+                self.homeModel.turnEnded(threadID: threadID, finish: .failed(error.localizedDescription))
                 self.homeModel.pendingQuestions[threadID] = nil
                 self.homeModel.stoppingThreads.remove(threadID)
                 continuation.yield(.finished(.failed(self.homeModel.storageError ?? error.localizedDescription)))
@@ -462,6 +533,7 @@ final class HomeController {
             }
             if finish == .interrupted {
                 try? await self.threadStore?.restoreWaitingInput(input.request.id, from: threadID)
+                await self.refreshThreads()
             }
             continuation.yield(.finished(finish))
             continuation.finish()
@@ -477,7 +549,9 @@ final class HomeController {
         defer { homeModel.stoppingThreads.remove(threadID) }
         guard !Task.isCancelled, !homeModel.stoppingThreads.contains(threadID) else {
             homeModel.threadErrors[threadID] = "I stopped before starting. Your message is still here."
+            homeModel.turnEnded(threadID: threadID, finish: .interrupted)
             homeModel.pendingQuestions[threadID] = nil
+            await refreshThreads()
             return .interrupted
         }
         homeModel.threadErrors[threadID] = nil
@@ -495,14 +569,16 @@ final class HomeController {
         homeModel.threadErrors[threadID] = finish.failureReason
         if finish == .completed, homeModel.drafts[threadID] == text { homeModel.drafts[threadID] = nil }
         await refreshThreads()
+        homeModel.turnEnded(threadID: threadID, finish: finish)
         homeModel.pendingQuestions[threadID] = nil
         if homeModel.threads.first(where: { $0.id == threadID })?.pendingTurn == nil {
             homeModel.streamingAnswers[threadID] = nil
         }
+        await refreshThreads()
         return finish
     }
 
-    func prepareConversation(target: CuaTargetHint?) {
+    func prepareConversation(target: ScreenTargetHint?) {
         guard acceptsInput else { return }
         if homeModel.newConversationDraft.isEmpty || homeModel.newConversationTarget == nil {
             homeModel.newConversationTarget = target
@@ -526,7 +602,13 @@ final class HomeController {
     }
 
     func refreshThreads() async {
-        homeModel.threads = await threadStore?.list() ?? []
+        var threads = await threadStore?.list() ?? []
+        var hidden = Set(homeModel.queuedFollowUps.values.joined().map(\.id))
+        hidden.formUnion(homeModel.pendingQuestions.values.compactMap(\.inputID))
+        if !hidden.isEmpty {
+            for index in threads.indices { threads[index].waitingInputs?.removeAll { hidden.contains($0.id) } }
+        }
+        homeModel.threads = threads
         if let issue = await threadStore?.readIssues().first {
             homeModel.storageError = "Some conversations couldn’t be opened. Their original files are preserved at \(issue.file.path). \(issue.message)"
         }

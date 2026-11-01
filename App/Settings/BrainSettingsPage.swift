@@ -4,9 +4,8 @@ import SwiftUI
 
 struct BrainSettingsPage: View {
     let controller: AppController
-    @AppStorage(PerryPreferences.$cuaDriverPath.key) private var cuaDriverPath = ""
     @State private var setup = RuntimeSetupSnapshot(summary: "Looking for coding agents…", records: [])
-    @State private var cuaStatus = "Checking…"
+    @State private var screenStatus = "Checking…"
     @State private var refreshCount = 0
     @State private var copiedCommand: String?
     @State private var error: String?
@@ -40,17 +39,17 @@ struct BrainSettingsPage: View {
                 }
             }
             SettingsCard(title: "Screen control", footer: "Lets Perry see your screen and act in other apps.") {
-                Text(cuaStatus)
+                Text(screenStatus)
                     .font(PerryTheme.Scale.body)
                     .foregroundStyle(PerryTheme.Colors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .settingsRowPadding()
                     .accessibilityLabel("Screen control status")
-                    .accessibilityValue(cuaStatus)
+                    .accessibilityValue(screenStatus)
             }
-            SettingsAdvanced {
-                SettingsCard {
-                    if hasCommands {
+            if hasCommands {
+                SettingsAdvanced {
+                    SettingsCard {
                         ForEach(setup.records.filter { $0.signInCommand != nil || $0.signOutCommand != nil }) { runtime in
                             SettingsRow(title: runtime.name) {
                                 if let command = runtime.signInCommand {
@@ -67,27 +66,17 @@ struct BrainSettingsPage: View {
                                 NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"), configuration: NSWorkspace.OpenConfiguration())
                             }
                         }
-                        SettingsDivider()
                     }
-                    HStack(spacing: PerryTheme.Spacing.inline) {
-                        TextField("Screen control path (optional)", text: $cuaDriverPath)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Save") {
-                            controller.reloadCuaDriverConfiguration()
-                            refreshCount += 1
-                        }
-                    }
-                    .settingsRowPadding()
                 }
             }
         }
         .task(id: refreshCount) {
             async let latestSetup = controller.subsystems.runtimes.currentSetup()
-            async let latestCuaStatus = controller.subsystems.probe.cuaHealth().summary
-            let (newSetup, newCuaStatus) = await (latestSetup, latestCuaStatus)
+            async let latestScreenStatus = controller.subsystems.probe.screenHealth().summary
+            let (newSetup, newScreenStatus) = await (latestSetup, latestScreenStatus)
             guard !Task.isCancelled else { return }
             setup = newSetup
-            cuaStatus = newCuaStatus
+            screenStatus = newScreenStatus
         }
         .settingsErrorDialog($error)
     }

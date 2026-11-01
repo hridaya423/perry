@@ -279,10 +279,17 @@ public enum VoiceTextPolicy {
         return normalized.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
     }
 
-    public static func insertionText(from text: String, frontmostBundleID: String?, dictionary: [String: String]) -> String? {
+    public static func insertionText(
+        from text: String,
+        frontmostBundleID: String?,
+        dictionary: [String: String],
+        requiresPrefix: Bool = true
+    ) -> String? {
         let normalized = normalize(text, frontmostBundleID: frontmostBundleID, dictionary: dictionary)
         let prefixes = ["type ", "dictate ", "paste "]
-        guard let prefix = prefixes.first(where: { normalized.lowercased().hasPrefix($0) }) else { return nil }
+        guard let prefix = prefixes.first(where: { normalized.lowercased().hasPrefix($0) }) else {
+            return requiresPrefix || normalized.isEmpty ? nil : normalized
+        }
         let content = String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
         return content.isEmpty ? nil : content
     }

@@ -86,6 +86,7 @@ final class InterviewModel: ObservableObject {
     private var startedAt: Date?
     private var shortStreak = 0
     private let effects: Effects
+    private var importTask: Task<Void, Never>?
 
     init(name: String, effects: Effects) {
         self.facts = Facts(name: name)
@@ -114,13 +115,14 @@ final class InterviewModel: ObservableObject {
         guard case .importConsent(let service) = step else { return }
         guard allowed, let importMemory = effects.importMemory, let complete = effects.complete else { return summarize() }
         step = .importing(service)
-        Task {
+        importTask = Task {
             let text = await importMemory(service)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !Task.isCancelled, step == .importing(service) else { return }
             if let text, !text.isEmpty, let reply = try? await complete(MemoryExtraction.importPrompt(text)) {
+                guard !Task.isCancelled, step == .importing(service) else { return }
                 let known = Set(notes.map { $0.fact.text.lowercased() })
                 notes += MemoryExtraction.decodeImport(reply).filter { !known.contains($0.text.lowercased()) }.map { Note(fact: $0) }
             }
-            guard step == .importing(service) else { return }
             importFailed = notes.isEmpty
             summarize()
         }
@@ -131,7 +133,16 @@ final class InterviewModel: ObservableObject {
         case .importConsent, .importing: break
         default: return
         }
+        importTask?.cancel()
+        importTask = nil
         summarize()
+    }
+
+    func suspendImport() {
+        guard case .importing(let service) = step else { return }
+        importTask?.cancel()
+        importTask = nil
+        step = .importConsent(service)
     }
 
     var summaryLines: [String] {
@@ -283,6 +294,8 @@ final class InterviewModel: ObservableObject {
     }
 
     func cancel() {
+        importTask?.cancel()
+        importTask = nil
         step = .done
     }
 

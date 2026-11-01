@@ -2,26 +2,37 @@ import Foundation
 import PerryGuide
 import PerryRuntimes
 
-enum CuaWorkerScope: Hashable, Sendable {
+enum ScreenWorkerScope: Hashable, Sendable {
     case background, foreground, guide, dictation, health
 
     var capacity: Int { self == .background ? 3 : 1 }
 }
 
-enum CuaWorkerError: Error, Equatable {
+enum ScreenWorkerError: Error, Equatable, LocalizedError {
     case admissionClosed
     case capacityReached
     case resourceBusy
     case retired
     case operationDidNotStop
     case maintenanceInsideWorker
+
+    var errorDescription: String? {
+        switch self {
+        case .admissionClosed: "Perry is shutting down and can’t start screen control. Open Perry again to retry."
+        case .capacityReached: "Perry is already running as many tasks as it can. Wait for one to finish, or stop one."
+        case .resourceBusy: "Another task is using that app. Wait for it to finish, or stop it."
+        case .retired: "Screen control for this task already ended. Start the task again."
+        case .operationDidNotStop: "Screen control didn’t stop when asked. Quit and reopen Perry."
+        case .maintenanceInsideWorker: "Perry can’t restart screen control while a task is using it. Stop the task, then try again."
+        }
+    }
 }
 
-struct CuaWorkerHandle: Sendable {
-    fileprivate let service: CuaWorkerService
+struct ScreenWorkerHandle: Sendable {
+    fileprivate let service: ScreenWorkerService
     fileprivate let allocation: UUID
 
-    func capture(target: CuaTargetHint?, includeScreenshot: Bool = true) async throws -> CuaCapturedWindow {
+    func capture(target: ScreenTargetHint?, includeScreenshot: Bool = true) async throws -> ScreenCapturedWindow {
         try await service.capture(target: target, includeScreenshot: includeScreenshot, allocation: allocation)
     }
 
@@ -29,11 +40,11 @@ struct CuaWorkerHandle: Sendable {
         try await service.execute(action, allocation: allocation)
     }
 
-    func insertText(_ text: String, target: CuaTargetHint) async throws -> CuaWindowTarget {
+    func insertText(_ text: String, target: ScreenTargetHint) async throws -> ScreenWindowTarget {
         try await service.insertText(text, target: target, allocation: allocation)
     }
 
-    func probeTarget(_ target: CuaTargetHint?) async throws -> CuaWindowTarget {
+    func probeTarget(_ target: ScreenTargetHint?) async throws -> ScreenWindowTarget {
         try await service.probeTarget(target, allocation: allocation)
     }
 
@@ -46,16 +57,16 @@ struct CuaWorkerHandle: Sendable {
     }
 }
 
-private enum CuaWorkerContext {
+private enum ScreenWorkerContext {
     @TaskLocal static var serviceID: UUID?
 }
 
-actor CuaWorkerService {
+actor ScreenWorkerService {
     private enum Admission { case accepting, maintenance, blocked, closed }
 
     private struct Worker {
-        let scope: CuaWorkerScope
-        let client: CuaDriverClient
+        let scope: ScreenWorkerScope
+        let client: AgentDesktopClient
         var resources: Set<BackgroundTaskResource>
         var cancelOperation: @Sendable () -> Void = {}
         var operationFinished = false
@@ -67,39 +78,64 @@ actor CuaWorkerService {
     }
 
     private let serviceID = UUID()
-    private let configuration: CuaDriverConfiguration?
+    private let configuration: AgentDesktopConfiguration?
+    private var fallbackSource: FallbackSource
     private var admission = Admission.accepting
     private var workers: [UUID: Worker] = [:]
     private var maintenanceCompletion: Task<Void, Never>?
 
-    init() { configuration = nil }
+    private enum FallbackSource {
+        case discover
+        case resolved(CuaDriverConfiguration?)
+    }
 
-    init(configuration: CuaDriverConfiguration) {
+    init() {
+        configuration = nil
+        fallbackSource = .discover
+    }
+
+    init(configuration: AgentDesktopConfiguration, fallback: CuaDriverConfiguration? = nil) {
         self.configuration = configuration
+        fallbackSource = .resolved(fallback)
+    }
+
+    private func fallbackConfiguration() -> CuaDriverConfiguration? {
+        switch fallbackSource {
+        case .discover:
+            let discovered = CuaDriverConfiguration.discover()
+            fallbackSource = .resolved(discovered)
+            return discovered
+        case .resolved(let configuration):
+            return configuration
+        }
     }
 
     func withWorker<Value: Sendable>(
-        scope: CuaWorkerScope,
+        scope: ScreenWorkerScope,
         resources: Set<BackgroundTaskResource>,
-        operation: @escaping @Sendable (CuaWorkerHandle) async throws -> Value
+        operation: @escaping @Sendable (ScreenWorkerHandle) async throws -> Value
     ) async throws -> Value {
         try Task.checkCancellation()
-        guard admission == .accepting else { throw CuaWorkerError.admissionClosed }
+        guard admission == .accepting else { throw ScreenWorkerError.admissionClosed }
         guard workers.values.filter({ $0.scope == scope }).count < scope.capacity else {
-            throw CuaWorkerError.capacityReached
+            throw ScreenWorkerError.capacityReached
         }
         let allocation = UUID()
         let resources = Self.normalized(resources)
         try requireAvailable(resources, excluding: allocation)
-        let client = configuration.map { CuaDriverClient(configuration: $0, allowsRestart: true, allowsForegroundInput: scope == .foreground) }
-            ?? CuaDriverClient(allowsRestart: true, allowsForegroundInput: scope == .foreground)
+        let fallback = fallbackConfiguration().map {
+            CuaDriverClient(configuration: $0, allowsRestart: true, allowsForegroundInput: false)
+        }
+        let client = configuration.map {
+            AgentDesktopClient(configuration: $0, allowsRestart: true, allowsForegroundInput: scope == .foreground, fallback: fallback)
+        } ?? AgentDesktopClient(allowsRestart: true, allowsForegroundInput: scope == .foreground, fallback: fallback)
         workers[allocation] = Worker(scope: scope, client: client, resources: resources)
-        let handle = CuaWorkerHandle(service: self, allocation: allocation)
+        let handle = ScreenWorkerHandle(service: self, allocation: allocation)
         let serviceID = serviceID
         let task = Task {
             let result: Result<Value, Error>
             do {
-                let value = try await CuaWorkerContext.$serviceID.withValue(serviceID) {
+                let value = try await ScreenWorkerContext.$serviceID.withValue(serviceID) {
                     try Task.checkCancellation()
                     return try await operation(handle)
                 }
@@ -127,7 +163,7 @@ actor CuaWorkerService {
     ) async throws -> Value {
         try requireOutsideWorker()
         try Task.checkCancellation()
-        guard admission == .accepting || admission == .blocked else { throw CuaWorkerError.admissionClosed }
+        guard admission == .accepting || admission == .blocked else { throw ScreenWorkerError.admissionClosed }
         admission = .maintenance
         do {
             try await stopWorkers()
@@ -140,10 +176,10 @@ actor CuaWorkerService {
             if admission == .maintenance { admission = .accepting }
         }
         try Task.checkCancellation()
-        guard admission == .maintenance else { throw CuaWorkerError.admissionClosed }
+        guard admission == .maintenance else { throw ScreenWorkerError.admissionClosed }
         let serviceID = serviceID
         let task = Task {
-            try await CuaWorkerContext.$serviceID.withValue(serviceID) {
+            try await ScreenWorkerContext.$serviceID.withValue(serviceID) {
                 try Task.checkCancellation()
                 return try await operation()
             }
@@ -169,14 +205,14 @@ actor CuaWorkerService {
         try await withWorkersStopped {}
     }
 
-    func health() async -> CuaDriverHealth {
+    func health() async -> ScreenDriverHealth {
         do {
             return try await withWorker(scope: .health, resources: []) { handle in
                 let client = try await self.client(for: handle.allocation)
                 return await client.health()
             }
         } catch {
-            return CuaDriverHealth(ready: false, summary: "Screen control isn’t responding. Try again.")
+            return ScreenDriverHealth(ready: false, summary: "Screen control isn’t responding. Try again.")
         }
     }
 
@@ -192,15 +228,15 @@ actor CuaWorkerService {
 
     private func retryingRead<Value>(
         _ allocation: UUID,
-        _ read: (CuaDriverClient) async throws -> Value
+        _ read: (AgentDesktopClient) async throws -> Value
     ) async throws -> Value {
         var retriesLeft = Self.maxReadRetries
         while true {
             do {
                 return try await read(try client(for: allocation))
-            } catch let error as CuaDriverError where error == .noTargetWindow {
+            } catch let error as ScreenDriverError where error == .noTargetWindow || error == .appBusy {
                 throw error
-            } catch let error as CuaDriverError where error.isRespawnableReadFailure && retriesLeft > 0 {
+            } catch let error as ScreenDriverError where error.isRespawnableReadFailure && retriesLeft > 0 {
                 retriesLeft -= 1
             } catch {
                 beginRetirement(allocation)
@@ -209,7 +245,7 @@ actor CuaWorkerService {
         }
     }
 
-    fileprivate func capture(target hint: CuaTargetHint?, includeScreenshot: Bool = true, allocation: UUID) async throws -> CuaCapturedWindow {
+    fileprivate func capture(target hint: ScreenTargetHint?, includeScreenshot: Bool = true, allocation: UUID) async throws -> ScreenCapturedWindow {
         try await retryingRead(allocation) { client in
             let sessionID = allocation.uuidString
             PerfMark.mark("guide.resolve.begin")
@@ -222,13 +258,13 @@ actor CuaWorkerService {
         }
     }
 
-    fileprivate func probeTarget(_ hint: CuaTargetHint?, allocation: UUID) async throws -> CuaWindowTarget {
+    fileprivate func probeTarget(_ hint: ScreenTargetHint?, allocation: UUID) async throws -> ScreenWindowTarget {
         try await retryingRead(allocation) { client in
             try await client.resolveTarget(hint, sessionID: allocation.uuidString)
         }
     }
 
-    fileprivate func insertText(_ text: String, target hint: CuaTargetHint, allocation: UUID) async throws -> CuaWindowTarget {
+    fileprivate func insertText(_ text: String, target hint: ScreenTargetHint, allocation: UUID) async throws -> ScreenWindowTarget {
         do {
             let client = try client(for: allocation)
             let sessionID = allocation.uuidString
@@ -246,18 +282,18 @@ actor CuaWorkerService {
             try Task.checkCancellation()
             let client = try client(for: allocation)
             guard let target = await client.target(for: allocation.uuidString) else {
-                throw CuaDriverError.targetNotFound
+                throw ScreenDriverError.targetNotFound
             }
             try claim([.application(target.bundleID)], allocation: allocation)
             let result = try await client.execute(action, sessionID: allocation.uuidString)
             workers[allocation]?.droppedActions = 0
             return result
-        } catch let error as CuaDriverError where error.isTargetFact {
+        } catch let error as ScreenDriverError where error.isTargetFact {
             throw error
-        } catch let error as CuaDriverError where error.isRespawnableReadFailure
+        } catch let error as ScreenDriverError where error.isRespawnableReadFailure
             && (workers[allocation]?.droppedActions ?? Self.maxReadRetries) < Self.maxReadRetries {
             workers[allocation]?.droppedActions += 1
-            throw CuaDriverError.actionUnanswered
+            throw ScreenDriverError.actionUnanswered
         } catch {
             beginRetirement(allocation)
             throw error
@@ -265,13 +301,13 @@ actor CuaWorkerService {
     }
 
     fileprivate func retire(_ allocation: UUID) async throws {
-        guard workers[allocation] != nil else { throw CuaWorkerError.retired }
+        guard workers[allocation] != nil else { throw ScreenWorkerError.retired }
         try await beginRetirement(allocation).value
     }
 
-    private func client(for allocation: UUID) throws -> CuaDriverClient {
+    private func client(for allocation: UUID) throws -> AgentDesktopClient {
         guard let worker = workers[allocation], worker.retirement == nil else {
-            throw CuaWorkerError.retired
+            throw ScreenWorkerError.retired
         }
         return worker.client
     }
@@ -304,7 +340,7 @@ actor CuaWorkerService {
     private func waitForStoppedOperation(_ allocation: UUID) async throws {
         while let worker = workers[allocation], !worker.operationFinished {
             guard let deadline = worker.stopDeadline, ContinuousClock.now < deadline else {
-                throw CuaWorkerError.operationDidNotStop
+                throw ScreenWorkerError.operationDidNotStop
             }
             try await Task.sleep(until: min(deadline, ContinuousClock.now.advanced(by: .milliseconds(5))), clock: .continuous)
         }
@@ -317,11 +353,11 @@ actor CuaWorkerService {
         let retirement = beginRetirement(allocation)
         let completion = Task {
             defer { self.workers[allocation] = nil }
-            do {
-                try await retirement.value
-            } catch CuaDriverError.terminationUnconfirmed {
-            }
+            let retired = await retirement.result
             try await self.waitForStoppedOperation(allocation)
+            if case .failure(let error) = retired, error as? ScreenDriverError != .terminationUnconfirmed {
+                throw error
+            }
         }
         workers[allocation]?.completion = completion
         return completion
@@ -335,8 +371,8 @@ actor CuaWorkerService {
     }
 
     private func requireOutsideWorker() throws {
-        guard CuaWorkerContext.serviceID != serviceID else {
-            throw CuaWorkerError.maintenanceInsideWorker
+        guard ScreenWorkerContext.serviceID != serviceID else {
+            throw ScreenWorkerError.maintenanceInsideWorker
         }
     }
 
@@ -344,7 +380,7 @@ actor CuaWorkerService {
         for (id, worker) in workers where id != allocation {
             for requested in resources {
                 for occupied in worker.resources where Self.conflicts(requested, occupied) {
-                    throw CuaWorkerError.resourceBusy
+                    throw ScreenWorkerError.resourceBusy
                 }
             }
         }

@@ -30,7 +30,10 @@ struct InterviewBeat: View {
             if previous == .pronounce { typing = false }
             if step == .done { director.skip() }
         }
-        .onDisappear { listener.stop() }
+        .onDisappear {
+            listener.stop()
+            model.suspendImport()
+        }
     }
 
     private static let installedAssistants = ["chatgpt", "claude"].filter { id in

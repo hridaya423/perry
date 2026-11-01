@@ -5,7 +5,7 @@ import PerryGuide
 final class AgentObservationStore: @unchecked Sendable {
     struct Snapshot: Sendable {
         var index: ElementIndex
-        var window: CuaWindowTarget?
+        var window: ScreenWindowTarget?
         var screenshotData: Data?
         var windowBoundsAX: CGRect?
         var imageSize: CGSize?
@@ -27,7 +27,7 @@ final class AgentObservationStore: @unchecked Sendable {
     static let shared = AgentObservationStore()
 
     private struct Context {
-        var target: CuaTargetHint?
+        var target: ScreenTargetHint?
         var snapshot: Snapshot?
     }
 
@@ -35,13 +35,13 @@ final class AgentObservationStore: @unchecked Sendable {
     private var generations: [UUID: Int] = [:]
     private let lock = NSLock()
 
-    func setTarget(_ target: CuaTargetHint, runID: UUID) {
+    func setTarget(_ target: ScreenTargetHint, runID: UUID) {
         lock.lock()
         defer { lock.unlock() }
         contexts[runID] = Context(target: target)
     }
 
-    func prepareCapture(runID: UUID, bundleID: String? = nil, windowTitle: String? = nil) throws -> CuaTargetHint {
+    func prepareCapture(runID: UUID, bundleID: String? = nil, windowTitle: String? = nil) throws -> ScreenTargetHint {
         lock.lock()
         defer { lock.unlock() }
         let bundleID = bundleID.flatMap { value -> String? in
@@ -55,7 +55,7 @@ final class AgentObservationStore: @unchecked Sendable {
         let previous = contexts[runID]?.target
         let sameApp = bundleID.map { previous?.bundleID?.caseInsensitiveCompare($0) == .orderedSame } ?? true
         let sameWindow = windowTitle.map { previous?.windowTitle?.caseInsensitiveCompare($0) == .orderedSame } ?? true
-        let hint = CuaTargetHint(
+        let hint = ScreenTargetHint(
             bundleID: bundleID ?? previous?.bundleID,
             processID: sameApp ? previous?.processID : nil,
             windowID: sameApp && sameWindow ? previous?.windowID : nil,
@@ -121,15 +121,14 @@ final class AgentObservationStore: @unchecked Sendable {
 }
 
 extension ObservedElement {
-    init(_ element: AXElement, windowID: Int, detail: CuaElementDetail? = nil) {
+    init(_ element: AXElement, windowID: Int, detail: ScreenElementDetail? = nil) {
         self.init(
             id: element.stableID,
             role: element.rawRole ?? "AX\(element.role.rawValue)",
             label: element.label ?? "",
             frame: CGRect(x: element.frame.x, y: element.frame.y, width: element.frame.width, height: element.frame.height),
             windowID: windowID,
-            value: detail?.value,
-            pressable: detail?.pressable ?? true
+            value: detail?.value
         )
     }
 }

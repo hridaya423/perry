@@ -128,7 +128,7 @@ final class AppSubsystems {
         return manager
     }()
 
-    let workers = CuaWorkerService()
+    let workers = ScreenWorkerService()
 
     lazy var spatial: SpatialSelectionController = SpatialSelectionController(
         overlayState: self.overlayState,
@@ -196,6 +196,7 @@ final class AppSubsystems {
     lazy var talkOutput = SharedTalkOutput(voice: self.voice)
 
     lazy var talkSession: TalkSession = {
+        app.talkSessionStarted = true
         let session = TalkSession(
             sessionController: app.sessionController,
             overlayState: self.overlayState,
@@ -267,7 +268,6 @@ final class AppSubsystems {
                 self.voice.beginDictation(steering: true)
                 return
             }
-            app.talkSessionStarted = true
             self.talkSession.keyDown()
         },
         onHoldCommit: { [weak app = app] in
@@ -316,7 +316,7 @@ final class AppSubsystems {
             dispatch: { [weak app = app] text, taskScope in app?.commandRouter.route(commandText: text, voiceTaskScope: taskScope) },
             wake: { [weak app = app] in app?.wake(cue: false) },
             sessionIsIdle: { [weak app = app] in app?.isIdle ?? false },
-            wakeListeningChanged: { [unowned self] in self.notchStatus.setListeningForWake(PerryPreferences.wakeWordEnabled) },
+            wakeListeningChanged: { [unowned self] listening in self.notchStatus.setListeningForWake(listening) },
             executingTaskID: { [weak app = app] in app?.executingTaskID }
         )
     )
@@ -353,7 +353,7 @@ final class AppSubsystems {
         spatialSelection: { [unowned self] in self.spatial.selection },
         storageDirectory: { [unowned self] in self.storageDirectory },
         permissionSnapshotLoader: app.overrides.permissionSnapshotLoader,
-        cuaHealthLoader: app.overrides.cuaHealthLoader,
+        screenHealthLoader: app.overrides.screenHealthLoader,
         screenContextLoader: app.overrides.screenContextLoader
     )
 

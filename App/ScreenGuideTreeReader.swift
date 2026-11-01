@@ -1,21 +1,21 @@
 import Foundation
 import PerryGuide
 
-actor CuaGuideTargetStore {
-    private var targetHint: CuaTargetHint?
+actor ScreenGuideTargetStore {
+    private var targetHint: ScreenTargetHint?
 
-    func set(_ targetHint: CuaTargetHint?) {
+    func set(_ targetHint: ScreenTargetHint?) {
         self.targetHint = targetHint
     }
 
-    func current() -> CuaTargetHint? {
+    func current() -> ScreenTargetHint? {
         targetHint
     }
 }
 
-struct CuaGuideTreeReader: GuideObserving {
-    let worker: CuaWorkerHandle
-    let targetStore: CuaGuideTargetStore
+struct ScreenGuideTreeReader: GuideObserving {
+    let worker: ScreenWorkerHandle
+    let targetStore: ScreenGuideTargetStore
     let changes = AXAppChangeMonitor()
 
     func observe() async throws -> GuideObservation {
@@ -47,19 +47,19 @@ struct CuaGuideTreeReader: GuideObserving {
     }
 
     private func rebindingStaleWindow<Value>(
-        _ hint: CuaTargetHint?,
-        _ read: (CuaTargetHint?) async throws -> Value
+        _ hint: ScreenTargetHint?,
+        _ read: (ScreenTargetHint?) async throws -> Value
     ) async throws -> Value {
         do {
             return try await read(hint)
-        } catch let error as CuaDriverError where error == .noTargetWindow {
+        } catch let error as ScreenDriverError where error == .noTargetWindow {
             guard let hint,
                   hint.windowID != nil,
                   hint.processID != nil,
                   let title = hint.windowTitle,
                   !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { throw error }
-            return try await read(CuaTargetHint(
+            return try await read(ScreenTargetHint(
                 bundleID: hint.bundleID,
                 processID: hint.processID,
                 windowTitle: hint.windowTitle
@@ -75,7 +75,7 @@ struct CuaGuideTreeReader: GuideObserving {
             try await worker.capture(target: $0, includeScreenshot: includeScreenshot)
         }
         guard let snapshot = capture.accessibilitySnapshotModel else {
-            throw CuaDriverError.noTargetWindow
+            throw ScreenDriverError.noTargetWindow
         }
         let target = capture.target
         await targetStore.set(target.hint)

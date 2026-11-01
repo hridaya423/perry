@@ -17,7 +17,7 @@ final class BackgroundTaskLaunchGate {
         if record.canResumeWorkspaceTask || record.canResumeAgentTask {
             return nil
         }
-        return "This task cannot resume because it is cancelled or has no remaining safe action."
+        return "This task can’t resume because it was cancelled or has no safe step left."
     }
 
     func acquire(for taskID: TaskID) -> BackgroundTaskLaunchLease? {

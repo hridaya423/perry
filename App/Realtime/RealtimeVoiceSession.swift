@@ -267,6 +267,37 @@ final class RealtimeVoiceSession {
         }
     }
 
+    func discardInput() {
+        commitTask?.cancel()
+        commitTask = nil
+        let previousTag = currentTag
+        outputReservations.invalidate(tag: previousTag)
+        responseTracker.cancel(tag: previousTag)
+        inputGeneration += 1
+        let generation = inputGeneration
+        let tag = RealtimeVoicePacketTag(
+            sessionID: sessionGeneration,
+            utteranceGeneration: generation
+        )
+        inputFinishRequested = false
+        inputFinished = false
+        inputHasAudio = false
+        audioSendFailed = false
+        firstAudioTimer.reset()
+        stopInputAudio()
+        operationPipeline.advance(
+            sessionID: sessionGeneration,
+            utteranceGeneration: generation
+        )
+        transcriptBarrier.advance(to: tag)
+        guard state != .idle, state != .connecting else { return }
+        _ = operationPipeline.enqueue(
+            .clearInput,
+            sessionID: sessionGeneration,
+            utteranceGeneration: generation
+        )
+    }
+
     func stop() {
         guard state != .idle
                 || startTask != nil

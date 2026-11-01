@@ -18,17 +18,12 @@ final class NotchStatusControllerTests: XCTestCase {
         XCTAssertEqual(panel.constrainFrameRect(requested, to: screen), requested)
     }
 
-    func testPillPresentsOnlyWhenEnabledWithMeaningfulContent() {
-        XCTAssertFalse(NotchStatusController.shouldPresent(isEnabled: true, isRecording: false, backgroundCount: 0, awaitingApproval: 0))
-        XCTAssertTrue(NotchStatusController.shouldPresent(isEnabled: true, isRecording: true, backgroundCount: 0, awaitingApproval: 0))
-        XCTAssertTrue(NotchStatusController.shouldPresent(isEnabled: true, isRecording: false, backgroundCount: 2, awaitingApproval: 0))
-        XCTAssertTrue(NotchStatusController.shouldPresent(isEnabled: true, isRecording: false, backgroundCount: 0, awaitingApproval: 1))
-        XCTAssertFalse(NotchStatusController.shouldPresent(isEnabled: false, isRecording: true, backgroundCount: 3, awaitingApproval: 0))
-        XCTAssertFalse(NotchStatusController.shouldPresent(isEnabled: false, isRecording: false, backgroundCount: 0, awaitingApproval: 2))
-        XCTAssertTrue(
-            NotchStatusController.shouldPresent(isEnabled: false, isRecording: false, backgroundCount: 0, awaitingApproval: 0, listeningForWake: true),
-            "an open ambient microphone stays visible even with the status indicator turned off"
-        )
+    func testPillPresentsForMeaningfulContentRegardlessOfTheNotchToggle() {
+        XCTAssertFalse(NotchStatusController.shouldPresent(isRecording: false, backgroundCount: 0, awaitingApproval: 0))
+        XCTAssertTrue(NotchStatusController.shouldPresent(isRecording: true, backgroundCount: 0, awaitingApproval: 0))
+        XCTAssertTrue(NotchStatusController.shouldPresent(isRecording: false, backgroundCount: 2, awaitingApproval: 0))
+        XCTAssertTrue(NotchStatusController.shouldPresent(isRecording: false, backgroundCount: 0, awaitingApproval: 1))
+        XCTAssertTrue(NotchStatusController.shouldPresent(isRecording: false, backgroundCount: 0, awaitingApproval: 0, listeningForWake: true))
     }
 
 }

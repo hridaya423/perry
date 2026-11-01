@@ -31,6 +31,22 @@ extension XCTestCase {
         }
     }
 
+    func directory() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    @MainActor
+    func pollUntil(_ condition: () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return condition()
+    }
+
     func makeTemporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("perry-tests-\(UUID().uuidString)", isDirectory: true)

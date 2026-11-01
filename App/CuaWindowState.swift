@@ -142,13 +142,10 @@ struct CuaWindowState: Decodable {
         }
     }
 
-    var details: [String: CuaElementDetail] {
+    var details: [String: ScreenElementDetail] {
         usableElements.reduce(into: [:]) { details, element in
             guard let token = element.token else { return }
-            details[token] = CuaElementDetail(
-                value: element.role == "AXSecureTextField" ? nil : Self.nonEmpty(element.value),
-                pressable: element.actions?.contains("AXPress") ?? true
-            )
+            details[token] = ScreenElementDetail(value: element.role == "AXSecureTextField" ? nil : Self.nonEmpty(element.value))
         }
     }
 
@@ -166,7 +163,7 @@ struct CuaWindowState: Decodable {
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
-    func guideSnapshot(target: CuaWindowTarget) -> AXSnapshot? {
+    func guideSnapshot(target: ScreenWindowTarget) -> AXSnapshot? {
         guard elements != nil else { return nil }
         let mapped = usableElements.compactMap { element -> AXElement? in
             let stableID: String

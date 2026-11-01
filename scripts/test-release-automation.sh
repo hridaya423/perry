@@ -670,6 +670,7 @@ done
 
 "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check-lock >/dev/null
 "${SCRIPT_DIR}/fetch-cua-driver.sh" --check-lock >/dev/null
+"${SCRIPT_DIR}/fetch-agent-desktop.sh" --check-lock >/dev/null
 "${SCRIPT_DIR}/fetch-xcodegen.sh" --check-lock >/dev/null
 
 METADATA_DIR="${TMP}/metadata"
@@ -687,11 +688,12 @@ with open(sys.argv[2], encoding="utf-8") as stream:
 
 components = {component["bom-ref"]: component for component in sbom["components"]}
 cua_driver = components["runtime:cua-driver"]
+agent_desktop = components["runtime:agent-desktop"]
 sparkle = components["framework:sparkle"]
 if cua_driver["licenses"] != [{"license": {"id": "MIT"}}]:
     raise AssertionError("Cua Driver license is not MIT")
-properties = {item["name"]: item["value"] for item in cua_driver["properties"]}
-expected_properties = {
+cua_properties = {item["name"]: item["value"] for item in cua_driver["properties"]}
+cua_expected_properties = {
     "perry:runtime-target": "aarch64-apple-darwin",
     "perry:source-revision": "85e2b1318bd77ccf3cfa88ccdf875a4bb7eaed19",
     "perry:archive-sha256": "5f71191c082ca07c9dfc13b7c9a6eec60a82818c245a93534cc0eb7911471d72",
@@ -700,11 +702,26 @@ expected_properties = {
     "perry:signing-identifier": "cua-driver",
     "perry:signing-team": "YCK386LBJ7",
 }
-if properties != expected_properties:
+if cua_properties != cua_expected_properties:
     raise AssertionError("Cua Driver SBOM properties do not match the lock")
+if agent_desktop["licenses"] != [{"license": {"id": "Apache-2.0"}}]:
+    raise AssertionError("agent-desktop license is not Apache-2.0")
+properties = {item["name"]: item["value"] for item in agent_desktop["properties"]}
+expected_properties = {
+    "perry:runtime-target": "aarch64-apple-darwin",
+    "perry:release-tag": "v1.0.2",
+    "perry:source-revision": "a47ed664e0db00d1d4df364eb3fe8a5599882f3c",
+    "perry:archive-sha256": "7bee385196d7b478de80cf05ca4304aaa38f0eba593b3406ad3c247c1773be19",
+    "perry:binary-sha256": "bf0a3c9256512f2f57288d37ccd17d7f03665fccc53c2f74011a49b98e61ba59",
+    "perry:helper-sha256": "522829116cb006b5770c6a82b361f466a4775f794d6af4083e75231a2d6bb551",
+}
+if properties != expected_properties:
+    raise AssertionError("agent-desktop SBOM properties do not match the lock")
 application = next(item for item in sbom["dependencies"] if item["ref"] == "application:perry")
 if "runtime:cua-driver" not in application["dependsOn"]:
     raise AssertionError("Perry does not depend on Cua Driver")
+if "runtime:agent-desktop" not in application["dependsOn"]:
+    raise AssertionError("Perry does not depend on agent-desktop")
 if "framework:sparkle" not in application["dependsOn"]:
     raise AssertionError("Perry does not depend on Sparkle")
 if "framework:sentry" in application["dependsOn"] or "framework:posthog" in application["dependsOn"]:
@@ -723,6 +740,11 @@ if cua_license["license"] != "MIT" or cua_license["source"] != "https://github.c
     raise AssertionError("Cua Driver license inventory is missing its MIT source")
 if licenses["source"]["cua_driver_lock"] != "scripts/cua-driver.lock":
     raise AssertionError("Cua Driver lock is missing from license metadata")
+agent_desktop_license = license_components["runtime.agent-desktop"]
+if agent_desktop_license["license"] != "Apache-2.0" or agent_desktop_license["source"] != "https://github.com/vercel-labs/agent-desktop":
+    raise AssertionError("agent-desktop license inventory is missing its Apache-2.0 source")
+if licenses["source"]["agent_desktop_lock"] != "scripts/agent-desktop.lock":
+    raise AssertionError("agent-desktop lock is missing from license metadata")
 if licenses["source"]["sparkle_lock"] != "scripts/sparkle.lock":
     raise AssertionError("Sparkle lock is missing from license metadata")
 if "telemetry_sdk_lock" in licenses["source"]:
@@ -748,6 +770,13 @@ BAD_CUA_LOCK="${TMP}/bad-cua-driver.lock"
 sed 's/^CUA_DRIVER_SOURCE_REVISION=.*/CUA_DRIVER_SOURCE_REVISION=not-a-revision/' \
   "${SCRIPT_DIR}/cua-driver.lock" > "${BAD_CUA_LOCK}"
 expect_failure env PERRY_CUA_DRIVER_LOCK="${BAD_CUA_LOCK}" \
+  PERRY_RELEASE_METADATA_DIR="${METADATA_DIR}" \
+  "${SCRIPT_DIR}/generate-release-metadata.sh" --check
+
+BAD_AGENT_DESKTOP_LOCK="${TMP}/bad-agent-desktop.lock"
+sed 's/^AGENT_DESKTOP_SOURCE_REVISION=.*/AGENT_DESKTOP_SOURCE_REVISION=not-a-revision/' \
+  "${SCRIPT_DIR}/agent-desktop.lock" > "${BAD_AGENT_DESKTOP_LOCK}"
+expect_failure env PERRY_AGENT_DESKTOP_LOCK="${BAD_AGENT_DESKTOP_LOCK}" \
   PERRY_RELEASE_METADATA_DIR="${METADATA_DIR}" \
   "${SCRIPT_DIR}/generate-release-metadata.sh" --check
 
@@ -827,7 +856,9 @@ mkdir -p \
   "${BUNDLE_FIXTURE}/Contents/MacOS" \
   "${BUNDLE_FIXTURE}/Contents/Resources/Sounds" \
   "${BUNDLE_FIXTURE}/Contents/Resources/CodexRuntime/bin" \
-  "${BUNDLE_FIXTURE}/Contents/Resources/CuaDriver/bin"
+  "${BUNDLE_FIXTURE}/Contents/Resources/CuaDriver/bin" \
+  "${BUNDLE_FIXTURE}/Contents/Resources/AgentDesktop/bin" \
+  "${BUNDLE_FIXTURE}/Contents/Resources/LocalEngine"
 for cue in wake send receive done fail; do
   printf '%s\n' "${cue}" > "${BUNDLE_FIXTURE}/Contents/Resources/Sounds/${cue}.caf"
 done
@@ -835,6 +866,10 @@ printf '%s\n' 'int main(void) { return 0; }' > "${TMP}/bundle-fixture.c"
 xcrun --sdk macosx clang -arch arm64 "${TMP}/bundle-fixture.c" -o "${BUNDLE_FIXTURE}/Contents/MacOS/Perry"
 cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/Resources/CodexRuntime/bin/codex"
 cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/Resources/CuaDriver/bin/cua-driver"
+cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/Resources/AgentDesktop/bin/agent-desktop"
+cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/Resources/AgentDesktop/bin/agent-desktop-macos-helper"
+cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/MacOS/perry-mcp"
+cp "${BUNDLE_FIXTURE}/Contents/MacOS/Perry" "${BUNDLE_FIXTURE}/Contents/Resources/LocalEngine/llama-server"
 "${SCRIPT_DIR}/verify-bundle-contents.sh" "${BUNDLE_FIXTURE}" >/dev/null
 printf '%s\n' duplicate > "${BUNDLE_FIXTURE}/Contents/Resources/wake.caf"
 expect_failure "${SCRIPT_DIR}/verify-bundle-contents.sh" "${BUNDLE_FIXTURE}"

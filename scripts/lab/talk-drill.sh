@@ -10,7 +10,6 @@ RUNS=${RUNS:-10}
 HOLD=${HOLD:-1.6}
 TIMEOUT=${TALK_TIMEOUT:-45}
 BARGE=${BARGE:-1}
-CUA="${CUA_DRIVER:-cua-driver}"
 ASSERT=0
 [ "${1:-}" = "--assert" ] && ASSERT=1
 
@@ -71,26 +70,28 @@ echo "markers=$MARKERS"
 front_target
 
 pick_target() {
-    local win state
-    win="$("$CUA" call list_windows "{\"pid\":$TARGET_PID}" \
-        | python3 -c 'import json,sys
-ws=[w for w in json.load(sys.stdin)["windows"] if w.get("is_on_screen")]
-w=max(ws,key=lambda w:w["bounds"]["width"]*w["bounds"]["height"]) if ws else None
-print(w["window_id"] if w else "")')"
-    [ -n "$win" ] || return 1
-    state="$("$CUA" call get_window_state "{\"pid\":$TARGET_PID,\"window_id\":$win,\"include_screenshot\":false,\"tree_format\":\"elements\"}")"
-    printf '%s' "$state" | python3 -c 'import json,sys
-els=json.load(sys.stdin).get("elements",[])
-buttons=[e for e in els if e.get("role")=="AXButton" and e.get("enabled",True)]
-preferred=("5","Five","9","Nine","All Clear","Percent")
-for want in preferred:
-    for e in buttons:
-        if e.get("label")==want:
-            f=e["frame"]; print(f["x"]+f["w"]/2, f["y"]+f["h"]/2); sys.exit(0)
+    REPO_ROOT="$REPO_ROOT" python3 - "$TARGET_PID" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "scripts/lab"))
+import agent_desktop as ad
+pid = int(sys.argv[1])
+ws = [w for w in ad.windows(pid=pid) if w.get("visible", True) and not w.get("minimized")]
+if not ws:
+    sys.exit(1)
+w = max(ws, key=lambda w: w["bounds"]["width"] * w["bounds"]["height"])
+buttons = [n for n in ad.nodes(w["id"]) if n.get("role") == "button" and n.get("bounds")]
+def centre(n):
+    b = n["bounds"]
+    print(b["x"] + b["width"] / 2, b["y"] + b["height"] / 2)
+    sys.exit(0)
+for want in ("5", "Five", "9", "Nine", "All Clear", "Percent"):
+    for n in buttons:
+        if n.get("name") == want:
+            centre(n)
 if buttons:
-    e=max(buttons,key=lambda e:e["frame"]["w"]*e["frame"]["h"])
-    f=e["frame"]; print(f["x"]+f["w"]/2, f["y"]+f["h"]/2); sys.exit(0)
-sys.exit(1)'
+    centre(max(buttons, key=lambda n: n["bounds"]["width"] * n["bounds"]["height"]))
+sys.exit(1)
+PY
 }
 
 TARGET="$(pick_target || true)"

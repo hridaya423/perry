@@ -1,12 +1,62 @@
 import Foundation
 import PerryGuide
+import Security
 
-struct CuaDriverHealth: Sendable, Equatable {
+enum ScreenCodeIdentity: Sendable, Equatable {
+    case appleDeveloperID(identifier: String, teamIdentifier: String)
+    case unsignedOrAdHoc
+
+    private static let developerIDRequirement = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+
+    static func read(at url: URL) -> ScreenCodeIdentity? {
+        let resolvedURL = url.resolvingSymlinksInPath().standardizedFileURL
+        var staticCode: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(resolvedURL as CFURL, SecCSFlags(), &staticCode) == errSecSuccess,
+              let staticCode else {
+            return nil
+        }
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(developerIDRequirement as CFString, SecCSFlags(), &requirement) == errSecSuccess,
+              let requirement,
+              SecStaticCodeCheckValidity(
+                  staticCode,
+                  SecCSFlags(rawValue: kSecCSCheckAllArchitectures | kSecCSCheckNestedCode | kSecCSStrictValidate),
+                  requirement
+              ) == errSecSuccess else {
+            return nil
+        }
+        var signingInfo: CFDictionary?
+        guard SecCodeCopySigningInformation(
+            staticCode,
+            SecCSFlags(rawValue: kSecCSSigningInformation),
+            &signingInfo
+        ) == errSecSuccess,
+              let signingInfo else {
+            return nil
+        }
+        let values = signingInfo as NSDictionary
+        guard let identifier = values[kSecCodeInfoIdentifier] as? String,
+              !identifier.isEmpty,
+              let teamIdentifier = values[kSecCodeInfoTeamIdentifier] as? String,
+              !teamIdentifier.isEmpty else {
+            return nil
+        }
+        return .appleDeveloperID(identifier: identifier, teamIdentifier: teamIdentifier)
+    }
+
+    static func isBundled(_ url: URL, inside hostBundleURL: URL) -> Bool {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let hostComponents = hostBundleURL.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        return resolved.count > hostComponents.count && resolved.starts(with: hostComponents)
+    }
+}
+
+struct ScreenDriverHealth: Sendable, Equatable {
     let ready: Bool
     let summary: String
 }
 
-struct CuaTargetHint: Sendable, Equatable {
+struct ScreenTargetHint: Sendable, Equatable {
     let bundleID: String?
     let processID: Int32?
     let windowID: Int64?
@@ -25,7 +75,7 @@ struct CuaTargetHint: Sendable, Equatable {
     }
 }
 
-struct CuaWindowTarget: Sendable, Equatable {
+struct ScreenWindowTarget: Sendable, Equatable {
     let bundleID: String
     let processID: Int32
     let windowID: Int64
@@ -40,32 +90,31 @@ struct CuaWindowTarget: Sendable, Equatable {
     let isOnScreen: Bool
     let isOnCurrentSpace: Bool
 
-    var hint: CuaTargetHint {
-        CuaTargetHint(bundleID: bundleID, processID: processID, windowID: windowID, windowTitle: title)
+    var hint: ScreenTargetHint {
+        ScreenTargetHint(bundleID: bundleID, processID: processID, windowID: windowID, windowTitle: title)
     }
 }
 
-struct CuaCapturedWindow: Sendable {
-    let target: CuaWindowTarget
+struct ScreenCapturedWindow: Sendable {
+    let target: ScreenWindowTarget
     let screenshotData: Data
     let screenshotMIMEType: String
     let accessibilitySnapshot: String?
     let accessibilitySnapshotModel: AXSnapshot?
     let snapshotID: String?
-    var elementDetails: [String: CuaElementDetail] = [:]
+    var elementDetails: [String: ScreenElementDetail] = [:]
     var treeComplete = true
 }
 
-struct CuaElementDetail: Sendable, Equatable {
+struct ScreenElementDetail: Sendable, Equatable {
     let value: String?
-    let pressable: Bool
 }
 
 #if DEBUG
-extension CuaCapturedWindow {
-    static func debugFixture(snapshot: AXSnapshot) -> CuaCapturedWindow {
-        CuaCapturedWindow(
-            target: CuaWindowTarget(
+extension ScreenCapturedWindow {
+    static func debugFixture(snapshot: AXSnapshot) -> ScreenCapturedWindow {
+        ScreenCapturedWindow(
+            target: ScreenWindowTarget(
                 bundleID: snapshot.appBundleID,
                 processID: 1,
                 windowID: 1,
@@ -90,7 +139,7 @@ extension CuaCapturedWindow {
 }
 #endif
 
-enum CuaDriverError: Error, LocalizedError, Equatable {
+enum ScreenDriverError: Error, LocalizedError, Equatable {
     case unavailable
     case processExited
     case requestTimedOut
@@ -99,20 +148,24 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
     case noTargetWindow
     case noScreenshot
     case targetNotFound
+    case staleTarget
     case targetSessionMismatch
     case protectedTarget
     case unsupportedAction
     case terminationUnconfirmed
     case targetMismatch
     case actionUnanswered
+    case appBusy
 
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "Screen control couldn’t start. Open Settings > Brain to fix it."
+            return "Screen control couldn’t start. Check that Accessibility and Screen Recording are on for Perry in System Settings."
         case .processExited:
             return "Screen control stopped before it finished. Try again."
-        case .requestTimedOut, .protocolFailure:
+        case .requestTimedOut:
+            return "Screen control took too long to answer. Try again."
+        case .protocolFailure:
             return "Screen control sent an answer I couldn’t read. Try again."
         case .toolRejected(let detail):
             return detail.isEmpty ? "Screen control refused that action." : detail
@@ -124,8 +177,10 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
             return "I couldn’t find that control in the window anymore."
         case .targetSessionMismatch:
             return "That control is from an earlier look at the screen. I need to look again."
+        case .staleTarget:
+            return "That control changed since I last looked. I need to look again."
         case .protectedTarget:
-            return "I’ll not look at or use a window that holds sensitive information."
+            return "I won’t look at or use a window that holds sensitive information."
         case .unsupportedAction:
             return "I can’t do that in this window."
         case .terminationUnconfirmed:
@@ -134,11 +189,15 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
             return "The window changed since I made the plan, so I stopped instead of acting on the wrong window."
         case .actionUnanswered:
             return "The app didn’t answer in time, so screen control restarted. The action may or may not have happened: look at the window again before the next step."
+        case .appBusy:
+            return "The app took too long to answer, so I didn’t act. Try again."
         }
     }
 
     var isStaleTarget: Bool {
         switch self {
+        case .staleTarget:
+            return true
         case .toolRejected(let detail), .protocolFailure(let detail):
             let normalized = detail.lowercased()
             return normalized.contains("stale") || normalized.contains("snapshot")
@@ -149,7 +208,7 @@ enum CuaDriverError: Error, LocalizedError, Equatable {
 
     var isTargetFact: Bool {
         switch self {
-        case .targetMismatch, .targetNotFound, .noTargetWindow, .protectedTarget, .unsupportedAction, .toolRejected:
+        case .targetMismatch, .targetNotFound, .staleTarget, .noTargetWindow, .protectedTarget, .unsupportedAction, .toolRejected, .appBusy:
             return true
         default:
             return false

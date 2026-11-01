@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="${PERRY_APP:-$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app}"
 EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
-CUA="${CUA_DRIVER:-cua-driver}"
+DRIVER="${AGENT_DESKTOP:-$APP/Contents/Resources/AgentDesktop/bin/agent-desktop}"
 
 perry_pid() { pgrep -x Perry | head -1 || true; }
 
@@ -49,13 +49,13 @@ case "$cmd" in
         ;;
     hotkey)
         combo="${2:?usage: perry-drive.sh hotkey <combo e.g. cmd+option+p>}"
-        keys="$(printf '%s' "$combo" | tr '+' '\n' | sed 's/^/"/; s/$/"/' | paste -sd, -)"
-        "$CUA" call hotkey "{\"keys\":[$keys],\"scope\":\"desktop\"}"
+        "$DRIVER" press "$combo" --headed --session perry-lab
         ;;
     windows)
         pid="$(perry_pid)"
         [ -n "$pid" ] || { echo "perry-drive: Perry is not running" >&2; exit 1; }
-        "$CUA" call list_windows "{\"pid\":$pid}"
+        "$DRIVER" list-windows --session perry-lab \
+            | python3 -c 'import json, sys; pid = int(sys.argv[1]); print(json.dumps([w for w in json.load(sys.stdin)["data"] if w.get("pid") == pid], indent=2))' "$pid"
         ;;
     quit)
         pid="$(perry_pid)"
@@ -65,7 +65,7 @@ case "$cmd" in
             kill -0 "$pid" 2>/dev/null || exit 0
             sleep 0.5
         done
-        "$CUA" call kill_app "{\"pid\":$pid}" >/dev/null
+        kill -9 "$pid" 2>/dev/null || true
         ;;
     *)
         echo "usage: perry-drive.sh {launch|hotkey <combo>|windows|quit}" >&2

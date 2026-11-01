@@ -50,7 +50,7 @@ Produce separate artwork assets for the welcome lettering and character, preserv
 
 The first-run welcome appears inside the notch. Start with the approved ivory hello artwork, one sentence and **Let’s begin**. Clicking or Return starts the introduction; no automatic microphone recording or speech on launch.
 
-Introduce where Perry lives with a short, skippable visual transition into the notch. Reduced Motion uses a cross-fade and the same explanatory text. Connect an account with one recommended action and an Other models link. Preserve pending, cancellation, error and retry states without discarding input.
+Introduce where Perry lives with a short, skippable visual transition into the notch. Reduced Motion uses a cross-fade and the same explanatory text. Connect an account with one recommended action and a Change button for choosing another brain. Preserve pending, cancellation, error and retry states without discarding input.
 
 Ask for screen access at the moment the user chooses help in other apps. Explain Accessibility and Screen Recording separately, show their actual status, and offer a useful typed path without permission. Microphone access follows an explicit voice action. Never fire several system permission prompts merely by entering a page.
 

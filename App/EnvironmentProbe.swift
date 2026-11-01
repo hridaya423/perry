@@ -6,30 +6,30 @@ import PerryRuntimes
 
 @MainActor
 final class EnvironmentProbe {
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let memoryStore: MemoryStore
     private let oauthCoordinator: OAuthCoordinator
     private let remoteIntegrationPermissions: RemoteIntegrationPermissionStore
     private let spatialSelection: () -> SpatialSelection?
     private let storageDirectory: () -> URL?
-    private var invocationTarget: CuaTargetHint?
+    private var invocationTarget: ScreenTargetHint?
 
     typealias PermissionSnapshotLoader = @MainActor () async -> PerryPermissionSnapshot
-    typealias CuaHealthLoader = @MainActor () async -> CuaDriverHealth
-    typealias ScreenContextLoader = @MainActor (CuaWorkerHandle, CuaTargetHint?) async -> (context: ScreenContext, target: CuaWindowTarget?)
+    typealias ScreenHealthLoader = @MainActor () async -> ScreenDriverHealth
+    typealias ScreenContextLoader = @MainActor (ScreenWorkerHandle, ScreenTargetHint?) async -> (context: ScreenContext, target: ScreenWindowTarget?)
     private let permissionSnapshotLoader: PermissionSnapshotLoader?
-    private let cuaHealthLoader: CuaHealthLoader?
+    private let screenHealthLoader: ScreenHealthLoader?
     private let screenContextLoader: ScreenContextLoader?
 
     init(
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         memoryStore: MemoryStore,
         oauthCoordinator: OAuthCoordinator,
         remoteIntegrationPermissions: RemoteIntegrationPermissionStore,
         spatialSelection: @escaping () -> SpatialSelection?,
         storageDirectory: @escaping () -> URL?,
         permissionSnapshotLoader: PermissionSnapshotLoader? = nil,
-        cuaHealthLoader: CuaHealthLoader? = nil,
+        screenHealthLoader: ScreenHealthLoader? = nil,
         screenContextLoader: ScreenContextLoader? = nil
     ) {
         self.workers = workers
@@ -39,7 +39,7 @@ final class EnvironmentProbe {
         self.spatialSelection = spatialSelection
         self.storageDirectory = storageDirectory
         self.permissionSnapshotLoader = permissionSnapshotLoader
-        self.cuaHealthLoader = cuaHealthLoader
+        self.screenHealthLoader = screenHealthLoader
         self.screenContextLoader = screenContextLoader
     }
 
@@ -50,22 +50,22 @@ final class EnvironmentProbe {
         return await PerryPermissionSnapshot.probe()
     }
 
-    func cuaHealth() async -> CuaDriverHealth {
-        if let cuaHealthLoader {
-            return await cuaHealthLoader()
+    func screenHealth() async -> ScreenDriverHealth {
+        if let screenHealthLoader {
+            return await screenHealthLoader()
         }
         return await workers.health()
     }
 
     static func captureIsUsable(_ context: ScreenContext) -> Bool {
         guard let reference = context.screenshotReferenceID else { return false }
-        return reference.hasPrefix("cua:") && !reference.hasPrefix("cua:failed:")
+        return reference.hasPrefix("screen:") && !reference.hasPrefix("screen:failed:")
     }
 
     func captureScreenContext(
-        worker: CuaWorkerHandle,
-        targetHint: CuaTargetHint? = nil
-    ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
+        worker: ScreenWorkerHandle,
+        targetHint: ScreenTargetHint? = nil
+    ) async -> (context: ScreenContext, target: ScreenWindowTarget?) {
         let resolvedHint = targetHint ?? currentTargetHint()
         if let screenContextLoader {
             return await screenContextLoader(worker, resolvedHint)
@@ -84,7 +84,7 @@ final class EnvironmentProbe {
                 frontAppBundleID: groundedAppBundleID,
                 frontWindowTitle: groundedTitle,
                 accessibilitySnapshot: capture.accessibilitySnapshot,
-                screenshotReferenceID: "cua:\(capture.target.connectionGeneration):\(UUID().uuidString):\(capture.snapshotID ?? "window")",
+                screenshotReferenceID: "screen:\(capture.target.connectionGeneration):\(UUID().uuidString):\(capture.snapshotID ?? "window")",
                 screenshotJPEGData: capture.screenshotData,
                 screenshotMIMEType: capture.screenshotMIMEType,
                 screenshotCoordinateSpace: .windowPixels,
@@ -102,7 +102,7 @@ final class EnvironmentProbe {
                     frontAppBundleID: initialBundleID,
                     frontWindowTitle: initialTitle,
                     accessibilitySnapshot: nil,
-                    screenshotReferenceID: "cua:failed:\(UUID().uuidString)",
+                    screenshotReferenceID: "screen:failed:\(UUID().uuidString)",
                     screenshotCoordinateSpace: .windowPixels,
                     spatialRegionDescription: spatialSelection()?.description,
                     appSkillContext: AppSkillLibrary(storageDirectory: storageDirectory()).promptContext(for: initialBundleID),
@@ -115,9 +115,9 @@ final class EnvironmentProbe {
     }
 
     func resolveTaskWindow(
-        worker: CuaWorkerHandle,
-        targetHint: CuaTargetHint? = nil
-    ) async -> (context: ScreenContext, target: CuaWindowTarget?) {
+        worker: ScreenWorkerHandle,
+        targetHint: ScreenTargetHint? = nil
+    ) async -> (context: ScreenContext, target: ScreenWindowTarget?) {
         let resolvedHint = targetHint ?? currentTargetHint()
         if let screenContextLoader {
             return await screenContextLoader(worker, resolvedHint)
@@ -129,7 +129,7 @@ final class EnvironmentProbe {
             ScreenContext(
                 frontAppBundleID: target.bundleID,
                 frontWindowTitle: target.title,
-                screenshotReferenceID: "cua:\(target.connectionGeneration):\(UUID().uuidString):window"
+                screenshotReferenceID: "screen:\(target.connectionGeneration):\(UUID().uuidString):window"
             ),
             target
         )
@@ -174,7 +174,7 @@ final class EnvironmentProbe {
         return processID(for: metadata?.targetAppBundleID)
     }
 
-    func pinInvocationTarget(_ target: CuaTargetHint? = nil) {
+    func pinInvocationTarget(_ target: ScreenTargetHint? = nil) {
         invocationTarget = target ?? Self.frontmostTarget()
     }
 
@@ -186,9 +186,9 @@ final class EnvironmentProbe {
         if invocationTarget == nil { pinInvocationTarget() }
     }
 
-    func currentTargetHint() -> CuaTargetHint {
+    func currentTargetHint() -> ScreenTargetHint {
         if let window = spatialSelection()?.window {
-            return CuaTargetHint(
+            return ScreenTargetHint(
                 bundleID: window.appBundleID,
                 processID: processID(for: window.appBundleID),
                 windowTitle: window.title
@@ -197,16 +197,16 @@ final class EnvironmentProbe {
         return invocationTarget ?? Self.frontmostTarget()
     }
 
-    func presentationTarget() -> CuaTargetHint? {
+    func presentationTarget() -> ScreenTargetHint? {
         let foreground = Self.frontmostTarget()
         let target = foreground.processID == ProcessInfo.processInfo.processIdentifier ? currentTargetHint() : foreground
         guard target.processID != ProcessInfo.processInfo.processIdentifier else { return nil }
         return target
     }
 
-    static func availableTargets() -> [CuaTargetHint] {
+    static func availableTargets() -> [ScreenTargetHint] {
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
-        let targets: [CuaTargetHint] = windows.compactMap { window in
+        let targets: [ScreenTargetHint] = windows.compactMap { window in
             guard (window[kCGWindowLayer as String] as? Int) == 0,
                   let pid = window[kCGWindowOwnerPID as String] as? Int32,
                   pid != ProcessInfo.processInfo.processIdentifier,
@@ -216,28 +216,28 @@ final class EnvironmentProbe {
                   let id = window[kCGWindowNumber as String] as? NSNumber,
                   let title = window[kCGWindowName as String] as? String,
                   !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return CuaTargetHint(bundleID: bundleID, processID: pid, windowID: id.int64Value,
+            return ScreenTargetHint(bundleID: bundleID, processID: pid, windowID: id.int64Value,
                 windowTitle: title)
         }
         let represented = Set(targets.compactMap(\.processID))
-        let applications = NSWorkspace.shared.runningApplications.compactMap { app -> CuaTargetHint? in
+        let applications = NSWorkspace.shared.runningApplications.compactMap { app -> ScreenTargetHint? in
             guard app.activationPolicy == .regular,
                   app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
                   !represented.contains(app.processIdentifier),
                   let bundleID = app.bundleIdentifier else { return nil }
-            return CuaTargetHint(bundleID: bundleID, processID: app.processIdentifier)
+            return ScreenTargetHint(bundleID: bundleID, processID: app.processIdentifier)
         }
         return targets + applications
     }
 
-    private static func frontmostTarget() -> CuaTargetHint {
+    private static func frontmostTarget() -> ScreenTargetHint {
         let application = NSWorkspace.shared.frontmostApplication
         let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]
         let window = windows?.first {
             ($0[kCGWindowOwnerPID as String] as? Int32) == application?.processIdentifier
                 && ($0[kCGWindowLayer as String] as? Int) == 0
         }
-        return CuaTargetHint(
+        return ScreenTargetHint(
             bundleID: application?.bundleIdentifier,
             processID: application?.processIdentifier,
             windowID: (window?[kCGWindowNumber as String] as? NSNumber)?.int64Value,

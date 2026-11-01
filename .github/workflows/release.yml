@@ -40,6 +40,7 @@ jobs:
           set -euo pipefail
           ./scripts/fetch-xcodegen.sh --fetch
           ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-agent-desktop.sh --fetch
           ./scripts/fetch-cua-driver.sh --fetch
 
       - name: Download previous signed release

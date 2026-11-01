@@ -135,18 +135,18 @@ final class SessionControllerTests: XCTestCase {
         try controller.wake(at: startedAt)
         try controller.startExecution(makeExecution())
         try controller.fail(
-            SessionFailure(taskID: taskID, goal: "Rename the selected file", message: "Cua target closed")
+            SessionFailure(taskID: taskID, goal: "Rename the selected file", message: "Window target closed")
         )
 
         XCTAssertEqual(
             controller.state,
-            .failed(SessionFailure(taskID: taskID, goal: "Rename the selected file", message: "Cua target closed"))
+            .failed(SessionFailure(taskID: taskID, goal: "Rename the selected file", message: "Window target closed"))
         )
         let failed = AgentActivityStripState()
         failed.apply(sessionState: controller.state)
         XCTAssertEqual(failed.phase, .failed)
         XCTAssertTrue(failed.retryIsAvailable)
-        XCTAssertEqual(failed.detail, "Cua target closed")
+        XCTAssertEqual(failed.detail, "Window target closed")
     }
 
     func testDismissalInvalidatesApprovalBeforeTheCardCanAppear() throws {
@@ -195,8 +195,8 @@ final class SessionControllerTests: XCTestCase {
         let controller = SessionController()
 
         try controller.wake(at: startedAt)
-        try controller.fail(SessionFailure(message: "Cua target closed"))
-        XCTAssertEqual(controller.state, .failed(SessionFailure(message: "Cua target closed")))
+        try controller.fail(SessionFailure(message: "Window target closed"))
+        XCTAssertEqual(controller.state, .failed(SessionFailure(message: "Window target closed")))
 
         XCTAssertEqual(controller.requestDismissal(), .dismiss)
         XCTAssertEqual(controller.state, .idle)

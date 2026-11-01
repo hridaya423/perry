@@ -46,7 +46,7 @@ final class WorkerFinalizationTests: XCTestCase {
         let historyEraser = try XCTUnwrap(erasers.first { $0.category == .history })
         let memoryEraser = try XCTUnwrap(erasers.first { $0.category == .memory })
         let erasure = CompleteErasureCoordinator(erasers: [historyEraser, memoryEraser])
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let taskID = UUID(uuidString: "00000000-0000-0000-0000-000000000202")!
         let categories: Set<PerryErasureCategory> = [.history, .memory]
         let workerTask = Task {
@@ -86,7 +86,7 @@ final class WorkerFinalizationTests: XCTestCase {
                 await erasure.erase(categories: categories)
             }
             XCTFail("maintenance erased stores before finalization returned")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .operationDidNotStop)
         } catch {
             XCTFail("unexpected maintenance failure: \(error)")
@@ -110,7 +110,7 @@ final class WorkerFinalizationTests: XCTestCase {
         guard case .failure(let workerError) = workerResult else {
             return XCTFail("worker unexpectedly reported success after stop failure")
         }
-        XCTAssertEqual(workerError as? CuaWorkerError, .operationDidNotStop)
+        XCTAssertEqual(workerError as? ScreenWorkerError, .operationDidNotStop)
 
         let report = try await service.withWorkersStopped {
             await erasure.erase(categories: categories)

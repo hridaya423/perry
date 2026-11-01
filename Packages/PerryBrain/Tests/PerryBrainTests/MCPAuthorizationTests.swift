@@ -365,7 +365,30 @@ final class MCPAuthorizerTests: XCTestCase {
     }
 }
 
+final class MCPAuthErrorCopyTests: XCTestCase {
+    func testEveryMessageSpeaksInTheFirstPerson() {
+        let all: [MCPAuthError] = [
+            .discoveryFailed, .pkceUnsupported, .noClientRegistration, .registrationFailed, .stateMismatch,
+            .issuerMismatch, .denied, .tokenExchangeFailed, .signInRequired, .credentialNotSaved, .browserUnavailable, .timedOut,
+        ]
+        for error in all {
+            let message = error.errorDescription ?? ""
+            XCTAssertFalse(message.isEmpty)
+            XCTAssertFalse(message.contains("Perry"), message)
+        }
+        XCTAssertEqual(MCPAuthError.discoveryFailed.errorDescription, "I couldn’t find how to sign in to this server.")
+        XCTAssertEqual(MCPAuthError.browserUnavailable.errorDescription, "I couldn’t open your browser.")
+    }
+}
+
 final class MCPOAuthSessionTests: XCTestCase {
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var value: Int { lock.withLock { count } }
+        func increment() { lock.withLock { count += 1 } }
+    }
+
     private final class Saved: @unchecked Sendable {
         private let lock = NSLock()
         private var values: [MCPOAuthCredential] = []
@@ -399,6 +422,42 @@ final class MCPOAuthSessionTests: XCTestCase {
         XCTAssertEqual(request["resource"], "https://mcp.linear.app/mcp")
         XCTAssertEqual(saved.all.map(\.refreshToken), ["rt-2"])
         XCTAssertEqual(saved.all.first?.expiresAt, clock.addingTimeInterval(7200))
+    }
+
+    func testARefreshedSignInThatCannotBeSavedIsReportedOnceAndTheRequestStillGetsTheNewToken() async throws {
+        struct Refused: Error {}
+        let world = FakeWorld()
+        world.route("POST", "https://mcp.linear.app/token") { _ in tokenReply(access: "at-2", refresh: "rt-2", expiresIn: 7200) }
+        let reports = Counter()
+        let session = MCPOAuthSession(
+            credential: credential(expiresIn: 30), performer: world, now: { clock },
+            persist: { _ in throw Refused() }, onSaveFailure: { reports.increment() }
+        )
+
+        let first = try await session.accessToken()
+        let second = try await session.accessToken()
+        let rejected = try await session.refreshed(after: "at-1")
+
+        XCTAssertEqual([first, second, rejected], ["at-2", "at-2", "at-2"])
+        XCTAssertEqual(reports.value, 1)
+        XCTAssertEqual(world.requests.count, 1)
+    }
+
+    func testASaveFailureIsStillReportedOnceWhenALaterRefreshAlsoFailsToSave() async throws {
+        struct Refused: Error {}
+        let world = FakeWorld()
+        world.route("POST", "https://mcp.linear.app/token") { _ in tokenReply(access: "at-2", refresh: "rt-2", expiresIn: 7200) }
+        let reports = Counter()
+        let session = MCPOAuthSession(
+            credential: credential(expiresIn: 30), performer: world, now: { clock },
+            persist: { _ in throw Refused() }, onSaveFailure: { reports.increment() }
+        )
+
+        _ = try await session.accessToken()
+        _ = try await session.refreshed(after: "at-2")
+
+        XCTAssertEqual(reports.value, 1)
+        XCTAssertEqual(world.requests.count, 2)
     }
 
     func testARefreshResponseWithoutANewRefreshTokenKeepsTheOldOne() async throws {
@@ -587,6 +646,25 @@ final class LoopbackAuthorizationUserAgentTests: XCTestCase {
             XCTFail("expected failure")
         } catch {
             XCTAssertEqual(error as? MCPAuthError, .browserUnavailable)
+        }
+    }
+
+    func testCancellingWhileWaitingForTheBrowserSurfacesCancellation() async {
+        let opened = AsyncStream<Void>.makeStream()
+        let agent = LoopbackMCPAuthorizationUserAgent(open: { _ in
+            opened.continuation.yield()
+            return true
+        }, timeout: .seconds(30))
+        let task = Task {
+            try await agent.authorize { _ in URL(string: "https://as.example/authorize")! }
+        }
+        for await _ in opened.stream { break }
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "got \(error)")
         }
     }
 

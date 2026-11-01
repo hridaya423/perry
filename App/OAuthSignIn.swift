@@ -74,12 +74,13 @@ final class WebAuthenticationSessionUserAgent: NSObject, MCPAuthorizationUserAge
 
     func authorize(_ makeAuthorizationURL: @Sendable (URL) async throws -> URL) async throws -> URL {
         let url = try await makeAuthorizationURL(redirectURI)
+        guard !Task.isCancelled else { throw OAuthError.cancelled }
         defer { session = nil }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let session = makeSession(url: url) { callbackURL, error in
                     if let error {
-                        continuation.resume(throwing: error)
+                        continuation.resume(throwing: WebAuthenticationSessionUserAgent.normalized(error))
                     } else if let callbackURL {
                         continuation.resume(returning: callbackURL)
                     } else {
@@ -87,13 +88,17 @@ final class WebAuthenticationSessionUserAgent: NSObject, MCPAuthorizationUserAge
                     }
                 }
                 self.session = session
-                if !session.start() {
+                if Task.isCancelled || !session.start() {
                     continuation.resume(throwing: OAuthError.cancelled)
                 }
             }
         } onCancel: {
             Task { @MainActor in self.session?.cancel() }
         }
+    }
+
+    nonisolated static func normalized(_ error: Error) -> Error {
+        (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin ? OAuthError.cancelled : error
     }
 
     func makeSession(

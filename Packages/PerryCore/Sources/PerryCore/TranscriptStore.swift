@@ -65,13 +65,17 @@ public actor TranscriptStore {
     public init(directory: URL?, fileManager: FileManager = .default) {
         self.fileManager = fileManager
         self.directory = directory?.appendingPathComponent("Transcripts", isDirectory: true)
-        let loaded = Self.loadEntries(
-            from: self.directory?.appendingPathComponent("index.json"),
-            fileManager: fileManager
-        )
-        self.entries = loaded.entries
-        self.writesBlocked = loaded.writesBlocked
-        self.persistenceIssue = loaded.persistenceIssue
+        let loaded = self.directory.map {
+            PersistedFileLoader.load(
+                from: $0.appendingPathComponent("index.json"),
+                fileManager: fileManager,
+                fallback: [],
+                decode: Self.decodeEntries
+            )
+        }
+        self.entries = loaded?.value ?? []
+        self.writesBlocked = loaded?.writesBlocked ?? false
+        self.persistenceIssue = loaded?.persistenceIssue
     }
 
     public var lastPersistenceError: PersistenceError? {
@@ -268,7 +272,7 @@ public actor TranscriptStore {
             do {
                 existing = try String(contentsOf: url, encoding: .utf8)
             } catch {
-                let quarantineURL = try quarantine(url)
+                let quarantineURL = try PersistedFileLoader.quarantine(url, fileManager: fileManager)
                 recoveryIssue = .recoveredCorruptFile(
                     path: url.path,
                     quarantinePath: quarantineURL.path,
@@ -291,109 +295,8 @@ public actor TranscriptStore {
         return recoveryIssue
     }
 
-    private func quarantine(_ url: URL) throws -> URL {
-        let quarantineURL = url.appendingPathExtension("corrupt-\(UUID().uuidString)")
-        do {
-            try fileManager.moveItem(at: url, to: quarantineURL)
-            return quarantineURL
-        } catch {
-            throw PersistenceError.quarantineFailed(path: url.path, reason: error.localizedDescription)
-        }
-    }
-
-    private struct LoadResult {
-        let entries: [TranscriptEntry]
-        let writesBlocked: Bool
-        let persistenceIssue: PersistenceError?
-    }
-
-    private static func loadEntries(from url: URL?, fileManager: FileManager) -> LoadResult {
-        guard let url, fileManager.fileExists(atPath: url.path) else {
-            return LoadResult(entries: [], writesBlocked: false, persistenceIssue: nil)
-        }
-
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            return recoverCorruptFileOrRestoreBackup(
-                at: url,
-                reason: "read failed: \(error.localizedDescription)",
-                fileManager: fileManager
-            )
-        }
-
-        do {
-            let payload = try JSONDecoder().decode(PersistedTranscriptStore.self, from: data)
-            return LoadResult(
-                entries: try payload.validatedEntries(),
-                writesBlocked: false,
-                persistenceIssue: nil
-            )
-        } catch {
-            return recoverCorruptFileOrRestoreBackup(
-                at: url,
-                reason: error.localizedDescription,
-                fileManager: fileManager
-            )
-        }
-    }
-
-    private static func recoverCorruptFileOrRestoreBackup(
-        at url: URL,
-        reason: String,
-        fileManager: FileManager
-    ) -> LoadResult {
-        let recovered = recoverCorruptFile(at: url, reason: reason, fileManager: fileManager)
-        guard !recovered.writesBlocked else { return recovered }
-        let backupURL = url.appendingPathExtension("backup")
-        guard fileManager.fileExists(atPath: backupURL.path) else { return recovered }
-
-        let backupData: Data
-        let entries: [TranscriptEntry]
-        do {
-            backupData = try Data(contentsOf: backupURL)
-            let payload = try JSONDecoder().decode(PersistedTranscriptStore.self, from: backupData)
-            entries = try payload.validatedEntries()
-        } catch {
-            return recoverCorruptFile(at: backupURL, reason: error.localizedDescription, fileManager: fileManager)
-        }
-        do {
-            try backupData.write(to: url, options: .atomic)
-            return LoadResult(
-                entries: entries,
-                writesBlocked: false,
-                persistenceIssue: recovered.persistenceIssue
-            )
-        } catch {
-            return LoadResult(
-                entries: entries,
-                writesBlocked: true,
-                persistenceIssue: .writeFailed(path: url.path, reason: error.localizedDescription)
-            )
-        }
-    }
-
-    private static func recoverCorruptFile(at url: URL, reason: String, fileManager: FileManager) -> LoadResult {
-        let quarantineURL = url.appendingPathExtension("corrupt-\(UUID().uuidString)")
-        do {
-            try fileManager.moveItem(at: url, to: quarantineURL)
-            return LoadResult(
-                entries: [],
-                writesBlocked: false,
-                persistenceIssue: .recoveredCorruptFile(
-                    path: url.path,
-                    quarantinePath: quarantineURL.path,
-                    reason: reason
-                )
-            )
-        } catch {
-            return LoadResult(
-                entries: [],
-                writesBlocked: true,
-                persistenceIssue: .quarantineFailed(path: url.path, reason: error.localizedDescription)
-            )
-        }
+    private static func decodeEntries(_ data: Data) throws -> [TranscriptEntry] {
+        try JSONDecoder().decode(PersistedTranscriptStore.self, from: data).validatedEntries()
     }
 
     private static func markdown(_ entry: TranscriptEntry) -> String {

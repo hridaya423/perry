@@ -33,6 +33,7 @@ struct PerryErasurePaths: Sendable {
             resolvedCaches?.appendingPathComponent("dev.perry.Perry", isDirectory: true),
         ].compactMap { $0 }
         cuaArtifactDirectories = [
+            supportDirectory?.appendingPathComponent("AgentDesktop", isDirectory: true),
             supportDirectory?.appendingPathComponent("Cua", isDirectory: true),
             supportDirectory?.appendingPathComponent("CuaArtifacts", isDirectory: true),
             supportDirectory?.appendingPathComponent("CuaDriver", isDirectory: true),
@@ -44,6 +45,24 @@ struct PerryErasurePaths: Sendable {
             temporaryRoot,
             resolvedCaches?.appendingPathComponent("dev.perry.Perry", isDirectory: true),
         ].compactMap { $0 }
+    }
+}
+
+struct PerryErasureFailures {
+    private var messages: [String] = []
+
+    mutating func attempt(_ label: String? = nil, _ work: () async throws -> Void) async {
+        do {
+            try await work()
+        } catch {
+            messages.append(label.map { "\($0): \(error.localizedDescription)" } ?? error.localizedDescription)
+        }
+    }
+
+    func throwIfAny() throws {
+        guard messages.isEmpty else {
+            throw PerryErasureAdapterError(message: messages.joined(separator: "; "))
+        }
     }
 }
 
@@ -64,17 +83,11 @@ struct PerryOwnedRootSweeper: @unchecked Sendable {
 
     func erase() async throws {
         try validateRoots()
-        var errors: [String] = []
+        var failures = PerryErasureFailures()
         for root in roots where fileManager.fileExists(atPath: root.path) {
-            do {
-                try fileManager.removeItem(at: root)
-            } catch {
-                errors.append("\(root.path): \(error.localizedDescription)")
-            }
+            await failures.attempt(root.path) { try fileManager.removeItem(at: root) }
         }
-        guard errors.isEmpty else {
-            throw PerryErasureAdapterError(message: errors.joined(separator: "; "))
-        }
+        try failures.throwIfAny()
     }
 
     private func validateRoots() throws {
@@ -121,17 +134,11 @@ struct PerryFileEraser: @unchecked Sendable, PerryDataEraser {
     }
 
     func erase() async throws {
-        var errors: [String] = []
+        var failures = PerryErasureFailures()
         for target in targets where fileManager.fileExists(atPath: target.url.path) {
-            do {
-                try fileManager.removeItem(at: target.url)
-            } catch {
-                errors.append("\(target.identifier): \(error.localizedDescription)")
-            }
+            await failures.attempt(target.identifier) { try fileManager.removeItem(at: target.url) }
         }
-        guard errors.isEmpty else {
-            throw PerryErasureAdapterError(message: errors.joined(separator: "; "))
-        }
+        try failures.throwIfAny()
     }
 }
 
@@ -163,17 +170,11 @@ struct PerryDirectoryEntriesEraser: @unchecked Sendable, PerryDataEraser {
     }
 
     func erase() async throws {
-        var errors: [String] = []
+        var failures = PerryErasureFailures()
         for url in try matchingURLs() {
-            do {
-                try fileManager.removeItem(at: url)
-            } catch {
-                errors.append("\(url.lastPathComponent): \(error.localizedDescription)")
-            }
+            await failures.attempt(url.lastPathComponent) { try fileManager.removeItem(at: url) }
         }
-        guard errors.isEmpty else {
-            throw PerryErasureAdapterError(message: errors.joined(separator: "; "))
-        }
+        try failures.throwIfAny()
     }
 
     private func matchingURLs() throws -> [URL] {
@@ -281,27 +282,16 @@ struct PerryKeychainEraser: PerryDataEraser {
     }
 
     func erase() async throws {
-        var errors: [String] = []
+        var failures = PerryErasureFailures()
         for service in services {
-            let serviceAccounts: [String]
-            do {
-                serviceAccounts = try accounts(service)
-            } catch {
-                errors.append("\(service): \(error.localizedDescription)")
-                continue
-            }
+            var serviceAccounts: [String] = []
+            await failures.attempt(service) { serviceAccounts = try accounts(service) }
             for account in serviceAccounts {
                 let target = Target(service: service, account: account)
-                do {
-                    try delete(target)
-                } catch {
-                    errors.append("\(target.identifier): \(error.localizedDescription)")
-                }
+                await failures.attempt(target.identifier) { try delete(target) }
             }
         }
-        guard errors.isEmpty else {
-            throw PerryErasureAdapterError(message: errors.joined(separator: "; "))
-        }
+        try failures.throwIfAny()
     }
 }
 
@@ -585,17 +575,11 @@ enum PerryLiveErasureErasers {
                 return items
             },
             erase: {
-                var errors: [String] = []
+                var failures = PerryErasureFailures()
                 for eraser in erasers {
-                    do {
-                        try await eraser.erase()
-                    } catch {
-                        errors.append(error.localizedDescription)
-                    }
+                    await failures.attempt { try await eraser.erase() }
                 }
-                guard errors.isEmpty else {
-                    throw PerryErasureAdapterError(message: errors.joined(separator: "; "))
-                }
+                try failures.throwIfAny()
             }
         )
     }

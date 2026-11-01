@@ -6,8 +6,8 @@ import PerryOverlay
 @MainActor
 final class SpatialSelectionController {
     private let overlayState: PerryCursorState
-    private let workers: CuaWorkerService
-    private let targetHint: @MainActor () async -> CuaTargetHint
+    private let workers: ScreenWorkerService
+    private let targetHint: @MainActor () async -> ScreenTargetHint
     private let speak: (String) -> Void
     private let setStatus: (String) -> Void
     private lazy var monitor = SpatialInputMonitor(
@@ -20,8 +20,8 @@ final class SpatialSelectionController {
 
     init(
         overlayState: PerryCursorState,
-        workers: CuaWorkerService,
-        targetHint: @escaping @MainActor () async -> CuaTargetHint,
+        workers: ScreenWorkerService,
+        targetHint: @escaping @MainActor () async -> ScreenTargetHint,
         speak: @escaping (String) -> Void,
         setStatus: @escaping (String) -> Void
     ) {

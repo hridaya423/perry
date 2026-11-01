@@ -190,6 +190,38 @@ final class CustomConnectorsSignInTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(keychain.readChecked(account: id.uuidString)).contains("oauth-token-2"))
     }
 
+    func testARefreshedSignInThatCannotBeSavedKeepsTheConnectorWorkingAndAsksToReconnect() async throws {
+        let remote = FakeHostedMCP(accepting: "oauth-token")
+        let browser = FakeBrowser()
+        let backend = FlakyCredentialBackend()
+        let first = CustomConnectors(directory: directory, host: PerryToolHost(executors: []), keychain: backend, http: remote, userAgent: browser)
+        _ = await first.add(CustomConnector(name: "Hosted", endpoint: hosted))
+        first.disconnectAll()
+        remote.issue("rotated")
+        backend.refuse(saves: true)
+
+        let host = PerryToolHost(executors: [])
+        let relaunched = CustomConnectors(directory: directory, host: host, keychain: backend, http: remote, userAgent: browser)
+        relaunched.connectAll()
+        let id = try XCTUnwrap(relaunched.connectors.first?.id)
+        let status = try await settled(relaunched, id)
+
+        XCTAssertEqual(status, .ready(toolCount: 2))
+        XCTAssertNotNil(host.spec(named: "mcp.hosted.mutate"))
+        XCTAssertEqual(browser.opened, 1)
+        for _ in 0..<100 where !relaunched.signInNotSaved.contains(id) {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(relaunched.signInNotSaved, [id])
+
+        backend.refuse(saves: false)
+        relaunched.reconnect(id)
+        let again = try await settled(relaunched, id)
+        XCTAssertEqual(again, .ready(toolCount: 2))
+        XCTAssertTrue(relaunched.signInNotSaved.isEmpty)
+        XCTAssertTrue(try XCTUnwrap(backend.readCredential(account: id.uuidString)).contains("rotated"))
+    }
+
     func testAStaticBearerTokenStillWorksAndNeverOpensTheBrowser() async throws {
         let remote = FakeHostedMCP(accepting: "static-key")
         let browser = FakeBrowser()

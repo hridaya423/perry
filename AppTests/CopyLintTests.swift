@@ -10,6 +10,9 @@ final class CopyLintTests: XCTestCase {
         "App/GuideControlsView.swift", "App/StatusMenuController.swift", "App/HotkeyController.swift", "App/DictationController.swift",
         "App/VoiceController.swift", "App/Voice/DictationInsertion.swift", "App/BackgroundTaskRecoveryNotice.swift",
         "App/CompactConversationView.swift", "App/Tools/ToolApprovalPresenter.swift", "App/Tools/AgentCoordinator.swift",
+        "App/NotchDialog.swift", "App/NotchConfirmation.swift", "App/IntegrationRow.swift", "App/IntegrationConnections.swift",
+        "App/OAuthSignIn.swift", "App/CompleteErasurePrompt.swift", "App/NotchStatusController.swift",
+        "App/AgentActivityStripState.swift", "App/RoutineLibraryController.swift", "App/BackgroundTaskController.swift",
     ]
 
     private static let retired = [

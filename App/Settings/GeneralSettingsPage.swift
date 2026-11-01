@@ -14,8 +14,8 @@ struct GeneralSettingsPage: View {
         SettingsScroll {
             SettingsCard(title: "Notch") {
                 Toggle(isOn: Binding(get: { notchEyes }, set: { controller.setNotchEyes($0) })) {
-                    Text("Show Perry in the notch")
-                    Text("Perry’s eyes rest beside the camera and show when Perry is busy.").settingNote()
+                    Text("Show Perry’s eyes in the notch")
+                    Text("Perry’s eyes rest beside the camera. Off hides them. The notch still opens Perry and shows what it’s doing.").settingNote()
                 }
                 .settingsRowPadding()
                 SettingsDivider()

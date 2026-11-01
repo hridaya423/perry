@@ -58,11 +58,11 @@ extension GuideFinalizationRequest {
 @MainActor
 final class GuideWorkerSession {
     enum Slot {
-        case action, repoint, finish, fullPathTimeout, presentation
+        case action, repoint, finish, presentation
     }
 
     let id: UUID
-    let targetStore = CuaGuideTargetStore()
+    let targetStore = ScreenGuideTargetStore()
     let finishStream: AsyncStream<Void>
     let finishContinuation: AsyncStream<Void>.Continuation
     private(set) var engine: GuideEngine?

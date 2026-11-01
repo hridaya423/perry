@@ -86,6 +86,8 @@ esac
 
 "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check-lock
 "${SCRIPT_DIR}/fetch-codex-runtime.sh" --check
+"${SCRIPT_DIR}/fetch-agent-desktop.sh" --check-lock
+"${SCRIPT_DIR}/fetch-agent-desktop.sh" --check
 "${SCRIPT_DIR}/fetch-cua-driver.sh" --check-lock
 "${SCRIPT_DIR}/fetch-cua-driver.sh" --check
 "${SCRIPT_DIR}/fetch-xcodegen.sh" --check-lock

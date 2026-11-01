@@ -25,7 +25,7 @@ final class ForegroundTaskController: ObservableObject {
     }
 
     let sessionController: SessionController
-    let workers: CuaWorkerService
+    let workers: ScreenWorkerService
     let probe: EnvironmentProbe
     let voice: VoiceController
     let remoteIntegrationExecutor: RemoteIntegrationActionRuntime
@@ -58,7 +58,7 @@ final class ForegroundTaskController: ObservableObject {
 
     init(
         sessionController: SessionController,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         probe: EnvironmentProbe,
         voice: VoiceController,
         remoteIntegrationExecutor: RemoteIntegrationActionRuntime,
@@ -116,7 +116,7 @@ final class ForegroundTaskController: ObservableObject {
         !Task.isCancelled && sessionController.isInvoking(attemptID)
     }
 
-    func start(goal: String, threadID: UUID? = nil, targetHint: CuaTargetHint? = nil) {
+    func start(goal: String, threadID: UUID? = nil, targetHint: ScreenTargetHint? = nil) {
         guard let attemptID = admitStart() else { return }
         startGoal(goal, attemptID: attemptID, threadID: threadID, targetHint: targetHint)
     }
@@ -144,7 +144,7 @@ final class ForegroundTaskController: ObservableObject {
         }
     }
 
-    private func startGoal(_ goal: String, attemptID: UUID, threadID: UUID?, targetHint: CuaTargetHint?) {
+    private func startGoal(_ goal: String, attemptID: UUID, threadID: UUID?, targetHint: ScreenTargetHint?) {
         spawn(attemptID) { controller in
             _ = await controller.perform(
                 attemptID: attemptID,
@@ -191,7 +191,7 @@ final class ForegroundTaskController: ObservableObject {
     private func perform(
         attemptID: UUID,
         failureMessage: (Error) -> String,
-        _ operation: @escaping @MainActor (CuaWorkerHandle) async throws -> DoOutcome?
+        _ operation: @escaping @MainActor (ScreenWorkerHandle) async throws -> DoOutcome?
     ) async -> DoOutcome? {
         guard !supervisorActive else {
             guard taskStartIsCurrent(attemptID) else { return nil }
@@ -225,12 +225,12 @@ final class ForegroundTaskController: ObservableObject {
             hooks.requestOnboarding()
             return false
         }
-        let cuaHealth = await probe.cuaHealth()
+        let screenHealth = await probe.screenHealth()
         guard taskStartIsCurrent(attemptID) else { return false }
-        guard cuaHealth.ready else {
+        guard screenHealth.ready else {
             guard taskStartIsCurrent(attemptID) else { return false }
-            hooks.setStatus(cuaHealth.summary)
-            voice.speak(cuaHealth.summary)
+            hooks.setStatus(screenHealth.summary)
+            voice.speak(screenHealth.summary)
             return false
         }
         return true
@@ -256,9 +256,9 @@ final class ForegroundTaskController: ObservableObject {
     private func runForegroundOperation(
         goal: String,
         attemptID: UUID,
-        worker: CuaWorkerHandle,
+        worker: ScreenWorkerHandle,
         threadID: UUID? = nil,
-        targetHint: CuaTargetHint? = nil
+        targetHint: ScreenTargetHint? = nil
     ) async throws -> DoOutcome? {
         guard taskStartIsCurrent(attemptID) else { return nil }
         let workspace = try WorkspaceScope.makeTaskDirectory()
@@ -291,9 +291,9 @@ final class ForegroundTaskController: ObservableObject {
         goal: String,
         attemptID: UUID,
         targetWindow: WindowContext?,
-        target: CuaTargetHint?,
+        target: ScreenTargetHint?,
         conversationID: UUID?,
-        worker: CuaWorkerHandle,
+        worker: ScreenWorkerHandle,
         workspace: URL
     ) async throws -> DoOutcome? {
         let coordinator = agentCoordinator
@@ -570,9 +570,10 @@ final class ForegroundTaskController: ObservableObject {
             return finalizationOutcome
         }
         let completion = finalization.completion
+        let savedOnlyFailed = completion.outcome == .completed && !finalization.historySaved
         let summary: String
         if finalization.issues.contains(.transcriptPersistence) {
-            summary = "\(completion.summary) I couldn’t save this task to History."
+            summary = savedOnlyFailed ? "Done, but I couldn’t save it to History." : "\(completion.summary) I couldn’t save this task to History."
         } else if finalization.issues.contains(.memoryPersistence) {
             summary = "\(completion.summary) I couldn’t update my notes."
         } else {
@@ -584,7 +585,7 @@ final class ForegroundTaskController: ObservableObject {
         if completion.outcome == .failed || !finalization.historySaved {
             sessionController.transition {
                 try sessionController.fail(
-                    SessionFailure(taskID: execution.taskID, goal: execution.goal, message: summary)
+                    SessionFailure(taskID: execution.taskID, goal: savedOnlyFailed ? nil : execution.goal, message: summary)
                 )
             }
         } else {
@@ -592,7 +593,11 @@ final class ForegroundTaskController: ObservableObject {
                 try sessionController.report(summary: summary, outcome: finalizationOutcome.isCompleted ? .completed : .stopped)
             }
         }
-        voice.deliverVoiceReply(summary)
+        if completion.outcome == .completed, finalization.issues.isEmpty {
+            voice.deliverAnswer(summary)
+        } else {
+            voice.deliverVoiceReply(summary)
+        }
         activeRun = nil
         handoffToHuman = false
         handoffGoal = nil

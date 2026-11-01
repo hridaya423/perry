@@ -5,10 +5,10 @@ import PerryRuntimes
 
 struct CompositeActionVerifier: TypedActionVerifier {
     let workspace: URL
-    let worker: CuaWorkerHandle?
+    let worker: ScreenWorkerHandle?
     private let workspaceVerifier: WorkspaceFileVerifier
 
-    init(workspace: URL, worker: CuaWorkerHandle?) {
+    init(workspace: URL, worker: ScreenWorkerHandle?) {
         self.workspace = workspace.resolvingSymlinksInPath().standardizedFileURL
         self.worker = worker
         self.workspaceVerifier = WorkspaceFileVerifier(baseURL: workspace)
@@ -62,7 +62,7 @@ struct CompositeActionVerifier: TypedActionVerifier {
         guard let worker else {
             return .unverified(reason: "no live window reader is attached to this session")
         }
-        let capture: CuaCapturedWindow
+        let capture: ScreenCapturedWindow
         do {
             capture = try await worker.capture(target: nil)
         } catch {

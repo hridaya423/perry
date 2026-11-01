@@ -105,7 +105,7 @@ struct PermissionHelperView: View {
                     }
                 }
                 Spacer(minLength: 4)
-                if phase != .granted {
+                if phase != .granted && phase != .restart {
                     WindowControlButton(systemImage: "xmark", label: "Close", action: actions.close)
                         .padding(.top, -4)
                         .padding(.trailing, -4)
@@ -149,6 +149,9 @@ struct PermissionHelperView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .environment(\.colorScheme, .dark)
         .onAppear { if !reduceMotion { nudged = true } }
+        .onChange(of: phase) { _, _ in
+            AccessibilityNotification.Announcement(title).post()
+        }
         .accessibilityElement(children: .contain)
     }
 

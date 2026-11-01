@@ -31,18 +31,22 @@ public actor MCPOAuthSession {
     private var refreshing: Task<MCPOAuthCredential, Error>?
     private let performer: any MCPHTTPPerforming
     private let now: @Sendable () -> Date
-    private let persist: @Sendable (MCPOAuthCredential) -> Void
+    private let persist: @Sendable (MCPOAuthCredential) throws -> Void
+    private let onSaveFailure: @Sendable () -> Void
+    private var reportedSaveFailure = false
 
     public init(
         credential: MCPOAuthCredential,
         performer: any MCPHTTPPerforming = URLSessionMCPHTTP(),
         now: @escaping @Sendable () -> Date = { Date() },
-        persist: @escaping @Sendable (MCPOAuthCredential) -> Void = { _ in }
+        persist: @escaping @Sendable (MCPOAuthCredential) throws -> Void = { _ in },
+        onSaveFailure: @escaping @Sendable () -> Void = {}
     ) {
         self.credential = credential
         self.performer = performer
         self.now = now
         self.persist = persist
+        self.onSaveFailure = onSaveFailure
     }
 
     public var currentAccessToken: String { credential.accessToken }
@@ -70,7 +74,14 @@ public actor MCPOAuthSession {
         let updated = try await task.value
         if credential.accessToken == rejected {
             credential = updated
-            persist(updated)
+            do {
+                try persist(updated)
+            } catch {
+                if !reportedSaveFailure {
+                    reportedSaveFailure = true
+                    onSaveFailure()
+                }
+            }
         }
         return updated.accessToken
     }

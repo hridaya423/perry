@@ -67,6 +67,7 @@ private final class LoopbackReceiver: @unchecked Sendable {
         try await withThrowingTaskGroup(of: URL.self) { group in
             group.addTask {
                 for try await url in self.callbacks { return url }
+                try Task.checkCancellation()
                 throw MCPAuthError.timedOut
             }
             group.addTask {

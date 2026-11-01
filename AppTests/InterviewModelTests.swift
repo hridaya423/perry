@@ -130,6 +130,63 @@ final class InterviewModelTests: XCTestCase {
         XCTAssertEqual(kept.map(\.text), ["Designs for a fintech app"])
     }
 
+    func testSkippingTheImportStopsTheAgentAndKeepsNothingItLaterReturns() async throws {
+        var cancelled = false
+        let interview = InterviewModel(name: "Ada", effects: .init(
+            complete: { _ in #"{"facts": [{"text": "Designs for a fintech app", "kind": "profile", "subject": "work"}]}"# },
+            listensAfterSpeaking: false,
+            importMemory: { _ in
+                do { try await Task.sleep(for: .seconds(30)) } catch { cancelled = true }
+                return "- designs for a fintech app"
+            }
+        ))
+        interview.confirmPronunciation()
+        interview.answer(nil)
+        interview.chooseImport(.chatGPT)
+        interview.allowImport(true)
+        try await Task.sleep(for: .milliseconds(50))
+        interview.cancelImport()
+        XCTAssertEqual(interview.step, .done)
+        for _ in 0..<100 where !cancelled { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(cancelled)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(interview.notes.isEmpty)
+        XCTAssertEqual(interview.step, .done)
+    }
+
+    func testBackFromTheConsentStepLeavesTheInterviewAtTheConsentStep() {
+        let interview = InterviewModel(name: "Ada", effects: .init(complete: { _ in "" }, listensAfterSpeaking: false, importMemory: { _ in nil }))
+        interview.confirmPronunciation()
+        interview.answer(nil)
+        interview.chooseImport(.chatGPT)
+        interview.suspendImport()
+        XCTAssertEqual(interview.step, .importConsent(.chatGPT))
+    }
+
+    func testBackDuringTheImportStopsTheAgentAndReturnsToTheConsentStep() async throws {
+        var cancelled = false
+        let interview = InterviewModel(name: "Ada", effects: .init(
+            complete: { _ in #"{"facts": [{"text": "Designs for a fintech app", "kind": "profile", "subject": "work"}]}"# },
+            listensAfterSpeaking: false,
+            importMemory: { _ in
+                do { try await Task.sleep(for: .seconds(30)) } catch { cancelled = true }
+                return "- designs for a fintech app"
+            }
+        ))
+        interview.confirmPronunciation()
+        interview.answer(nil)
+        interview.chooseImport(.chatGPT)
+        interview.allowImport(true)
+        try await Task.sleep(for: .milliseconds(50))
+        interview.suspendImport()
+        XCTAssertEqual(interview.step, .importConsent(.chatGPT))
+        for _ in 0..<100 where !cancelled { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(cancelled)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(interview.notes.isEmpty)
+        XCTAssertEqual(interview.step, .importConsent(.chatGPT))
+    }
+
     func testDecliningTheImportGoesStraightToTheSummary() {
         let interview = InterviewModel(name: "Ada", effects: .init(complete: { _ in "" }, listensAfterSpeaking: false, importMemory: { _ in nil }))
         interview.confirmPronunciation()

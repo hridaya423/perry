@@ -4,7 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 ROOT="$PWD"
 APP="${PERRY_APP:-$ROOT/build/debug-p1/Build/Products/Debug/Perry.app}"
-DRIVER="$APP/Contents/Resources/CuaDriver/bin/cua-driver"
 DRILL_DIR="$(mktemp -d /tmp/perry-routine-drill.XXXXXX)"
 STORAGE="$DRILL_DIR/storage"
 mkdir -p "$STORAGE/Routines"
@@ -34,10 +33,12 @@ PERF_LOG="$(sed -n 's/^perf_log=//p' "$DRILL_DIR/launch.txt")"
 sleep 3
 log "perry.launched"
 
-python3 - "$DRIVER" "$PERRY_PID" "$PROBE" "$DRILL_DIR" "$LOG" <<'PYEOF'
+PERRY_APP="$APP" python3 - "$PERRY_PID" "$PROBE" "$DRILL_DIR" "$LOG" <<'PYEOF'
 import json, os, subprocess, sys, time
+sys.path.insert(0, os.path.join(os.getcwd(), "scripts/lab"))
+import agent_desktop as ad
 
-driver, perry_pid, probe, drill_dir, log_path = sys.argv[1:6]
+perry_pid, probe, drill_dir, log_path = sys.argv[1:5]
 perry_pid = int(perry_pid)
 
 def log(event, **extra):
@@ -45,53 +46,6 @@ def log(event, **extra):
     with open(log_path, "a") as f:
         f.write(json.dumps(row) + "\n")
     print("  ·", event)
-
-def cua(name, arguments, timeout=30):
-    reqs = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                    "clientInfo": {"name": "routine-drill", "version": "1"}}},
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-         "params": {"name": name, "arguments": arguments}},
-    ]
-    env = dict(os.environ, CUA_DRIVER_RS_UPDATE_CHECK="0")
-    proc = subprocess.run([driver, "mcp", "--direct", "--embedded",
-                           "--host-bundle-id", "dev.perry.Perry"],
-                          input="\n".join(json.dumps(r) for r in reqs),
-                          capture_output=True, text=True, env=env, timeout=timeout)
-    for line in proc.stdout.splitlines():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row.get("id") == 2:
-            return row.get("result", {})
-    return {}
-
-def windows(pid):
-    res = cua("list_windows", {"pid": pid})
-    return res.get("structuredContent", {}).get("windows", res.get("windows", []))
-
-def find_element(elements, label_substr=None, role=None):
-    for el in elements:
-        lab = el.get("label") or el.get("title") or el.get("value") or ""
-        if label_substr and label_substr not in str(lab):
-            continue
-        if role and el.get("role") != role:
-            continue
-        return el
-    return None
-
-def window_elements(pid, window_id):
-    res = cua("get_window_state", {"pid": pid, "window_id": window_id})
-    sc = res.get("structuredContent", {})
-    return sc.get("elements", []), sc.get("snapshot_id")
-
-def click_element(pid, window_id, snapshot_id, element_index):
-    return cua("click", {"pid": pid, "window_id": window_id,
-                         "snapshot_id": snapshot_id,
-                         "element_index": element_index})
 
 def wait_for(pred, timeout, poll=0.5, desc=""):
     deadline = time.monotonic() + timeout
@@ -102,39 +56,36 @@ def wait_for(pred, timeout, poll=0.5, desc=""):
         time.sleep(poll)
     raise SystemExit(f"timeout waiting for {desc or 'condition'}")
 
-cua("hotkey", {"keys": ["ctrl", "cmd", "space"], "scope": "desktop"})
+ad.press("ctrl+cmd+space")
 log("home.hotkey.sent")
 
 def home_window():
-    for w in windows(perry_pid):
-        if w.get("width", 0) > 300:
+    for w in ad.windows(pid=perry_pid):
+        if w.get("bounds", {}).get("width", 0) > 300:
             return w
     return None
 home = wait_for(home_window, 15, desc="Perry Home window")
-log("home.window", window_id=home["window_id"], title=home.get("title"))
+log("home.window", window_id=home["id"], title=home.get("title"))
 
-def click_named(pid, win, needle, role_hint=None, desc=""):
-    els, snap = window_elements(pid, win)
-    el = find_element(els, needle, role_hint)
-    if not el:
-        raise SystemExit(f"no element matching {needle!r} in window {win}; "
-                         f"labels: {[e.get('label') or e.get('title') for e in els][:40]}")
-    click_element(pid, win, snap, el["index"])
-    return el
+def click_named(win, needle, role_hint=None):
+    node = ad.find(win, needle, role_hint)
+    if not node:
+        labels = [ad.text(n) for n in ad.nodes(win) if n.get("ref_id")]
+        raise SystemExit(f"no element matching {needle!r} in window {win}; labels: {labels[:40]}")
+    ad.click(node["ref_id"])
+    return node
 
 time.sleep(1.0)
-click_named(perry_pid, home["window_id"], "Routines")
+click_named(home["id"], "Routines")
 log("routines.clicked")
 time.sleep(1.0)
-run_el = click_named(perry_pid, home["window_id"], "Run", "AXButton", "routine Run button")
+click_named(home["id"], "Run", "button")
 log("routine.run.clicked")
 
 def card_window():
-    for w in windows(perry_pid):
-        els, snap = window_elements(perry_pid, w["window_id"])
-        if any("About to" in str(e.get("label") or e.get("title") or "") or
-               "About to" in str(e.get("value") or "") for e in els):
-            return w, els, snap
+    for w in ad.windows(pid=perry_pid):
+        if any("About to" in ad.text(n) for n in ad.nodes(w["id"], interactive=False)):
+            return w
     return None
 deadline = time.monotonic() + 45
 card = None
@@ -143,36 +94,23 @@ while time.monotonic() < deadline and not card:
     card = card_window()
 if not card:
     raise SystemExit("plan card never appeared")
-cw, els, snap = card
-log("plan.card.shown", window_id=cw["window_id"])
+log("plan.card.shown", window_id=card["id"])
 
-cua("get_desktop_state", {"out": os.path.join(drill_dir, "rehearsal.png")}, timeout=60)
+subprocess.run(["screencapture", "-x", os.path.join(drill_dir, "rehearsal.png")], check=False, timeout=60)
 log("rehearsal.screenshot")
 
-run_btn = find_element(els, "Run", "AXButton")
-if not run_btn:
-    raise SystemExit(f"no Run button on card; labels: {[e.get('label') for e in els][:40]}")
-click_element(perry_pid, cw["window_id"], snap, run_btn["index"])
+click_named(card["id"], "Run", "button")
 log("plan.run.clicked")
 
 def textedit_window():
-    for w in cua("list_windows", {"pid": 0}).get("structuredContent", {}).get("windows", []):
-        if w.get("app_name") == "TextEdit" and "replay-target" in w.get("title", ""):
-            return w
-    for w in cua("list_windows", {}).get("structuredContent", {}).get("windows", []):
-        if w.get("app_name") == "TextEdit":
-            return w
-    return None
+    editors = ad.windows(app_name="TextEdit")
+    return next((w for w in editors if "replay-target" in w.get("title", "")), None)
 
 tw = wait_for(textedit_window, 10, desc="TextEdit window")
 def probe_landed():
-    els, _ = window_elements(tw["pid"], tw["window_id"])
-    for el in els:
-        if el.get("role") == "AXTextArea" and probe in str(el.get("value", "")):
-            return el
-    return None
+    return next((n for n in ad.nodes(tw["id"], interactive=False) if probe in str(n.get("value") or "")), None)
 landed = wait_for(probe_landed, 30, desc="probe text in TextEdit")
-log("probe.landed", stable_id=landed.get("stable_id"))
+log("probe.landed", ref=landed.get("ref_id"), role=landed.get("role"))
 
 time.sleep(3)
 receipts = []

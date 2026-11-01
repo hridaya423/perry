@@ -65,6 +65,37 @@ final class ShortcutRecorderTests: XCTestCase {
         XCTAssertEqual(capture.saved, .defaultTalk)
     }
 
+    func testCommandLetterChordsAreRefusedBecauseTheFrontAppStillReceiveThem() {
+        var capture = recording()
+        capture.keyDown(12, modifiers: [.command])
+        XCTAssertEqual(
+            capture.state,
+            .refused(
+                .chord([.command], keyCode: 12),
+                reason: "⌘Q is already a shortcut in most apps and in macOS. Pick one with Control or Option."
+            )
+        )
+        capture.begin()
+        capture.keyDown(13, modifiers: [.command, .shift])
+        XCTAssertEqual(
+            capture.state,
+            .refused(
+                .chord([.command, .shift], keyCode: 13),
+                reason: "⇧⌘W is already a shortcut in most apps and in macOS. Pick one with Control or Option."
+            )
+        )
+        capture.begin()
+        capture.keyDown(18, modifiers: [.command])
+        guard case .refused = capture.state else { return XCTFail("Command and a digit was accepted") }
+        XCTAssertEqual(capture.saved, .defaultTalk)
+    }
+
+    func testCommandChordsWithControlOrOptionStayAllowed() {
+        var capture = recording()
+        capture.keyDown(12, modifiers: [.option, .command])
+        XCTAssertEqual(capture.state, .captured(.chord([.option, .command], keyCode: 12)))
+    }
+
     func testConflictsCheckPerryThenMacOSThenKnownAppsAndCanBeOverridden() {
         var capture = recording()
         capture.flagsChanged([.function])

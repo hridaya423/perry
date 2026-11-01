@@ -1,3 +1,4 @@
+import PerryBrain
 import SwiftUI
 
 struct CustomConnectorsSection: View {
@@ -9,6 +10,7 @@ struct CustomConnectorsSection: View {
     @State private var secret = ""
     @State private var adding = false
     @State private var addError: String?
+    @State private var removeError: String?
     @State private var showsForm = false
 
     private enum Kind: String, CaseIterable, Identifiable {
@@ -35,6 +37,12 @@ struct CustomConnectorsSection: View {
             ForEach(connectors.connectors) { connector in
                 Divider()
                 row(connector)
+            }
+            if let removeError {
+                Text(removeError)
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.caution)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if showsForm {
                 Divider()
@@ -66,13 +74,13 @@ struct CustomConnectorsSection: View {
                     .truncationMode(.middle)
             }
             Spacer()
-            statusLabel(connectors.status[connector.id])
-            if case .failed = connectors.status[connector.id] {
+            statusLabel(connectors.status[connector.id], signInNotSaved: connectors.signInNotSaved.contains(connector.id))
+            if connectors.signInNotSaved.contains(connector.id) || connectors.status[connector.id]?.isFailed == true {
                 Button("Reconnect") { connectors.reconnect(connector.id) }
                     .buttonStyle(InkButtonStyle(.secondary))
                     .controlSize(.small)
             }
-            Button("Remove", role: .destructive) { connectors.remove(connector.id) }
+            Button("Remove", role: .destructive) { removeError = connectors.remove(connector.id) }
                 .buttonStyle(.pressable)
                 .font(PerryTheme.Scale.secondary)
                 .foregroundStyle(PerryTheme.Colors.textSecondary)
@@ -80,8 +88,12 @@ struct CustomConnectorsSection: View {
     }
 
     @ViewBuilder
-    private func statusLabel(_ status: CustomConnectors.Status?) -> some View {
+    private func statusLabel(_ status: CustomConnectors.Status?, signInNotSaved: Bool) -> some View {
         switch status {
+        case .ready where signInNotSaved:
+            StatusLabel("Reconnect soon", .attention)
+                .foregroundStyle(PerryTheme.Colors.caution)
+                .help(MCPAuthError.credentialNotSaved.localizedDescription)
         case .ready(let count):
             StatusLabel("\(count) \(count == 1 ? "tool" : "tools")", .ok)
                 .foregroundStyle(PerryTheme.Colors.success)
@@ -157,6 +169,7 @@ struct CustomConnectorsSection: View {
         guard let endpoint, !adding else { return }
         adding = true
         addError = nil
+        removeError = nil
         Task {
             let connector = CustomConnector(name: name, endpoint: endpoint, secret: kind == .command ? .environment(secretVariable.trimmingCharacters(in: .whitespaces)) : nil)
             let status = await connectors.add(connector, secret: secret)

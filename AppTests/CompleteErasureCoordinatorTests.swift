@@ -259,6 +259,49 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
     }
 
     @MainActor
+    func testScreenControlErasureRemovesAgentDesktopAndCuaState() async throws {
+        let supportDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PerryScreenControlErasureTests")
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: supportDirectory) }
+        let agentDesktop = supportDirectory.appendingPathComponent("AgentDesktop/sessions/worker", isDirectory: true)
+        let cuaDriver = supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true)
+        for directory in [agentDesktop, cuaDriver] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("state".utf8).write(to: directory.appendingPathComponent("state.json"))
+        }
+        let suiteName = "PerryScreenControlErasureTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let erasers = PerryLiveErasureErasers.make(
+            paths: PerryErasurePaths(
+                supportDirectory: supportDirectory,
+                homeDirectory: supportDirectory.appendingPathComponent("Home"),
+                temporaryDirectory: supportDirectory.appendingPathComponent("Temporary"),
+                cachesDirectory: supportDirectory.appendingPathComponent("Caches")
+            ),
+            defaults: defaults,
+            taskCoordinator: TaskCoordinator(storageDirectory: supportDirectory),
+            backgroundTaskContextStore: BackgroundTaskContextStore(storageDirectory: supportDirectory),
+            activityLog: ActivityLog(storageDirectory: supportDirectory),
+            transcriptStore: TranscriptStore(directory: supportDirectory),
+            memoryStore: MemoryStore(storageDirectory: supportDirectory)
+        )
+        let screenControl = try XCTUnwrap(erasers.first { $0.category == .cuaArtifacts })
+
+        let inventory = try await screenControl.inventory().map(\.identifier)
+        XCTAssertTrue(inventory.contains { $0.hasSuffix(":AgentDesktop") }, "\(inventory)")
+        XCTAssertTrue(inventory.contains { $0.hasSuffix(":CuaDriver") }, "\(inventory)")
+
+        try await screenControl.erase()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: supportDirectory.appendingPathComponent("AgentDesktop").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cuaDriver.path))
+        let remaining = try await screenControl.inventory()
+        XCTAssertTrue(remaining.isEmpty)
+    }
+
+    @MainActor
     func testProductionKeychainInventoryOwnsEveryShippedSecretService() {
         XCTAssertEqual(
             Set(PerryLiveErasureErasers.providerKeychainServices),
@@ -352,6 +395,21 @@ final class CompleteErasureCoordinatorTests: XCTestCase {
         ])
         XCTAssertEqual(report.failures.map(\.operation), [.erase])
         XCTAssertNil(try removableStore.readChecked(account: removable.account))
+    }
+
+    func testCollectedFailuresKeepTheirOrderAndLabelsAndNothingThrowsWhenAllSucceed() async {
+        struct Boom: LocalizedError { var errorDescription: String? { "boom" } }
+        var clean = PerryErasureFailures()
+        await clean.attempt("a") {}
+        XCTAssertNoThrow(try clean.throwIfAny())
+
+        var failures = PerryErasureFailures()
+        await failures.attempt("a") { throw Boom() }
+        await failures.attempt("b") {}
+        await failures.attempt { throw Boom() }
+        XCTAssertThrowsError(try failures.throwIfAny()) {
+            XCTAssertEqual($0 as? PerryErasureAdapterError, PerryErasureAdapterError(message: "a: boom; boom"))
+        }
     }
 
     func testKeychainEnumerationFailureDoesNotSkipLaterServicesOrClaimSuccess() async throws {

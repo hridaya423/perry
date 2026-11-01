@@ -5,11 +5,11 @@ import PerryRuntimes
 
 final class ForegroundWorkerLease: @unchecked Sendable {
     private let lock = NSLock()
-    private var handles: [UUID: CuaWorkerHandle] = [:]
+    private var handles: [UUID: ScreenWorkerHandle] = [:]
 
     func withRun<Value: Sendable>(
         _ runID: UUID,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
         if worker(for: runID) != nil { return try await operation() }
@@ -20,28 +20,28 @@ final class ForegroundWorkerLease: @unchecked Sendable {
         }
     }
 
-    func worker(for runID: UUID) -> CuaWorkerHandle? {
+    func worker(for runID: UUID) -> ScreenWorkerHandle? {
         lock.lock()
         defer { lock.unlock() }
         return handles[runID]
     }
 
-    func set(_ handle: CuaWorkerHandle?, for runID: UUID) {
+    func set(_ handle: ScreenWorkerHandle?, for runID: UUID) {
         lock.lock()
         handles[runID] = handle
         lock.unlock()
     }
 }
 
-func withCuaWorker<Value: Sendable>(
-    _ workers: CuaWorkerService,
+func withScreenWorker<Value: Sendable>(
+    _ workers: ScreenWorkerService,
     lease: ForegroundWorkerLease?,
     runID: UUID,
     resources: Set<BackgroundTaskResource>,
-    _ body: @escaping @Sendable (CuaWorkerHandle) async throws -> Value
+    _ body: @escaping @Sendable (ScreenWorkerHandle) async throws -> Value
 ) async throws -> Value {
     try Task.checkCancellation()
-    let explained: @Sendable (CuaWorkerHandle) async throws -> Value = { worker in
+    let explained: @Sendable (ScreenWorkerHandle) async throws -> Value = { worker in
         do {
             return try await body(worker)
         } catch is CancellationError {

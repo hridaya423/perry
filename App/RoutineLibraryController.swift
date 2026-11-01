@@ -4,7 +4,7 @@ import PerryGuide
 @MainActor
 final class RoutineLibraryController {
     private let store: RoutineStore
-    private let workers: CuaWorkerService
+    private let workers: ScreenWorkerService
     private let context: GuideSessionContext?
     private let setStatus: (String) -> Void
     private let speak: (String) -> Void
@@ -22,7 +22,7 @@ final class RoutineLibraryController {
 
     init(
         store: RoutineStore,
-        workers: CuaWorkerService,
+        workers: ScreenWorkerService,
         context: GuideSessionContext?,
         setStatus: @escaping (String) -> Void,
         speak: @escaping (String) -> Void,
@@ -117,7 +117,7 @@ final class RoutineLibraryController {
         let recorder = DemonstrationRecorder(
             observe: makeObserver(),
             bundleIDProvider: { [weak self] in
-                self?.context?.guideAppBundleID(for: self?.context?.guideTargetHint() ?? CuaTargetHint())
+                self?.context?.guideAppBundleID(for: self?.context?.guideTargetHint() ?? ScreenTargetHint())
             },
             onEventCount: { [weak self] count in
                 self?.reviewState.eventCount = count
@@ -166,7 +166,7 @@ final class RoutineLibraryController {
             reviewState.presentReview(steps: routine.steps)
         } catch {
             closeReview()
-            setStatus("The demonstration could not be turned into a routine.")
+            setStatus("I couldn’t turn that recording into a routine.")
         }
     }
 
@@ -189,7 +189,7 @@ final class RoutineLibraryController {
             saved = true
             setStatus("Saved routine “\(routine.name)”. Run it from the menu.")
         } catch {
-            setStatus("The routine could not be saved: \(error.localizedDescription)")
+            setStatus("I couldn’t save the routine: \(error.localizedDescription)")
         }
         pendingRoutine = nil
         closeReview()
@@ -223,16 +223,16 @@ final class RoutineLibraryController {
     }
 
     private func makeObserver() -> () async throws -> GuideObservation {
-        let targetStore = CuaGuideTargetStore()
+        let targetStore = ScreenGuideTargetStore()
         return { [workers, context, targetStore] in
-            let hint = context?.guideTargetHint() ?? CuaTargetHint()
+            let hint = context?.guideTargetHint() ?? ScreenTargetHint()
             await targetStore.set(hint)
             var resources = Set<BackgroundTaskResource>()
             if let bundleID = context?.guideAppBundleID(for: hint) {
                 resources.insert(.application(bundleID))
             }
             return try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
-                try await CuaGuideTreeReader(worker: worker, targetStore: targetStore).observe()
+                try await ScreenGuideTreeReader(worker: worker, targetStore: targetStore).observe()
             }
         }
     }

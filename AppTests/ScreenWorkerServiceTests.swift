@@ -2,9 +2,9 @@ import XCTest
 @testable import Perry
 
 @MainActor
-final class CuaWorkerServiceTests: XCTestCase {
+final class ScreenWorkerServiceTests: XCTestCase {
     func testThreeBackgroundOperationsAreParkedAndFourthReachesCapacityWithoutInvocation() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let started = expectation(description: "background workers started")
         started.expectedFulfillmentCount = 3
         var workers: [Task<Void, Error>] = []
@@ -27,7 +27,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("Fourth worker operation was invoked")
             }
             XCTFail("capacity should reject the fourth worker")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .capacityReached)
         }
 
@@ -39,7 +39,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testConflictingApplicationClaimsBlockInitialAndDynamicClaims() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let resource: Set<BackgroundTaskResource> = [.application("com.example.Editor")]
         let parked = parkedWorker(service: service, resources: resource)
         addTeardownBlock { parked.task.cancel() }
@@ -51,7 +51,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("conflicting initial claim should not invoke the operation")
             }
             XCTFail("conflicting initial claim should fail")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .resourceBusy)
         }
 
@@ -66,7 +66,7 @@ final class CuaWorkerServiceTests: XCTestCase {
             do {
                 try await handle.claimResources([.application("com.example.editor")])
                 return false
-            } catch let error as CuaWorkerError {
+            } catch let error as ScreenWorkerError {
                 return error == .resourceBusy
             }
         }
@@ -76,7 +76,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testWorkspaceClaimsBlockAncestorsAndDescendantsButPermitSiblings() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("perry-claims-\(UUID())")
         let workspace = root.appendingPathComponent("task")
         try await service.withWorker(scope: .foreground, resources: [.workspace(workspace.path)]) { _ in
@@ -86,7 +86,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                         XCTFail("An overlapping workspace entered its operation")
                     }
                     XCTFail("An overlapping workspace was admitted")
-                } catch let error as CuaWorkerError {
+                } catch let error as ScreenWorkerError {
                     XCTAssertEqual(error, .resourceBusy)
                 }
             }
@@ -103,7 +103,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testCanceledSetupCancelsOperationBeforeClaimRelease() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let resource: Set<BackgroundTaskResource> = [.integration("mail")]
         let entered = expectation(description: "setup entered")
         let task = Task {
@@ -125,7 +125,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testOldHandleRejectsClaimAfterReturn() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let handle = try await service.withWorker(scope: .background, resources: []) { handle in
             handle
         }
@@ -133,13 +133,13 @@ final class CuaWorkerServiceTests: XCTestCase {
         do {
             try await handle.claimResources([.workspace("/tmp/perry-worker-service")])
             XCTFail("retired handle should not claim resources")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .retired)
         }
     }
 
     func testWithWorkersStoppedBlocksAdmissionDuringClosureAndReopensAfter() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let parked = parkedWorker(service: service, resources: [])
         addTeardownBlock { parked.task.cancel() }
         let parkedStartedResult = await XCTWaiter.fulfillment(of: [parked.started], timeout: 1)
@@ -165,7 +165,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("admission should be closed during maintenance")
             }
             XCTFail("admission should be closed during maintenance")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .admissionClosed)
         }
 
@@ -178,7 +178,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testCancelledMaintenanceKeepsAdmissionClosedUntilItsOperationFinishes() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let entered = expectation(description: "maintenance entered")
         let gate = TestContinuationGate()
         let maintenance = Task {
@@ -200,7 +200,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("A worker entered while cancelled maintenance was still running")
             }
             XCTFail("Admission reopened before maintenance finished")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .admissionClosed)
         }
         await gate.release()
@@ -210,12 +210,12 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testMaintenanceInvokedInsideWorkerRejects() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let result = try await service.withWorker(scope: .background, resources: []) { _ in
             do {
                 _ = try await service.withWorkersStopped { true }
                 return false
-            } catch let error as CuaWorkerError {
+            } catch let error as ScreenWorkerError {
                 return error == .maintenanceInsideWorker
             }
         }
@@ -223,7 +223,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testUncooperativeOperationSurfacesStopFailureButFreesClaims() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let resource: Set<BackgroundTaskResource> = [.application("com.example.Uncooperative")]
         let started = expectation(description: "uncooperative operation started")
         let gate = TestContinuationGate()
@@ -249,7 +249,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testMaintenanceCanRetryAfterAnUncooperativeOperationFinishes() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let entered = expectation(description: "operation entered")
         let gate = TestContinuationGate()
         let task = Task {
@@ -267,7 +267,7 @@ final class CuaWorkerServiceTests: XCTestCase {
         do {
             try await service.withWorkersStopped { XCTFail("Maintenance ran before the operation stopped") }
             XCTFail("Unconfirmed stop was accepted")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .operationDidNotStop)
         }
         do {
@@ -275,7 +275,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("A worker started while maintenance was blocked")
             }
             XCTFail("Admission reopened after a failed stop")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .admissionClosed)
         }
         await gate.release()
@@ -286,7 +286,7 @@ final class CuaWorkerServiceTests: XCTestCase {
                 let resumed = try await service.withWorker(scope: .background, resources: [.integration("mail")]) { _ in true }
                 XCTAssertTrue(resumed)
                 return
-            } catch CuaWorkerError.operationDidNotStop {
+            } catch ScreenWorkerError.operationDidNotStop {
                 try await Task.sleep(for: .milliseconds(5))
             }
         }
@@ -294,7 +294,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testShutdownWaitsForEnteredMaintenanceAndNeverReopensAdmission() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let entered = expectation(description: "maintenance entered")
         let gate = TestContinuationGate()
         let maintenance = Task {
@@ -325,13 +325,13 @@ final class CuaWorkerServiceTests: XCTestCase {
                 XCTFail("Shutdown reopened worker admission")
             }
             XCTFail("Shutdown accepted a new worker")
-        } catch let error as CuaWorkerError {
+        } catch let error as ScreenWorkerError {
             XCTAssertEqual(error, .admissionClosed)
         }
     }
 
     func testRetiredWorkerCannotReportSuccessAfterIgnoringCancellation() async {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let task = Task {
             try await service.withWorker(scope: .background, resources: []) { worker in
                 try await worker.retire()
@@ -342,12 +342,12 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     func testMaintenanceCannotAwaitItsOwnShutdown() async throws {
-        let service = CuaWorkerService()
+        let service = ScreenWorkerService()
         let rejected = try await service.withWorkersStopped {
             do {
                 try await service.shutdown()
                 return false
-            } catch let error as CuaWorkerError {
+            } catch let error as ScreenWorkerError {
                 return error == .maintenanceInsideWorker
             }
         }
@@ -355,7 +355,7 @@ final class CuaWorkerServiceTests: XCTestCase {
     }
 
     private func parkedWorker(
-        service: CuaWorkerService,
+        service: ScreenWorkerService,
         resources: Set<BackgroundTaskResource>
     ) -> (task: Task<Void, Error>, started: XCTestExpectation) {
         let started = expectation(description: "worker started")
@@ -378,7 +378,7 @@ final class CuaWorkerServiceTests: XCTestCase {
         let completionResult = await XCTWaiter.fulfillment(of: [completed], timeout: 1)
         XCTAssertEqual(completionResult, .completed)
         guard completionResult == .completed else {
-            return .failure(CuaWorkerTestError.timeout)
+            return .failure(ScreenWorkerTestError.timeout)
         }
         return await waiter.value
     }
@@ -398,16 +398,16 @@ final class CuaWorkerServiceTests: XCTestCase {
         }
     }
 
-    private func assertFailure(_ result: Result<Void, Error>, equals expected: CuaWorkerError) {
+    private func assertFailure(_ result: Result<Void, Error>, equals expected: ScreenWorkerError) {
         guard case .failure(let error) = result else {
             XCTFail("expected \(expected)")
             return
         }
-        XCTAssertEqual(error as? CuaWorkerError, expected)
+        XCTAssertEqual(error as? ScreenWorkerError, expected)
     }
 }
 
-private enum CuaWorkerTestError: Error {
+private enum ScreenWorkerTestError: Error {
     case timeout
 }
 

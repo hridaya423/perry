@@ -37,7 +37,7 @@ final class TalkSession: ObservableObject {
         var output: any TalkSpeechOutput
         var capture: () async throws -> GuideObservation
         var acceptInput: (String, UUID?, TalkContextKey?) -> HomeController.AcceptedInput
-        var targetHint: () -> CuaTargetHint = { CuaTargetHint() }
+        var targetHint: () -> ScreenTargetHint = { ScreenTargetHint() }
         var run: (HomeController.AcceptedInput, AgentCoordinator.SpatialContext?) -> (threadID: UUID, events: AsyncStream<AgentLoopEvent>, completion: Task<Void, Never>?)
         var waitForConversation: (UUID) async -> Void = { _ in }
         var guide: ((HomeController.AcceptedInput, AgentCoordinator.SpatialContext, Bool) -> Void)? = nil

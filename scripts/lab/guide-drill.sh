@@ -31,7 +31,6 @@ rm -f "$BUILD_DIR/guide-drill-fixture-r"*.png
 
 rm -f "$STATE" "$STATE.log"
 APP="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
-pkill -f "Perry.app/Contents/Resources/CuaDriver/bin/cua-driver" 2>/dev/null || true
 LOG_DIR="$REPO_ROOT/docs/evidence/lab"
 mkdir -p "$LOG_DIR"
 PERF_LOG="$LOG_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
@@ -49,7 +48,7 @@ echo "pid=$PERRY_PID"
 echo "perf_log=$PERF_LOG"
 sleep 3
 
-python3 - "$HELPER" "$STATE" "$GOAL" "$RUNS" "$MARKERS" "$APP" "$FIXTURE" <<'PY'
+REPO_ROOT="$REPO_ROOT" PERRY_APP="$APP" python3 - "$HELPER" "$STATE" "$GOAL" "$RUNS" "$MARKERS" "$APP" "$FIXTURE" <<'PY'
 import json, os, re, subprocess, sys, time
 
 helper, state_path, goal, runs, markers, app, fixture = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7]
@@ -62,43 +61,19 @@ MAX_CLICKS_PER_STEP = 3
 def post(*argv):
     subprocess.run([helper, *argv], check=True)
 
-DRIVER = os.path.join(app, "Contents/Resources/CuaDriver/bin/cua-driver")
+sys.path.insert(0, os.path.join(os.environ["REPO_ROOT"], "scripts/lab"))
+import agent_desktop as ad
 
-def cua_call(name, arguments):
-    """One-shot MCP-stdio call against Perry's bundled cua-driver."""
-    reqs = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                    "clientInfo": {"name": "guide-drill", "version": "1"}}},
-        {"jsonrpc": "2.0", "method": "notifications/initialized"},
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-         "params": {"name": name, "arguments": arguments}},
-    ]
-    env = dict(os.environ, CUA_DRIVER_RS_UPDATE_CHECK="0")
-    proc = subprocess.run([DRIVER, "mcp", "--direct", "--embedded",
-                           "--host-bundle-id", "dev.perry.Perry"],
-                          input="\n".join(json.dumps(r) for r in reqs),
-                          capture_output=True, text=True, env=env, timeout=30)
-    for line in proc.stdout.splitlines():
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row.get("id") == 2:
-            return row.get("result", {})
-    return {}
+def osa(script):
+    subprocess.run(["osascript", "-e", script], capture_output=True, text=True, check=False)
 
 FIXTURE_PREFIX = "guide-drill-fixture"
 
 def fixture_windows():
-    res = cua_call("list_windows", {"on_screen_only": True})
-    return [w for w in res.get("structuredContent", {}).get("windows", [])
-            if w.get("app_name") == "Preview" and w.get("title", "").startswith(FIXTURE_PREFIX)]
+    return [w for w in ad.windows(app_name="Preview") if w.get("title", "").startswith(FIXTURE_PREFIX)]
 
 def close_fixture_windows():
-    for w in fixture_windows():
-        cua_call("invoke_menu", {"pid": w["pid"], "window_id": w["window_id"],
-                                 "path": ["File", "Close"]})
+    osa(f'tell application "Preview" to close (every window whose name starts with "{FIXTURE_PREFIX}")')
 
 def activate_preview(fixture, run):
     close_fixture_windows()
@@ -112,11 +87,9 @@ def activate_preview(fixture, run):
         windows = [w for w in fixture_windows()
                    if w.get("title", "").startswith(f"{FIXTURE_PREFIX}-r{run}")]
     if windows:
-        w = windows[0]
-        cua_call("invoke_menu", {"pid": w["pid"], "window_id": w["window_id"],
-                                 "path": ["View", "Zoom to Fit"]})
-        cua_call("set_window_frame", {"pid": w["pid"], "window_id": w["window_id"],
-                                    "x": 150, "y": 60, "width": 1000, "height": 720})
+        title = windows[0]["title"]
+        osa(f'tell application "System Events" to tell process "Preview" to click menu item "Zoom to Fit" of menu "View" of menu bar 1')
+        osa(f'tell application "Preview" to set bounds of (first window whose name is "{title}") to {{150, 60, 1150, 780}}')
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         front = subprocess.run([helper, "frontmost"], capture_output=True, text=True).stdout.strip()

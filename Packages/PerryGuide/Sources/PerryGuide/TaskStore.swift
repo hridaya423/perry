@@ -7,6 +7,12 @@ struct LoadedTasks {
     let persistenceIssue: PersistenceError?
 }
 
+extension LoadedTasks {
+    init(_ load: PersistedFileLoad<[TaskID: TaskRecord]>) {
+        self.init(records: load.value, writesBlocked: load.writesBlocked, persistenceIssue: load.persistenceIssue)
+    }
+}
+
 enum TaskStoreError: Error, LocalizedError {
     case unsupportedVersion(Int)
     case tooManyTasks(limit: Int, actual: Int)
@@ -199,28 +205,12 @@ enum TaskStoreFile {
         reason: String,
         fileManager: FileManager
     ) -> LoadedTasks {
-        let quarantineURL = fileURL.appendingPathExtension("corrupt-\(UUID().uuidString)")
-        do {
-            try fileManager.moveItem(at: fileURL, to: quarantineURL)
-            return LoadedTasks(
-                records: [:],
-                writesBlocked: false,
-                persistenceIssue: .recoveredCorruptFile(
-                    path: fileURL.path,
-                    quarantinePath: quarantineURL.path,
-                    reason: reason
-                )
-            )
-        } catch {
-            return LoadedTasks(
-                records: [:],
-                writesBlocked: true,
-                persistenceIssue: .quarantineFailed(
-                    path: fileURL.path,
-                    reason: error.localizedDescription
-                )
-            )
-        }
+        LoadedTasks(PersistedFileLoader.recoverCorruptFile(
+            at: fileURL,
+            reason: reason,
+            fallback: [:],
+            fileManager: fileManager
+        ))
     }
 }
 

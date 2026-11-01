@@ -1,5 +1,6 @@
 import AVFoundation
 import PerryBrain
+import PerryCore
 @testable import Perry
 import XCTest
 
@@ -43,6 +44,41 @@ final class AnalyzerRecognitionTests: XCTestCase {
         XCTAssertFalse(words.isEmpty)
         XCTAssertEqual(words.map(\.start), words.map(\.start).sorted())
         print("ANALYZER:", text, words.map { "\($0.text)@\(String(format: "%.2f", $0.start))" })
+    }
+
+    func testLoopbackSpeechReachesTheTranscriptThroughTheMicrophonePath() async throws {
+        guard ProcessInfo.processInfo.environment["PERRY_LOOPBACK_DRILL"] == "1" else { throw XCTSkip("Set PERRY_LOOPBACK_DRILL=1 to run the loopback drill") }
+        guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer needs macOS 26") }
+        guard let device = DictationController.availableInputDevices().first(where: { $0.name.contains("BlackHole") }) else {
+            throw XCTSkip("No BlackHole loopback device on this Mac")
+        }
+        let locale = Locale(identifier: "en-US")
+        guard let target = await AnalyzerRecognitionSession.prepare(locale: locale) else { throw XCTSkip("No SpeechTranscriber assets") }
+        AnalyzerTarget.remember(target, for: locale)
+
+        let heard = expectation(description: "transcript")
+        var transcript: String?
+        var peak = 0.0
+        let controller = DictationController(
+            onTranscript: { transcript = $0; heard.fulfill() },
+            onLevel: { _, level in peak = max(peak, level) },
+            onFailure: { XCTFail("dictation failed: \($0)"); heard.fulfill() }
+        )
+        controller.configure(DictationPreferences(language: .fixed(identifier: "en-US"), customWords: ["Sam"], inputDeviceID: device.id))
+        try controller.start()
+        let say = Process()
+        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        say.arguments = ["-a", device.name, "I moved the meeting to Thursday and told Sam."]
+        try say.run()
+        say.waitUntilExit()
+        try await Task.sleep(for: .milliseconds(600))
+        controller.finish()
+        await fulfillment(of: [heard], timeout: 10)
+        print("LOOPBACK:", transcript ?? "nil", "peak", peak)
+        let lowered = try XCTUnwrap(transcript).lowercased()
+        XCTAssertGreaterThan(peak, 0.01)
+        XCTAssertTrue(lowered.contains("thursday"), lowered)
+        XCTAssertTrue(lowered.contains("sam"), lowered)
     }
 
     private static func tapBuffers(from url: URL) throws -> [AVAudioPCMBuffer] {

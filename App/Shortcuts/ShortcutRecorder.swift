@@ -9,6 +9,7 @@ struct ShortcutCapture: Equatable {
         case captured(Gesture)
         case conflict(Gesture, owner: String)
         case rejected(Gesture, owner: String)
+        case refused(Gesture, reason: String)
     }
 
     struct Owner: Equatable {
@@ -122,6 +123,15 @@ struct ShortcutCapture: Equatable {
             state = .rejected(gesture, owner: owner.name)
             return
         }
+        if case .chord(let set, let key) = gesture,
+           set == .command || set == [.command, .shift],
+           KeyName.name(for: key).count == 1 {
+            state = .refused(
+                gesture,
+                reason: "\(gesture.keys) is already a shortcut in most apps and in macOS. Pick one with Control or Option."
+            )
+            return
+        }
         if let owner = conflictOwner(for: gesture) {
             state = .conflict(gesture, owner: owner)
             return
@@ -202,6 +212,11 @@ struct ShortcutRecorder: View {
                     .font(PerryTheme.Scale.secondary)
                     .foregroundStyle(PerryTheme.Colors.caution)
                     .fixedSize(horizontal: false, vertical: true)
+            case .refused(_, let reason):
+                Text(reason)
+                    .font(PerryTheme.Scale.secondary)
+                    .foregroundStyle(PerryTheme.Colors.caution)
+                    .fixedSize(horizontal: false, vertical: true)
             case .idle, .recording, .captured:
                 EmptyView()
             }
@@ -217,12 +232,24 @@ struct ShortcutRecorder: View {
             }
         }
         .onDisappear(perform: stopListening)
+        .onChange(of: capture.state) { _, state in
+            switch state {
+            case .conflict(_, let owner):
+                AccessibilityNotification.Announcement("\(owner) already uses this.").post()
+            case .rejected(let gesture, let owner):
+                AccessibilityNotification.Announcement("\(gesture.keys) is taken by \(owner). Pick another.").post()
+            case .refused(_, let reason):
+                AccessibilityNotification.Announcement(reason).post()
+            case .idle, .recording, .captured:
+                break
+            }
+        }
     }
 
     private var pillText: String {
         switch capture.state {
         case .recording: capture.prompt
-        case .conflict(let gesture, _), .rejected(let gesture, _): gesture.keys
+        case .conflict(let gesture, _), .rejected(let gesture, _), .refused(let gesture, _): gesture.keys
         case .idle, .captured: capture.saved.keys
         }
     }

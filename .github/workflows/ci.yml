@@ -42,6 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-agent-desktop.sh --fetch
           ./scripts/fetch-cua-driver.sh --fetch
 
       - name: Verify reproducibility inputs
@@ -97,6 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/fetch-codex-runtime.sh --fetch
+          ./scripts/fetch-agent-desktop.sh --fetch
           ./scripts/fetch-cua-driver.sh --fetch
 
       - name: Generate Xcode project

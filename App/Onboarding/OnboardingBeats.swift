@@ -32,7 +32,7 @@ struct HomeOnboardingView: View {
             if let controller = model.deps.controller {
                 InterviewBeat(
                     director: director,
-                    model: InterviewModel(
+                    model: director.interviewModel { InterviewModel(
                         name: controller.memoryFiles?.profileField("Name") ?? OnboardingDirector.suggestedName(saved: nil, fullName: NSFullUserName()),
                         effects: .init(
                             complete: controller.subsystems.brain.hasSavedChoice || controller.subsystems.brain.onDeviceRouteAvailable
@@ -43,7 +43,7 @@ struct HomeOnboardingView: View {
                             say: { await controller.subsystems.voice.speakAndWait($0) },
                             importMemory: { await controller.importMemory(from: $0) }
                         )
-                    ),
+                    ) },
                     cloudLine: InterviewModel.cloudLine(choice: controller.subsystems.brain.modelChoice, hasSavedChoice: controller.subsystems.brain.hasSavedChoice),
                     appChips: InterviewModel.appChips()
                 )

@@ -13,7 +13,7 @@ struct EverythingGuideSession {
 }
 
 extension GuideSessionCoordinator {
-    func runFullGuide(guide: GuideSessionState, capture: CuaCapturedWindow) async throws {
+    func runFullGuide(guide: GuideSessionState, capture: ScreenCapturedWindow) async throws {
         guard let snapshot = capture.accessibilitySnapshotModel else {
             finishGuide(guideID: guide.id, outcome: .failed, summary: "I couldn’t read that window. Try again.")
             return
@@ -86,13 +86,6 @@ extension GuideSessionCoordinator {
         guideControlsState.markerCaptions = viewPlan.markers.map(\.caption)
         guideControlsState.targetLabel = nil
         showGuideControls()
-        schedule(.fullPathTimeout, after: .seconds(20)) { coordinator, guideID in
-            guard coordinator.everythingGuideSession?.id == guideID else { return }
-            coordinator.everythingGuideSession = nil
-            coordinator.clickObserver.stop()
-            coordinator.output?.guideClearFullPath()
-            coordinator.finishGuide(guideID: guideID, outcome: .failed, summary: "The full guide took too long. Try again.")
-        }
     }
 
     private func select(_ marker: EverythingViewPlan.Marker) {

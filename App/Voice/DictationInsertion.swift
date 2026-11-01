@@ -21,6 +21,8 @@ extension VoiceController {
         }
         let frontmostApplication = dictationTargetApplication
         dictationTargetApplication = nil
+        let insertsWithoutPrefix = dictationInsertsWithoutPrefix
+        dictationInsertsWithoutPrefix = false
         let frontmostBundleID = frontmostApplication?.bundleIdentifier
         let normalized: String
         do {
@@ -44,11 +46,12 @@ extension VoiceController {
         if voiceTaskScope == nil, let insertion = VoiceTextPolicy.insertionText(
             from: request,
             frontmostBundleID: frontmostBundleID,
-            dictionary: [:]
+            dictionary: [:],
+            requiresPrefix: !insertsWithoutPrefix
         ) {
             guard let frontmostApplication else {
                 dictationSpeechEndedAt = nil
-                deliverVoiceReply("I couldn’t tell which app to type in, so I stopped.")
+                keepUnsentDictation(insertion, language: lastDictationLanguageIdentifier)
                 return
             }
             insertTextIntoFrontmostApp(insertion, target: frontmostApplication)
@@ -63,13 +66,13 @@ extension VoiceController {
               bundleID != Bundle.main.bundleIdentifier else {
             dictationInsertionID = nil
             dictationWorkerTask?.cancel()
-            hooks.setStatus("Keep the target app focused and I’ll type there.")
+            keepUnsentDictation(text, language: lastDictationLanguageIdentifier)
             return
         }
         let speechEndedAt = dictationSpeechEndedAt
         dictationSpeechEndedAt = nil
         let language = lastDictationLanguageIdentifier
-        let targetHint = CuaTargetHint(bundleID: bundleID, processID: target.processIdentifier)
+        let targetHint = ScreenTargetHint(bundleID: bundleID, processID: target.processIdentifier)
         let insertionID = UUID()
         let previousTask = dictationWorkerTask
         dictationInsertionID = insertionID
@@ -132,11 +135,21 @@ extension VoiceController {
                 self.dictationInsertionID = nil
                 self.dictationWorkerTask = nil
                 guard !Task.isCancelled else { return }
-                self.hooks.setStatus("I didn’t type because I couldn’t confirm the field. Try again.")
-                self.deliverVoiceReply("I couldn’t confirm the text went in, so I stopped.")
+                self.keepUnsentDictation(text, language: language, mayHaveTyped: true)
             }
         }
         dictationWorkerTask = task
+    }
+
+    func keepUnsentDictation(_ text: String, language: String?, mayHaveTyped: Bool = false) {
+        recordDictationBackup(text, language: language)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let message = mayHaveTyped
+            ? "I couldn’t confirm the text went in, so I copied it. Paste it if it’s missing."
+            : "I couldn’t type that, so I copied it. Paste it where you want it."
+        hooks.setStatus(message)
+        deliverVoiceReply(message)
     }
 
     private func recordDictationBackup(_ text: String, language: String?) {
@@ -147,7 +160,7 @@ extension VoiceController {
     }
 
     private func scheduleDictationLearnChecks(
-        inserted text: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
+        inserted text: String, target: ScreenTargetHint, bundleID: String, insertedAt: Date
     ) {
         dictationLearnCheckTask?.cancel()
         dictationLearnCheckTask = Task { @MainActor [weak self] in
@@ -165,7 +178,7 @@ extension VoiceController {
         "AXTextArea", "AXTextField", "AXWebArea", "AXScrollArea", "AXStaticText", "AXComboBox",
     ]
 
-    private func focusedTextValue(target: CuaTargetHint, bundleID: String) -> String? {
+    private func focusedTextValue(target: ScreenTargetHint, bundleID: String) -> String? {
         guard AXIsProcessTrusted() else { return nil }
         let pid = target.processID
             ?? NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
@@ -190,7 +203,7 @@ extension VoiceController {
     }
 
     private func learnDictationEdits(
-        inserted: String, target: CuaTargetHint, bundleID: String, insertedAt: Date
+        inserted: String, target: ScreenTargetHint, bundleID: String, insertedAt: Date
     ) async {
         let insertedTokens = DictationWords.tokens(inserted)
         guard !insertedTokens.isEmpty else { return }

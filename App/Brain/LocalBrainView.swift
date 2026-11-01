@@ -82,7 +82,7 @@ struct LocalBrainView: View {
     private func setupRow(_ rung: ModelRung) -> some View {
         switch local.phase {
         case .notSetUp:
-            SettingsRow(title: "Private brain", detail: String(format: "Runs on this Mac, even offline. %.1f GB download. %@", rung.downloadGB, abilityLine)) {
+            SettingsRow(title: "Private brain", detail: "Runs on this Mac, even offline. \(Self.gigabytes(rung.downloadGB)) GB download. \(abilityLine)") {
                 Button("Download") { Task { await local.setUp(rung) } }
                     .buttonStyle(InkButtonStyle(.primary))
             }
@@ -96,9 +96,13 @@ struct LocalBrainView: View {
             }
             .settingsRowPadding()
         case .ready:
-            SettingsRow(title: "Private brain", detail: [bench.flatMap { LocalBenchmark.summary($0.interactive) }, abilityLine].compactMap { $0 }.joined(separator: " ")) {
-                StatusMark(.ok)
-                    .accessibilityLabel("Ready")
+            if let running = local.substitute(for: rung) {
+                SettingsRow(title: "Private brain", detail: "\(Self.runningNote(chosen: rung, running: running, offers: offers)) \(Self.gigabytes(rung.downloadGB)) GB download.") {
+                    Button("Download") { Task { await local.setUp(rung) } }
+                        .buttonStyle(InkButtonStyle(.primary))
+                }
+            } else {
+                readyRow
             }
         case .failed(let message):
             SettingsRow(title: "Setup stopped", detail: message) {
@@ -107,11 +111,29 @@ struct LocalBrainView: View {
         }
     }
 
+    static func gigabytes(_ value: Double, digits: Int = 1) -> String {
+        value.formatted(.number.precision(.fractionLength(digits)))
+    }
+
+    static func runningNote(chosen: ModelRung, running: ModelRung, offers: [ModelOffer]) -> String {
+        func label(_ rung: ModelRung) -> String {
+            offers.first { $0.rung.id == rung.id }?.size.title ?? LocalModelList.modelName(rung)
+        }
+        return "Using \(label(running)) until \(label(chosen)) is downloaded."
+    }
+
+    private var readyRow: some View {
+        SettingsRow(title: "Private brain", detail: [bench.flatMap { LocalBenchmark.summary($0.interactive) }, abilityLine].compactMap { $0 }.joined(separator: " ")) {
+            StatusMark(.ok)
+                .accessibilityLabel("Ready")
+        }
+    }
+
     private func detail(_ budget: LocalBrain.Budget) -> String {
         switch budget {
         case .nothing: "Perry unloads it after 30 idle minutes. The next answer takes a few seconds longer."
         case .upTo2GB: "Only the small brain stays ready."
-        case .keepMainReady: String(format: "The main brain stays loaded, about %.0f GB.", rung.warmGB)
+        case .keepMainReady: "The main brain stays loaded, about \(Self.gigabytes(rung.warmGB, digits: 0)) GB."
         }
     }
 

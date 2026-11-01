@@ -10,6 +10,9 @@ CODE_PATHS = (
     "Contents/MacOS/Perry",
     "Contents/Resources/CodexRuntime/bin/codex",
     "Contents/Resources/CuaDriver/bin/cua-driver",
+    "Contents/Resources/AgentDesktop/bin/agent-desktop",
+    "Contents/Resources/AgentDesktop/bin/agent-desktop-macos-helper",
+    "Contents/Resources/LocalEngine/llama-server",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Autoupdate",
     "Contents/Frameworks/Sparkle.framework/Versions/Current/Updater.app/Contents/MacOS/Updater",
@@ -87,7 +90,7 @@ class DistributionSignatureTests(unittest.TestCase):
         self.assertIn("failed strict nested signature verification", result.stderr)
 
     def test_rejects_missing_nested_runtime(self):
-        (self.app / "Contents/Resources/CuaDriver/bin/cua-driver").unlink()
+        (self.app / "Contents/Resources/AgentDesktop/bin/agent-desktop-macos-helper").unlink()
         result = self.verify()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing signed code object", result.stderr)

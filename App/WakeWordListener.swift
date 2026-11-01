@@ -76,6 +76,7 @@ final class WakeWordListener {
     private let onWake: (String) -> Void
     private let onHeard: () -> Void
     private let onFailure: (String) -> Void
+    private let onStarted: () -> Void
     private let mic = MicCapture()
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -84,36 +85,37 @@ final class WakeWordListener {
     private var generation: UInt64 = 0
     private var activeGeneration: UInt64?
     private var pendingRestartGeneration: UInt64?
+    private var retryChain: UInt64 = 0
     private let matcher = OSAllocatedUnfairLock(initialState: WakeWordMatcher())
+    var retryDelays: [TimeInterval] = [0.5, 1.5, 3]
+    lazy var beginListening: () throws -> Void = { [unowned self] in try self.startListening() }
 
     init(
         onWake: @escaping (String) -> Void,
         onHeard: @escaping () -> Void = {},
-        onFailure: @escaping (String) -> Void = { _ in }
+        onFailure: @escaping (String) -> Void = { _ in },
+        onStarted: @escaping () -> Void = {}
     ) {
         self.onWake = onWake
         self.onHeard = onHeard
         self.onFailure = onFailure
+        self.onStarted = onStarted
     }
 
     func start() {
         wantsToListen = true
         guard !isRunning else { return }
         pendingRestartGeneration = nil
-        do {
-            try startListening()
-        } catch {
-            stopEngine()
-            onFailure(error.localizedDescription)
-        }
+        listenAfresh()
     }
 
     func stop() {
         wantsToListen = false
+        retryChain &+= 1
         stopEngine()
     }
 
-    private var isRunning: Bool {
+    var isRunning: Bool {
         activeGeneration != nil || mic.isRunning || request != nil || task != nil
     }
 
@@ -192,11 +194,28 @@ final class WakeWordListener {
                   self.wantsToListen,
                   self.pendingRestartGeneration == generation else { return }
             self.pendingRestartGeneration = nil
-            do {
-                try self.startListening()
-            } catch {
-                self.stopEngine()
-                self.onFailure(error.localizedDescription)
+            self.listenAfresh()
+        }
+    }
+
+    private func listenAfresh() {
+        retryChain &+= 1
+        listen(retrying: retryDelays[...], chain: retryChain)
+    }
+
+    private func listen(retrying delays: ArraySlice<TimeInterval>, chain: UInt64) {
+        do {
+            try beginListening()
+            onStarted()
+        } catch {
+            stopEngine()
+            guard let delay = delays.first else {
+                onFailure(error.localizedDescription)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.retryChain == chain, self.wantsToListen, !self.isRunning else { return }
+                self.listen(retrying: delays.dropFirst(), chain: chain)
             }
         }
     }

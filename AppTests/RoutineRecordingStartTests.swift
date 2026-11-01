@@ -12,7 +12,7 @@ final class RoutineRecordingStartTests: XCTestCase {
     ) -> RoutineLibraryController {
         RoutineLibraryController(
             store: RoutineStore(storageDirectory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)),
-            workers: CuaWorkerService(),
+            workers: ScreenWorkerService(),
             context: nil,
             setStatus: { statuses.lines.append($0) },
             speak: { _ in },

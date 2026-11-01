@@ -142,7 +142,7 @@ final class MaintenanceCoordinator {
         NotchConfirmation(
             title: "Quit with unsaved requests?",
             detail: "Some requests haven’t been saved. Keep Perry open to copy them or try saving again. Quitting will discard this text.",
-            destructiveTitle: "Quit without saving",
+            confirmTitle: "Quit without saving",
             cancelTitle: "Keep Perry open"
         )
     }
@@ -206,6 +206,7 @@ final class MaintenanceCoordinator {
         host.subsystems.talkSession.cancelAsk()
         host.subsystems.talkSession.cancel()
         await host.subsystems.talkSession.joinInputSaves()
+        await host.subsystems.homeController.joinPendingWrites()
         host.subsystems.notchStatus.hide()
         host.subsystems.notchPresence.stop()
         host.subsystems.perryScheduler?.stop()

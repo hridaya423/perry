@@ -43,6 +43,10 @@ final class IntegrationConnections {
         }
     }
 
+    func cancel() {
+        oauth.cancelAuthorization()
+    }
+
     func setWrites(
         _ enabled: Bool,
         for definition: RemoteIntegrationDefinition,

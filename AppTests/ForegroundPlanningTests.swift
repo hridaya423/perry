@@ -12,7 +12,7 @@ import PerryRuntimes
 final class ForegroundPlanningTests: XCTestCase {
     func testGuideTakeoverRetainsConversationTargetAndRejectsDuplicateClicks() async throws {
         let directory = try makeTemporaryDirectory()
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
@@ -26,7 +26,7 @@ final class ForegroundPlanningTests: XCTestCase {
             screenContextLoader: { _, target in
                 XCTAssertEqual(target, capture.target.hint)
                 return (ScreenContext(frontAppBundleID: "fixture.app", frontWindowTitle: "Fixture window",
-                    screenshotReferenceID: "cua:fixture", screenshotCoordinateSpace: .windowPixels), capture.target)
+                    screenshotReferenceID: "screen:fixture", screenshotCoordinateSpace: .windowPixels), capture.target)
             }
         )
         let store = ThreadStore(directory: directory.appendingPathComponent("handoff-threads"))
@@ -64,7 +64,7 @@ final class ForegroundPlanningTests: XCTestCase {
 
     func testGuideTakeoverSaveFailurePreventsDo() async throws {
         let directory = try makeTemporaryDirectory()
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
@@ -107,7 +107,7 @@ final class ForegroundPlanningTests: XCTestCase {
     func testDismissedTakeoverCannotStartAfterGuideRetires() async throws {
         let directory = try makeTemporaryDirectory()
         let gate = FullGuidePlannerGate()
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture window",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
@@ -259,9 +259,9 @@ final class ForegroundPlanningTests: XCTestCase {
     }
 
     func testGuideUsesConversationTargetUnlessExplicitlyRetargeted() async throws {
-        let remembered = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
-        let newlySelected = CuaTargetHint(bundleID: "fixture.browser", processID: 43, windowID: 74, windowTitle: "Cedar")
-        for override in [nil, newlySelected] as [CuaTargetHint?] {
+        let remembered = ScreenTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        let newlySelected = ScreenTargetHint(bundleID: "fixture.browser", processID: 43, windowID: 74, windowTitle: "Cedar")
+        for override in [nil, newlySelected] as [ScreenTargetHint?] {
             let directory = try makeTemporaryDirectory()
             let threadID = UUID()
             let expected = override ?? remembered
@@ -294,7 +294,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let session = SessionController()
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
         let thread = try await store.upsert(PerryThread(draft: "Unrelated conversation draft", turns: [.init(question: "Explain saving", answer: "Use Save")]))
-        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        let target = ScreenTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
         var captured = false
         let controller = makeController(
             directory: directory,
@@ -392,7 +392,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let prompt = "show me everything for saving this document"
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
         let thread = try await store.upsert(PerryThread(draft: prompt))
-        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
+        let target = ScreenTargetHint(bundleID: "fixture.editor", processID: 42, windowID: 73, windowTitle: "Orchid")
         var captures = 0
         let controller = makeController(directory: directory, fullGuideCaptureLoader: { _, received in
             XCTAssertEqual(received, target)
@@ -421,7 +421,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let prompt = "show me everything for saving"
         let store = ThreadStore(directory: directory.appendingPathComponent("Threads"))
         let thread = try await store.upsert(PerryThread(draft: prompt))
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app", windowTitle: "Fixture",
             elements: [AXElement(stableID: "save", role: .button, label: "Save",
                 frame: AXElementFrame(x: 20, y: 20, width: 80, height: 30), isActionable: true)]
@@ -476,11 +476,11 @@ final class ForegroundPlanningTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         var selection: SpatialSelection?
         let probe = EnvironmentProbe(
-            workers: CuaWorkerService(), memoryStore: MemoryStore(storageDirectory: directory),
+            workers: ScreenWorkerService(), memoryStore: MemoryStore(storageDirectory: directory),
             oauthCoordinator: OAuthCoordinator(), remoteIntegrationPermissions: RemoteIntegrationPermissionStore(),
             spatialSelection: { selection }, storageDirectory: { directory }
         )
-        let target = CuaTargetHint(bundleID: "fixture.editor", processID: 4242, windowID: 1001, windowTitle: "Document")
+        let target = ScreenTargetHint(bundleID: "fixture.editor", processID: 4242, windowID: 1001, windowTitle: "Document")
         probe.pinInvocationTarget(target)
         probe.pinInvocationTargetIfNeeded()
         XCTAssertEqual(probe.currentTargetHint(), target)
@@ -496,7 +496,7 @@ final class ForegroundPlanningTests: XCTestCase {
         XCTAssertEqual(probe.currentTargetHint(), target)
 
         probe.clearInvocationTarget()
-        let next = CuaTargetHint(bundleID: "fixture.notes", processID: 4343, windowID: 2002)
+        let next = ScreenTargetHint(bundleID: "fixture.notes", processID: 4343, windowID: 2002)
         probe.pinInvocationTarget(next)
         XCTAssertEqual(probe.currentTargetHint(), next)
     }
@@ -569,7 +569,11 @@ final class ForegroundPlanningTests: XCTestCase {
             return false
         }
         XCTAssertTrue(asked, "plain request while .invoking did not open Ask — state: \(controller.sessionState)")
+        let turn = controller.subsystems.talkSession.turnTask
         controller.dismiss()
+        XCTAssertNil(controller.subsystems.talkSession.activeAskID)
+        XCTAssertNil(controller.subsystems.talkSession.turnTask)
+        await turn?.value
     }
 
     func testDispatchDuringAskingOffersTaskWithoutStartingIt() async throws {
@@ -780,7 +784,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 )
             ]
         )
-        let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
@@ -835,7 +839,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 )
             ]
         )
-        let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
@@ -879,7 +883,7 @@ final class ForegroundPlanningTests: XCTestCase {
                 )
             ]
         )
-        let capture = CuaCapturedWindow.debugFixture(snapshot: snapshot)
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: snapshot)
         let controller = makeController(
             directory: directory,
             fullGuideCaptureLoader: { _, _ in capture },
@@ -940,7 +944,7 @@ final class ForegroundPlanningTests: XCTestCase {
     func testErasureClosesAllGuideScopesAndSuppressesDismissedScopeHistory() async throws {
         let directory = try makeTemporaryDirectory()
         let gate = FullGuidePlannerGate()
-        let capture = CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+        let capture = ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
             appBundleID: "fixture.app",
             windowTitle: "Fixture window",
             elements: [
@@ -994,7 +998,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let controller = makeController(
             directory: directory,
             fullGuideCaptureLoader: { _, _ in
-                CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+                ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
                     appBundleID: "fixture.app",
                     windowTitle: "Fixture window",
                     elements: [
@@ -1031,7 +1035,7 @@ final class ForegroundPlanningTests: XCTestCase {
         let controller = makeController(
             directory: directory,
             fullGuideCaptureLoader: { _, _ in
-                CuaCapturedWindow.debugFixture(snapshot: AXSnapshot(
+                ScreenCapturedWindow.debugFixture(snapshot: AXSnapshot(
                     appBundleID: "fixture.app",
                     windowTitle: "Fixture window",
                     elements: [
@@ -1365,7 +1369,7 @@ final class ForegroundPlanningTests: XCTestCase {
         directory: URL,
         finalizationBarrier: (@MainActor () async -> Void)? = nil,
         finalizationPersistenceBarrier: (@Sendable () async -> Void)? = nil,
-        fullGuideCaptureLoader: (@MainActor (CuaWorkerHandle, CuaTargetHint?) async throws -> CuaCapturedWindow)? = nil,
+        fullGuideCaptureLoader: (@MainActor (ScreenWorkerHandle, ScreenTargetHint?) async throws -> ScreenCapturedWindow)? = nil,
         fullGuideContinuationBarrier: (@MainActor (UUID) async -> Void)? = nil,
         fullGuidePlanner: (@MainActor (String, GuideObservation, GuideContext) async throws -> [GuideStep])? = nil,
         typedVerifier: (any TypedActionVerifier)? = nil,
@@ -1390,8 +1394,8 @@ final class ForegroundPlanningTests: XCTestCase {
                     microphone: .granted
                 )
             }
-            $0.cuaHealthLoader = {
-                CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
+            $0.screenHealthLoader = {
+                ScreenDriverHealth(ready: true, summary: "Fixture screen control is ready.")
             }
             $0.fullGuideCaptureLoader = fullGuideCaptureLoader
             $0.fullGuideContinuationBarrier = fullGuideContinuationBarrier
@@ -1403,7 +1407,7 @@ final class ForegroundPlanningTests: XCTestCase {
                     ScreenContext(
                         frontAppBundleID: "fixture.app",
                         frontWindowTitle: "Fixture window",
-                        screenshotReferenceID: "cua:fixture",
+                        screenshotReferenceID: "screen:fixture",
                         screenshotCoordinateSpace: .windowPixels
                     ),
                     nil
@@ -1454,8 +1458,8 @@ final class ForegroundPlanningTests: XCTestCase {
                     microphone: .granted
                 )
             }
-            $0.cuaHealthLoader = {
-                CuaDriverHealth(ready: true, summary: "Fixture Cua Driver is ready.")
+            $0.screenHealthLoader = {
+                ScreenDriverHealth(ready: true, summary: "Fixture screen control is ready.")
             }
             $0.finalizationBarrier = finalizationBarrier
             $0.finalizationPersistenceBarrier = finalizationPersistenceBarrier
@@ -1464,7 +1468,7 @@ final class ForegroundPlanningTests: XCTestCase {
                     ScreenContext(
                         frontAppBundleID: "fixture.app",
                         frontWindowTitle: "Fixture window",
-                        screenshotReferenceID: "cua:fixture",
+                        screenshotReferenceID: "screen:fixture",
                         screenshotCoordinateSpace: .windowPixels
                     ),
                     nil

@@ -52,7 +52,11 @@ final class NotchPresence {
             MainActor.assumeIsolated { self?.cachedZones = nil }
         }
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cachedEnabled = nil }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.cachedEnabled = nil
+                self.syncRestingDots()
+            }
         }
         monitors.append(NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             self?.pointerMoved()
@@ -116,8 +120,8 @@ final class NotchPresence {
         resumeMonitoring = false
     }
 
-    private func currentZones() -> [CGRect]? {
-        guard accepting, isEnabled else { return nil }
+    func currentZones() -> [CGRect]? {
+        guard accepting else { return nil }
         if let cachedZones { return cachedZones }
         let zones = NSScreen.screens.map { NotchGeometry(screen: $0).zone }
         cachedZones = zones
@@ -218,6 +222,16 @@ final class NotchPresence {
         }
         timer.tolerance = 0
         deadlineTimer = timer
+    }
+
+    private func syncRestingDots() {
+        if isEnabled {
+            if surface == .resting { showRestingDotIfNeeded() }
+        } else if !dotPanels.isEmpty {
+            eyes.stop()
+            dotPanels.forEach { $0.orderOut(nil) }
+            dotPanels = []
+        }
     }
 
     private func showRestingDotIfNeeded() {

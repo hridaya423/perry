@@ -191,7 +191,7 @@ final class RealtimeTalkInput: TalkSpeechInput {
 
     func cancel() {
         if isUsingRealtime {
-            voice?.session.beginInput()
+            voice?.session.discardInput()
         } else {
             fallback.cancel()
         }

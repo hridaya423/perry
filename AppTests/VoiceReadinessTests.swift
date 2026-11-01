@@ -17,7 +17,7 @@ final class VoiceReadinessTests: XCTestCase {
         UserDefaults.standard.set(false, forKey: PerryPreferences.$speechOutputEnabled.key)
         controller = VoiceController(
             overlayState: overlayState,
-            workers: CuaWorkerService(),
+            workers: ScreenWorkerService(),
             notifier: ReadinessNotifier(),
             supportDirectory: { nil },
             hooks: VoiceController.Hooks(

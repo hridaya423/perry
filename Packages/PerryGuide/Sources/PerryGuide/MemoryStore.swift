@@ -72,15 +72,14 @@ public actor MemoryStore {
         } else {
             self.fileURL = nil
         }
-        let loaded = Self.load(
-            from: self.fileURL,
-            defaultConfiguration: configuration,
-            fileManager: fileManager
-        )
-        self.configuration = loaded.configuration
-        self.records = loaded.records
-        self.writesBlocked = loaded.writesBlocked
-        self.persistenceIssue = loaded.persistenceIssue
+        let fallback = (configuration: configuration, records: [MemoryRecord]())
+        let loaded = self.fileURL.map {
+            PersistedFileLoader.load(from: $0, fileManager: fileManager, fallback: fallback, decode: Self.decode)
+        }
+        self.configuration = loaded?.value.configuration ?? configuration
+        self.records = loaded?.value.records ?? []
+        self.writesBlocked = loaded?.writesBlocked ?? false
+        self.persistenceIssue = loaded?.persistenceIssue
     }
 
     public var lastPersistenceError: PersistenceError? {
@@ -275,57 +274,6 @@ public actor MemoryStore {
         }
     }
 
-    private struct LoadResult {
-        let configuration: MemoryConfiguration
-        let records: [MemoryRecord]
-        let writesBlocked: Bool
-        let persistenceIssue: PersistenceError?
-    }
-
-    private static func load(
-        from url: URL?,
-        defaultConfiguration: MemoryConfiguration,
-        fileManager: FileManager
-    ) -> LoadResult {
-        guard let url, fileManager.fileExists(atPath: url.path) else {
-            return LoadResult(
-                configuration: defaultConfiguration,
-                records: [],
-                writesBlocked: false,
-                persistenceIssue: nil
-            )
-        }
-
-        let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
-            return recoverCorruptFileOrRestoreBackup(
-                at: url,
-                defaultConfiguration: defaultConfiguration,
-                reason: "read failed: \(error.localizedDescription)",
-                fileManager: fileManager
-            )
-        }
-
-        do {
-            let loaded = try decode(data)
-            return LoadResult(
-                configuration: loaded.configuration,
-                records: loaded.records,
-                writesBlocked: false,
-                persistenceIssue: nil
-            )
-        } catch {
-            return recoverCorruptFileOrRestoreBackup(
-                at: url,
-                defaultConfiguration: defaultConfiguration,
-                reason: error.localizedDescription,
-                fileManager: fileManager
-            )
-        }
-    }
-
     private static func decode(_ data: Data) throws -> (
         configuration: MemoryConfiguration,
         records: [MemoryRecord]
@@ -344,82 +292,6 @@ public actor MemoryStore {
         }
         let legacy = try decoder.decode(LegacyPersistedMemory.self, from: data)
         return (legacy.configuration, legacy.records)
-    }
-
-    private static func recoverCorruptFileOrRestoreBackup(
-        at url: URL,
-        defaultConfiguration: MemoryConfiguration,
-        reason: String,
-        fileManager: FileManager
-    ) -> LoadResult {
-        let recovered = recoverCorruptFile(
-            at: url,
-            defaultConfiguration: defaultConfiguration,
-            reason: reason,
-            fileManager: fileManager
-        )
-        guard !recovered.writesBlocked else { return recovered }
-        let backupURL = url.appendingPathExtension("backup")
-        guard fileManager.fileExists(atPath: backupURL.path) else { return recovered }
-
-        let backupData: Data
-        let loaded: (configuration: MemoryConfiguration, records: [MemoryRecord])
-        do {
-            backupData = try Data(contentsOf: backupURL)
-            loaded = try decode(backupData)
-        } catch {
-            return recoverCorruptFile(
-                at: backupURL,
-                defaultConfiguration: defaultConfiguration,
-                reason: error.localizedDescription,
-                fileManager: fileManager
-            )
-        }
-        do {
-            try backupData.write(to: url, options: .atomic)
-            return LoadResult(
-                configuration: loaded.configuration,
-                records: loaded.records,
-                writesBlocked: false,
-                persistenceIssue: recovered.persistenceIssue
-            )
-        } catch {
-            return LoadResult(
-                configuration: loaded.configuration,
-                records: loaded.records,
-                writesBlocked: true,
-                persistenceIssue: .writeFailed(path: url.path, reason: error.localizedDescription)
-            )
-        }
-    }
-
-    private static func recoverCorruptFile(
-        at url: URL,
-        defaultConfiguration: MemoryConfiguration,
-        reason: String,
-        fileManager: FileManager
-    ) -> LoadResult {
-        let quarantineURL = url.appendingPathExtension("corrupt-\(UUID().uuidString)")
-        do {
-            try fileManager.moveItem(at: url, to: quarantineURL)
-            return LoadResult(
-                configuration: defaultConfiguration,
-                records: [],
-                writesBlocked: false,
-                persistenceIssue: .recoveredCorruptFile(
-                    path: url.path,
-                    quarantinePath: quarantineURL.path,
-                    reason: reason
-                )
-            )
-        } catch {
-            return LoadResult(
-                configuration: defaultConfiguration,
-                records: [],
-                writesBlocked: true,
-                persistenceIssue: .quarantineFailed(path: url.path, reason: error.localizedDescription)
-            )
-        }
     }
 
     private static func markdown(for records: [MemoryRecord], title: String) -> String {

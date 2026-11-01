@@ -4,15 +4,15 @@ import PerryGuide
 
 @MainActor
 final class TalkObservationCapture {
-    private let workers: CuaWorkerService
-    private let targetHint: () -> CuaTargetHint
-    private let appBundleID: (CuaTargetHint) -> String?
-    private let targetStore = CuaGuideTargetStore()
+    private let workers: ScreenWorkerService
+    private let targetHint: () -> ScreenTargetHint
+    private let appBundleID: (ScreenTargetHint) -> String?
+    private let targetStore = ScreenGuideTargetStore()
 
     init(
-        workers: CuaWorkerService,
-        targetHint: @escaping () -> CuaTargetHint,
-        appBundleID: @escaping (CuaTargetHint) -> String?
+        workers: ScreenWorkerService,
+        targetHint: @escaping () -> ScreenTargetHint,
+        appBundleID: @escaping (ScreenTargetHint) -> String?
     ) {
         self.workers = workers
         self.targetHint = targetHint
@@ -24,6 +24,7 @@ final class TalkObservationCapture {
         let hint = targetHint()
         await targetStore.set(hint)
         do {
+            try Task.checkCancellation()
             if AXIsProcessTrusted() {
                 do {
                     let observation = try await LocalTalkObserver(
@@ -42,12 +43,13 @@ final class TalkObservationCapture {
                     TalkSession.logger.error("local capture failed: \(String(describing: error), privacy: .public)")
                 }
             }
+            try Task.checkCancellation()
             var resources = Set<BackgroundTaskResource>()
             if let bundleID = appBundleID(hint) {
                 resources.insert(.application(bundleID))
             }
             let observation = try await workers.withWorker(scope: .dictation, resources: resources) { @MainActor worker in
-                try await CuaGuideTreeReader(worker: worker, targetStore: self.targetStore).observe()
+                try await ScreenGuideTreeReader(worker: worker, targetStore: self.targetStore).observe()
             }
             PerfMark.mark("capture.done")
             return observation
