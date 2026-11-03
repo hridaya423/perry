@@ -4,9 +4,9 @@
 
 Perry is a small, expressive ink companion that helps inside the Mac you already use. The approved direction combines **Perry redraws the window** and **Drawn to life**: handwriting becomes a character, and the character helps form the interface.
 
-This is the target product contract, not a claim that the existing app already implements it. Codex owns design decisions and review; Devin SWE-2 Max implements bounded specifications.
+This is the target product contract, not a claim that the existing app already implements it.
 
-Hey Clicky provides interaction evidence: a focused welcome, an introduction, a transition into the notch, contextual permissions, and a small companion beside the normal pointer. Its Home exists but does not lead every interaction. Perry uses original artwork and its own expression.
+The first-run shape is a focused welcome, a short introduction, a transition into the notch, permissions asked in context, and a small companion beside the normal pointer. Home exists but does not lead every interaction. Perry uses original artwork and its own expression.
 
 ## Surface hierarchy
 

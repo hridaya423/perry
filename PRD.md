@@ -13,13 +13,13 @@ Perry is an original desktop companion with a spatial mint-and-ink identity. The
 
 ## 1. Why this exists
 
-Three products define the space:
+Screen-aware companions are a new kind of desktop software. [clicky](https://github.com/farzaa/clicky) showed that people want a voice companion that draws on their screen, and [openclicky](https://github.com/jasonkneen/openclicky) carried the idea into agents. Perry builds on that idea with three commitments:
 
-- **Cursorly** (Windows) reads the accessibility tree instead of screenshots and stages Point → Ask → Do, but only Point ships and it's type-first.
-- **HeyClicky** (macOS) proved demand: ~25k users, $0/$20/$100 tiers, voice-first, draws annotations on screen, spawns background agents. Its author open-sourced the original core ([farzaa/clicky](https://github.com/farzaa/clicky), MIT, 7.4k stars) then went closed on new features.
-- **[jasonkneen/openclicky](https://github.com/jasonkneen/openclicky)** (MIT, active) extended clicky into agent territory but grew into ~90k lines of Swift with a 16,341-line `CompanionManager.swift` holding 541 functions and ~2% test coverage.
+- **Charm when teaching, precision when acting.** The companion is playful in Guide mode and quiet in Do mode.
+- **A serious trust model.** Typed plans, trust tiers, blocked windows and one clear confirmation before anything irreversible.
+- **No lock-in.** No account and no subscription. Bring your own model, or run one on your Mac.
 
-The gap: nothing combines consumer-grade charm, a serious trust model, and freedom from subscription lock-in. Perry uses the audited competitor journeys as a minimum bar, but its production architecture is independently maintained and tested.
+Perry's architecture is independently written and tested.
 
 ## 2. Who it's for
 
