@@ -286,7 +286,10 @@ final class AgentCoordinator: ObservableObject {
     private func execute(_ request: TurnRequest, sink: Sink, body: TurnBody) async {
         let runID = request.runID
         let threadID = request.threadID
-        defer { observations.remove(runID: runID) }
+        defer {
+            observations.remove(runID: runID)
+            Task { await BrowserLane.shared.release(run: runID) }
+        }
         if let target = request.target { observations.setTarget(target, runID: runID) }
         guard !Task.isCancelled else { sink(.finished(.interrupted)); return }
         let thread: PerryThread

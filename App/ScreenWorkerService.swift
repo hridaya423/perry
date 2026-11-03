@@ -79,7 +79,7 @@ actor ScreenWorkerService {
 
     private let serviceID = UUID()
     private let configuration: AgentDesktopConfiguration?
-    private var fallbackSource: FallbackSource
+    private let fallbackSource: FallbackSource
     private var admission = Admission.accepting
     private var workers: [UUID: Worker] = [:]
     private var maintenanceCompletion: Task<Void, Never>?
@@ -102,9 +102,7 @@ actor ScreenWorkerService {
     private func fallbackConfiguration() -> CuaDriverConfiguration? {
         switch fallbackSource {
         case .discover:
-            let discovered = CuaDriverConfiguration.discover()
-            fallbackSource = .resolved(discovered)
-            return discovered
+            return CuaDriverConfiguration.discoverWithInstalledApps()
         case .resolved(let configuration):
             return configuration
         }

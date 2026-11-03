@@ -8,6 +8,18 @@ struct CuaDriverConfiguration: Sendable {
 
     private static let driverRequirement = "identifier \"cua-driver\" and anchor apple generic and certificate leaf[subject.OU] = \"YCK386LBJ7\""
 
+    static func discoverWithInstalledApps() -> CuaDriverConfiguration? {
+        guard var configuration = discover() else { return nil }
+        if let supportDirectory = AppController.supportDirectory,
+           let generated = CuaCapabilityManifest.materialize(
+               into: supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true),
+               hostBundleID: configuration.hostBundleID
+           ) {
+            configuration.capabilityManifestURL = generated
+        }
+        return configuration
+    }
+
     static func discover(
         environment _: [String: String] = [:],
         fileManager: FileManager = .default,

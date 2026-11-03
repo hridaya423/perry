@@ -5,6 +5,11 @@ import PerryBrain
 struct AgentDesktopFailure: Error, Equatable {
     let error: ScreenDriverError
     let mayHaveLanded: Bool
+    var fieldValueAfter: String?
+
+    func provesTextAbsent(_ text: String) -> Bool {
+        fieldValueAfter.map { !$0.contains(text) } ?? false
+    }
 }
 
 struct AgentDesktopCommand: Sendable {
@@ -96,9 +101,15 @@ struct AgentDesktopCommand: Sendable {
         if code == "TIMEOUT", !mayHaveLanded {
             throw AgentDesktopFailure(error: .appBusy, mayHaveLanded: false)
         }
+        let details = error["details"]
+        if code == "STALE_REF", !mayHaveLanded, details?["check"]?.stringValue == "window_active" {
+            throw AgentDesktopFailure(error: .windowNotInFront, mayHaveLanded: false)
+        }
+        let verifiedValue = details?["kind"]?.stringValue == "post_action_verification" ? details?["post_state"]?["value"]?.stringValue : nil
         throw AgentDesktopFailure(
             error: Self.error(code: code, message: error["message"]?.stringValue ?? ""),
-            mayHaveLanded: mayHaveLanded
+            mayHaveLanded: mayHaveLanded,
+            fieldValueAfter: verifiedValue
         )
     }
 

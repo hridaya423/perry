@@ -11,6 +11,9 @@ final class ToolApprovalHeadlineTests: XCTestCase {
         XCTAssertEqual(headline("app.launch", "Calculator"), "Open Calculator?")
         XCTAssertEqual(headline("files.trash", "/Users/me/report.txt"), "Move report.txt to the Trash?")
         XCTAssertEqual(headline("ui.click", nil), "Click here?")
+        XCTAssertEqual(headline("browser.js", nil), "Run a script on this page?")
+        XCTAssertEqual(headline("browser.connect", nil), "Let Perry use your browser?")
+        XCTAssertEqual(headline("browser.connect", "Google Chrome"), "Let Perry use Google Chrome?")
         XCTAssertEqual(headline("mcp.github.create_issue", nil), "Use github’s create_issue?")
     }
 }

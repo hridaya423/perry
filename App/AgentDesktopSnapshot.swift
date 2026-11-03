@@ -30,7 +30,6 @@ struct AgentDesktopElement: Sendable, Equatable {
     let role: String
     let label: String?
     let center: ComputerCoordinates?
-    var holdsState = false
     var isSecure = false
 }
 
@@ -105,18 +104,29 @@ struct AgentDesktopSnapshot: Sendable {
                         y: (frame.y + frame.height / 2 - target.y) * scale
                     )
                 },
-                holdsState: !Self.toggleStates.isDisjoint(with: node.states),
                 isSecure: node.isSecure
             )
         }
     }
 
     func uniqueRefMatching(label targetLabel: String) -> String? {
-        let labelled = actionable.compactMap { node in node.label.map { (node, $0) } }
+        let labelled = actionable.compactMap { node in (node.label ?? (node.isSecure ? nil : Self.nonEmpty(node.value))).map { (node, $0) } }
         let exact = labelled.filter { $0.1.caseInsensitiveCompare(targetLabel) == .orderedSame }
         let candidates = exact.isEmpty ? labelled.filter { $0.1.localizedCaseInsensitiveContains(targetLabel) } : exact
         return candidates.count == 1 ? candidates[0].0.ref : nil
     }
+
+    func smallestScrollable(containing point: ComputerCoordinates) -> String? {
+        actionable
+            .filter { node in
+                guard Self.scrollRoles.contains(node.role), let frame = node.frame else { return false }
+                return point.x >= frame.x && point.x <= frame.x + frame.width && point.y >= frame.y && point.y <= frame.y + frame.height
+            }
+            .min { ($0.frame?.width ?? 0) * ($0.frame?.height ?? 0) < ($1.frame?.width ?? 0) * ($1.frame?.height ?? 0) }?
+            .ref
+    }
+
+    private static let scrollRoles: Set<String> = ["scrollarea", "table", "list", "outline", "webarea", "browser", "collection"]
 
     var focusedTextField: AgentDesktopNode? {
         let fields = actionable.filter { Self.textRoles.contains($0.role) }
@@ -127,7 +137,6 @@ struct AgentDesktopSnapshot: Sendable {
     }
 
     private static let textRoles: Set<String> = ["textfield", "textarea", "searchfield"]
-    private static let toggleStates: Set<String> = ["checked", "selected", "expanded", "pressed", "mixed"]
 
     static func nonEmpty(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }

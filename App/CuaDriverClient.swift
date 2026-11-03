@@ -325,16 +325,7 @@ actor CuaDriverClient {
     private func resolvedConfiguration() -> CuaDriverConfiguration? {
         switch configurationSource {
         case .discover:
-            var configuration = CuaDriverConfiguration.discover()
-            if var discovered = configuration,
-               let supportDirectory = AppController.supportDirectory,
-               let generated = CuaCapabilityManifest.materialize(
-                   into: supportDirectory.appendingPathComponent("CuaDriver", isDirectory: true),
-                   hostBundleID: discovered.hostBundleID
-               ) {
-                discovered.capabilityManifestURL = generated
-                configuration = discovered
-            }
+            let configuration = CuaDriverConfiguration.discoverWithInstalledApps()
             configurationSource = .resolved(configuration)
             return configuration
         case .resolved(let configuration):

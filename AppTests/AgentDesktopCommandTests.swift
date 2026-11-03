@@ -110,6 +110,24 @@ final class AgentDesktopCommandTests: XCTestCase {
         XCTAssertEqual(data["value"]?.stringValue, "x")
     }
 
+    func testFocusRefusalAndVerifiedFieldValueSurviveDecoding() {
+        let focus = #"{"ok":false,"error":{"code":"STALE_REF","message":"no key was sent","details":{"cause":"exact_window_focus_unconfirmed","check":"window_active"},"disposition":{"delivery":"not_delivered","retry":"safe"}}}"#
+        XCTAssertThrowsError(try AgentDesktopCommand.decode(Data(focus.utf8))) { error in
+            XCTAssertEqual(error as? AgentDesktopFailure, AgentDesktopFailure(error: .windowNotInFront, mayHaveLanded: false))
+        }
+        let ignored = #"{"ok":false,"error":{"code":"ACTION_FAILED","message":"Post-action state does not match","details":{"kind":"post_action_verification","post_state":{"value":"draft"}},"disposition":{"delivery":"delivered_unverified","retry":"unsafe"}}}"#
+        XCTAssertThrowsError(try AgentDesktopCommand.decode(Data(ignored.utf8))) { error in
+            let failure = error as? AgentDesktopFailure
+            XCTAssertEqual(failure?.mayHaveLanded, true)
+            XCTAssertEqual(failure?.provesTextAbsent("hello"), true)
+            XCTAssertEqual(failure?.provesTextAbsent("raf"), false)
+        }
+        let unrelated = #"{"ok":false,"error":{"code":"ACTION_FAILED","message":"press failed","disposition":{"delivery":"delivered_unverified"}}}"#
+        XCTAssertThrowsError(try AgentDesktopCommand.decode(Data(unrelated.utf8))) { error in
+            XCTAssertEqual((error as? AgentDesktopFailure)?.provesTextAbsent("hello"), false, "no read-back means no proof")
+        }
+    }
+
     func testOutputLargerThanThePipeBufferIsReadWhole() async throws {
         let data = try await command.run(["big"], session: "s", timeout: .seconds(10))
         XCTAssertEqual(data["data"]?.stringValue?.count, 4_000_000)

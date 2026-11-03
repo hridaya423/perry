@@ -1,3 +1,67 @@
+# Current: agent-desktop + cua vs cua alone, live on the mini (2026-11-03)
+
+Goal (owner): hard tests that prove whether agent-desktop + cua beats cua alone, run on the mini; fix what they reveal in Perry's harness. Then look at browser-use.
+
+How the tests run (resume from here):
+- Perry Debug on the mini is ad-hoc signed; TCC grants are keyed to the stub's cdhash 7785f9cb. `~/adbench/PerryGranted.app` is a byte copy of the granted build. After every `~/adbench/bft.sh` (xcodegen + build-for-testing), run `~/adbench/regrant.sh`: it copies the granted stub and CodeResources back, so the test host keeps Accessibility and Screen Recording. Over ssh or Terminal both read as denied.
+- `~/adbench/twb.sh <TestClass...>` runs test-without-building with a watchdog (`LOG=`, `LIMIT=`). `~/adbench/torture-all.sh` (`TAG=`, `REPEATS=`) runs `DriverTortureLiveTests` for cua, hybrid + agent-desktop 1.0.2, hybrid + 1.1.0 into `~/adbench/results-<TAG>.jsonl`.
+- `~/adbench/run-in-perry.sh "<cmd>"` runs a shell command as a child of the granted Perry (DYLD-injected `labexec.dylib`, launched through LaunchServices) for raw CLI probes.
+- Fixture: `scripts/lab/torture-fixture` (ground-truth log). Test: `AppTests/DriverTortureLiveTests.swift` (env `PERRY_TORTURE=1`, passed as `TEST_RUNNER_*`). CLI bench: `scripts/lab/driver-cli-bench.py`.
+
+Found and fixed (unit-tested; live rerun r3 pending):
+- Build broke on Xcode 27: `VoiceController.wakeWordListener` lazy var circular type; `TestSupport.pollUntil` non-escaping closure.
+- cua fallback ran with the static 6-app manifest (`display: false`), so it refused every other app. Before the switch the worker used the discovering init. `CuaDriverConfiguration.discoverWithInstalledApps()` now serves both paths, uncached per worker.
+- cua refuses x,y input on a window it has not read in the session; `viaFallback` now captures through cua first.
+- Double press: Perry repeated every `delivered_unverified` click through cua. A working AX press reports exactly that, and cua's "pixel" click on an element is an AX hit-test press, so the repeat fired normal buttons twice (burst of 20 landed 40) and could never rescue a button that ignores AXPress. Removed (agent-desktop contract: never repeat unless `not_delivered`).
+- Password text landed but was reported failed (cua cannot confirm a secure field); now typed through cua `execute`.
+- Popup `set-value` unsupported → falls back to `select`.
+- Background keys: agent-desktop refuses (`window_active`, not delivered) and Perry reported it as stale. Now: headed retry in the foreground scope, cua `hotkey` in the background (cua `press_key` drops modifiers), else `windowNotInFront`.
+- WebKit inputs ignore AX typing; when agent-desktop's read-back proves the text absent, Perry types through cua.
+- Table cells carry text in `value`; the guide snapshot and label matching now use it.
+- `ScreenWorkerProcessTests` expectations were older than the `--` text rule and focused-field rule; fake updated.
+- Foreground scope: pixel clicks and drags now use agent-desktop `--headed` (lands: canvas 200,100 exact). cua's "background pixel" click is an AX hit-test press on elements and an unreceived pid event on custom views.
+- Scroll on a cell agent-desktop can't scroll → scrolls the smallest scrollable container under it. Background single keys fall back to cua `press_key`, combos to `hotkey`.
+- `ui.type` copy says it inserts at the caret and doesn't replace a selection (agent-desktop `type` appends even after cmd+a).
+
+Final live run r4 (3 reps, `~/adbench/results-r4.jsonl`): cua 65/96, p50 520 ms; hybrid 1.0.2 71/96, p50 229 ms; hybrid 1.1.0 74/96, p50 387 ms. Unit suites after the last change: 182 + 76 + 46 + 27 + 13 + 10 + 9 tests, 0 failures.
+
+Open (needs the mini clear of prompts):
+- 2026-11-03 14:38: the mini shows pending TCC prompts (OpenBot Downloads, cua-spaced screen recording, Device Control) and, after a probe used System Events, every agent-desktop call (1.0.2 and 1.1.0) hangs. Owner clears the prompts; then rerun table-scroll (the r4 failure was a test bug, fixed: count rows from element details), calculator for hybrid 1.0.2 (flaky noTargetWindow; suspect NSRunningApplication lag for a just-launched pid, not proven), sheet (hybrid now completes, but the fixture became frontmost; cua did not do that).
+- Not fixable in the drivers: lying AXPress buttons in the background (both), canvas input in the background (both), parallel workers under Stage Manager (cua times out; hybrid refuses staged windows correctly), select-all then type (append semantics).
+- Upgrade to agent-desktop 1.1.0: no correctness gain on these tests, ~100-160 ms slower per call (no command host). Stay on 1.0.2 for now.
+- Not run: `scripts/lab/driver-cli-bench.py` (written, blocked by the hang).
+- browser-use: `browser-harness` drives the user's real Chrome over CDP with an MCP server; candidate third lane for Chrome tasks. Owner approved trying it (2026-11-03).
+
+## Agent-level comparison: browser-harness vs Perry (agent-desktop + cua), hard web tasks (2026-11-03)
+
+Setup (resume from here):
+- Task site: scratchpad `hardweb/` copied to mini `~/adbench/hardweb/`; `python3 server.py` serves 127.0.0.1:18765 and :18766 (cross-origin iframe), logs ground truth, `/api/verdict?t=N` grades, `/api/reset?t=N` clears. 8765 is taken on the mini.
+- 12 tasks (`tasks.json`): closed-shadow-DOM comboboxes + scroll-gated terms, cross-origin card iframe + 25 s bank code, 10k-row virtual list with hover-only actions + typed confirm, HTML5 drag-and-drop kanban, contenteditable bold/italic/link, layout-shift trap with a destructive decoy, div slider to exactly 37 + calendar to 29 Feb 2028, canvas chart with peaks 0.1 kW apart, hover-only 3-level mega menu, look-alike products told apart only by canvas colour + coupon in a hover tooltip, spreadsheet formulas + header-menu sort, newest code from a second tab.
+- Browser: Chrome for Testing 156 (`~/adbench/cft`, bundle `com.google.chrome.for.testing`, so it never collides with the mini's own Chrome), `--remote-debugging-port=9333 --user-data-dir=~/adbench/chrome-eval`. `tab.py` resets to one tab per task.
+- Arms: `claude -p` on the MacBook (mini claude is logged out; vault keys 401), `claude-sonnet-5-5`, same system prompt, MCP over ssh. bh = `~/adbench/bh-mcp.sh` (browser-harness-mcp, `BU_CDP_URL`, telemetry off). perry = `perry-mcp` against the Debug app launched with `PERRY_LAB_AUTO_APPROVE=1` (files/memory/marks tools denied). Runner: `hardweb/run_eval.py --out <dir>`; `trace.py` prints a run.
+
+Found and fixed:
+- `ui.scroll` refused every Chrome page ("I can't do that in this window"). Chrome's scroll containers carry no agent-desktop ref, so Perry scrolled the first ref it found (a toolbar button) and agent-desktop refused. Now: semantic scroll on the target ref, then the smallest scrollable container under the point, then cua's background wheel at the point. Probe: cua background wheel moved the list `scrollTop` 0 → 800. Tests `testAPageAgentDesktopCannotScrollIsWheeledByCuaAtThePoint`, `testAScrollAgentDesktopCannotDoWithoutCuaSaysSo`; 115 driver tests pass on the mini. Invoice task: Perry FAILED before, DONE after (313 s; browser-harness 31 s by setting `scrollTop` from JS).
+
+Run r1 (scratchpad `runs/r1`), stopped after 2 tasks at 15:36: bh passed t1 (29 s, $0.08) and t2 (27 s, $0.05). Perry's t1/t2 failures are void: every agent-desktop call on the mini (Finder too) returned "Command host reply was lost" while system prompts stacked on screen (OpenBot Downloads access, cua-spacesd → System Events automation, Privacy & Security). Same hang as 14:38. Owner clears the prompts; then rerun `run_eval.py --out runs/r2 --arms bh,bhv,perry` (bhv = browser-harness with a screenshot tool that returns the image, `~/adbench/bhv-mcp.sh`; plain browser-harness-mcp only returns a path on the mini).
+
+r2 (`runs/r2`, one run per task, same model/prompt): browser-harness 12/12, median 20 s, $0.63 total; browser-harness that sees its screenshots 12/12, 20 s, $0.90; Perry (agent-desktop + cua) 7/12, 38 s, $3.64. Perry misses: checkout (TrustGuard refuses "checkout" titles, by design), kanban (background drag never reaches Chrome), layout-shift order (6 s confirm expired; Perry stopped rather than risk a second order), chart (no hover), spreadsheet (header menu clicks and typing didn't reach the page; typing hit the address bar).
+
+Browser lane (owner chose a Swift port of browser-harness over bundling Python, 2026-11-03):
+- `App/Browser/ChromeDevTools.swift`: endpoint discovery like browser-harness (DevToolsActivePort in Chrome/Edge/Brave/Arc/... profiles, `/json/version`, ws-path fallback, 403 → waiting for Allow, Local State toggle → how to turn on chrome://inspect/#remote-debugging; `PERRY_BROWSER_CDP_URL` override) and one persistent WebSocket with request ids, timeouts, dialog and drag-intercept events, reconnect.
+- `App/Browser/BrowserLane.swift`: per-run tab attachment (front browser window's tab, else first page), TrustGuard on tab titles every call, key mapping ported from browser-harness.
+- `App/Browser/BrowserTools.swift`: 17 `browser.*` tools (page, screenshot in CSS px, text, tabs, open, switch, close, goto, click, hover, drag with HTML DnD interception, type, key, scroll, js with iframe support, wait, dialog). js is orange ("Run a script on this page?"); actions yellow; reads green. Registered in `AppToolHost`; sessions released when an MCP connection or agent run ends.
+- Tests: `AppTests/BrowserLaneTests.swift` (10, fake Chrome over Network.framework WebSocket), headline test. 126 tests pass on the mini.
+- Live: kanban task with the lane passes in 7 s / 3 calls (failed before). Full rerun `runs/r3` (arm `perryb`; Perry launched with `PERRY_BROWSER_CDP_URL=http://127.0.0.1:9333`) in progress.
+
+r3 (browser lane, `runs/r3`): 11/12, median 14 s, $0.72 total, 0 non-browser events. The miss is checkout (TrustGuard, by design). Torture reruns r5: calculator hybrid 3/3 (cua 0/3); sheet and table-scroll hybrid runs were disturbed by someone using the mini; rerun when it's quiet.
+
+`browser.connect` (owner asked Perry to turn on remote debugging itself, 2026-11-03): orange tier, card "Let Perry use <browser>?". Opens chrome://inspect/#remote-debugging in the named browser (or the browser whose window is topmost), ticks "Allow remote debugging for this browser instance" through the screen worker, confirms a fresh DevToolsActivePort, then waits up to 120 s while the user clicks Chrome's own Allow, and closes the inspect tab. It never clicks Chrome's Allow. Live on the mini with Chrome for Testing: connect 51.8 s (waiting on Allow), then `browser.page` worked.
+- Incident: the first version fell back to "first running browser" and turned on remote debugging in the owner's real Chrome on the mini (16:16–16:17) and left two chrome://inspect tabs. Reverted: unticked, port 9222 closed, both tabs closed (front tab back to the owner's). Fixed by `ChromeEndpoint.browser(named:running:windowOrder:)` + `testConnectOnlyTouchesTheBrowserNamedOrInFront`. Live retest named Chrome for Testing; the real Chrome's setting stayed off.
+
+Seen, not fixed yet: background drags do nothing in Chrome (scrollbar drag); after bursts of 50-notch scrolls Chrome stopped answering AX for ~1 min ("took too long"), and `app.launch` brought it back.
+
+
 # Current: review and harden the uncommitted work (2026-11-01, later)
 
 Owner: review, deslop and implement fixes to a high standard; if the mini is down, do code-only work and leave testing for later.
@@ -1210,3 +1274,23 @@ Done:
 Evidence:
 - Mini: PerryTests 932 (7 skipped, 0 failures). PerryOverlay 40, PerryRuntimes 107 and PerryBrain 441 pass. The ink-pixel test predicate now accepts sage.
 - Renders: ring, arrow and character on dark and light backgrounds. Site screenshots of the hero, statement, stage and finale, taken in headless Chrome.
+
+
+## 2026-11-02: branding imagegen concepts
+
+Completed image-only exploration with four selected directions: Parallax, Hotwire, Oddkin and Foldspace. Six images generated across two rounds. Boards, exact prompts, rationale and limits: docs/design/2026-11-02-brand-directions/README.md. All generated outputs visually inspected; four selected PNGs decoded at 1536 x 1024 and checked fully opaque. No app code or existing assets changed. Recommendation is Oddkin for companion personality, Parallax for optical sophistication. User has not selected a direction. Production vector work, actual tiny icon legibility, contrast and trademark checks are outside this concept pass.
+
+## 2026-11-03 quality pass (review, deslop, performance, ponytail, perfection)
+
+Done:
+- Browser detection has one source: `ChromeEndpoint.browsers`, `isBrowser`, `onScreenWindows`. Removed the second bundle-prefix list and the duplicate CGWindowList walks.
+- TrustGuard holes closed: `browser.switch`/`close` resolve now refuse protected tabs; `browser.tabs` hides protected titles and URLs; the `frame` path of `browser.js` attaches (and checks) first.
+- Discovery: a non-200 from `/json/version` falls through to the DevToolsActivePort ws path instead of a fake Chrome error.
+- `browser.scroll` skips the viewport-centre round trip when x and y are given. `disconnect`, `inspectURL`, `literal`, `json` made private.
+- `ui.scroll` on an element now scrolls the smallest scroll container under it first, then the ref, then a cua wheel. Scrolling a row ref was an AX no-op.
+- Torture `table-scroll` counted rows from `label ?? value` only; hybrid keeps row text in `elementDetails`. Fixed the count.
+Evidence: 127 driver and browser tests pass on the mini. Torture r8 table-scroll: hybrid 2/2 undisturbed (Item 99), cua 2/2. Before: hybrid 0/3 in every round since r2.
+Open:
+- Torture `sheet` fails with "window is in the Stage Manager strip". Stage Manager is on (`GloballyEnabled 1`). Rerun with it off or on a quiet mini.
+- Every browser command costs one extra `Target.getTargetInfo` for the per-call TrustGuard title check. Kept deliberately; the upgrade is tracking `Target.targetInfoChanged`.
+- The r3 eval was not rerun after this pass (the mini was in use).

@@ -156,6 +156,7 @@ enum ScreenDriverError: Error, LocalizedError, Equatable {
     case targetMismatch
     case actionUnanswered
     case appBusy
+    case windowNotInFront
 
     var errorDescription: String? {
         switch self {
@@ -191,6 +192,8 @@ enum ScreenDriverError: Error, LocalizedError, Equatable {
             return "The app didn’t answer in time, so screen control restarted. The action may or may not have happened: look at the window again before the next step."
         case .appBusy:
             return "The app took too long to answer, so I didn’t act. Try again."
+        case .windowNotInFront:
+            return "Keys only reach the window in front, so I didn’t press them. Bring that window forward, then try again."
         }
     }
 
@@ -208,7 +211,7 @@ enum ScreenDriverError: Error, LocalizedError, Equatable {
 
     var isTargetFact: Bool {
         switch self {
-        case .targetMismatch, .targetNotFound, .staleTarget, .noTargetWindow, .protectedTarget, .unsupportedAction, .toolRejected, .appBusy:
+        case .targetMismatch, .targetNotFound, .staleTarget, .noTargetWindow, .protectedTarget, .unsupportedAction, .toolRejected, .appBusy, .windowNotInFront:
             return true
         default:
             return false

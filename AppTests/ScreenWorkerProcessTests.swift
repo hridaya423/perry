@@ -33,11 +33,15 @@ final class ScreenWorkerProcessTests: XCTestCase {
         image=$(cat "$root/image.b64" 2>/dev/null || printf 'AQI=')
         width=$(cat "$root/image-width" 2>/dev/null || printf '800')
         ok() { printf '{"version":"2.5","ok":true,"command":"%s","data":%s}\n' "$command" "$1"; }
+        surface=""
+        case " $* " in *" --surface focused "*) surface=focused ;; esac
         case "$command" in
             list-windows) ok "[{\"id\":\"w-1\",\"title\":\"Fixture\",\"app_name\":\"Fixture\",\"pid\":$apppid,\"is_focused\":true,\"bounds\":{\"x\":\#(windowOrigin.x),\"y\":\#(windowOrigin.y),\"width\":800,\"height\":600}}]" ;;
-            snapshot) if [ -f "$root/finder" ]; then ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}},{"ref_id":"@s1:e2","role":"textfield","value":"draft-a.txt","available_actions":["ShowMenu","Confirm"],"bounds":{"x":20,"y":60,"width":80,"height":18}}]}}'; else ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}}]}}'; fi ;;
+            snapshot) if [ "$surface" = focused ]; then ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e3","role":"textfield","name":"Field","states":["focused"],"bounds":{"x":20,"y":90,"width":200,"height":24}}]}}'; elif [ -f "$root/finder" ]; then ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}},{"ref_id":"@s1:e2","role":"textfield","value":"draft-a.txt","available_actions":["ShowMenu","Confirm"],"bounds":{"x":20,"y":60,"width":80,"height":18}}]}}'; else ok '{"snapshot_id":"s1","complete":true,"tree":{"role":"window","name":"Fixture","children":[{"ref_id":"@s1:e1","role":"button","name":"Save","available_actions":["Click"],"bounds":{"x":20,"y":20,"width":80,"height":24}}]}}'; fi ;;
             screenshot) ok "{\"format\":\"png\",\"width\":$width,\"height\":600,\"scale_factor\":$(( width / 800 )),\"data\":\"$image\"}" ;;
             set-value) if [ -f "$root/die-on-set" ]; then rm "$root/die-on-set"; exit 1; fi; ok '{}' ;;
+            type) eval "text=\${$#}"; printf '%s' "$text" >> "$root/typed"; ok '{}' ;;
+            get) ok "{\"property\":\"value\",\"value\":\"$(cat "$root/typed" 2>/dev/null)\"}" ;;
             *) ok '{}' ;;
         esac
         """#
@@ -119,7 +123,8 @@ final class ScreenWorkerProcessTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         let typed = try XCTUnwrap(Self.calls(requests, named: "type").last)
-        XCTAssertEqual(Array(typed.prefix(3)), ["type", "@s1:e1", "cedar-a.txt"])
+        XCTAssertEqual(typed[1], "@s1:e3", "text goes only to the focused field")
+        XCTAssertEqual(Array(typed.suffix(2)), ["--", "cedar-a.txt"])
         XCTAssertTrue(Self.calls(requests, named: "mouse-click").isEmpty, requests)
     }
 
@@ -170,7 +175,8 @@ final class ScreenWorkerProcessTests: XCTestCase {
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
         let requests = try files.filter { $0.lastPathComponent.hasPrefix("requests-") }.map { try String(contentsOf: $0, encoding: .utf8) }.joined()
         let set = try XCTUnwrap(Self.calls(requests, named: "set-value").last)
-        XCTAssertEqual(Array(set.prefix(3)), ["set-value", "@s1:e1", "cedar-a.txt"])
+        XCTAssertEqual(set[1], "@s1:e1")
+        XCTAssertEqual(Array(set.suffix(2)), ["--", "cedar-a.txt"])
         XCTAssertFalse(set.contains("--headed"), requests)
     }
 
@@ -254,7 +260,7 @@ final class ScreenWorkerProcessTests: XCTestCase {
         XCTAssertEqual(actions.map { $0[0] }, ["click", "press", "type"], requests)
         XCTAssertEqual(actions[0][1], "@s1:e1")
         XCTAssertEqual(actions[1][1], "return")
-        XCTAssertEqual(actions[2][2], "cedar")
+        XCTAssertEqual(actions[2].last, "cedar")
     }
 
     func testMissedClickTargetKeepsTheWorkerAlive() async throws {

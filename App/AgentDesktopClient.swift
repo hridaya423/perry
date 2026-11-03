@@ -28,14 +28,6 @@ actor AgentDesktopClient {
     private static let stepDelay = Duration.milliseconds(300)
     private static let foregroundOnlyBundleIDs: Set<String> = ["com.apple.finder"]
     private static let healthSession = "perry-health"
-    private static let repeatableRoles: Set<String> = ["button", "link", "tab", "radiobutton", "menuitem", "row", "cell", "treeitem"]
-    private static let consequentialWords: Set<String> = [
-        "send", "delete", "remove", "pay", "buy", "purchase", "order", "checkout", "submit", "confirm", "post",
-        "publish", "transfer", "erase", "trash", "quit", "reply", "forward", "share", "install", "uninstall",
-        "allow", "approve", "accept", "decline", "reject", "download", "upload", "archive", "move", "empty",
-        "discard", "cancel", "subscribe", "unsubscribe", "add", "new", "create", "duplicate", "book", "call",
-        "sign", "log", "logout", "signout", "invite", "replace", "merge",
-    ]
     private static let windowManagerBundleID = "com.apple.WindowManager"
     private static let stageOverlayTitle = "Gesture Blocking Overlay"
     static let windowInStageStrip = ScreenDriverError.toolRejected(
@@ -275,11 +267,17 @@ actor AgentDesktopClient {
         _ = try validateResolvedTarget(resolvedTarget, sessionID: sessionID)
         let field = try await focusedField(in: resolvedTarget, sessionID: sessionID)
         if field.isSecure {
-            try await typeSecurely(text, into: field.ref, window: resolvedTarget, sessionID: sessionID)
+            try await typeThroughCua(text, into: field.ref, window: resolvedTarget, sessionID: sessionID)
         } else {
             let before = try await fieldValue(field.ref, sessionID: sessionID)
-            let typed = try await run(["type", field.ref], payload: text, session: sessionID, timeout: requestTimeout)
-            if Self.delivery(typed) != "delivered_verified" {
+            let typed: JSONValue?
+            do {
+                typed = try await run(["type", field.ref], payload: text, session: sessionID, timeout: requestTimeout)
+            } catch let failure as AgentDesktopFailure where fallback != nil && failure.provesTextAbsent(text) {
+                try await typeThroughCua(text, into: field.ref, window: resolvedTarget, sessionID: sessionID)
+                typed = nil
+            }
+            if typed.flatMap(Self.delivery) != "delivered_verified" {
                 let after = try await fieldValue(field.ref, sessionID: sessionID)
                 guard Self.occurrences(of: text, in: after) > Self.occurrences(of: text, in: before) else {
                     throw ScreenDriverError.toolRejected("I couldn’t confirm the text went into the field.")
@@ -653,45 +651,65 @@ actor AgentDesktopClient {
                 field = try await focusedField(in: state.target, sessionID: sessionID)
             }
             if field.isSecure {
-                try await typeSecurely(text, into: field.ref, window: state.target, sessionID: sessionID)
+                try await typeThroughCua(text, into: field.ref, window: state.target, sessionID: sessionID)
             } else {
-                try await refAction(["type", field.ref], payload: text, state: state, sessionID: sessionID)
+                do {
+                    try await refAction(["type", field.ref], payload: text, state: state, sessionID: sessionID)
+                } catch let failure as AgentDesktopFailure where fallback != nil && failure.provesTextAbsent(text) {
+                    try await typeThroughCua(text, into: field.ref, window: state.target, sessionID: sessionID)
+                }
             }
         case .setValue(let value, let target):
             guard let ref = try await elementRef(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken) else {
                 throw ScreenDriverError.targetNotFound
             }
             guard !isSecure(ref, state: state, sessionID: sessionID) else { throw Self.secureFieldNeedsTheUser }
-            _ = try await run(["set-value", ref], payload: value, session: sessionID, timeout: requestTimeout)
+            do {
+                _ = try await run(["set-value", ref], payload: value, session: sessionID, timeout: requestTimeout)
+            } catch let failure as AgentDesktopFailure where failure.error == .unsupportedAction && !failure.mayHaveLanded {
+                _ = try await run(["select", ref], payload: value, session: sessionID, timeout: requestTimeout)
+            }
         case .scroll(let direction, let amount, let by, let target):
-            let ref: String
-            if let target, let resolved = try await elementRef(for: target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken) {
-                ref = resolved
-            } else {
+            let units = by == .page ? amount * 10 : amount
+            func scrolled(_ ref: String) async throws -> Bool {
+                do {
+                    try await refAction(["scroll", ref, "--direction", direction.rawValue, "--amount", String(max(1, units))], state: state, sessionID: sessionID)
+                    return true
+                } catch let failure as AgentDesktopFailure where failure.error == .unsupportedAction && !failure.mayHaveLanded {
+                    return false
+                }
+            }
+            var point = target?.point
+            var ref: String?
+            if let target, case .ref(let targetRef) = try await pointer(target) {
+                ref = targetRef
+                point = point ?? (sessionStates[sessionID]?.elements[targetRef] ?? state.elements[targetRef])?.center
+            } else if target == nil {
                 ref = try await scrollableRef(in: state.target, sessionID: sessionID)
             }
-            let units = by == .page ? amount * 10 : amount
-            try await refAction(
-                ["scroll", ref, "--direction", direction.rawValue, "--amount", String(max(1, units))],
-                state: state,
-                sessionID: sessionID
-            )
+            if let point,
+               let container = try await liveSnapshot(state.target, sessionID: sessionID, arguments: ["--include-bounds", "-i"])
+                   .smallestScrollable(containing: screenPoint(point, state: state)),
+               try await scrolled(container) {
+                return
+            }
+            if let ref, try await scrolled(ref) { return }
+            guard fallback != nil else { throw ScreenDriverError.unsupportedAction }
+            let wheel = ComputerAction(stepID: "scroll", operation: .scroll(direction: direction, amount: amount, by: by, target: point.map { .point($0) }))
+            try await viaFallback(wheel, state: state, sessionID: sessionID)
         case .pressKey(let key, let modifiers, let target):
             try await focus(target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken)
-            let combo = ((modifiers ?? []) + [key]).map { $0.lowercased() }.joined(separator: "+")
-            _ = try await run(["press", combo, "--window-id", window] + headed(state.target), session: sessionID, timeout: requestTimeout)
+            try await press(((modifiers ?? []) + [key]).map { $0.lowercased() }, window: window, state: state, sessionID: sessionID)
         case .hotkey(let keys, let target):
             try await focus(target, state: state, sessionID: sessionID, trustsSnapshotToken: trustsSnapshotToken)
-            let combo = keys.map { $0.lowercased() }.joined(separator: "+")
-            _ = try await run(["press", combo, "--window-id", window] + headed(state.target), session: sessionID, timeout: requestTimeout)
+            try await press(keys.map { $0.lowercased() }, window: window, state: state, sessionID: sessionID)
         case .drag(let from, let to, let durationMilliseconds, let steps):
             guard !stagedWindowIDs.contains(state.target.windowID) else { throw Self.windowInStageStrip }
-            if fallback != nil {
+            guard allowsForegroundInput else {
                 let drag = ComputerAction(stepID: "drag", operation: .drag(from: from, to: to, durationMilliseconds: durationMilliseconds, steps: steps))
                 try await viaFallback(drag, state: state, sessionID: sessionID)
                 return
             }
-            guard allowsForegroundInput else { throw Self.pointerNeedsForeground }
             let start = screenPoint(from, state: state)
             let end = screenPoint(to, state: state)
             var arguments = ["drag", "--from-xy=\(Self.coordinate(start))", "--to-xy=\(Self.coordinate(end))", "--headed"]
@@ -717,6 +735,28 @@ actor AgentDesktopClient {
         }
     }
 
+    private func press(_ keys: [String], window: String, state: AgentDesktopSessionState, sessionID: String) async throws {
+        let arguments = ["press", keys.joined(separator: "+"), "--window-id", window]
+        do {
+            _ = try await run(arguments + headed(state.target), session: sessionID, timeout: requestTimeout)
+        } catch let failure as AgentDesktopFailure where failure.error == .windowNotInFront && !failure.mayHaveLanded {
+            if allowsForegroundInput {
+                _ = try await run(arguments + ["--headed"], session: sessionID, timeout: requestTimeout)
+                return
+            }
+            guard let fallback, !stagedWindowIDs.contains(state.target.windowID) else { throw failure }
+            let target = state.target
+            _ = try await fallback.resolveTarget(
+                ScreenTargetHint(bundleID: target.bundleID, processID: target.processID, windowID: target.windowID),
+                sessionID: sessionID
+            )
+            let operation: ComputerAction.Operation = keys.count == 1
+                ? .pressKey(key: keys[0], modifiers: nil, target: nil)
+                : .hotkey(keys: keys, target: nil)
+            _ = try await fallback.execute(ComputerAction(stepID: "fallback-keys", operation: operation), sessionID: sessionID)
+        }
+    }
+
     private func pointerClick(
         _ point: ComputerCoordinates,
         button: String,
@@ -725,11 +765,10 @@ actor AgentDesktopClient {
         sessionID: String
     ) async throws {
         guard !stagedWindowIDs.contains(state.target.windowID) else { throw Self.windowInStageStrip }
-        if fallback != nil {
+        guard allowsForegroundInput else {
             try await viaFallback(Self.pointerAction(point, button: button, count: count), state: state, sessionID: sessionID)
             return
         }
-        guard allowsForegroundInput else { throw Self.pointerNeedsForeground }
         let screen = screenPoint(point, state: state)
         _ = try await run(
             ["mouse-click", "--xy=\(Self.coordinate(screen))", "--button", button, "--count", String(count), "--headed"],
@@ -748,32 +787,26 @@ actor AgentDesktopClient {
         sessionID: String
     ) async throws {
         let element = sessionStates[sessionID]?.elements[ref] ?? state.elements[ref]
-        guard fallback != nil, !stagedWindowIDs.contains(state.target.windowID), let point = target.point ?? element?.center else {
+        guard !allowsForegroundInput, fallback != nil, !stagedWindowIDs.contains(state.target.windowID), let point = target.point ?? element?.center else {
             try await refAction([command, ref], state: state, sessionID: sessionID)
             return
         }
-        let result: JSONValue
         do {
-            result = try await run([command, ref] + headed(state.target), session: sessionID, timeout: requestTimeout)
+            _ = try await run([command, ref] + headed(state.target), session: sessionID, timeout: requestTimeout)
         } catch let failure as AgentDesktopFailure where !failure.mayHaveLanded && Self.physicalClickCanSubstitute(for: failure.error) {
             try await viaFallback(Self.pointerAction(point, button: button, count: count), state: state, sessionID: sessionID)
-            return
         }
-        guard command == "click", Self.landedWithoutEffect(result), Self.canRepeatClick(on: element, label: target.label) else {
-            return
-        }
-        PerfMark.mark("agent-desktop.click.unverified")
-        try await viaFallback(Self.pointerAction(point, button: button, count: count), state: state, sessionID: sessionID)
     }
 
     private func viaFallback(_ action: ComputerAction, state: AgentDesktopSessionState, sessionID: String) async throws {
         guard let fallback else { throw Self.pointerNeedsForeground }
         guard !stagedWindowIDs.contains(state.target.windowID) else { throw Self.windowInStageStrip }
         let window = state.target
-        _ = try await fallback.resolveTarget(
+        let resolved = try await fallback.resolveTarget(
             ScreenTargetHint(bundleID: window.bundleID, processID: window.processID, windowID: window.windowID),
             sessionID: sessionID
         )
+        _ = try await fallback.capture(resolvedTarget: resolved, sessionID: sessionID)
         _ = try await fallback.execute(action, sessionID: sessionID)
     }
 
@@ -788,17 +821,6 @@ actor AgentDesktopClient {
         case .unsupportedAction, .toolRejected: return true
         default: return false
         }
-    }
-
-    static func landedWithoutEffect(_ result: JSONValue) -> Bool {
-        delivery(result) == "delivered_unverified" && (result["surfaces"]?.arrayValue ?? []).isEmpty
-    }
-
-    static func canRepeatClick(on element: AgentDesktopElement?, label: String?) -> Bool {
-        guard let element, repeatableRoles.contains(element.role), !element.holdsState,
-              let label = AgentDesktopSnapshot.nonEmpty(label ?? element.label) else { return false }
-        let words = label.lowercased().split { !$0.isLetter }.map(String.init)
-        return !words.isEmpty && words.allSatisfy { !consequentialWords.contains($0) }
     }
 
     private func screenPoint(_ point: ComputerCoordinates, state: AgentDesktopSessionState) -> ComputerCoordinates {
@@ -902,15 +924,15 @@ actor AgentDesktopClient {
         (sessionStates[sessionID]?.elements[ref] ?? state.elements[ref])?.isSecure == true
     }
 
-    private func typeSecurely(_ text: String, into field: String, window: ScreenWindowTarget, sessionID: String) async throws {
+    private func typeThroughCua(_ text: String, into field: String, window: ScreenWindowTarget, sessionID: String) async throws {
         guard let fallback else { throw Self.secureFieldNeedsTheUser }
         guard !stagedWindowIDs.contains(window.windowID) else { throw Self.windowInStageStrip }
         _ = try await run(["focus", field], session: sessionID, timeout: requestTimeout)
-        _ = try await fallback.insertText(
-            text,
-            target: ScreenTargetHint(bundleID: window.bundleID, processID: window.processID, windowID: window.windowID),
+        _ = try await fallback.resolveTarget(
+            ScreenTargetHint(bundleID: window.bundleID, processID: window.processID, windowID: window.windowID),
             sessionID: sessionID
         )
+        _ = try await fallback.execute(ComputerAction(stepID: "fallback-text", operation: .typeText(text: text, target: nil)), sessionID: sessionID)
     }
 
     private func scrollableRef(in target: ScreenWindowTarget, sessionID: String) async throws -> String {

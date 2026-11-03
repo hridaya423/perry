@@ -31,6 +31,7 @@ enum AppToolHost {
             ).executors
             + DocumentTools(workers: workers, lease: lease, observations: observations).executors
             + AppTools().executors
+            + BrowserTools(lane: .shared, worker: ToolWorkerContext(workers: workers, lease: lease, observations: observations)).executors
             + packageExecutors(
                 supportDirectory: supportDirectory,
                 integrationBackend: integrationBackend,

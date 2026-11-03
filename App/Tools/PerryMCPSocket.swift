@@ -166,6 +166,7 @@ final class PerryMCPSocket: MCPScopeHost, @unchecked Sendable {
             let task = Task { [self] in
                 defer {
                     observations.remove(runID: id)
+                    Task { await BrowserLane.shared.release(run: id) }
                     shutdown(fd, SHUT_RDWR)
                     completed.signal()
                 }

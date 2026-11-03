@@ -107,6 +107,10 @@ final class AgentDesktopClientTests: XCTestCase {
         ;;
     type)
         eval "text=\${$#}"
+        if [ -f "$root/field-ignores-type" ]; then
+            printf '{"version":"2.5","ok":false,"command":"type","error":{"code":"ACTION_FAILED","message":"Post-action state does not match the requested change","details":{"kind":"post_action_verification","post_state":{"role":"textfield","value":"%s"}},"disposition":{"delivery":"delivered_unverified","retry":"unsafe"}}}\n' "$(cat "$root/field-ignores-type")"
+            exit 0
+        fi
         if [ -f "$root/verified-type" ]; then
             ok '{"disposition":{"delivery":"delivered_verified"}}'
         elif [ ! -f "$root/unverified-type" ]; then
@@ -146,6 +150,27 @@ final class AgentDesktopClientTests: XCTestCase {
             ok '{}'
         fi
         ;;
+    set-value)
+        if [ -f "$root/no-set-value" ]; then
+            fail ACTION_NOT_SUPPORTED "Target is not actionable: supported_action (SetValue is not available)"
+        else
+            ok '{"disposition":{"delivery":"delivered_verified"}}'
+        fi
+        ;;
+    press)
+        if [ -f "$root/keys-need-front" ] && [ "$headed" -eq 0 ]; then
+            printf '{"version":"2.5","ok":false,"command":"press","error":{"code":"STALE_REF","message":"The named window'"'"'s exact focus could not be confirmed, so no key was sent","details":{"cause":"exact_window_focus_unconfirmed","check":"window_active","physical_delivery_started":false},"disposition":{"delivery":"not_delivered","retry":"safe"}}}\n'
+        else
+            ok '{"disposition":{"delivery":"delivered_unverified"}}'
+        fi
+        ;;
+    scroll)
+        if [ -f "$root/no-ax-scroll" ]; then
+            fail ACTION_NOT_SUPPORTED "Target is not actionable: supported_action (Scroll is not available)"
+        else
+            ok '{"disposition":{"delivery":"delivered_unverified"}}'
+        fi
+        ;;
     mouse-click)
         if [ -f "$root/delay-action" ] && [ ! -f "$root/action-delayed" ]; then
             printf '%s\n' "$$" > "$root/delayed-pid"
@@ -172,7 +197,8 @@ final class AgentDesktopClientTests: XCTestCase {
             *'"method":"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id" ;;
             *check_permissions*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"accessibility":true,"screen_recording":true,"source":{"attribution":"host","embedded":true}},"content":[]}}\n' "$id" ;;
             *list_windows*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"windows":[{"bundle_id":"com.example.Editor","pid":4242,"window_id":1001,"title":"Editor - Draft","bounds":{"x":10,"y":10,"width":800,"height":600},"z_index":20,"is_on_screen":true,"on_current_space":true}]},"content":[]}}\n' "$id" ;;
-            *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"effect":"confirmed","verified":true},"content":[]}}\n' "$id" ;;
+            *type_text*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"effect":"unverifiable"},"content":[]}}\n' "$id" ;;
+            *get_window_state*) printf '{"jsonrpc":"2.0","id":%s,"result":{"structuredContent":{"snapshot_id":"s00000001"},"content":[{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}]}}\n' "$id" ;;
             *) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[]}}\n' "$id" ;;
         esac
     done
@@ -986,9 +1012,12 @@ final class AgentDesktopClientTests: XCTestCase {
         let drag = try XCTUnwrap(cuaCalls(named: "drag").first)
         XCTAssertEqual(drag["from_x"] as? Double, 2)
         XCTAssertEqual(drag["to_y"] as? Double, 40)
+        let order = cuaToolOrder().filter { ["get_window_state", "click", "drag"].contains($0) }
+        XCTAssertEqual(order, ["get_window_state", "click", "get_window_state", "drag"], "cua refuses x,y input on a window it has not read in the session")
+        XCTAssertEqual(cuaCalls(named: "get_window_state").first?["include_screenshot"] as? Bool, true)
     }
 
-    func testClickTheAppReportsAsUnverifiedIsRepeatedOnceThroughCua() async throws {
+    func testClickTheAppReportsAsUnverifiedIsNeverRepeated() async throws {
         try createMarker("click-unverified")
         let client = try makeClientWithCua()
         addTeardownBlock { await client.shutdown() }
@@ -996,11 +1025,120 @@ final class AgentDesktopClientTests: XCTestCase {
         _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
         _ = try await client.execute(ComputerAction(stepID: "save", operation: .click(.element(id: "@snap-1:e1", label: nil, point: nil))), sessionID: sessionID)
         XCTAssertEqual(calls(named: "click").count, 1)
-        XCTAssertEqual(calls(named: "screenshot").count, 1, "only the capture takes a screenshot")
-        XCTAssertEqual(cuaCalls(named: "click").count, 1)
-        let retry = try XCTUnwrap(cuaCalls(named: "click").first)
-        XCTAssertEqual(retry["x"] as? Double, 100)
-        XCTAssertEqual(retry["y"] as? Double, 44)
+        XCTAssertTrue(cuaCalls(named: "click").isEmpty, "an AX press the app took reports delivered_unverified; a second click fires it twice")
+    }
+
+    func testForegroundPointerInputUsesTheRealCursorNotCua() async throws {
+        let client = try makeClientWithCua(allowsForegroundInput: true)
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "foreground-pointer"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.execute(try ComputerAction(actionID: "point", command: .click(.windowPixels(x: 40, y: 60))), sessionID: sessionID)
+        _ = try await client.execute(
+            try ComputerAction(actionID: "drag", command: .drag(from: .windowPixels(x: 2, y: 4), to: .windowPixels(x: 30, y: 40), durationMilliseconds: 250, steps: 12)),
+            sessionID: sessionID
+        )
+        XCTAssertEqual(calls(named: "mouse-click").count, 1)
+        XCTAssertEqual(calls(named: "drag").count, 1)
+        XCTAssertTrue(cuaCalls(named: "click").isEmpty, "cua's background pixel events never reach a custom AppKit view")
+        XCTAssertTrue(cuaCalls(named: "drag").isEmpty)
+    }
+
+    func testPopupWithoutSetValueIsChosenWithSelect() async throws {
+        try createMarker("no-set-value")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "popup"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.execute(ComputerAction(stepID: "size", operation: .setValue(value: "Large", target: .element(id: "@snap-1:e1", label: nil, point: nil))), sessionID: sessionID)
+        XCTAssertEqual(calls(named: "set-value").count, 1)
+        let select = try XCTUnwrap(calls(named: "select").first)
+        XCTAssertEqual(Array(select.suffix(2)), ["--", "Large"])
+    }
+
+    func testKeysForAWindowNotInFrontGoThroughCuaHotkey() async throws {
+        try createMarker("keys-need-front")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "keys"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.execute(ComputerAction(stepID: "all", operation: .hotkey(keys: ["cmd", "a"], target: nil)), sessionID: sessionID)
+        XCTAssertEqual(calls(named: "press").count, 1)
+        XCTAssertEqual(cuaCalls(named: "hotkey").first?["keys"] as? [String], ["cmd", "a"])
+        XCTAssertTrue(cuaCalls(named: "press_key").isEmpty, "cua press_key drops modifiers in the background")
+        _ = try await client.execute(ComputerAction(stepID: "enter", operation: .pressKey(key: "return", modifiers: nil, target: nil)), sessionID: sessionID)
+        XCTAssertEqual(cuaCalls(named: "press_key").first?["key"] as? String, "return")
+    }
+
+    func testAPageAgentDesktopCannotScrollIsWheeledByCuaAtThePoint() async throws {
+        try createMarker("no-ax-scroll")
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "web-scroll"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        let point = ComputerCoordinates(x: 300, y: 400)
+        _ = try await client.execute(ComputerAction(stepID: "down", operation: .scroll(direction: .down, amount: 10, by: nil, target: .point(point))), sessionID: sessionID)
+        let wheel = try XCTUnwrap(cuaCalls(named: "scroll").first)
+        XCTAssertEqual(wheel["x"] as? Double, 300)
+        XCTAssertEqual(wheel["y"] as? Double, 400)
+        XCTAssertEqual(wheel["direction"] as? String, "down")
+        XCTAssertEqual(wheel["amount"] as? Int, 10)
+        _ = try await client.execute(ComputerAction(stepID: "body", operation: .scroll(direction: .up, amount: 2, by: nil, target: .element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
+        XCTAssertEqual(calls(named: "scroll").last?.dropFirst().first, "@snap-1:e2")
+        XCTAssertEqual(cuaCalls(named: "scroll").count, 2)
+    }
+
+    func testAScrollAgentDesktopCannotDoWithoutCuaSaysSo() async throws {
+        try createMarker("no-ax-scroll")
+        let client = AgentDesktopClient(configuration: makeConfiguration())
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "scroll-alone"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        do {
+            _ = try await client.execute(ComputerAction(stepID: "down", operation: .scroll(direction: .down, amount: 3, by: nil, target: .point(ComputerCoordinates(x: 300, y: 400)))), sessionID: sessionID)
+            XCTFail("nothing can scroll this page")
+        } catch let error as ScreenDriverError {
+            XCTAssertEqual(error, .unsupportedAction)
+        }
+    }
+
+    func testKeysForAWindowNotInFrontWithoutCuaSayWhy() async throws {
+        try createMarker("keys-need-front")
+        let client = AgentDesktopClient(configuration: makeConfiguration())
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "keys-alone"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        do {
+            _ = try await client.execute(ComputerAction(stepID: "enter", operation: .pressKey(key: "return", modifiers: nil, target: nil)), sessionID: sessionID)
+            XCTFail("keys sent to a window that is not in front never land")
+        } catch let error as ScreenDriverError {
+            XCTAssertEqual(error, .windowNotInFront)
+        }
+    }
+
+    func testTextTheFieldProvablyIgnoredIsTypedThroughCua() async throws {
+        try "".write(to: testDirectory.appendingPathComponent("field-ignores-type"), atomically: true, encoding: .utf8)
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "web-type"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        _ = try await client.execute(ComputerAction(stepID: "search", operation: .typeText(text: "hello web", target: .element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
+        XCTAssertEqual(calls(named: "focus").last?.dropFirst().first, "@snap-1:e2")
+        XCTAssertEqual(cuaCalls(named: "type_text").first?["text"] as? String, "hello web")
+    }
+
+    func testTextTheFieldMayHaveTakenIsNeverTypedAgain() async throws {
+        try "hello web".write(to: testDirectory.appendingPathComponent("field-ignores-type"), atomically: true, encoding: .utf8)
+        let client = try makeClientWithCua()
+        addTeardownBlock { await client.shutdown() }
+        let sessionID = "web-type-landed"
+        _ = try await client.capture(target: ScreenTargetHint(processID: 4242, windowID: 1001), sessionID: sessionID)
+        do {
+            _ = try await client.execute(ComputerAction(stepID: "search", operation: .typeText(text: "hello web", target: .element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
+            XCTFail("an unverified type that shows the text must surface, not repeat")
+        } catch is ScreenDriverError {
+        }
+        XCTAssertTrue(cuaCalls(named: "type_text").isEmpty)
     }
 
     func testClickWithNoUnverifiedReportIsNotRepeated() async throws {
@@ -1033,40 +1171,6 @@ final class AgentDesktopClientTests: XCTestCase {
         _ = try await client.execute(ComputerAction(stepID: "body", operation: .click(.element(id: "@snap-1:e2", label: nil, point: nil))), sessionID: sessionID)
         XCTAssertEqual(calls(named: "click").count, 2)
         XCTAssertTrue(cuaCalls(named: "click").isEmpty)
-    }
-
-    func testOnlyLabelledPlainControlsWithoutConsequentialWordsAreRepeatable() {
-        func element(_ role: String, _ label: String?) -> AgentDesktopElement {
-            AgentDesktopElement(role: role, label: label, center: nil)
-        }
-        let repeatable: [(AgentDesktopElement?, String?)] = [
-            (element("button", "Save"), nil),
-            (element("button", "Display"), nil),
-            (element("link", "Learn more"), nil),
-            (element("tab", "General"), nil),
-            (element("button", nil), "Learn more"),
-        ]
-        let refused: [(AgentDesktopElement?, String?)] = [
-            (element("button", "Send"), nil),
-            (element("button", "Send message"), nil),
-            (element("button", "Add to Cart"), nil),
-            (element("button", "Sign Out"), nil),
-            (element("button", "Move to Trash"), nil),
-            (element("button", "Save"), "Delete draft"),
-            (element("button", nil), nil),
-            (element("button", "  "), nil),
-            (element("checkbox", "Bold"), nil),
-            (element("switch", "Wi-Fi"), nil),
-            (element("menubutton", "Options"), nil),
-            (AgentDesktopElement(role: "button", label: "Mute", center: nil, holdsState: true), nil),
-            (nil, "Save"),
-        ]
-        for (candidate, label) in repeatable {
-            XCTAssertTrue(AgentDesktopClient.canRepeatClick(on: candidate, label: label), "\(String(describing: candidate)) \(label ?? "")")
-        }
-        for (candidate, label) in refused {
-            XCTAssertFalse(AgentDesktopClient.canRepeatClick(on: candidate, label: label), "\(String(describing: candidate)) \(label ?? "")")
-        }
     }
 
     func testRefusedElementClickFallsBackToCuaInTheBackground() async throws {
@@ -1597,7 +1701,7 @@ final class AgentDesktopClientTests: XCTestCase {
         )
     }
 
-    private func makeClientWithCua() throws -> AgentDesktopClient {
+    private func makeClientWithCua(allowsForegroundInput: Bool = false) throws -> AgentDesktopClient {
         let cuaURL = testDirectory.appendingPathComponent("cua-driver")
         try cuaScript.trimmingCharacters(in: .whitespacesAndNewlines).write(to: cuaURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cuaURL.path)
@@ -1606,7 +1710,17 @@ final class AgentDesktopClientTests: XCTestCase {
             capabilityManifestURL: testDirectory.appendingPathComponent("capabilities.yaml"),
             hostBundleID: "dev.perry.PerryTests"
         ))
-        return AgentDesktopClient(configuration: makeConfiguration(), fallback: cua)
+        return AgentDesktopClient(configuration: makeConfiguration(), allowsForegroundInput: allowsForegroundInput, fallback: cua)
+    }
+
+    private func cuaToolOrder() -> [String] {
+        guard let log = try? String(contentsOf: testDirectory.appendingPathComponent("cua-requests.log"), encoding: .utf8) else {
+            return []
+        }
+        return log.split(separator: "\n").compactMap { line in
+            let request = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+            return (request?["params"] as? [String: Any])?["name"] as? String
+        }
     }
 
     private func cuaCalls(named name: String) -> [[String: Any]] {
@@ -1770,6 +1884,30 @@ final class AgentDesktopLabelMatchTests: XCTestCase {
     func testAPartialLabelMatchesOnlyWhenItIsTheOnlyOne() throws {
         XCTAssertEqual(try snapshot([("Export PDF…", "@s1:e3")]).uniqueRefMatching(label: "Export"), "@s1:e3")
         XCTAssertNil(try snapshot([("Save As…", "@s1:e1"), ("Don’t Save", "@s1:e2")]).uniqueRefMatching(label: "Save"))
+    }
+
+    func testTheSmallestScrollableUnderAPointIsChosen() throws {
+        let node: (String, String, Double, Double, Double, Double) -> [String: JSONValue] = { ref, role, x, y, width, height in
+            ["ref_id": .string(ref), "role": .string(role), "bounds": .object(["x": .number(x), "y": .number(y), "width": .number(width), "height": .number(height)])]
+        }
+        let snapshot = try tree([
+            node("@s1:e1", "scrollarea", 0, 0, 900, 700),
+            node("@s1:e2", "scrollarea", 380, 186, 500, 90),
+            node("@s1:e3", "table", 440, 300, 200, 2400),
+            node("@s1:e4", "textfield", 450, 340, 160, 24),
+        ])
+        XCTAssertEqual(snapshot.smallestScrollable(containing: ComputerCoordinates(x: 500, y: 350)), "@s1:e3")
+        XCTAssertEqual(snapshot.smallestScrollable(containing: ComputerCoordinates(x: 400, y: 200)), "@s1:e2")
+        XCTAssertNil(snapshot.smallestScrollable(containing: ComputerCoordinates(x: 950, y: 750)))
+    }
+
+    func testACellWhoseTextIsItsValueMatchesButASecureValueNever() throws {
+        let cell: (String, String) -> [String: JSONValue] = { ref, value in
+            ["ref_id": .string(ref), "role": .string("textfield"), "value": .string(value)]
+        }
+        let secure: [String: JSONValue] = ["ref_id": .string("@s1:e9"), "role": .string("textfield"), "value": .string("Item 7"), "states": .array([.string("secure")])]
+        XCTAssertEqual(try tree([cell("@s1:e1", "Item 2"), cell("@s1:e2", "Item 3")]).uniqueRefMatching(label: "Item 3"), "@s1:e2")
+        XCTAssertNil(try tree([secure]).uniqueRefMatching(label: "Item 7"))
     }
 
     private func tree(_ nodes: [[String: JSONValue]]) throws -> AgentDesktopSnapshot {

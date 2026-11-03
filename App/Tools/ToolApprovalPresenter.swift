@@ -58,6 +58,8 @@ enum ToolApprovalPresenter {
         case "perry.createPerry": return "Make a new helper?"
         case "perry.schedule": return "Schedule this?"
         case "integrations.write": return "Make a change in a connected app?"
+        case "browser.js": return "Run a script on this page?"
+        case "browser.connect": return "Let Perry use \(target ?? "your browser")?"
         default:
             let parts = call.name.split(separator: ".")
             if parts.first == "mcp", parts.count >= 3 { return "Use \(parts[1])’s \(parts[2...].joined(separator: "."))?" }

@@ -39,7 +39,7 @@ extension XCTestCase {
     }
 
     @MainActor
-    func pollUntil(_ condition: () -> Bool) async -> Bool {
+    func pollUntil(_ condition: @escaping () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(2)
         while !condition(), Date() < deadline {
             try? await Task.sleep(for: .milliseconds(10))

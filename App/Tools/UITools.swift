@@ -82,7 +82,7 @@ private struct UIToolDefinition: Sendable {
         click(.rightClick, verb: "Right-click", headline: { $0.map { "Right-click “\($0)”?" } ?? "Right-click here?" }),
         UIToolDefinition(
             name: "ui.type",
-            description: "Type text into an element or point, without moving the user's cursor. With no target, type into the field that already has focus.",
+            description: "Type text into an element or point, without moving the user's cursor. With no target, type into the field that already has focus. The text goes in at the insertion point and does not replace selected text; to replace a native field's text, use ui.setValue.",
             schema: objectSchema(["text": .object(["type": .string("string")])], required: ["text"], target: true),
             headline: { _ in "Type into this field?" },
             plan: { request in
