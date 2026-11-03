@@ -1,4 +1,4 @@
-# Perry 1.0
+# Perry 0.1
 
 Perry’s live session now moves through a real screen selection, click-advanced teaching, supervised sandbox work, independent verification, and searchable local history.
 
