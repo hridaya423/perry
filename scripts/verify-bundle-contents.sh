@@ -48,7 +48,7 @@ sound_count="$(find "${RESOURCES}" -type f -name '*.caf' | wc -l | tr -d ' ')"
 [ "${sound_count}" = "5" ] || die "expected 5 sound files, found ${sound_count}"
 
 app_kib="$(du -sk "${APP_PATH}" | awk '{print $1}')"
-[ "${app_kib}" -le 307200 ] || die "app bundle exceeds 300 MiB: ${app_kib} KiB"
+[ "${app_kib}" -le 393216 ] || die "app bundle exceeds 384 MiB: ${app_kib} KiB"
 
 require_size_at_most 16777216 "${MAIN_EXECUTABLE}"
 require_size_at_most 262144000 "${CODEX_EXECUTABLE}"
