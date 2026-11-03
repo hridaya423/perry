@@ -16,7 +16,7 @@ import evaluate
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_METRICS_PATH = REPO_ROOT / "docs/release-readiness/performance/budgets.json"
+DEFAULT_METRICS_PATH = REPO_ROOT / "scripts/performance/budgets.json"
 REGISTERED_COLLECTORS = {
     "idle.cpu": {"perry.process-sampler.idle.v1"},
     "voice.session_memory_growth": {"perry.process-sampler.voice-endurance.v1"},

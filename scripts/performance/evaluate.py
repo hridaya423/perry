@@ -15,9 +15,9 @@ RAW_MEASUREMENTS_KIND = "perry.performance.raw_measurements"
 BUDGETS_KIND = "perry.performance.budgets"
 RELEASE_REGRESSION_FACTOR = Decimal("1.1")
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BUDGETS_PATH = REPO_ROOT / "docs/release-readiness/performance/budgets.json"
-DEFAULT_BASELINE_PATH = REPO_ROOT / "docs/release-readiness/performance/measurements/baseline.json"
-DEFAULT_CANDIDATE_PATH = REPO_ROOT / "docs/release-readiness/performance/measurements/candidate.json"
+DEFAULT_BUDGETS_PATH = REPO_ROOT / "scripts/performance/budgets.json"
+DEFAULT_BASELINE_PATH = REPO_ROOT / "build/performance/baseline.json"
+DEFAULT_CANDIDATE_PATH = REPO_ROOT / "build/performance/candidate.json"
 
 
 class EvaluationFailure(Exception):

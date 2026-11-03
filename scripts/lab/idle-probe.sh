@@ -23,7 +23,7 @@ if [ -z "$PID" ] || ! kill -0 "$PID" 2>/dev/null; then
     exit 2
 fi
 
-OUT_DIR="$REPO_ROOT/docs/evidence/perf"
+OUT_DIR="$REPO_ROOT/build/evidence/perf"
 mkdir -p "$OUT_DIR"
 CSV="$OUT_DIR/idle-$(date -u +%Y%m%dT%H%M%SZ).csv"
 echo "sample,cpu_percent,rss_kib" > "$CSV"

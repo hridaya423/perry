@@ -13,8 +13,8 @@ import evaluate
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
-BUDGETS_PATH = REPO_ROOT / "docs/release-readiness/performance/budgets.json"
-SCHEMA_PATH = REPO_ROOT / "docs/release-readiness/performance/raw-measurements.schema.json"
+BUDGETS_PATH = REPO_ROOT / "scripts/performance/budgets.json"
+SCHEMA_PATH = REPO_ROOT / "scripts/performance/raw-measurements.schema.json"
 
 
 class PerformanceEvaluatorTests(unittest.TestCase):

@@ -3,7 +3,7 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
-OUTPUT_DIR="${PERRY_RELEASE_METADATA_DIR:-${REPO_ROOT}/docs/release-readiness}"
+OUTPUT_DIR="${PERRY_RELEASE_METADATA_DIR:-${REPO_ROOT}/release}"
 SBOM_PATH="${PERRY_SBOM_PATH:-${OUTPUT_DIR}/sbom.cdx.json}"
 LICENSES_PATH="${PERRY_THIRD_PARTY_LICENSES_PATH:-${OUTPUT_DIR}/third-party-licenses.json}"
 LOCK_FILE="${PERRY_CODEX_RUNTIME_LOCK:-${SCRIPT_DIR}/codex-runtime.lock}"

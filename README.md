@@ -1,36 +1,93 @@
-# Perry
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.svg">
+    <img alt="Perry: points, draws and works inside the Mac apps you use." src=".github/assets/banner-light.svg" width="100%">
+  </picture>
+</p>
 
-A screen-aware companion that teaches you any app by pointing and drawing on your screen, and can take the whole task off your hands. Product spec lives in [PRD.md](PRD.md).
+<p align="center">A screen-aware companion for macOS that teaches any app by pointing at your screen, written in Swift.</p>
 
-Status: public beta, not GA. The arm64 app builds and the automated suites cover typed plans, fail-closed execution, screen-control session generations, guide postconditions, durable task checkpoints, bounded voice dispatch, integration policy, onboarding, and persistence recovery. These results establish wiring and automated behavior; they do not replace live TCC, provider-account, signed-release, performance, accessibility, or acceptance-journey evidence.
+<p align="center">
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-3C7765?style=flat-square"></a>
+  <img alt="macOS 14 or later on Apple Silicon" src="https://img.shields.io/badge/macOS-14%2B%20%C2%B7%20Apple%20Silicon-202420?style=flat-square">
+  <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-202420?style=flat-square">
+</p>
 
-```bash
-cd Packages/PerryRuntimes && swift run perry-demo
+<p align="center">
+  <a href="PRD.md">Product contract</a> · <a href="DESIGN.md">Design</a> · <a href="https://github.com/hridaya423/perry/issues">Issues</a>
+</p>
+
+Perry lives in the notch of your Mac. Ask it how to do something, and it points at each control in the app you have open, one step at a time. Ask it to do the task, and it does the work in the background, with one clear confirmation before any irreversible action.
+
+<p align="center">
+  <img alt="Perry onboarding in the notch: the companion asks 'Ask me something.' with Talk to Perry and Type instead actions" src=".github/assets/onboarding.png" width="640">
+</p>
+
+> [!NOTE]
+> Perry is in public beta. No signed release exists yet. Build it from source with the steps below.
+
+## What Perry does
+
+- **Guide.** Perry points at one control, waits for you to act, then points at the next one. "Show me everything" draws the full path at once.
+- **Do.** Perry does the task in the background and logs each action. Trust tiers gate each action, and Perry never reads or acts in banking, password manager or checkout windows.
+- **Talk.** Use the global hotkey, push-to-talk or typed input. Realtime speech is optional. Apple Speech is the fallback.
+- **Bring your own brain.** Use the bundled Codex runtime, Claude Code, OpenCode, an ACP agent, eleven cloud presets, a local server or any OpenAI-compatible endpoint. Perry stores API keys in the Keychain.
+- **Connect your tools.** Slack, Notion, Linear and Google Workspace connect through direct sign-in.
+
+Screen capture runs only during a session that you start. Memory starts only after you consent during onboarding, and you can erase it by category or in full.
+
+## Install
+
+Perry needs Apple Silicon, macOS 14 or later and Xcode.
+
+```sh
+git clone https://github.com/hridaya423/perry.git
+cd perry
+./scripts/fetch-codex-runtime.sh --fetch
+./scripts/fetch-agent-desktop.sh --fetch
+./scripts/fetch-cua-driver.sh --fetch
+./scripts/fetch-xcodegen.sh --fetch
+build/tools/xcodegen/bin/xcodegen generate --spec project.yml
+xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
+  -derivedDataPath build/debug-p1 -destination 'platform=macOS,arch=arm64'
+open build/debug-p1/Build/Products/Debug/Perry.app
 ```
 
-Docs: [capabilities](docs/capabilities.md) · [support](docs/support.md) · [follower test card](docs/follower-test-card.md) · [tone sheet](docs/tone-sheet.md) · [performance notes](docs/performance-notes.md) · [demo script](docs/demo-script.md). Licensed AGPL-3.0 (PRD §12).
+Each fetch script checks the download against the SHA-256 in its `scripts/*.lock` file. A successful build prints `** BUILD SUCCEEDED **`.
 
-## What is live
+On first launch, Perry asks for Accessibility, Screen Recording and Microphone access. It explains each permission before macOS shows the prompt.
 
-The app target binds the menu-bar companion, intent cards, onboarding, guide overlays, push-to-talk, optional realtime voice, route fallback, task controls, history, integrations, and diagnostics to tested controller boundaries. agent-desktop is the required computer-use boundary, and Perry binds its sessions to process and window identities. Accessibility and Screen Recording are required for grounded screen work; the local planner handles only its disclosed deterministic task set, while open-ended work requires a healthy authenticated runtime.
+> [!TIP]
+> If macOS forgets the permissions after each rebuild, sign Debug builds with a team identity. Put it in `Config/DebugSigning.local.xcconfig`. Git ignores this file.
 
-A pinned agent-desktop build ships inside the app bundle (`App/Resources/AgentDesktop`) and is verified by SHA-256 against `scripts/agent-desktop.lock` (see `docs/release-readiness/agent-desktop.md`). It is required for grounded computer-use sessions. If it is unavailable or unhealthy, Perry reports the failure instead of switching to another backend. A pinned cua-driver (`App/Resources/CuaDriver`, `scripts/cua-driver.lock`) ships beside it as a background fallback: clicks at a point, drags, and control clicks that agent-desktop provably did not deliver, or reports as delivered with no observable effect, go through cua without moving the user's cursor.
+## How it works
+
+Perry plans with a model, acts through [agent-desktop](https://github.com/vercel-labs/agent-desktop), and verifies each step. Perry binds each session to one process and one window. If agent-desktop is not healthy, Perry reports the failure and does not switch to another backend. [cua-driver](https://github.com/trycua/cua) runs beside it and delivers clicks and drags that agent-desktop did not deliver, without moving your cursor.
+
+[PRD.md](PRD.md) has the architecture, the trust tiers and the capability ladder. [DESIGN.md](DESIGN.md) has the visual language and the motion rules.
 
 ## Development
 
-The Xcode project is generated, never hand-edited.
+[`project.yml`](project.yml) generates `Perry.xcodeproj`. Do not edit the project by hand. Add files under `App/` or `Packages/`, then run XcodeGen again.
 
-```bash
-./scripts/fetch-xcodegen.sh --fetch   # pinned, hash-verified
-build/tools/xcodegen/bin/xcodegen generate --spec project.yml
-open Perry.xcodeproj
+```sh
+swift test --package-path Packages/PerryCore
+./scripts/test-release-automation.sh
+./scripts/performance/self-test.sh
 ```
 
-Tests: `swift test` inside any package under `Packages/`, or `xcodebuild test -project Perry.xcodeproj -scheme Perry`.
+Run `swift test` for each package: `PerryCore`, `PerryRuntimes`, `PerryOverlay` and `PerryGuide`.
 
-## Layout
+| Path | Contents |
+| --- | --- |
+| `App/` | The Perry app target: notch workspace, controllers, settings |
+| `Packages/PerryCore` | Shared types, the trust guard, the activity log, Keychain, hotkeys |
+| `Packages/PerryBrain` | Model providers, conversation context, the `perry-mcp` server |
+| `Packages/PerryRuntimes` | Runtime adapters for Codex, CLIs and direct providers, and the Do supervisor |
+| `Packages/PerryGuide` | The guide engine, tasks, routines and per-app notes |
+| `Packages/PerryOverlay` | The companion character and the screen overlay |
+| `scripts/` | Runtime fetchers, release tooling and lab drills |
 
-- `App/` — the Perry application target
-- `Packages/` — local Swift packages (PerryCore, PerryBrain, PerryRuntimes, PerryOverlay, PerryGuide)
-- `docs/transplant-inventory.md` — what we take from openclicky and why
-- `vendor/` — inert reference clones, never on a build path
+## License
+
+[AGPL-3.0](LICENSE).

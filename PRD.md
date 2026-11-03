@@ -173,7 +173,7 @@ Transparent ink-on-glass aesthetic inherited from the overlay engine: high-contr
 
 ## 10. Release evidence
 
-Capabilities progress through `absent → wired → unit-tested → live-tested → release-proven`. The machine-readable registry in `docs/release-readiness/features.json` is the source for customer-facing support status. A signed build is not generally available until clean-machine onboarding, live Cua and provider suites, privacy capture, notarization, update rollback, and the six Perry acceptance journeys (`docs/release-readiness/product-journeys.v1.json`) all pass.
+Capabilities progress through `absent → wired → unit-tested → live-tested → release-proven`. A signed build is not generally available until clean-machine onboarding, live Cua and provider suites, privacy capture, notarization, update rollback, and the six Perry acceptance journeys all pass.
 
 ## 11. Risks
 

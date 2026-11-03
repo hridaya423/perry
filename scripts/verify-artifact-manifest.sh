@@ -5,9 +5,9 @@ export LC_ALL
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
-MANIFEST_PATH="${PERRY_ARTIFACT_MANIFEST:-${REPO_ROOT}/docs/release-readiness/artifact-manifest.sha256}"
+MANIFEST_PATH="${PERRY_ARTIFACT_MANIFEST:-${REPO_ROOT}/release/artifact-manifest.sha256}"
 ARTIFACT_ROOT="${PERRY_ARTIFACT_ROOT:-${REPO_ROOT}}"
-ARTIFACTS="${PERRY_RELEASE_ARTIFACTS:-scripts/codex-runtime.lock:scripts/cua-driver.lock:scripts/agent-desktop.lock:scripts/sparkle.lock:scripts/xcodegen.lock:docs/release-readiness/sbom.cdx.json:docs/release-readiness/third-party-licenses.json:App/Resources/CodexRuntime/.version:App/Resources/CodexRuntime/bin/codex:App/Resources/CuaDriver/.version:App/Resources/CuaDriver/bin/cua-driver:App/Resources/CuaDriver/capabilities.yaml:App/Resources/AgentDesktop/.version:App/Resources/AgentDesktop/bin/agent-desktop:App/Resources/AgentDesktop/bin/agent-desktop-macos-helper}"
+ARTIFACTS="${PERRY_RELEASE_ARTIFACTS:-scripts/codex-runtime.lock:scripts/cua-driver.lock:scripts/agent-desktop.lock:scripts/sparkle.lock:scripts/xcodegen.lock:release/sbom.cdx.json:release/third-party-licenses.json:App/Resources/CodexRuntime/.version:App/Resources/CodexRuntime/bin/codex:App/Resources/CuaDriver/.version:App/Resources/CuaDriver/bin/cua-driver:App/Resources/CuaDriver/capabilities.yaml:App/Resources/AgentDesktop/.version:App/Resources/AgentDesktop/bin/agent-desktop:App/Resources/AgentDesktop/bin/agent-desktop-macos-helper}"
 
 die() {
   echo "artifact manifest: $*" >&2

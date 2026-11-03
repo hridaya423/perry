@@ -1,2 +1,0 @@
-{"captured_at":"2026-10-24T22:58:57Z","collector":"overlay","metric_id":"overlay.first_frame_ms","scenario":"overlay","unit":"ms","value":2.6140213012695312}
-{"captured_at":"2026-10-24T22:58:57Z","collector":"overlay","metric_id":"overlay.main_thread_stall_ms","scenario":"overlay","unit":"ms","value":2.030014991760254}

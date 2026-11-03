@@ -2,7 +2,7 @@
 """Run Perry's real agent loop on scored desktop tasks with a chosen brain.
 
 Usage: planner-bench.py --brain {claudeCode,local} --label <name> [--tasks T1,T2] [--reps 1]
-                        [--timeout 420] [--out docs/evidence/lab/planner-<label>.jsonl]
+                        [--timeout 420] [--out build/evidence/lab/planner-<label>.jsonl]
 
 Each task relaunches the DEBUG Perry.app with --perry-task-drill, resets its
 fixture under ~/PerryBench/run, posts the goal through scripts/lab/guide-drill
@@ -197,7 +197,7 @@ def main():
     parser.add_argument("--claude-model", default="claude-haiku-5-5")
     parser.add_argument("--out")
     args = parser.parse_args()
-    out = Path(args.out or REPO / f"docs/evidence/lab/planner-{args.label}.jsonl")
+    out = Path(args.out or REPO / f"build/evidence/lab/planner-{args.label}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     HELPER.parent.mkdir(parents=True, exist_ok=True)
     source = REPO / "scripts/lab/guide-drill.swift"

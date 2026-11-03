@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--product", choices=["perry", "heyclicky"], required=True)
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[2]
-    corpus_path = repository / "docs/plans/2026-09-29-dependable-task-corpus.json"
+    corpus_path = repository / "scripts/fixtures/dependable-task-corpus.json"
     corpus = json.loads(corpus_path.read_text())
     tasks = corpus["tasks"]
     identifiers = [task["id"] for task in tasks]

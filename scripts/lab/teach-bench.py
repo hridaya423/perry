@@ -281,7 +281,7 @@ def main():
     parser.add_argument("--max-steps", type=int, default=10)
     parser.add_argument("--out")
     args = parser.parse_args()
-    out = Path(args.out or REPO / f"docs/evidence/lab/teach-{args.label}.jsonl")
+    out = Path(args.out or REPO / f"build/evidence/lab/teach-{args.label}.jsonl")
     out.parent.mkdir(parents=True, exist_ok=True)
     if not HOLD.exists():
         subprocess.run(["swiftc", "-O", "-o", str(HOLD), str(REPO / "scripts/lab/talk-hold.swift")], check=True)

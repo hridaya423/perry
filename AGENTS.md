@@ -36,12 +36,12 @@ file, builds stay ad-hoc and every rebuild loses the grants.
 ## Lab (scripts/lab/)
 
 - `perry-drive.sh {launch|hotkey <combo>|windows|quit}`: launch sets
-  `PERRY_PERFORMANCE_EVENT_LOG` to `docs/evidence/lab/perf-<ts>.jsonl`, which
+  `PERRY_PERFORMANCE_EVENT_LOG` to `build/evidence/lab/perf-<ts>.jsonl`, which
   makes `PerfMark.mark(...)` append `{name, captured_at}` rows to
   `<log>.markers.jsonl`.
 - `latency-report.py <markers.jsonl> [--pair a:b] [--json]` prints n/p50/p95/max ms.
 - `idle-probe.sh [--seconds 60]` enforces budgets: avg CPU <= 0.5%, max RSS <= 180 MB.
-- `record.sh <name> [seconds]` screen-records to `docs/evidence/recordings/`.
+- `record.sh <name> [seconds]` screen-records to `build/evidence/recordings/`.
 - `agent_desktop.py` is the drills' client for the app's bundled
   `Contents/Resources/AgentDesktop/bin/agent-desktop` (override with `AGENT_DESKTOP`).
 - `driver-bench.py --label <name> --out <json>` times cold, warm, click and type.

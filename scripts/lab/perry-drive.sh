@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="${PERRY_APP:-$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app}"
-EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
+EVIDENCE_DIR="$REPO_ROOT/build/evidence/lab"
 DRIVER="${AGENT_DESKTOP:-$APP/Contents/Resources/AgentDesktop/bin/agent-desktop}"
 
 perry_pid() { pgrep -x Perry | head -1 || true; }

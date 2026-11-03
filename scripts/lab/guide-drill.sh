@@ -22,16 +22,12 @@ if [ ! -x "$HELPER" ] || [ "$REPO_ROOT/scripts/lab/guide-drill.swift" -nt "$HELP
 fi
 
 FIXTURE="$BUILD_DIR/guide-drill-fixture.png"
-if [ ! -f "$FIXTURE" ]; then
-    src="$(find "$REPO_ROOT/docs/evidence" -name '*.png' -print -quit)"
-    [ -n "$src" ] || { echo "guide-drill: no PNG under docs/evidence for the fixture" >&2; exit 1; }
-    cp "$src" "$FIXTURE"
-fi
+[ -f "$FIXTURE" ] || cp "$REPO_ROOT/scripts/fixtures/guide-drill.png" "$FIXTURE"
 rm -f "$BUILD_DIR/guide-drill-fixture-r"*.png
 
 rm -f "$STATE" "$STATE.log"
 APP="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"
-LOG_DIR="$REPO_ROOT/docs/evidence/lab"
+LOG_DIR="$REPO_ROOT/build/evidence/lab"
 mkdir -p "$LOG_DIR"
 PERF_LOG="$LOG_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 MARKERS="$PERF_LOG.markers.jsonl"

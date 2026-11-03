@@ -52,7 +52,7 @@ fi
 for stale in $(pgrep -x Perry); do kill "$stale" 2>/dev/null || true; done
 sleep 0.5
 "$DRIVE" seed-lab-data
-EVIDENCE_DIR="$REPO_ROOT/docs/evidence/lab"
+EVIDENCE_DIR="$REPO_ROOT/build/evidence/lab"
 mkdir -p "$EVIDENCE_DIR"
 LOG="$EVIDENCE_DIR/perf-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
 APP_BUNDLE="$REPO_ROOT/build/debug-p1/Build/Products/Debug/Perry.app"

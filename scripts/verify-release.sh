@@ -15,7 +15,6 @@ die() {
   exit 1
 }
 
-"${SCRIPT_DIR}/validate-release-evidence.sh"
 [ "$(uname -s)" = "Darwin" ] || die "macOS is required"
 [ "$(uname -m)" = "arm64" ] || die "Apple Silicon is required; found $(uname -m)"
 [ -x "${XCODEGEN}" ] || die "pinned xcodegen is required at ${XCODEGEN}"

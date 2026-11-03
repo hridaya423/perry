@@ -2,9 +2,9 @@
 
 ## Direction and evidence
 
-Perry is a small, expressive ink companion that helps inside the Mac you already use. The approved direction combines **Perry redraws the window** and **Drawn to life**: handwriting becomes a character, and the character helps form the interface. References: `docs/design/2026-10-01-onboarding-concepts/10-redraw-the-window.png` and `09-drawn-to-life.png`.
+Perry is a small, expressive ink companion that helps inside the Mac you already use. The approved direction combines **Perry redraws the window** and **Drawn to life**: handwriting becomes a character, and the character helps form the interface.
 
-This is the target product contract, not a claim that the existing app already implements it. The current approved references are `docs/design/notch-only/refined/workspace-v3.png`, `cursor-feedback.png`, `results-approval.png`, and `routines-settings.png`. Migration and verification live in `docs/plans/2026-10-02-approved-notch-rebuild.md`. Codex owns design decisions and review; Devin SWE-2 Max implements bounded specifications.
+This is the target product contract, not a claim that the existing app already implements it. Codex owns design decisions and review; Devin SWE-2 Max implements bounded specifications.
 
 Hey Clicky provides interaction evidence: a focused welcome, an introduction, a transition into the notch, contextual permissions, and a small companion beside the normal pointer. Its Home exists but does not lead every interaction. Perry uses original artwork and its own expression.
 
