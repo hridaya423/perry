@@ -75,10 +75,10 @@ public struct PerryCharacterPose: Equatable, Sendable {
 
         var eye: PerryStroke {
             switch self {
-            case .open: .vertical(0.15, width: 0.09)
-            case .wide: .vertical(0.2, width: 0.105)
-            case .focused: .vertical(0.06, width: 0.09)
-            case .speaking: .vertical(0.12, width: 0.09)
+            case .open: .vertical(0.085, width: 0.072)
+            case .wide: .vertical(0.12, width: 0.085)
+            case .focused: .vertical(0.035, width: 0.072)
+            case .speaking: .vertical(0.07, width: 0.072)
             case .worried: .vertical(0.035, width: 0.115)
             case .happy: .arc(0.085, bend: 0.04, width: 0.055)
             case .asleep: .arc(0.1, bend: -0.04, width: 0.065)
@@ -357,13 +357,13 @@ public struct PerryCharacterView: View {
         let shape = PerryBodyShape.unitPath.applying(bodyTransform)
         var shadowed = context
         shadowed.addFilter(.shadow(color: .black.opacity(0.3), radius: 0.045, x: 0, y: 0.025))
-        shadowed.stroke(shape, with: .color(.white), style: StrokeStyle(lineWidth: 0.15, lineJoin: .miter, miterLimit: 3))
+        shadowed.stroke(shape, with: .color(.white), style: StrokeStyle(lineWidth: 0.14, lineJoin: .round))
         context.fill(shape, with: .color(tint))
-        context.stroke(shape, with: .color(Self.carbon), style: StrokeStyle(lineWidth: 0.055, lineJoin: .miter, miterLimit: 3))
+        context.stroke(shape, with: .color(Self.carbon), style: StrokeStyle(lineWidth: 0.055, lineJoin: .round))
         let face = PerryBodyShape.faceCenter
         let look = CGPoint(x: pose.gaze.dx * 0.035, y: pose.gaze.dy * 0.03)
         for side in [-1.0, 1.0] {
-            let eye = CGPoint(x: face.x + side * 0.095 + look.x, y: face.y - 0.025 + look.y)
+            let eye = CGPoint(x: face.x + side * 0.085 + look.x, y: face.y - 0.03 + look.y)
             draw(pose.eye, at: eye, squash: pose.eyeOpen, in: &context)
         }
         draw(pose.mouth, at: CGPoint(x: face.x + look.x * 0.6, y: face.y + 0.18 + look.y * 0.6), squash: 1, in: &context)
@@ -455,20 +455,23 @@ public struct PerryCharacterView: View {
 public struct PerryBodyShape: Shape {
     public static let tip = CGPoint(x: -0.3, y: -0.4)
     static let center = CGPoint(x: 0.101, y: 0.124)
-    static let radius: CGFloat = 0.285
+    static let radius: CGFloat = 0.3
     static let faceCenter = CGPoint(x: 0.096, y: 0.104)
 
     static let unitPath: Path = {
-        let d = hypot(center.x - tip.x, center.y - tip.y)
-        let axis = atan2(center.y - tip.y, center.x - tip.x)
-        let spread = acos(radius / d)
-        let start = axis + .pi - spread
+        let length = hypot(center.x - tip.x, center.y - tip.y)
+        let angle = atan2(center.y - tip.y, center.x - tip.x) - .pi / 2
+        let r = radius
+        let k = 0.5523 * r
         var path = Path()
-        path.move(to: tip)
-        path.addLine(to: CGPoint(x: center.x + radius * cos(start), y: center.y + radius * sin(start)))
-        path.addArc(center: center, radius: radius, startAngle: .radians(start), endAngle: .radians(axis + .pi + spread), clockwise: true)
+        path.move(to: CGPoint(x: 0.022, y: 0.03))
+        path.addQuadCurve(to: CGPoint(x: -0.022, y: 0.03), control: CGPoint(x: 0, y: -0.012))
+        path.addCurve(to: CGPoint(x: -r, y: length), control1: CGPoint(x: -0.13, y: 0.17), control2: CGPoint(x: -r, y: length - 0.24))
+        path.addCurve(to: CGPoint(x: 0, y: length + r), control1: CGPoint(x: -r, y: length + k), control2: CGPoint(x: -k, y: length + r))
+        path.addCurve(to: CGPoint(x: r, y: length), control1: CGPoint(x: k, y: length + r), control2: CGPoint(x: r, y: length + k))
+        path.addCurve(to: CGPoint(x: 0.022, y: 0.03), control1: CGPoint(x: r, y: length - 0.2), control2: CGPoint(x: 0.1, y: 0.14))
         path.closeSubpath()
-        return path
+        return path.applying(CGAffineTransform(rotationAngle: angle).concatenating(CGAffineTransform(translationX: tip.x, y: tip.y)))
     }()
 
     public init() {}

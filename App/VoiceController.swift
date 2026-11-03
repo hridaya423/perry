@@ -130,7 +130,7 @@ final class VoiceController: NSObject, ObservableObject {
         self?.handleMutedOutput()
     }
 
-    lazy var wakeWordListener = WakeWordListener(
+    lazy var wakeWordListener: WakeWordListener = WakeWordListener(
         onWake: { [weak self] command in
             Task { @MainActor [weak self] in self?.handleWakeWord(command) }
         },
