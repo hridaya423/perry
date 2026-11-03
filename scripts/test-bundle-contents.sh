@@ -43,5 +43,13 @@ if output="$("${VERIFIER}" "${APP}" 2>&1)"; then
   exit 1
 fi
 printf '%s\n' "${output}" | grep -Fq "executable is not arm64-only"
+cp "${TMP}/arm64" "${RESOURCES}/AgentDesktop/bin/agent-desktop-macos-helper"
+
+cp "${TMP}/arm64" "${RESOURCES}/libllama.0.dylib"
+if output="$("${VERIFIER}" "${APP}" 2>&1)"; then
+  echo "bundle content self-test: accepted a library loose in Resources" >&2
+  exit 1
+fi
+printf '%s\n' "${output}" | grep -Fq "loose library in Resources"
 
 echo "bundle content self-tests passed"

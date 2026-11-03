@@ -41,6 +41,9 @@ do
   [ ! -e "${RESOURCES}/${cue}.caf" ] || die "duplicate root sound cue: ${cue}.caf"
 done
 
+loose_library="$(find "${RESOURCES}" -maxdepth 1 -type f -name '*.dylib' | head -1)"
+[ -z "${loose_library}" ] || die "loose library in Resources: ${loose_library}"
+
 sound_count="$(find "${RESOURCES}" -type f -name '*.caf' | wc -l | tr -d ' ')"
 [ "${sound_count}" = "5" ] || die "expected 5 sound files, found ${sound_count}"
 

@@ -40,6 +40,10 @@ targets:
       - path: App
         excludes:
           - Resources/Sounds
+          - Resources/CodexRuntime
+          - Resources/AgentDesktop
+          - Resources/CuaDriver
+          - Resources/LocalEngine
       - path: App/Resources/Sounds
         type: folder
         buildPhase: resources
