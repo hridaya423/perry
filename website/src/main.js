@@ -52,11 +52,6 @@ addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !menuList.hidden) { setMenu(false); menuBtn.focus(); }
   if (e.key === 'q' && e.metaKey) { e.preventDefault(); quit(); }
 });
-const clockEl = nav.querySelector('[data-clock]');
-const clockFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-const tickClock = () => { clockEl.textContent = clockFmt.format(new Date()).replace(/,/g, ''); };
-tickClock();
-setInterval(tickClock, 15000);
 const barEyes = [...nav.querySelectorAll('.menubar__perry i')];
 let quitAt = -10;
 function quit() {

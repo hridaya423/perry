@@ -91,12 +91,16 @@ html.is-night .nav::before { background: rgba(12, 13, 14, 0.6); box-shadow: 0 0.
 html.is-night .nav .btn { background: var(--ivory); color: var(--ink); }
 .menubar__left, .menubar__right, .nav__links { display: flex; align-items: center; height: 100%; }
 .menubar__right { gap: 0.15rem; }
-.menubar__app, .nav__link, .menubar__perry, .menubar__clock { display: inline-flex; align-items: center; height: 24px; padding: 0 0.6rem; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; text-decoration: none; cursor: default; white-space: nowrap; transition: background-color 0.15s; }
+.menubar__app, .nav__link, .menubar__perry, .menubar__star { display: inline-flex; align-items: center; height: 24px; padding: 0 0.6rem; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; text-decoration: none; cursor: default; white-space: nowrap; transition: background-color 0.15s; }
 .menubar__app { font-family: var(--display); font-size: 1rem; letter-spacing: -0.01em; font-weight: 400; cursor: pointer; }
 .nav__link { cursor: pointer; }
-@media (hover: hover) { .menubar__app:hover, .nav__link:hover, .menubar__perry:hover { background: rgba(28, 30, 27, 0.08); } html.is-night .nav .nav__link:hover, html.is-night .menubar__app:hover, html.is-night .menubar__perry:hover { background: rgba(255, 255, 255, 0.12); } }
+@media (hover: hover) { .menubar__app:hover, .nav__link:hover, .menubar__perry:hover { background: rgba(28, 30, 27, 0.08); } html.is-night .nav .nav__link:hover, html.is-night .menubar__app:hover, html.is-night .menubar__perry:hover { background: rgba(255, 255, 255, 0.12); }
+  .menubar__star:hover { background: rgba(28, 30, 27, 0.08); } html.is-night .menubar__star:hover { background: rgba(255, 255, 255, 0.12); }
+  .menubar__star:hover svg { fill: var(--ember); stroke: var(--ember); transform: rotate(-14deg) scale(1.08); } }
 .menubar__app[aria-expanded="true"] { background: rgba(28, 30, 27, 0.1); }
-.menubar__clock { font-variant-numeric: tabular-nums; padding: 0 0.7rem 0 0.5rem; }
+.menubar__star { gap: 0.4rem; padding: 0 0.6rem 0 0.5rem; cursor: pointer; }
+.menubar__star svg { width: 15px; height: 15px; fill: transparent; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; transition: fill 0.2s, stroke 0.2s, transform 0.35s var(--ease-out); }
+.menubar__star:active svg { transform: scale(0.85); }
 .menubar__perry { gap: 3px; padding: 0 0.55rem; cursor: pointer; }
 .menubar__perry i { width: 4.5px; height: 9px; border-radius: 3px; background: currentColor; transform: translate(var(--px, 0), var(--py, 0)) scaleY(var(--lid, 1)); }
 .nav .btn--sm { height: 24px; min-height: 0; padding: 0 0.75rem; font-size: 0.8125rem; margin-left: 0.25rem; }
@@ -234,7 +238,9 @@ html.is-pouring [data-perry-guide] { z-index: 39; }
 @keyframes nope { 15% { transform: translateX(calc(-50% - 9px)); } 35% { transform: translateX(calc(-50% + 8px)); } 55% { transform: translateX(calc(-50% - 5px)); } 75% { transform: translateX(calc(-50% + 3px)); } }
 .notch.nope { animation: nope 0.55s var(--ease-soft); }
 @media (max-width: 900px) {
-  .nav__links, .menubar__clock { display: none; }
+  .nav__links { display: none; }
+  .menubar__star span { display: none; }
+  .menubar__star { padding: 0 0.5rem; }
   :root { --notch-w: 124px; --notch-h: 30px; }
   .nav__link { display: none; }
   .hero__mark { top: 22svh; bottom: 48svh; left: 1rem; right: 1rem; }
