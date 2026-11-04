@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f5f3ee">
+  <title>Perry: free AI help that lives in your Mac’s notch</title>
+  <meta name="description" content="Ask Perry how to do anything on your Mac. It points at the right button in any app, or clicks it for you. Free, open source, no account. Apple silicon, macOS 14+.">
+  <link rel="canonical" href="https://perry.hridya.tech/">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <meta name="author" content="Hridya Agrawal">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Perry">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://perry.hridya.tech/">
+  <meta property="og:title" content="Perry: someone to show you where">
+  <meta property="og:description" content="Ask how to do anything on your Mac. Perry points at the button, or clicks it for you. Free and open source.">
+  <meta property="og:image" content="https://perry.hridya.tech/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The Perry wordmark under a Mac notch, its eyes on a Get Perry for Mac button. Someone to show you where.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Perry: someone to show you where">
+  <meta name="twitter:description" content="Ask how to do anything on your Mac. Perry points at the button, or clicks it for you. Free and open source.">
+  <meta name="twitter:image" content="https://perry.hridya.tech/assets/og.png">
+  <meta name="twitter:image:alt" content="The Perry wordmark under a Mac notch, its eyes on a Get Perry for Mac button. Someone to show you where.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/young-serif-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/bricolage-grotesque-200_800-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles/site.css">
+  <script type="application/ld+json" data-ld>{}</script>
+  <script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav menubar">
+    <div class="menubar__left">
+      <div class="appmenu" data-menu>
+        <button class="menubar__app" type="button" aria-haspopup="menu" aria-expanded="false" data-menu-btn>perry</button>
+        <div class="appmenu__list" role="menu" data-menu-list hidden>
+          <a role="menuitem" href="#top">About Perry</a>
+          <button role="menuitem" type="button" data-ask-open>Ask this page… <span class="appmenu__key">⌃⌃</span></button>
+          <button role="menuitem" type="button" data-wake>Wake Perry <span class="appmenu__key">⌥⌘P</span></button>
+          <a role="menuitem" href="https://github.com/hridaya423/perry/releases/latest" data-get>Get Perry for Mac</a>
+          <hr>
+          <button role="menuitem" type="button" data-quit>Quit Perry <span class="appmenu__key">⌘Q</span></button>
+        </div>
+      </div>
+      <nav class="nav__links" aria-label="Primary">
+        <a class="nav__link" href="#help">How it helps</a>
+        <a class="nav__link" href="#privacy">Privacy</a>
+        <a class="nav__link" href="#faq">FAQ</a>
+      </nav>
+    </div>
+    <div class="menubar__right">
+      <button class="menubar__sound" type="button" data-sound aria-pressed="false" aria-label="Interface sounds"><svg viewBox="0 0 20 20" aria-hidden="true"><path class="sp" d="M3.5 7.5h2.6L10 4.2v11.6l-3.9-3.3H3.5z"/><path class="w1" d="M12.6 7.6a3.4 3.4 0 0 1 0 4.8"/><path class="w2" d="M14.8 5.4a6.5 6.5 0 0 1 0 9.2"/><path class="x" d="m12.8 8 4 4m0-4-4 4"/></svg></button>
+      <button class="menubar__perry" type="button" data-ask-open aria-label="Ask this page"><i></i><i></i></button>
+      <span class="menubar__clock" data-clock aria-hidden="true"></span>
+      <a class="btn btn--sm" href="https://github.com/hridaya423/perry/releases/latest" data-get><span class="btn__fill" aria-hidden="true"></span><span class="btn__label">Get Perry</span></a>
+    </div>
+  </header>
+
+  <div class="notch">
+    <div class="notch__body">
+      <button class="notch__ask" type="button" aria-expanded="false" aria-controls="ask-panel" aria-label="Ask Perry about this page"></button>
+      <div class="notch__eyes" aria-hidden="true">
+        <span class="notch__eye"><i></i></span><span class="notch__eye"><i></i></span>
+      </div>
+      <div class="notch__panel">
+        <div class="np np--ask" data-np="ask" id="ask-panel" role="group" aria-label="Ask about this page" inert>
+          <p class="np__hint">Ask about this page <span class="np__keys"><kbd>/</kbd> or <kbd>⌃</kbd><kbd>⌃</kbd></span></p>
+          <div class="chips">
+            <button class="chip" type="button" data-ask="cost" data-answer="Nothing. You only pay the AI provider you connect, if anything.">What does it cost?</button>
+            <button class="chip" type="button" data-ask="keep" data-answer="No. Screenshots live in memory only while you work together.">Does it keep my screenshots?</button>
+            <button class="chip" type="button" data-ask="get" data-answer="Right here. Free, for Apple silicon Macs on macOS 14 or later.">Where do I get it?</button>
+          </div>
+        </div>
+        <div class="np" data-np="hi" role="status" inert><span class="np__text">Hi. Press <kbd>⌃</kbd><kbd>⌃</kbd> to ask about this page.</span></div>
+        <div class="np" data-np="talk" role="status" inert><span class="np__bars"><i></i><i></i><i></i></span><span class="np__text">In the app, Perry is listening now. Here, let go and pick a question.</span></div>
+        <div class="np" data-np="gq" aria-hidden="true" inert><span class="np__bars"><i></i><i></i><i></i></span><span class="np__text"></span></div>
+        <div class="np np--reply" data-np="ga" inert><span class="np__text" aria-live="polite"></span><button class="np__btn np__btn--ghost" type="button" data-ask-again>Ask another</button></div>
+        <div class="np np--bench" data-np="bench" inert><span class="np__step" data-bn-step></span><span class="np__bars" data-bn-bars><i></i><i></i><i></i></span><span class="np__check" data-bn-check></span><span class="np__text" data-bn-text aria-live="polite"></span><span class="np__actions" data-bn-actions></span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dusk" aria-hidden="true"></div>
+  <canvas class="ink" aria-hidden="true"></canvas>
+  <div class="mascot mascot--stage" data-perry aria-hidden="true"></div>
+  <div class="mascot" data-perry-guide aria-hidden="true"></div>
+
+  <main id="main" tabindex="-1">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="hero__pin">
+        <div class="hero__mark" data-mark aria-hidden="true">
+          <svg class="mark-fallback" viewBox="0 0 10 10"></svg>
+        </div>
+        <h1 class="hero__title" id="hero-title">Someone to show<br> you where.</h1>
+        <div class="hero__cta">
+          <a class="btn" href="https://github.com/hridaya423/perry/releases/latest" data-get><span class="btn__fill" aria-hidden="true"></span><span class="btn__label">Get Perry for Mac</span></a>
+          <p class="note">Free and open source. Apple silicon, macOS 14+.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="sentence" aria-labelledby="sentence-title">
+      <div class="sentence__pin">
+        <p class="sentence__kicker">Your words. The right controls.</p>
+        <h2 class="sentence__text" id="sentence-title">
+          <span class="sr-only">Make the bass move with the kick like this.</span>
+          <span class="sl" aria-hidden="true">
+            <span class="sw">Make the</span>
+            <span class="frag frag--bass" data-frag="bass">
+              <span class="frag__head"><svg class="frag__ic" viewBox="0 0 16 16"><path d="M2 6v4M5 4v8M8 6v4M11 3v10M14 6v4"/></svg><b>Bass</b><svg class="frag__chev" viewBox="0 0 10 10"><path d="m2.5 3.5 2.5 2.5 2.5-2.5"/></svg><span class="frag__ruler"><span>1.1</span><span>1.2</span><span>1.3</span><span>1.4</span></span></span>
+              <canvas class="frag__wave" data-wave-frag="bass"></canvas>
+              <i class="frag__ph"></i>
+            </span>
+          </span>
+          <span class="sl" aria-hidden="true">
+            <span class="sw">move with the</span>
+            <span class="frag frag--kick" data-frag="kick">
+              <span class="frag__head"><svg class="frag__ic" viewBox="0 0 16 16"><path d="M2 6v4M5 4v8M8 6v4M11 3v10M14 6v4"/></svg><b>Kick</b><svg class="frag__chev" viewBox="0 0 10 10"><path d="m2.5 3.5 2.5 2.5 2.5-2.5"/></svg><span class="frag__ruler"><span>1.1</span><span>1.2</span></span></span>
+              <canvas class="frag__wave" data-wave-frag="kick"></canvas>
+            </span>
+          </span>
+          <span class="sl" aria-hidden="true">
+            <span class="sw">like this.</span>
+            <span class="frag frag--comp" data-frag="comp">
+              <span class="frag__pow"><svg viewBox="0 0 16 16"><path d="M8 2.5v5M4.6 4.6a4.8 4.8 0 1 0 6.8 0"/></svg></span>
+              <b class="frag__name">Compressor</b><svg class="frag__chev" viewBox="0 0 10 10"><path d="m2.5 3.5 2.5 2.5 2.5-2.5"/></svg>
+              <span class="frag__lbl">Threshold</span>
+              <span class="frag__val" data-frag-val>0.0 dB</span>
+              <svg class="frag__dial" viewBox="-130 -130 260 160">
+                <g class="frag__ticks"></g>
+                <text x="-104" y="-20">−40</text><text x="-50" y="-92">−30</text><text x="50" y="-92">−20</text><text x="104" y="-20">−10</text>
+                <circle class="frag__cap" r="58"/>
+                <path class="frag__track" d="M-70 0A70 70 0 0 1 70 0"/>
+                <path class="frag__arc" d="M-70 0A70 70 0 0 1 70 0" pathLength="1"/>
+                <line class="frag__needle" x1="0" y1="-30" x2="0" y2="-56"/>
+              </svg>
+            </span>
+          </span>
+        </h2>
+        <svg class="sentence__thread" aria-hidden="true"><path class="sentence__under"/><path class="sentence__path" pathLength="1"/><circle class="sentence__dot" r="7"/><circle class="sentence__dot" r="7"/><circle class="sentence__dot" r="7"/></svg>
+        <div class="mascot mascot--inline" data-perry-sentence aria-hidden="true"></div>
+        <div class="sentence__foot">
+          <p>Ask in your own words. Perry points to the next step.</p>
+          <a class="sentence__link" href="#help">See what else it does</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="sort" id="help" aria-labelledby="sort-title">
+      <div class="sort__head">
+        <div>
+          <h2 class="sort__title" id="sort-title">Your Downloads.<br> Dealt with.</h2>
+          <p class="sort__sub">Receipts, trip details, screenshots. Let Perry do the sorting.</p>
+        </div>
+        <button class="sort__try" type="button" data-sort-try>Try it with these files</button>
+      </div>
+
+      <div class="finder" data-finder role="group" aria-label="A Finder window of sample files. A demo: nothing on your Mac moves.">
+        <div class="finder__bar">
+          <span class="finder__lights" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="finder__nav" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m10 3-5 5 5 5"/></svg><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></span>
+          <span class="finder__name">Downloads</span>
+          <span class="finder__tools" aria-hidden="true">
+            <span class="finder__tool finder__tool--on"><svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></span>
+            <span class="finder__tool"><svg viewBox="0 0 16 16"><path d="M5 4h9M5 8h9M5 12h9M2 4h.5M2 8h.5M2 12h.5"/></svg></span>
+            <span class="finder__tool"><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M6 3v10M10 3v10"/></svg></span>
+            <span class="finder__tool"><svg viewBox="0 0 16 16"><path d="M8 10V2M5 5l3-3 3 3M4 8H3v6h10V8h-1"/></svg></span>
+            <span class="finder__tool"><svg viewBox="0 0 16 16"><path d="M2.5 2.5h5.2l6 6-5.2 5.2-6-6z"/><circle cx="5.5" cy="5.5" r="1"/></svg></span>
+            <span class="finder__tool"><svg viewBox="0 0 16 16"><circle cx="11" cy="7" r="4"/><path d="m14 10 1.5 1.5M2 13l5-5"/></svg></span>
+          </span>
+        </div>
+        <div class="finder__side" aria-hidden="true">
+          <p>Favorites</p>
+          <span><svg viewBox="0 0 16 16"><circle cx="8" cy="9" r="1.5"/><path d="M4.5 12a5 5 0 1 1 7 0M2.5 14a8 8 0 1 1 11 0"/></svg>AirDrop</span>
+          <span><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Recents</span>
+          <span><svg viewBox="0 0 16 16"><path d="M8 2 3 14M8 2l5 12M5 10h6"/></svg>Applications</span>
+          <span><svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="8.5" rx="1"/><path d="M6 14h4"/></svg>Desktop</span>
+          <span><svg viewBox="0 0 16 16"><path d="M4 2h5.5L12 4.5V14H4z"/><path d="M9.5 2v2.5H12"/></svg>Documents</span>
+          <span class="is-on"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5v6M5.5 8.5 8 11l2.5-2.5"/></svg>Downloads</span>
+          <p>iCloud</p>
+          <span><svg viewBox="0 0 16 16"><path d="M4.5 12.5a3 3 0 0 1-.4-6A4 4 0 0 1 11.8 6a3.2 3.2 0 0 1 .2 6.5z"/></svg>iCloud Drive</span>
+          <span><svg viewBox="0 0 16 16"><path d="M2 5h4l1.5 1.5H14V13H2z"/></svg>Shared</span>
+          <p>Locations</p>
+          <span><svg viewBox="0 0 16 16"><rect x="2" y="5" width="12" height="6" rx="1.5"/><path d="M11 8h.5"/></svg>Macintosh HD</span>
+        </div>
+        <ul class="finder__grid" data-grid aria-label="Downloads"></ul>
+        <div class="finder__plan" data-plan>
+          <p class="finder__planhead" data-plan-head>Perry hasn’t looked yet.</p>
+          <div class="finder__tree" data-tree></div>
+        </div>
+        <svg class="finder__ink" data-sort-ink aria-hidden="true"></svg>
+        <div class="finder__strip" data-strip>
+          <p data-strip-text aria-live="polite">Downloads, as they are.</p>
+          <div class="finder__acts" data-strip-acts></div>
+        </div>
+      </div>
+
+      <div class="sort__foot">
+        <p class="sort__line">You choose the folder. Perry takes it from there.</p>
+        <a class="btn" href="https://github.com/hridaya423/perry/releases/latest" data-get><span class="btn__fill" aria-hidden="true"></span><span class="btn__label">Get Perry for Mac</span></a>
+      </div>
+      <p class="sort__note">Sample files on this page. Nothing on your Mac moves.</p>
+    </section>
+
+    <section class="gate" aria-labelledby="gate-title">
+      <div class="gate__pin">
+        <div class="gate__copy">
+          <h2 class="gate__title" id="gate-title">Some lines are yours to cross.</h2>
+          <p class="gate__sub">Sending, deleting and overwriting wait for your approval.</p>
+        </div>
+        <div class="gate__line" aria-hidden="true"><i></i></div>
+        <p class="gate__yet" data-gate-yet aria-live="polite">Nothing changes yet.</p>
+        <p class="gate__file" aria-hidden="true"><b>Mix.wav</b><span data-gate-file>New bounce, 0:14</span></p>
+        <canvas class="gate__wave" data-gate-wave aria-hidden="true"></canvas>
+        <div class="mascot mascot--inline" data-perry-gate aria-hidden="true"></div>
+        <div class="gate__dialog" data-gate-dialog role="group" aria-labelledby="gate-q" aria-describedby="gate-d">
+          <h3 id="gate-q">Replace Mix.wav?</h3>
+          <p id="gate-d">The existing file will be overwritten.</p>
+          <div class="gate__actions">
+            <button type="button" class="ink-btn ink-btn--secondary" data-gate="stop">Stop</button>
+            <button type="button" class="ink-btn ink-btn--destructive" data-gate="go">Replace file</button>
+          </div>
+        </div>
+        <div class="gate__after" data-gate-after hidden>
+          <p data-gate-msg></p>
+          <button type="button" class="ink-btn ink-btn--secondary" data-gate="again">Try it again</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="route" id="privacy" aria-labelledby="route-title">
+      <h2 class="route__title" id="route-title">
+        <span class="sr-only" data-route-sr>Your Mac talks straight to your chosen AI. No Perry server in between.</span>
+        <span class="route__row" aria-hidden="true">
+          <span class="route__end">Your Mac</span>
+          <span class="route__wire"><svg data-route-svg preserveAspectRatio="none"><path class="route__path" data-route-path/><path class="route__head" data-route-head/><g data-route-packets></g></svg></span>
+          <span class="route__end route__end--far" data-route-far data-ask-target="cost">Your chosen AI.</span>
+        </span>
+      </h2>
+      <div class="route__below">
+        <div class="mascot mascot--inline" data-perry-route aria-hidden="true"></div>
+        <p class="route__note" data-route-note aria-live="polite">No Perry server in between.</p>
+      </div>
+      <div class="route__choose">
+        <h3 class="route__sub">Your connection. Your choice.</h3>
+        <div class="route__radios" role="radiogroup" aria-label="Where Perry sends requests">
+          <label class="radio"><input type="radio" name="route" value="cloud" checked><span>Cloud provider</span></label>
+          <label class="radio"><input type="radio" name="route" value="local"><span>Local <em>(experimental)</em></span></label>
+        </div>
+        <p class="route__detail" data-route-detail>Requests go straight from your Mac to the provider you pick. You pay that provider, if anything.</p>
+      </div>
+      <ul class="route__facts">
+        <li class="rfact" data-ask-target="keep">
+          <div class="rfact__vis rfact__vis--shot" aria-hidden="true"><span class="shot"><i></i><i></i><i></i></span><span class="shot__tag"><i></i>In memory</span></div>
+          <h3>Screenshots stay in memory.</h3>
+          <p>Perry looks while you work together, then lets go. It never saves them.</p>
+        </li>
+        <li class="rfact">
+          <div class="rfact__vis" aria-hidden="true"><span class="keyrow"><svg viewBox="0 0 20 20"><circle cx="7" cy="10" r="3.6"/><path d="M10.6 10H17M14.5 10v2.6M16.6 10v2"/></svg><span class="keyrow__txt"><b>Anthropic API key</b><small>Keychain · login</small></span><span class="keyrow__dots">••••••••••</span></span></div>
+          <h3>Keys stay in Keychain.</h3>
+          <p>Your provider keys live in macOS Keychain, on your Mac.</p>
+        </li>
+        <li class="rfact">
+          <div class="rfact__vis" aria-hidden="true"><span class="diag"><svg viewBox="0 0 24 28"><path d="M4 2.5h11l5 5v18H4z"/><path d="M15 2.5v5h5M8 13h8M8 17h8M8 21h5"/></svg><span><b>Perry diagnostics</b><small>Export when you choose</small></span><span class="diag__pill">On this Mac</span></span></div>
+          <h3>Nothing phones home.</h3>
+          <p>No third-party telemetry. Diagnostics stay on your Mac until you export them.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section class="home" id="faq" aria-labelledby="home-title">
+      <div class="ws" data-ws>
+        <button class="ws__notch" type="button" data-ws-toggle aria-expanded="false" aria-controls="ws-panel" aria-label="Open Perry"></button>
+        <div class="ws__shape">
+        <div class="ws__panel" id="ws-panel" role="region" aria-label="Perry" inert>
+          <div class="ws__rail" data-ws-rail>
+            <button class="ws__brand" type="button" data-ws-home title="Home (⌘[)"><span class="ws__char" data-ws-char></span><span>perry</span></button>
+            <div class="ws__searchrow">
+              <label class="ws__search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6"/><path d="m10.4 10.4 3.4 3.4"/></svg><input type="search" placeholder="Search…" aria-label="Search conversations" data-ws-search autocomplete="off"></label>
+              <button class="ws__icon" type="button" data-ws-new aria-label="New conversation" title="New conversation (⌘N)"><svg viewBox="0 0 16 16"><path d="M13 9v3.5A1.5 1.5 0 0 1 11.5 14h-8A1.5 1.5 0 0 1 2 12.5v-8A1.5 1.5 0 0 1 3.5 3H7"/><path d="m7 9 .5-2.2 5.3-5.3a1.1 1.1 0 0 1 1.6 1.6L9.1 8.5Z"/></svg></button>
+            </div>
+            <div class="ws__links">
+              <button class="ws__link" type="button" data-ws-page="Tasks"><span class="tile" style="--tint:156,203,182"><svg viewBox="0 0 16 16"><path class="f" d="M9.2 1.5 3.5 9h4l-.9 5.5L12.5 7h-4z"/></svg></span>Tasks</button>
+              <button class="ws__link" type="button" data-ws-page="Routines"><span class="tile" style="--tint:140,181,255"><svg viewBox="0 0 16 16"><path d="M3 7V6a2 2 0 0 1 2-2h7.5M10.5 2l2 2-2 2M13 9v1a2 2 0 0 1-2 2H3.5M5.5 14l-2-2 2-2"/></svg></span>Routines</button>
+              <button class="ws__link" type="button" data-ws-page="Files"><span class="tile" style="--tint:112,214,224"><svg viewBox="0 0 16 16"><path class="f" d="M1.5 4.2c0-.7.5-1.2 1.2-1.2h3.4l1.5 1.6h5.7c.7 0 1.2.5 1.2 1.2v6.5c0 .7-.5 1.2-1.2 1.2H2.7c-.7 0-1.2-.5-1.2-1.2z"/></svg></span>Files</button>
+              <button class="ws__link" type="button" data-ws-page="Suggestions"><span class="tile" style="--tint:255,194,122"><svg viewBox="0 0 16 16"><path class="f" d="M8 1.5a4.6 4.6 0 0 0-2.6 8.4c.4.3.6.7.6 1.1V12h4v-1c0-.4.2-.8.6-1.1A4.6 4.6 0 0 0 8 1.5ZM6 13h4v.6c0 .5-.4.9-.9.9H6.9a.9.9 0 0 1-.9-.9z"/></svg></span>Suggestions</button>
+              <button class="ws__link" type="button" data-ws-page="History"><span class="tile" style="--tint:201,166,255"><svg viewBox="0 0 16 16"><path class="f" d="M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm-.7 3v4.1l3 1.8.7-1.1-2.4-1.5V4.5z"/></svg></span>History</button>
+            </div>
+            <div class="ws__threads">
+              <p class="ws__meta">Recent</p>
+              <ul class="ws__list" data-ws-threads></ul>
+              <p class="ws__none" data-ws-none hidden></p>
+            </div>
+            <div class="ws__foot">
+              <button class="ws__apps" type="button" data-ws-page="Apps"><span class="tile" style="--tint:255,158,184"><svg viewBox="0 0 16 16"><path class="f" d="M2 3.2C2 2.5 2.5 2 3.2 2h2.6c.7 0 1.2.5 1.2 1.2v2.6C7 6.5 6.5 7 5.8 7H3.2C2.5 7 2 6.5 2 5.8zm7 0C9 2.5 9.5 2 10.2 2h2.6c.7 0 1.2.5 1.2 1.2v2.6c0 .7-.5 1.2-1.2 1.2h-2.6C9.5 7 9 6.5 9 5.8zm-7 7C2 9.5 2.5 9 3.2 9h2.6c.7 0 1.2.5 1.2 1.2v2.6c0 .7-.5 1.2-1.2 1.2H3.2C2.5 14 2 13.5 2 12.8zm7 0c0-.7.5-1.2 1.2-1.2h2.6c.7 0 1.2.5 1.2 1.2v2.6c0 .7-.5 1.2-1.2 1.2h-2.6c-.7 0-1.2-.5-1.2-1.2z"/></svg></span>Apps</button>
+              <button class="ws__icon" type="button" data-ws-page="Settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.6v1.6M8 12.8v1.6M14.4 8h-1.6M3.2 8H1.6M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6 3.5 3.5"/><circle cx="8" cy="8" r="4.6"/></svg></button>
+            </div>
+          </div>
+          <div class="ws__sep" aria-hidden="true"></div>
+          <div class="ws__main">
+            <div class="ws__page ws__page--rest" data-ws-rest>
+              <div class="ws__controls"><button class="ws__icon" type="button" aria-label="More" title="More"><svg viewBox="0 0 16 16"><circle class="f" cx="3.5" cy="8" r="1.2"/><circle class="f" cx="8" cy="8" r="1.2"/><circle class="f" cx="12.5" cy="8" r="1.2"/></svg></button><button class="ws__icon" type="button" data-ws-close aria-label="Close" title="Close"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+              <div class="ws__hello">
+                <div class="ws__greet"><span class="ws__bigchar" data-ws-bigchar></span><div><p class="ws__display" data-ws-greeting>Evening.</p><p class="ws__hint">Hold <kbd class="keycap">⌃⌥</kbd> to talk</p></div></div>
+                <form class="composer" data-ws-form="rest"><textarea rows="1" placeholder="Ask Perry anything" aria-label="Ask Perry about this page" data-ws-input></textarea><button class="composer__send" type="submit" aria-label="Send"><svg viewBox="0 0 16 16"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"/></svg></button><span class="composer__mic" aria-hidden="true"><svg viewBox="0 0 16 16"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.2"/></svg></span></form>
+                <div class="ws__chips"><span class="chipx"><svg viewBox="0 0 16 16"><path d="M3 3.5h10a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 13 11.5H7l-3 2.5v-2.5H3A1.5 1.5 0 0 1 1.5 10V5A1.5 1.5 0 0 1 3 3.5Z"/></svg>Ask · This page</span></div>
+              </div>
+            </div>
+            <div class="ws__page ws__page--focus" data-ws-focus hidden>
+              <div class="ws__bar"><h3 class="ws__title" data-ws-title>New conversation</h3><div class="ws__controls"><button class="ws__icon" type="button" aria-label="More" title="More"><svg viewBox="0 0 16 16"><circle class="f" cx="3.5" cy="8" r="1.2"/><circle class="f" cx="8" cy="8" r="1.2"/><circle class="f" cx="12.5" cy="8" r="1.2"/></svg></button><button class="ws__icon" type="button" data-ws-close aria-label="Close" title="Close"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div></div>
+              <div class="ws__body" data-ws-body></div>
+              <form class="composer composer--dock" data-ws-form="focus" hidden><textarea rows="1" placeholder="Ask a follow-up" aria-label="Ask a follow-up" data-ws-input></textarea><button class="composer__send" type="submit" aria-label="Send"><svg viewBox="0 0 16 16"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"/></svg></button><span class="composer__mic" aria-hidden="true"><svg viewBox="0 0 16 16"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.2"/></svg></span></form>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+      <div class="home__pin">
+        <div class="home__copy">
+          <h2 class="home__title" id="home-title">Help has a home.</h2>
+          <p class="home__sub">It lives at the top edge. The rest of the screen is yours.</p>
+        </div>
+        <p class="home__req">Apple silicon. macOS 14+.<br> No notch required.</p>
+      </div>
+      <div class="faq" id="questions">
+        <h2 class="faq__title">Questions</h2>
+        <div class="faq__item" data-qa="what"><h3>What is Perry?</h3><p>Perry is a free, open-source AI helper that lives in your Mac’s notch. Ask how to do something in any app, and Perry points at each control in turn. Ask it to do the task, and it does the work while you watch, with a stop button always in reach.</p></div>
+        <div class="faq__item" data-qa="how"><h3>How do I ask Perry something?</h3><p>Hold <kbd>⌃</kbd><kbd>⌥</kbd> and talk, or double-tap <kbd>⌃</kbd> to type. Perry opens from the notch at the top of your screen and answers there.</p></div>
+        <div class="faq__item" data-qa="cost"><h3>What does it cost?</h3><p>Nothing. Perry is free and open source under AGPL-3.0, with no account and no subscription. Use the ChatGPT or Claude plan you already pay for, or an API key from the provider you choose.</p></div>
+        <div class="faq__item" data-qa="macs"><h3>Which Macs does it run on?</h3><p>Macs with Apple silicon on macOS 14 or later. Macs without a notch get the same home at the top edge of the screen.</p></div>
+        <div class="faq__item" data-qa="see"><h3>What can it see?</h3><p>Only the window you’re working in, and only during a session you start. Perry never reads or acts in banking, password manager or checkout windows. It explains Accessibility, Screen Recording and Microphone access before macOS asks for each one.</p></div>
+        <div class="faq__item" data-qa="keep"><h3>Does it keep my screenshots?</h3><p>No. Screenshots stay in memory while you work together. Perry never saves them.</p></div>
+        <div class="faq__item" data-qa="route"><h3>Where do my requests go?</h3><p>Straight from your Mac to the brain you pick: your ChatGPT or Claude plan, an API key, or a model on your own Mac. Perry has no server and no telemetry. API keys stay in the macOS Keychain.</p></div>
+        <div class="faq__item" data-qa="asks"><h3>Will it act without asking?</h3><p>Not on anything that can’t be undone. Sending, deleting, overwriting and buying wait for your click. Your voice alone is never enough.</p></div>
+        <div class="faq__item" data-qa="out"><h3>Is it out yet?</h3><p>Yes. Perry <span data-version>0.1.0</span> is a public beta, signed with a Developer ID and notarized by Apple. Download it from GitHub. Later versions arrive through the built-in updater.</p></div>
+      </div>
+    </section>
+
+    <section class="finale" aria-labelledby="finale-title">
+      <div class="finale__track">
+        <div class="finale__pin">
+          <div class="finale__inside">
+            <div class="finale__eyes" aria-hidden="true"><span class="finale__eye"></span><span class="finale__eye"></span></div>
+            <h2 class="finale__title" id="finale-title">Say hello to Perry.</h2>
+            <p class="finale__sub">Free and open source. Apple silicon, macOS 14+. Public beta.</p>
+            <a class="btn btn--big" href="https://github.com/hridaya423/perry/releases/latest" data-get><span class="btn__fill" aria-hidden="true"></span><span class="btn__label">Get Perry for Mac</span></a>
+          </div>
+          <footer class="foot">
+            <span>© 2026 Perry</span>
+            <span>Open source, AGPL-3.0</span>
+            <a href="#privacy">Privacy</a>
+            <a href="#top">Back to top</a>
+          </footer>
+        </div>
+      </div>
+    </section>
+  </main>
+
+
+  <script type="module" src="assets/site.js"></script>
+</body>
+</html>
