@@ -36,6 +36,8 @@ targets:
     settings:
       base:
         SWIFT_OBJC_BRIDGING_HEADER: App/Perry-Bridging-Header.h
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
     sources:
       - path: App
         excludes:
@@ -94,6 +96,8 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Perry
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         SUFeedURL: "$(PERRY_UPDATE_FEED_URL)"
         SUPublicEDKey: "$(PERRY_SPARKLE_PUBLIC_KEY)"
         PerryIssuesURL: "$(PERRY_ISSUES_URL)"
