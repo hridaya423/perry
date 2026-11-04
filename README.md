@@ -8,6 +8,11 @@
 <h3 align="center">A companion that lives in your Mac's notch.<br>It shows you how to use any app, or does the task for you.</h3>
 
 <p align="center">
+  <a href="https://github.com/hridaya423/perry/releases/latest"><img alt="Download Perry for macOS" src="https://img.shields.io/badge/Download_for_macOS-0.1.0_beta-202420?style=for-the-badge&logo=apple&logoColor=F3F0E8&labelColor=3C7765" height="40"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/hridaya423/perry/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/hridaya423/perry?style=flat-square&color=3C7765&label=release"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-3C7765?style=flat-square"></a>
   <img alt="macOS 14 or later on Apple Silicon" src="https://img.shields.io/badge/macOS-14%2B%20%C2%B7%20Apple%20Silicon-202420?style=flat-square">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-SwiftUI-202420?style=flat-square">
@@ -26,7 +31,7 @@
 Perry opens from the notch at the top of your screen. Hold <kbd>⌃</kbd><kbd>⌥</kbd> and talk, or type. Ask how to do something, and Perry points at each control in the app you have open. Ask Perry to do the task, and it does the work while you watch, with a stop button always in reach.
 
 > [!NOTE]
-> Perry is in public beta. No signed release exists yet. [Build it from source](#install).
+> Perry is in public beta. Report problems through [Issues](https://github.com/hridaya423/perry/issues).
 
 ## What Perry does
 
@@ -82,7 +87,17 @@ Perry stores API keys in the macOS Keychain.
 
 ## Install
 
-Perry needs a Mac with Apple Silicon, macOS 14 or later, and Xcode.
+Perry needs a Mac with Apple Silicon and macOS 14 or later.
+
+1. Download **Perry-0.1.0.dmg** from the [latest release](https://github.com/hridaya423/perry/releases/latest).
+2. Open it and drag Perry to Applications.
+3. Open Perry. It explains Accessibility, Screen Recording and Microphone access before macOS asks for each one.
+
+The app is signed with a Developer ID and notarized by Apple. Later versions arrive through the built-in updater.
+
+### Build from source
+
+Building also needs Xcode.
 
 ```sh
 git clone https://github.com/hridaya423/perry.git && cd perry
@@ -96,7 +111,7 @@ xcodebuild build -project Perry.xcodeproj -scheme Perry -configuration Debug \
 open build/debug-p1/Build/Products/Debug/Perry.app
 ```
 
-Each fetch script checks its download against the SHA-256 in `scripts/*.lock`. On first launch, Perry explains Accessibility, Screen Recording and Microphone access before macOS asks for each one.
+Each fetch script checks its download against the SHA-256 in `scripts/*.lock`.
 
 > [!TIP]
 > If macOS forgets the permissions after each rebuild, sign Debug builds with your team identity in `Config/DebugSigning.local.xcconfig`. Git ignores this file.
