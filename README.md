@@ -5,7 +5,9 @@
   </picture>
 </p>
 
-<h3 align="center">A companion that lives in your Mac's notch.<br>It shows you how to use any app, or does the task for you.</h3>
+<h3 align="center">Ask how to do anything on your Mac.<br>Perry points at the button, or clicks it for you.</h3>
+
+<p align="center">Free and open source. No account. Use the ChatGPT or Claude plan you already pay for, or any API key.</p>
 
 <p align="center">
   <a href="https://github.com/hridaya423/perry/releases/latest"><img alt="Download Perry for macOS" src="https://img.shields.io/badge/Download_for_macOS-0.1.0_beta-202420?style=for-the-badge&logo=apple&logoColor=F3F0E8&labelColor=3C7765" height="40"></a>
@@ -19,13 +21,15 @@
 </p>
 
 <p align="center">
-  <a href="#install">Install</a> · <a href="#what-perry-does">Features</a> · <a href="#bring-your-own-brain">Brains</a> · <a href="PRD.md">Product contract</a> · <a href="https://github.com/hridaya423/perry/issues">Issues</a>
+  <a href="#install">Install</a> · <a href="#what-perry-does">Features</a> · <a href="#bring-your-own-brain">Brains</a> · <a href="App/Resources/CHANGELOG.md">Changelog</a> · <a href="https://github.com/hridaya423/perry/issues">Issues</a>
 </p>
 
 <br>
 
 <p align="center">
-  <img alt="The Perry workspace opened from the notch, with a greeting, an Ask Perry anything field, and Tasks, Routines, Files, Suggestions and History in the sidebar" src=".github/assets/hero.png" width="100%">
+  <img alt="Perry in System Settings: the user asks how to turn on dark mode, Perry points at Appearance, then at Dark, then clicks Do it for me and the Mac switches to dark mode" src=".github/assets/demo.webp" width="100%">
+  <br>
+  <sub>Real screen recording, sped up in places. Perry points at Appearance, then at Dark, then does the last step.</sub>
 </p>
 
 Perry opens from the notch at the top of your screen. Hold <kbd>⌃</kbd><kbd>⌥</kbd> and talk, or type. Ask how to do something, and Perry points at each control in the app you have open. Ask Perry to do the task, and it does the work while you watch, with a stop button always in reach.
